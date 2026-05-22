@@ -8,7 +8,6 @@ const VIEWS: { id: ViewType; label: string }[] = [
   { id: 't', label: '리스트' },
   { id: 'b', label: '보드' },
   { id: 'c', label: '캘린더' },
-  { id: 'p', label: '프로젝트' },
   { id: 'g', label: '간트' },
   { id: 's', label: '통계' },
 ]
@@ -44,7 +43,7 @@ export function ViewBar() {
     }}>
       {VIEWS.map((v, i) => (
         <React.Fragment key={v.id}>
-          {(i === 3 || i === 5) && <Divider />}
+          {(i === 3 || i === 4) && <Divider />}
           <ViewTab active={view === v.id} onClick={() => setView(v.id)}>
             {v.label}
           </ViewTab>

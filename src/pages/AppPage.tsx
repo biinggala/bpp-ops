@@ -12,7 +12,6 @@ import { BoardView } from '../components/views/board'
 import { CalendarView } from '../components/views/calendar'
 import { StatsView } from '../components/views/stats'
 import { GanttView } from '../components/views/gantt'
-import { ProjectView } from '../components/views/project'
 import { TaskModal } from '../components/modals/TaskModal'
 import { CommandPalette } from '../components/modals/CommandPalette'
 import { EmptyState } from '../components/shared/EmptyState'
@@ -56,7 +55,7 @@ export function AppPage() {
     return () => document.removeEventListener('keydown', h)
   }, [isTaskModalOpen, openCommandPalette, undo])
 
-  const isEmpty = tasks.length === 0 && view !== 's' && view !== 'g' && view !== 'p'
+  const isEmpty = tasks.length === 0 && view !== 's' && view !== 'g'
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -76,7 +75,6 @@ export function AppPage() {
               {view === 'c' && <CalendarView />}
               {view === 'g' && <GanttView />}
               {view === 's' && <StatsView />}
-              {view === 'p' && <ProjectView />}
             </>
           )}
         </div>

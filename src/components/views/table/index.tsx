@@ -3,11 +3,13 @@ import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
+import { useProjectStore } from '../../../store/projectStore'
 import { CategoryBadge, PriorityBadge, TagBadge } from '../../shared/Badge'
 import { AssigneeGroup } from '../../shared/Avatar'
 import { ProgressBar } from '../../shared/ProgressBar'
+import { ContextMenu } from '../../shared/ContextMenu'
 import { fmtDate, isOverdue } from '../../../lib/utils'
-import type { Task, Milestone } from '../../../types'
+import type { Task, Milestone, Status } from '../../../types'
 
 const COLS = [
   { label: '업무', flex: 3.5 },
@@ -24,14 +26,19 @@ function daysFrom(dateStr: string, base: Date) {
   return Math.round((new Date(dateStr).setHours(0, 0, 0, 0) - base.getTime()) / 86400000)
 }
 
+type CtxState = { x: number; y: number; task: Task } | null
+
 export function TableView() {
   const filteredTasks = useFilteredTasks()
   const allTasks = useTaskStore(s => s.tasks)
   const { deleteTask, updateTask } = useTaskStore()
-  const { openTaskModal, setDetailTaskId, projectId } = useUiStore()
+  const { openTaskModal, projectId } = useUiStore()
   const { milestones, updateMilestone } = useMilestoneStore()
+  const projects = useProjectStore(s => s.projects)
   const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set())
   const [collapsedMs, setCollapsedMs] = React.useState<Set<string>>(new Set())
+  const [collapsedPj, setCollapsedPj] = React.useState<Set<string>>(new Set())
+  const [ctxMenu, setCtxMenu] = React.useState<CtxState>(null)
   const today = React.useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
 
   const rootTasks = filteredTasks.filter(t => !t.parentId)
@@ -39,9 +46,10 @@ export function TableView() {
 
   const toggle = (id: string) =>
     setCollapsed(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
-
   const toggleMs = (id: string) =>
     setCollapsedMs(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const togglePj = (id: string) =>
+    setCollapsedPj(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
 
   const makeHandlers = (task: Task) => ({
     onOpen: () => openTaskModal(task.id),
@@ -52,17 +60,11 @@ export function TableView() {
       getChildren(task.id).forEach(c => deleteTask(c.id))
       deleteTask(task.id)
     },
-    onStatusChange: (s: Task['status']) => updateTask(task.id, { status: s }),
+    onStatusChange: (s: Status) => updateTask(task.id, { status: s }),
     onAddSubtask: (e: React.MouseEvent) => { e.stopPropagation(); openTaskModal(undefined, task.id) },
     onMilestoneChange: (msId: string | undefined) => updateTask(task.id, { milestoneId: msId }),
+    onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, task }) },
   })
-
-  // 프로젝트 선택 시 해당 프로젝트, 전체 뷰에서는 마일스톤 전체 표시
-  const projectMilestones = milestones
-    .filter(m => !projectId || m.projectId === projectId)
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-
-  const isGrouped = projectMilestones.length > 0
 
   const colHeader = (
     <div style={{ display: 'flex', background: 'var(--bg2)', borderBottom: '2px solid var(--bd)' }}>
@@ -74,9 +76,9 @@ export function TableView() {
     </div>
   )
 
-  const addBtn = (
+  const addBtn = (milestoneId?: string) => (
     <button
-      onClick={() => openTaskModal()}
+      onClick={() => openTaskModal(undefined, undefined, milestoneId)}
       style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', fontSize: 13, color: 'var(--t3)', background: 'transparent', border: 'none', borderTop: '1px solid var(--bd)', cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font)', transition: 'background .1s' }}
       onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; e.currentTarget.style.color = 'var(--t2)' }}
       onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
@@ -85,7 +87,8 @@ export function TableView() {
     </button>
   )
 
-  const renderRows = (tasks: Task[], showPicker: boolean) =>
+  // Render task rows with explicit milestone list for picker
+  const renderRows = (tasks: Task[], pickerMilestones: Milestone[]) =>
     tasks.map(task => {
       const children = getChildren(task.id)
       const hasChildren = children.length > 0
@@ -93,27 +96,16 @@ export function TableView() {
       const h = makeHandlers(task)
       return (
         <React.Fragment key={task.id}>
-          <Row
-            task={task}
-            hasChildren={hasChildren}
-            isExpanded={isExpanded}
-            childCount={children.length}
-            doneCount={children.filter(c => c.status === '완료').length}
-            milestones={showPicker ? projectMilestones : []}
-            showMilestonePicker={showPicker}
-            onToggle={() => toggle(task.id)}
-            {...h}
+          <Row task={task} hasChildren={hasChildren} isExpanded={isExpanded}
+            childCount={children.length} doneCount={children.filter(c => c.status === '완료').length}
+            milestones={pickerMilestones} showMilestonePicker={pickerMilestones.length > 0}
+            onToggle={() => toggle(task.id)} {...h}
           />
           {hasChildren && isExpanded && children.map((child, idx) => {
             const ch = makeHandlers(child)
             return (
-              <Row
-                key={child.id}
-                task={child}
-                isChild
-                isLastChild={idx === children.length - 1}
-                milestones={showPicker ? projectMilestones : []}
-                showMilestonePicker={showPicker}
+              <Row key={child.id} task={child} isChild isLastChild={idx === children.length - 1}
+                milestones={pickerMilestones} showMilestonePicker={pickerMilestones.length > 0}
                 {...ch}
               />
             )
@@ -122,71 +114,141 @@ export function TableView() {
       )
     })
 
-  if (isGrouped) {
+  // Render milestone-grouped sections (shared by single-project and multi-project modes)
+  const renderMilestoneGroups = (tasks: Task[], pjMilestones: Milestone[], onAdd: (msId?: string) => void) => {
     const grouped: Record<string, Task[]> = {}
-    for (const ms of projectMilestones) grouped[ms.id] = []
+    for (const ms of pjMilestones) grouped[ms.id] = []
     const unassigned: Task[] = []
-    for (const task of rootTasks) {
-      if (task.milestoneId && grouped[task.milestoneId] !== undefined) {
-        grouped[task.milestoneId].push(task)
-      } else {
-        unassigned.push(task)
-      }
+    for (const task of tasks) {
+      if (task.milestoneId && grouped[task.milestoneId] !== undefined) grouped[task.milestoneId].push(task)
+      else unassigned.push(task)
     }
+    return (
+      <>
+        {pjMilestones.map(ms => {
+          const msTasks = grouped[ms.id] ?? []
+          const isCollapsed = collapsedMs.has(ms.id)
+          const diff = daysFrom(ms.dueDate, today)
+          return (
+            <React.Fragment key={ms.id}>
+              <MilestoneHeader
+                milestone={ms} taskCount={msTasks.length}
+                completed={msTasks.filter(t => t.status === '완료').length}
+                diff={diff} collapsed={isCollapsed}
+                onToggle={() => toggleMs(ms.id)}
+                onAddTask={() => onAdd(ms.id)}
+                onUpdate={patch => updateMilestone(ms.id, patch)}
+              />
+              {!isCollapsed && renderRows(msTasks, pjMilestones)}
+            </React.Fragment>
+          )
+        })}
+        {unassigned.length > 0 && (
+          <>
+            <UnassignedHeader count={unassigned.length}
+              collapsed={collapsedMs.has('__none__')}
+              onToggle={() => toggleMs('__none__')}
+              onAddTask={() => onAdd()} />
+            {!collapsedMs.has('__none__') && renderRows(unassigned, pjMilestones)}
+          </>
+        )}
+      </>
+    )
+  }
+
+  const ctx = ctxMenu && (
+    <ContextMenu
+      x={ctxMenu.x} y={ctxMenu.y} task={ctxMenu.task}
+      onClose={() => setCtxMenu(null)}
+      onEdit={() => openTaskModal(ctxMenu.task.id)}
+      onAddSubtask={() => openTaskModal(undefined, ctxMenu.task.id)}
+      onStatusChange={s => updateTask(ctxMenu.task.id, { status: s })}
+      onDelete={() => {
+        if (!confirm('삭제할까요?')) return
+        getChildren(ctxMenu.task.id).forEach(c => deleteTask(c.id))
+        deleteTask(ctxMenu.task.id)
+      }}
+    />
+  )
+
+  // ── Multi-project mode (no project filter) ────────────────────────────────
+  if (!projectId) {
+    const projectsWithTasks = projects.filter(p => rootTasks.some(t => t.projectId === p.id))
+    const unassignedTasks = rootTasks.filter(t => !t.projectId || !projects.find(p => p.id === t.projectId))
 
     return (
-      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-        <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden', minWidth: 860 }}>
-          {colHeader}
-          {projectMilestones.map(ms => {
-            const msTasks = grouped[ms.id] ?? []
-            const isCollapsed = collapsedMs.has(ms.id)
-            const completed = msTasks.filter(t => t.status === '완료').length
-            const diff = daysFrom(ms.dueDate, today)
-            return (
-              <React.Fragment key={ms.id}>
-                <MilestoneHeader
-                  milestone={ms}
-                  taskCount={msTasks.length}
-                  completed={completed}
-                  diff={diff}
-                  collapsed={isCollapsed}
-                  onToggle={() => toggleMs(ms.id)}
-                  onAddTask={() => openTaskModal(undefined, undefined, ms.id)}
-                  onUpdate={patch => updateMilestone(ms.id, patch)}
-                />
-                {!isCollapsed && renderRows(msTasks, true)}
-              </React.Fragment>
-            )
-          })}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {projectsWithTasks.map(proj => {
+          const pjMilestones = milestones.filter(m => m.projectId === proj.id).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+          const pjTasks = rootTasks.filter(t => t.projectId === proj.id)
+          const isCollapsed = collapsedPj.has(proj.id)
+          const doneCount = pjTasks.filter(t => t.status === '완료').length
+          return (
+            <div key={proj.id} style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden', minWidth: 860 }}>
+              {/* Project header */}
+              <div
+                onClick={() => togglePj(proj.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--bg2)', borderBottom: isCollapsed ? 'none' : '1px solid var(--bd)', cursor: 'pointer', borderLeft: `4px solid ${proj.color}` }}
+              >
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: proj.color, flexShrink: 0 }} />
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--t1)', flex: 1 }}>{proj.name}</span>
+                <span style={{ fontSize: 11, color: 'var(--t3)', background: 'var(--bg3)', borderRadius: 10, padding: '2px 8px' }}>{doneCount}/{pjTasks.length} 완료</span>
+                <span style={{ fontSize: 10, color: 'var(--t3)' }}>{isCollapsed ? '▶' : '▼'}</span>
+              </div>
+              {!isCollapsed && (
+                <>
+                  {colHeader}
+                  {pjMilestones.length > 0
+                    ? renderMilestoneGroups(pjTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
+                    : renderRows(pjTasks, pjMilestones)
+                  }
+                  {addBtn()}
+                </>
+              )}
+            </div>
+          )
+        })}
 
-          {/* Unassigned */}
-          {unassigned.length > 0 && (
-            <React.Fragment>
-              <UnassignedHeader
-                count={unassigned.length}
-                collapsed={collapsedMs.has('__none__')}
-                onToggle={() => toggleMs('__none__')}
-                onAddTask={() => openTaskModal()}
-              />
-              {!collapsedMs.has('__none__') && renderRows(unassigned, true)}
-            </React.Fragment>
-          )}
-
-          {addBtn}
-        </div>
+        {unassignedTasks.length > 0 && (
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden', minWidth: 860 }}>
+            <div
+              onClick={() => togglePj('__no_project__')}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--bg2)', borderBottom: collapsedPj.has('__no_project__') ? 'none' : '1px solid var(--bd)', cursor: 'pointer', borderLeft: '4px solid var(--bd)' }}
+            >
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--t2)', flex: 1 }}>프로젝트 미배정</span>
+              <span style={{ fontSize: 11, color: 'var(--t3)', background: 'var(--bg3)', borderRadius: 10, padding: '2px 8px' }}>{unassignedTasks.length}개</span>
+              <span style={{ fontSize: 10, color: 'var(--t3)' }}>{collapsedPj.has('__no_project__') ? '▶' : '▼'}</span>
+            </div>
+            {!collapsedPj.has('__no_project__') && (
+              <>
+                {colHeader}
+                {renderRows(unassignedTasks, [])}
+                {addBtn()}
+              </>
+            )}
+          </div>
+        )}
+        {ctx}
       </div>
     )
   }
 
-  // Flat view
+  // ── Single-project mode ───────────────────────────────────────────────────
+  const pjMilestones = milestones
+    .filter(m => m.projectId === projectId)
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
       <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden', minWidth: 860 }}>
         {colHeader}
-        {renderRows(rootTasks, true)}
-        {addBtn}
+        {pjMilestones.length > 0
+          ? renderMilestoneGroups(rootTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
+          : renderRows(rootTasks, [])
+        }
+        {addBtn()}
       </div>
+      {ctx}
     </div>
   )
 }
@@ -429,15 +491,16 @@ function Row({
   hasChildren = false, isExpanded = true,
   childCount = 0, doneCount = 0,
   milestones = [], showMilestonePicker = false,
-  onToggle, onOpen, onEdit, onDelete, onStatusChange, onAddSubtask, onMilestoneChange,
+  onToggle, onOpen, onEdit, onDelete, onStatusChange, onAddSubtask, onMilestoneChange, onContextMenu,
 }: {
   task: Task; isChild?: boolean; isLastChild?: boolean
   hasChildren?: boolean; isExpanded?: boolean; childCount?: number; doneCount?: number
   milestones?: Milestone[]; showMilestonePicker?: boolean
   onToggle?: () => void; onOpen: () => void
   onEdit: (e: React.MouseEvent) => void; onDelete: (e: React.MouseEvent) => void
-  onStatusChange: (s: Task['status']) => void; onAddSubtask?: (e: React.MouseEvent) => void
+  onStatusChange: (s: Status) => void; onAddSubtask?: (e: React.MouseEvent) => void
   onMilestoneChange?: (id: string | undefined) => void
+  onContextMenu?: (e: React.MouseEvent) => void
 }) {
   const [hovered, setHovered] = React.useState(false)
   const overdue = isOverdue(task.due, task.status)
@@ -445,6 +508,7 @@ function Row({
   return (
     <div
       onClick={onOpen}
+      onContextMenu={onContextMenu}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
