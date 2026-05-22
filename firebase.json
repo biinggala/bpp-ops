@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "site": "cringe-friends-1df62",
+    "site": "crng-task-manager",
     "public": "dist",
     "ignore": [
       "firebase.json",

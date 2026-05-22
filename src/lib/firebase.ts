@@ -3,13 +3,13 @@ import { getDatabase } from 'firebase/database'
 import { getAuth } from 'firebase/auth'
 
 const firebaseConfig = {
-  apiKey:            'AIzaSyAEHtyd871jl00_ZgmM-W5ht1GZ_LjC8xg',
-  authDomain:        'cringe-friends-1df62.firebaseapp.com',
-  databaseURL:       'https://cringe-friends-1df62-default-rtdb.asia-southeast1.firebasedatabase.app',
-  projectId:         'cringe-friends-1df62',
-  storageBucket:     'cringe-friends-1df62.firebasestorage.app',
-  messagingSenderId: '930969419587',
-  appId:             '1:930969419587:web:c4b60dc42c2df13af9f9f6',
+  apiKey:            'AIzaSyA7oKvx17RJ-EV1o8qnl7UhkM87MaVj_gA',
+  authDomain:        'crng-task-manager.firebaseapp.com',
+  databaseURL:       'https://crng-task-manager-default-rtdb.firebaseio.com',
+  projectId:         'crng-task-manager',
+  storageBucket:     'crng-task-manager.firebasestorage.app',
+  messagingSenderId: '1050546278891',
+  appId:             '1:1050546278891:web:a8c6771e03a1fc139989ae',
 }
 
 const app = initializeApp(firebaseConfig)
