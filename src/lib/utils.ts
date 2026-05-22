@@ -17,7 +17,7 @@ export function parseAssignees(assignee: string): string[] {
   return assignee ? assignee.split(',').map(s => s.trim()).filter(Boolean) : []
 }
 
-const STORAGE_KEY = 'cringe_v8'
+const STORAGE_KEY = 'cringe_v9'
 const TS_KEY = STORAGE_KEY + '_ts'
 
 export function loadFromStorage<T>(key = STORAGE_KEY): T | null {

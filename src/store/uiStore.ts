@@ -1,8 +1,7 @@
 import { create } from 'zustand'
-import type { ViewType, Category, Status, MemberKey } from '../types'
+import type { ViewType, Status, MemberKey } from '../types'
 
 interface Filters {
-  categories: Category[]
   assignees: MemberKey[]
   statuses: Status[]
   search: string
@@ -11,7 +10,7 @@ interface Filters {
 
 interface UiState {
   view: ViewType
-  space: Category | null          // null = 전체
+  space: string | null          // Space.name — null = 전체
   filters: Filters
   detailTaskId: string | null
   editTaskId: string | null
@@ -19,17 +18,15 @@ interface UiState {
   isFilterPanelOpen: boolean
   isColorSettingsOpen: boolean
   calYear: number
-  calMonth: number                // 0-indexed
+  calMonth: number
 
   setView: (v: ViewType) => void
-  setSpace: (s: Category | null) => void
+  setSpace: (s: string | null) => void
   setFilters: (f: Partial<Filters>) => void
   resetFilters: () => void
   setDetailTaskId: (id: string | null) => void
-  setEditTaskId: (id: string | null) => void
   openTaskModal: (editId?: string) => void
   closeTaskModal: () => void
-  setFilterPanel: (open: boolean) => void
   setColorSettings: (open: boolean) => void
   calNav: (delta: number) => void
   calToday: () => void
@@ -38,7 +35,6 @@ interface UiState {
 const now = new Date()
 
 const defaultFilters: Filters = {
-  categories: [],
   assignees: [],
   statuses: [],
   search: '',
@@ -62,10 +58,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   setFilters: (f) => set(s => ({ filters: { ...s.filters, ...f } })),
   resetFilters: () => set({ filters: { ...defaultFilters } }),
   setDetailTaskId: (id) => set({ detailTaskId: id }),
-  setEditTaskId: (id) => set({ editTaskId: id }),
   openTaskModal: (editId) => set({ isTaskModalOpen: true, editTaskId: editId ?? null }),
   closeTaskModal: () => set({ isTaskModalOpen: false, editTaskId: null }),
-  setFilterPanel: (open) => set({ isFilterPanelOpen: open }),
   setColorSettings: (open) => set({ isColorSettingsOpen: open }),
   calNav: (delta) => {
     const { calYear, calMonth } = get()

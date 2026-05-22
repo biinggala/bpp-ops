@@ -10,24 +10,19 @@ export function useFilteredTasks(): Task[] {
   return useMemo(() => {
     let result = [...tasks]
 
-    // space filter
+    // space filter (사이드바에서 선택)
     if (space) {
       result = result.filter(t => t.cat === space)
     }
 
-    // category multi-filter
-    if (filters.categories.length) {
-      result = result.filter(t => filters.categories.includes(t.cat as never))
-    }
-
-    // assignee multi-filter
+    // assignee filter
     if (filters.assignees.length) {
       result = result.filter(t =>
         filters.assignees.some(a => t.assignee.includes(a))
       )
     }
 
-    // status multi-filter
+    // status filter
     if (filters.statuses.length) {
       result = result.filter(t => filters.statuses.includes(t.status as never))
     }

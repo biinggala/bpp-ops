@@ -1,9 +1,9 @@
-import type { Category, Status, Priority } from '../../types'
-import { CAT_COLORS, STATUS_COLORS } from '../../types'
+import { getCatColor, STATUS_COLORS } from '../../types'
+import type { Status, Priority } from '../../types'
 
-interface BadgeProps { className?: string; style?: React.CSSProperties; children: React.ReactNode }
-
-function Badge({ children, style, className = '' }: BadgeProps) {
+function Badge({ children, style, className = '' }: {
+  children: React.ReactNode; style?: React.CSSProperties; className?: string
+}) {
   return (
     <span
       className={`inline-flex items-center text-[10px] font-semibold px-[7px] py-[2px] rounded-full whitespace-nowrap flex-shrink-0 ${className}`}
@@ -14,8 +14,8 @@ function Badge({ children, style, className = '' }: BadgeProps) {
   )
 }
 
-export function CategoryBadge({ cat }: { cat: Category }) {
-  const c = CAT_COLORS[cat]
+export function CategoryBadge({ cat }: { cat: string }) {
+  const c = getCatColor(cat)
   return <Badge style={{ background: c.bg, color: c.text }}>{cat}</Badge>
 }
 

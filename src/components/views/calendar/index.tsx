@@ -1,7 +1,7 @@
 import { useUiStore } from '../../../store/uiStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
-import { CAT_COLORS } from '../../../types'
-import type { Task, Category } from '../../../types'
+import { getCatColor } from '../../../types'
+import type { Task } from '../../../types'
 
 const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토']
 const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
@@ -79,7 +79,7 @@ export function CalendarView() {
                 {/* Events */}
                 <div className="flex flex-col gap-[2px] px-[3px] pb-[4px]">
                   {dayTasks.slice(0, 3).map(t => {
-                    const color = CAT_COLORS[t.cat as Category]
+                    const color = getCatColor(t.cat)
                     return (
                       <div
                         key={t.id}

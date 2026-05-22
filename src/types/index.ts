@@ -1,26 +1,33 @@
 export type TaskType = '상위' | '세부'
-export type Category = 'Strategy' | 'Production' | 'Internal Ops' | 'Biz Dev' | 'Branding' | 'Analytics' | 'Community'
 export type Status = '진행중' | '대기' | '검토중' | '완료'
 export type Priority = '높음' | '중간' | '낮음'
 export type MemberKey = 'YL' | 'SJ' | 'HC'
 export type ViewType = 't' | 'b' | 'c' | 'p' | 'g' | 's'
+
+// Category는 이제 동적 — Space의 name 값
+export type Category = string
+
+export interface Space {
+  id: string
+  name: string
+  color: string   // hex or css color for dot
+}
 
 export interface Task {
   id: string
   type: TaskType
   name: string
   cat: Category
-  assignee: string   // comma-separated MemberKeys e.g. "YL,HC"
-  start: string      // YYYY-MM-DD
-  due: string        // YYYY-MM-DD
+  assignee: string
+  start: string
+  due: string
   priority: Priority
   status: Status
-  progress: number   // 0–100
+  progress: number
   memo: string
   parentId?: string
   order?: number
   checklist?: ChecklistItem[]
-  gcalEventId?: string
 }
 
 export interface ChecklistItem {
@@ -31,13 +38,9 @@ export interface ChecklistItem {
 
 export interface Member {
   key: MemberKey
-  n: string          // display name
+  n: string
   email: string
-  grad: string       // CSS gradient or color
-}
-
-export interface ColorConfig {
-  [key: string]: { bg: string; text: string }
+  grad: string
 }
 
 export const MEMBERS: Record<MemberKey, Member> = {
@@ -52,26 +55,38 @@ export const ALLOWED_EMAILS: Record<string, MemberKey> = {
   'biinggala@crngfriends.com': 'HC',
 }
 
-export const CATEGORIES: Category[] = [
-  'Strategy', 'Production', 'Internal Ops', 'Biz Dev', 'Branding', 'Analytics', 'Community',
-]
-
 export const STATUS_LIST: Status[] = ['진행중', '대기', '검토중', '완료']
 export const PRIORITY_LIST: Priority[] = ['높음', '중간', '낮음']
-
-export const CAT_COLORS: Record<Category, { bg: string; text: string }> = {
-  Strategy:     { bg: '#fef3c7', text: '#92400e' },
-  Production:   { bg: '#fee2e2', text: '#b91c1c' },
-  'Internal Ops': { bg: '#d1fae5', text: '#065f46' },
-  'Biz Dev':    { bg: '#dbeafe', text: '#1e40af' },
-  Branding:     { bg: '#fce7f3', text: '#9d174d' },
-  Analytics:    { bg: '#e0e7ff', text: '#3730a3' },
-  Community:    { bg: '#dcfce7', text: '#166534' },
-}
 
 export const STATUS_COLORS: Record<Status, { bg: string; text: string }> = {
   진행중: { bg: 'rgba(0,122,255,.1)', text: '#007aff' },
   대기:   { bg: '#f3f4f6',           text: '#6b7280' },
   검토중: { bg: '#fef3c7',           text: '#d97706' },
   완료:   { bg: '#d1fae5',           text: '#059669' },
+}
+
+// Space용 색상 팔레트
+export const SPACE_PALETTE = [
+  '#007aff','#ef4444','#10b981','#f59e0b','#8b5cf6',
+  '#06b6d4','#ec4899','#3730a3','#166534','#92400e',
+]
+
+// Space 이름으로 배지 색상 생성 (해시 기반)
+export function getCatColor(spaceName: string): { bg: string; text: string } {
+  const presets: Record<string, { bg: string; text: string }> = {
+    Strategy:       { bg: '#fef3c7', text: '#92400e' },
+    Production:     { bg: '#fee2e2', text: '#b91c1c' },
+    'Internal Ops': { bg: '#d1fae5', text: '#065f46' },
+    'Biz Dev':      { bg: '#dbeafe', text: '#1e40af' },
+    Branding:       { bg: '#fce7f3', text: '#9d174d' },
+    Analytics:      { bg: '#e0e7ff', text: '#3730a3' },
+    Community:      { bg: '#dcfce7', text: '#166534' },
+  }
+  if (presets[spaceName]) return presets[spaceName]
+
+  // 해시로 팔레트에서 색 선택
+  let h = 0
+  for (let i = 0; i < spaceName.length; i++) h = spaceName.charCodeAt(i) + ((h << 5) - h)
+  const color = SPACE_PALETTE[Math.abs(h) % SPACE_PALETTE.length]
+  return { bg: color + '18', text: color }
 }

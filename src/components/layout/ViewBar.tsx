@@ -1,6 +1,8 @@
+import React from 'react'
 import { useUiStore } from '../../store/uiStore'
-import type { ViewType, Category, Status, MemberKey } from '../../types'
-import { CATEGORIES, STATUS_LIST } from '../../types'
+import { useSpaceStore } from '../../store/spaceStore'
+import type { ViewType, Status, MemberKey } from '../../types'
+import { STATUS_LIST } from '../../types'
 
 const VIEWS: { id: ViewType; label: string }[] = [
   { id: 't', label: 'List' },
@@ -19,11 +21,9 @@ const MEMBERS_FILTER: { key: MemberKey; label: string }[] = [
 
 export function ViewBar() {
   const { view, setView, filters, setFilters, resetFilters } = useUiStore()
-  const hasFilters =
-    filters.categories.length > 0 ||
-    filters.assignees.length > 0 ||
-    filters.statuses.length > 0
+  const spaces = useSpaceStore(s => s.spaces)
 
+  const hasFilters = filters.assignees.length > 0 || filters.statuses.length > 0
   const showFilters = !['c', 's'].includes(view)
 
   return (
@@ -47,15 +47,15 @@ export function ViewBar() {
 
       {showFilters && (
         <div className="ml-auto flex items-center gap-[5px] flex-shrink-0">
-          {/* Category filter */}
-          <MultiSelect
-            label="카테고리"
-            options={CATEGORIES.map(c => ({ value: c, label: c }))}
-            selected={filters.categories}
-            onChange={v => setFilters({ categories: v as Category[] })}
-          />
+          {spaces.length > 0 && (
+            <MultiSelect
+              label="카테고리"
+              options={spaces.map(s => ({ value: s.name, label: s.name }))}
+              selected={filters.assignees.length > 0 ? [] : []}  // space filter is in sidebar
+              onChange={() => {}}
+            />
+          )}
 
-          {/* Assignee filter */}
           <MultiSelect
             label="담당자"
             options={MEMBERS_FILTER.map(m => ({ value: m.key, label: m.label }))}
@@ -63,7 +63,6 @@ export function ViewBar() {
             onChange={v => setFilters({ assignees: v as MemberKey[] })}
           />
 
-          {/* Status filter */}
           <MultiSelect
             label="상태"
             options={STATUS_LIST.map(s => ({ value: s, label: s }))}
@@ -85,8 +84,8 @@ export function ViewBar() {
             onChange={e => setFilters({ sort: e.target.value as 'due_asc' | 'due_desc' | 'default' })}
             className="px-[10px] py-[5px] rounded-lg border border-black/[.12] bg-white/80 text-[11px] text-gray-500 outline-none cursor-pointer"
           >
-            <option value="due_asc">마감일 ↑ 가까운 순</option>
-            <option value="due_desc">마감일 ↓ 먼 순</option>
+            <option value="due_asc">마감일 ↑</option>
+            <option value="due_desc">마감일 ↓</option>
             <option value="default">기본 순서</option>
           </select>
         </div>
@@ -95,7 +94,6 @@ export function ViewBar() {
   )
 }
 
-// 재사용 가능한 멀티셀렉트 드롭다운
 function MultiSelect<T extends string>({
   label, options, selected, onChange,
 }: {
@@ -115,6 +113,8 @@ function MultiSelect<T extends string>({
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
+
+  if (options.length === 0) return null
 
   const toggle = (v: T) => {
     onChange(selected.includes(v) ? selected.filter(s => s !== v) : [...selected, v])
@@ -166,5 +166,3 @@ function MultiSelect<T extends string>({
     </div>
   )
 }
-
-import React from 'react'
