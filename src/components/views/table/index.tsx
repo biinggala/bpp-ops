@@ -57,11 +57,12 @@ export function TableView() {
     onMilestoneChange: (msId: string | undefined) => updateTask(task.id, { milestoneId: msId }),
   })
 
+  // 프로젝트 선택 시 해당 프로젝트, 전체 뷰에서는 마일스톤 전체 표시
   const projectMilestones = milestones
-    .filter(m => m.projectId === projectId)
+    .filter(m => !projectId || m.projectId === projectId)
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
 
-  const isGrouped = !!(projectId && projectMilestones.length > 0)
+  const isGrouped = projectMilestones.length > 0
 
   const colHeader = (
     <div style={{ display: 'flex', background: 'var(--bg2)', borderBottom: '2px solid var(--bd)' }}>
@@ -183,7 +184,7 @@ export function TableView() {
     <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
       <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden', minWidth: 860 }}>
         {colHeader}
-        {renderRows(rootTasks, !!projectId)}
+        {renderRows(rootTasks, true)}
         {addBtn}
       </div>
     </div>

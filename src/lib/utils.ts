@@ -37,3 +37,39 @@ export function saveToStorage<T>(data: T, key = STORAGE_KEY): void {
 export function getLocalTs(): number {
   return parseInt(localStorage.getItem(TS_KEY) || '0')
 }
+
+export function addDays(d: Date, n: number): Date {
+  const r = new Date(d); r.setDate(r.getDate() + n); return r
+}
+
+export function toDate(s: string): Date {
+  const [y, m, d] = s.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+export function fmtYMD(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+export function dayDiff(a: Date, b: Date): number {
+  return Math.round((b.getTime() - a.getTime()) / 86400000)
+}
+
+// BFS: returns all task IDs reachable via .blocking chains from startId (startId excluded)
+export function getBlockingCascade(startId: string, allTasks: { id: string; blocking?: string[] }[]): string[] {
+  const result: string[] = []
+  const visited = new Set<string>([startId])
+  const queue = [startId]
+  while (queue.length) {
+    const id = queue.shift()!
+    const task = allTasks.find(t => t.id === id)
+    task?.blocking?.forEach(bid => {
+      if (!visited.has(bid)) {
+        visited.add(bid)
+        result.push(bid)
+        queue.push(bid)
+      }
+    })
+  }
+  return result
+}

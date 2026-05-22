@@ -4,24 +4,14 @@ import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { getCatColor } from '../../../types'
+import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade } from '../../../lib/utils'
 import type { Task } from '../../../types'
 
 const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토']
 const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
 
-function fmt(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-function parseDate(s: string): Date {
-  const [y, m, d] = s.split('-').map(Number)
-  return new Date(y, m - 1, d)
-}
-function addDays(d: Date, n: number): Date {
-  const r = new Date(d); r.setDate(r.getDate() + n); return r
-}
-function diffDays(a: Date, b: Date): number {
-  return Math.round((b.getTime() - a.getTime()) / 86400000)
-}
+const fmt = fmtYMD
+const parseDate = toDate
 
 export function CalendarView() {
   const { calYear, calMonth, calNav, calToday, openTaskModal, projectId } = useUiStore()
@@ -70,7 +60,7 @@ export function CalendarView() {
     const task = tasks.find(t => t.id === taskId)
     if (!task) return
 
-    const offset = diffDays(parseDate(fromDateStr), dropDate)
+    const offset = dayDiff(parseDate(fromDateStr), dropDate)
     if (offset === 0) { setDragOver(null); return }
 
     const patch: Partial<Task> = {}
@@ -240,20 +230,3 @@ function NavBtn({ children, onClick }: { children: React.ReactNode; onClick: () 
   )
 }
 
-function getBlockingCascade(startId: string, allTasks: Task[]): string[] {
-  const result: string[] = []
-  const visited = new Set<string>([startId])
-  const queue = [startId]
-  while (queue.length) {
-    const id = queue.shift()!
-    const task = allTasks.find(t => t.id === id)
-    task?.blocking?.forEach(bid => {
-      if (!visited.has(bid)) {
-        visited.add(bid)
-        result.push(bid)
-        queue.push(bid)
-      }
-    })
-  }
-  return result
-}

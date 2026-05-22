@@ -5,6 +5,7 @@ import { useUiStore } from '../../../store/uiStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { getCatColor } from '../../../types'
 import { CategoryBadge } from '../../shared/Badge'
+import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade } from '../../../lib/utils'
 import type { Task } from '../../../types'
 
 const DAY_W = 26
@@ -13,19 +14,6 @@ const LEFT_W = 240
 const MONTH_H = 28
 const DAY_H = 24
 
-function toDate(s: string): Date {
-  const [y, m, d] = s.split('-').map(Number)
-  return new Date(y, m - 1, d)
-}
-function addDays(d: Date, n: number): Date {
-  const r = new Date(d); r.setDate(r.getDate() + n); return r
-}
-function dayDiff(a: Date, b: Date): number {
-  return Math.round((b.getTime() - a.getTime()) / 86400000)
-}
-function fmtDate(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 interface DragData {
   taskId: string
@@ -83,16 +71,16 @@ export function GanttView() {
       const dayOffset = Math.round((e.clientX - d.startX) / DAY_W)
       if (dayOffset !== 0) {
         const patch: Partial<Task> = {}
-        if (d.origStart) patch.start = fmtDate(addDays(toDate(d.origStart), dayOffset))
-        if (d.origDue)   patch.due   = fmtDate(addDays(toDate(d.origDue),   dayOffset))
+        if (d.origStart) patch.start = fmtYMD(addDays(toDate(d.origStart), dayOffset))
+        if (d.origDue)   patch.due   = fmtYMD(addDays(toDate(d.origDue),   dayOffset))
         updateTask(d.taskId, patch)
         // cascade: shift all downstream (blocking) tasks by the same offset
         cascadeIdsRef.current.forEach(id => {
           const t = allTasksRef.current.find(t => t.id === id)
           if (!t) return
           const cp: Partial<Task> = {}
-          if (t.start) cp.start = fmtDate(addDays(toDate(t.start), dayOffset))
-          if (t.due)   cp.due   = fmtDate(addDays(toDate(t.due),   dayOffset))
+          if (t.start) cp.start = fmtYMD(addDays(toDate(t.start), dayOffset))
+          if (t.due)   cp.due   = fmtYMD(addDays(toDate(t.due),   dayOffset))
           updateTask(id, cp)
         })
       }
@@ -146,9 +134,8 @@ export function GanttView() {
   const todayCol = dayDiff(rangeStart, today)
 
   const milestoneMarkers = useMemo(() => {
-    if (!projectId) return []
     return milestones
-      .filter(m => m.projectId === projectId)
+      .filter(m => !projectId || m.projectId === projectId)
       .map(m => ({ id: m.id, name: m.name, col: dayDiff(rangeStart, toDate(m.dueDate)) }))
       .filter(m => m.col >= 0 && m.col < totalDays)
   }, [milestones, projectId, rangeStart, totalDays])
@@ -491,21 +478,3 @@ function MilestoneLine({ marker, dayW }: { marker: { id: string; name: string; c
   )
 }
 
-// BFS: collect all task IDs reachable via .blocking chains from startId (excluding startId itself)
-function getBlockingCascade(startId: string, allTasks: Task[]): string[] {
-  const result: string[] = []
-  const visited = new Set<string>([startId])
-  const queue = [startId]
-  while (queue.length) {
-    const id = queue.shift()!
-    const task = allTasks.find(t => t.id === id)
-    task?.blocking?.forEach(bid => {
-      if (!visited.has(bid)) {
-        visited.add(bid)
-        result.push(bid)
-        queue.push(bid)
-      }
-    })
-  }
-  return result
-}
