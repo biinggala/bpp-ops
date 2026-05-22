@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useUiStore } from '../../../store/uiStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
+import { useMilestoneStore } from '../../../store/milestoneStore'
 import { getCatColor } from '../../../types'
 import type { Task } from '../../../types'
 
@@ -23,9 +24,21 @@ function diffDays(a: Date, b: Date): number {
 }
 
 export function CalendarView() {
-  const { calYear, calMonth, calNav, calToday, openTaskModal } = useUiStore()
+  const { calYear, calMonth, calNav, calToday, openTaskModal, projectId } = useUiStore()
   const tasks = useFilteredTasks()
-  const { updateTask } = useTaskStore()
+  const { updateTask, tasks: allTasks } = useTaskStore()
+  const milestones = useMilestoneStore(s => s.milestones)
+
+  // milestones for current project, keyed by dueDate string
+  const milestoneByDate = useMemo(() => {
+    const map: Record<string, { name: string; color: string }[]> = {}
+    const filtered = projectId ? milestones.filter(m => m.projectId === projectId) : milestones
+    filtered.forEach(m => {
+      if (!map[m.dueDate]) map[m.dueDate] = []
+      map[m.dueDate].push({ name: m.name, color: '#8b5cf6' })
+    })
+    return map
+  }, [milestones, projectId])
 
   const [dragOver, setDragOver] = useState<string | null>(null)   // fmt(date) of hovered cell
   const [draggingId, setDraggingId] = useState<string | null>(null)
@@ -66,6 +79,17 @@ export function CalendarView() {
     if (!task.start && !task.due) patch.due = fmt(dropDate)
 
     updateTask(taskId, patch)
+
+    // cascade: shift all downstream tasks by the same offset
+    getBlockingCascade(taskId, allTasks).forEach(id => {
+      const dep = allTasks.find(t => t.id === id)
+      if (!dep) return
+      const cp: Partial<Task> = {}
+      if (dep.start) cp.start = fmt(addDays(parseDate(dep.start), offset))
+      if (dep.due)   cp.due   = fmt(addDays(parseDate(dep.due),   offset))
+      updateTask(id, cp)
+    })
+
     setDragOver(null)
   }
 
@@ -99,6 +123,8 @@ export function CalendarView() {
             const isToday = dateStr === fmt(today)
             const isDragTarget = dragOver === dateStr
             const dayTasks = tasksByDate(date)
+            const dayMilestones = milestoneByDate[dateStr] ?? []
+            const hasMilestone = dayMilestones.length > 0
             const dow = date.getDay()
             const isWeekend = dow === 0 || dow === 6
 
@@ -117,18 +143,29 @@ export function CalendarView() {
                   minHeight: 90,
                   background: isDragTarget
                     ? 'var(--ac-l)'
-                    : !isCurrentMonth
-                      ? 'var(--bg2)'
-                      : isToday
-                        ? 'rgba(35,131,226,.03)'
-                        : isWeekend ? 'var(--bg2)' : 'transparent',
-                  outline: isDragTarget ? '2px solid var(--ac)' : 'none',
+                    : hasMilestone
+                      ? 'rgba(139,92,246,.04)'
+                      : !isCurrentMonth
+                        ? 'var(--bg2)'
+                        : isToday
+                          ? 'rgba(35,131,226,.03)'
+                          : isWeekend ? 'var(--bg2)' : 'transparent',
+                  outline: isDragTarget ? '2px solid var(--ac)' : hasMilestone ? '2px solid rgba(139,92,246,.35)' : 'none',
                   outlineOffset: '-2px',
                   transition: 'background .08s',
                 }}
               >
-                {/* Date number */}
-                <div style={{ textAlign: 'right', padding: '5px 8px 3px' }}>
+                {/* Date number row — with milestone diamond */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 8px 3px', gap: 4 }}>
+                  {hasMilestone && (
+                    <div style={{ display: 'flex', gap: 3, alignItems: 'center', flex: 1 }}>
+                      {dayMilestones.map((ms, mi) => (
+                        <span key={mi} title={ms.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600, color: '#8b5cf6', background: 'rgba(139,92,246,.12)', borderRadius: 4, padding: '1px 5px', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          ◆ {ms.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <span style={{
                     fontSize: 12, fontWeight: isToday ? 700 : 400,
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -201,4 +238,22 @@ function NavBtn({ children, onClick }: { children: React.ReactNode; onClick: () 
       {children}
     </button>
   )
+}
+
+function getBlockingCascade(startId: string, allTasks: Task[]): string[] {
+  const result: string[] = []
+  const visited = new Set<string>([startId])
+  const queue = [startId]
+  while (queue.length) {
+    const id = queue.shift()!
+    const task = allTasks.find(t => t.id === id)
+    task?.blocking?.forEach(bid => {
+      if (!visited.has(bid)) {
+        visited.add(bid)
+        result.push(bid)
+        queue.push(bid)
+      }
+    })
+  }
+  return result
 }

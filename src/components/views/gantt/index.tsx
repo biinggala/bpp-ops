@@ -38,13 +38,18 @@ export function GanttView() {
   const filteredTasks = useFilteredTasks()
   const allTasks = useTaskStore(s => s.tasks)
   const { updateTask } = useTaskStore()
-  const { setDetailTaskId, openTaskModal, projectId } = useUiStore()
+  const { openTaskModal, projectId } = useUiStore()
   const milestones = useMilestoneStore(s => s.milestones)
   const wrapRef = useRef<HTMLDivElement>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
+  // Keep allTasks available in event handlers without re-registering listeners
+  const allTasksRef = useRef(allTasks)
+  useEffect(() => { allTasksRef.current = allTasks }, [allTasks])
+
   // Drag state — ref for raw data (no re-render), state for visual offset
   const dragRef = useRef<DragData | null>(null)
+  const cascadeIdsRef = useRef<Set<string>>(new Set())
   const [dragVisual, setDragVisual] = useState<{ taskId: string; dayOffset: number } | null>(null)
 
   const today = useMemo(() => {
@@ -81,8 +86,18 @@ export function GanttView() {
         if (d.origStart) patch.start = fmtDate(addDays(toDate(d.origStart), dayOffset))
         if (d.origDue)   patch.due   = fmtDate(addDays(toDate(d.origDue),   dayOffset))
         updateTask(d.taskId, patch)
+        // cascade: shift all downstream (blocking) tasks by the same offset
+        cascadeIdsRef.current.forEach(id => {
+          const t = allTasksRef.current.find(t => t.id === id)
+          if (!t) return
+          const cp: Partial<Task> = {}
+          if (t.start) cp.start = fmtDate(addDays(toDate(t.start), dayOffset))
+          if (t.due)   cp.due   = fmtDate(addDays(toDate(t.due),   dayOffset))
+          updateTask(id, cp)
+        })
       }
       dragRef.current = null
+      cascadeIdsRef.current = new Set()
       setDragVisual(null)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
@@ -98,6 +113,7 @@ export function GanttView() {
 
   const startDrag = useCallback((data: DragData) => {
     dragRef.current = data
+    cascadeIdsRef.current = new Set(getBlockingCascade(data.taskId, allTasksRef.current))
     setDragVisual({ taskId: data.taskId, dayOffset: 0 })
     document.body.style.cursor = 'grabbing'
     document.body.style.userSelect = 'none'
@@ -218,11 +234,7 @@ export function GanttView() {
               )
             })}
             {milestoneMarkers.map(m => (
-              <div
-                key={m.id}
-                title={m.name}
-                style={{ position: 'absolute', left: m.col * DAY_W + Math.floor(DAY_W / 2) - 5, top: 2, fontSize: 10, color: '#8b5cf6', pointerEvents: 'none', zIndex: 2, lineHeight: 1 }}
-              >◆</div>
+              <MilestonePin key={m.id} marker={m} dayW={DAY_W} />
             ))}
           </div>
         </div>
@@ -234,7 +246,10 @@ export function GanttView() {
           const isExpanded = !collapsed.has(task.id)
           const hasOwnBar = !!(task.start || task.due)
           const rollup = !hasOwnBar ? getRollupBar(task.id) : null
-          const dragOffset = dragVisual?.taskId === task.id ? dragVisual.dayOffset : 0
+          const isInCascade = dragVisual ? cascadeIdsRef.current.has(task.id) : false
+          const dragOffset = dragVisual
+            ? (dragVisual.taskId === task.id || isInCascade ? dragVisual.dayOffset : 0)
+            : 0
 
           return (
             <div key={task.id}>
@@ -250,6 +265,7 @@ export function GanttView() {
                 rollup={rollup}
                 dragOffset={dragOffset}
                 isDragging={dragVisual?.taskId === task.id}
+                isCascading={isInCascade}
                 milestoneMarkers={milestoneMarkers}
                 onOpen={() => openTaskModal(task.id)}
                 onToggle={() => toggle(task.id)}
@@ -257,7 +273,10 @@ export function GanttView() {
                 onBarMouseDown={(startX) => startDrag({ taskId: task.id, origStart: task.start, origDue: task.due, startX })}
               />
               {hasChildren && isExpanded && children.map(child => {
-                const childDragOffset = dragVisual?.taskId === child.id ? dragVisual.dayOffset : 0
+                const childInCascade = dragVisual ? cascadeIdsRef.current.has(child.id) : false
+                const childDragOffset = dragVisual
+                  ? (dragVisual.taskId === child.id || childInCascade ? dragVisual.dayOffset : 0)
+                  : 0
                 return (
                   <GanttRow
                     key={child.id}
@@ -270,8 +289,9 @@ export function GanttView() {
                     isChild
                     dragOffset={childDragOffset}
                     isDragging={dragVisual?.taskId === child.id}
+                    isCascading={childInCascade}
                     milestoneMarkers={milestoneMarkers}
-                    onOpen={() => setDetailTaskId(child.id)}
+                    onOpen={() => openTaskModal(child.id)}
                     onEdit={() => openTaskModal(child.id)}
                     onBarMouseDown={(startX) => startDrag({ taskId: child.id, origStart: child.start, origDue: child.due, startX })}
                   />
@@ -290,7 +310,7 @@ export function GanttView() {
 function GanttRow({
   task, rangeStart, todayCol, totalDays, timelineW, today,
   isChild = false, hasChildren = false, isExpanded = true,
-  rollup = null, dragOffset = 0, isDragging = false,
+  rollup = null, dragOffset = 0, isDragging = false, isCascading = false,
   milestoneMarkers = [],
   onOpen, onToggle, onAddSubtask, onEdit, onBarMouseDown,
 }: {
@@ -306,6 +326,7 @@ function GanttRow({
   rollup?: { col: number; span: number } | null
   dragOffset?: number
   isDragging?: boolean
+  isCascading?: boolean
   milestoneMarkers?: { id: string; col: number; name: string }[]
   onOpen: () => void
   onToggle?: () => void
@@ -380,11 +401,7 @@ function GanttRow({
 
         {/* Milestone lines */}
         {milestoneMarkers.map(m => (
-          <div
-            key={m.id}
-            title={m.name}
-            style={{ position: 'absolute', left: m.col * DAY_W + Math.floor(DAY_W / 2), top: 0, bottom: 0, width: 1, borderLeft: '1px dashed rgba(139,92,246,.45)', pointerEvents: 'none', zIndex: 1 }}
-          />
+          <MilestoneLine key={m.id} marker={m} dayW={DAY_W} />
         ))}
 
         {/* Rollup bar */}
@@ -412,9 +429,11 @@ function GanttRow({
               display: 'flex', alignItems: 'center', paddingLeft: 6,
               overflow: 'hidden', zIndex: 1,
               cursor: isDragging ? 'grabbing' : 'grab',
-              opacity: isDragging ? .85 : 1,
-              boxShadow: isDragging ? '0 4px 12px rgba(0,0,0,.18)' : 'none',
-              transition: isDragging ? 'none' : 'box-shadow .1s',
+              opacity: isDragging ? .85 : isCascading ? .7 : 1,
+              boxShadow: isDragging ? '0 4px 12px rgba(0,0,0,.18)' : isCascading ? '0 2px 8px rgba(0,0,0,.12)' : 'none',
+              outline: isCascading ? '1.5px dashed ' + color.text : 'none',
+              outlineOffset: 1,
+              transition: isDragging || isCascading ? 'none' : 'box-shadow .1s',
             }}
           >
             {barWidth > 54 && (
@@ -430,4 +449,63 @@ function GanttRow({
       </div>
     </div>
   )
+}
+
+// ── Milestone UI helpers ──────────────────────────────────────────────────────
+
+function MilestonePin({ marker, dayW }: { marker: { id: string; name: string; col: number }; dayW: number }) {
+  const [hovered, setHovered] = useState(false)
+  const left = marker.col * dayW + Math.floor(dayW / 2)
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{ position: 'absolute', left: left - 7, top: 2, zIndex: 3, cursor: 'default' }}
+    >
+      <span style={{ fontSize: 12, color: '#8b5cf6', lineHeight: 1, display: 'block', filter: hovered ? 'drop-shadow(0 0 4px #8b5cf6aa)' : 'none', transition: 'filter .15s' }}>◆</span>
+      {hovered && (
+        <div style={{ position: 'absolute', top: 18, left: '50%', transform: 'translateX(-50%)', background: '#1e1b4b', color: '#c4b5fd', fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 5, whiteSpace: 'nowrap', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,.3)', zIndex: 20 }}>
+          ◆ {marker.name}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MilestoneLine({ marker, dayW }: { marker: { id: string; name: string; col: number }; dayW: number }) {
+  const [hovered, setHovered] = useState(false)
+  const left = marker.col * dayW + Math.floor(dayW / 2)
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{ position: 'absolute', left: left - 6, top: 0, bottom: 0, width: 12, zIndex: 1, cursor: 'default' }}
+    >
+      <div style={{ position: 'absolute', left: 5, top: 0, bottom: 0, width: hovered ? 2 : 1, background: hovered ? '#8b5cf6' : 'rgba(139,92,246,.4)', transition: 'width .1s, background .1s', borderRadius: 1 }} />
+      {hovered && (
+        <div style={{ position: 'absolute', top: '30%', left: 14, background: '#1e1b4b', color: '#c4b5fd', fontSize: 11, fontWeight: 600, padding: '3px 7px', borderRadius: 5, whiteSpace: 'nowrap', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,.25)', zIndex: 20 }}>
+          ◆ {marker.name}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// BFS: collect all task IDs reachable via .blocking chains from startId (excluding startId itself)
+function getBlockingCascade(startId: string, allTasks: Task[]): string[] {
+  const result: string[] = []
+  const visited = new Set<string>([startId])
+  const queue = [startId]
+  while (queue.length) {
+    const id = queue.shift()!
+    const task = allTasks.find(t => t.id === id)
+    task?.blocking?.forEach(bid => {
+      if (!visited.has(bid)) {
+        visited.add(bid)
+        result.push(bid)
+        queue.push(bid)
+      }
+    })
+  }
+  return result
 }
