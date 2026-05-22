@@ -15,6 +15,7 @@ import { GanttView } from '../components/views/gantt'
 import { ProjectView } from '../components/views/project'
 import { TaskModal } from '../components/modals/TaskModal'
 import { DetailPanel } from '../components/modals/DetailPanel'
+import { CommandPalette } from '../components/modals/CommandPalette'
 import { EmptyState } from '../components/shared/EmptyState'
 import { Toast } from '../components/shared/Toast'
 
@@ -25,6 +26,8 @@ export function AppPage() {
   const subscribeSpaces = useSpaceStore(s => s.subscribeFirebase)
   const subscribeProjects = useProjectStore(s => s.subscribeFirebase)
   const subscribeMilestones = useMilestoneStore(s => s.subscribeFirebase)
+  const openCommandPalette = useUiStore(s => s.openCommandPalette)
+  const isTaskModalOpen = useUiStore(s => s.isTaskModalOpen)
 
   useEffect(() => {
     const u1 = subscribeFirebase()
@@ -33,6 +36,17 @@ export function AppPage() {
     const u4 = subscribeMilestones()
     return () => { u1(); u2(); u3(); u4() }
   }, [])
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        if (!isTaskModalOpen) openCommandPalette()
+      }
+    }
+    document.addEventListener('keydown', h)
+    return () => document.removeEventListener('keydown', h)
+  }, [isTaskModalOpen, openCommandPalette])
 
   const isEmpty = tasks.length === 0 && view !== 's' && view !== 'g' && view !== 'p'
 
@@ -62,6 +76,7 @@ export function AppPage() {
 
       <TaskModal />
       <DetailPanel />
+      <CommandPalette />
       <Toast />
     </div>
   )

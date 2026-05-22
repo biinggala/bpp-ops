@@ -22,6 +22,7 @@ interface UiState {
   isTaskModalOpen: boolean
   isFilterPanelOpen: boolean
   isColorSettingsOpen: boolean
+  isCommandPaletteOpen: boolean
   calYear: number
   calMonth: number
 
@@ -35,6 +36,8 @@ interface UiState {
   openTaskModal: (editId?: string, parentId?: string, milestoneId?: string) => void
   closeTaskModal: () => void
   setColorSettings: (open: boolean) => void
+  openCommandPalette: () => void
+  closeCommandPalette: () => void
   calNav: (delta: number) => void
   calToday: () => void
 }
@@ -62,6 +65,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   isTaskModalOpen: false,
   isFilterPanelOpen: false,
   isColorSettingsOpen: false,
+  isCommandPaletteOpen: false,
   calYear: now.getFullYear(),
   calMonth: now.getMonth(),
 
@@ -75,6 +79,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   openTaskModal: (editId, parentId, milestoneId) => set({ isTaskModalOpen: true, editTaskId: editId ?? null, newTaskParentId: parentId ?? null, newTaskMilestoneId: milestoneId ?? null }),
   closeTaskModal: () => set({ isTaskModalOpen: false, editTaskId: null, newTaskParentId: null, newTaskMilestoneId: null }),
   setColorSettings: (open) => set({ isColorSettingsOpen: open }),
+  openCommandPalette: () => set({ isCommandPaletteOpen: true }),
+  closeCommandPalette: () => set({ isCommandPaletteOpen: false }),
   calNav: (delta) => {
     const { calYear, calMonth } = get()
     const d = new Date(calYear, calMonth + delta, 1)
