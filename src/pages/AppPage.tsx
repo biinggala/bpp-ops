@@ -9,6 +9,7 @@ import { TableView } from '../components/views/table'
 import { BoardView } from '../components/views/board'
 import { CalendarView } from '../components/views/calendar'
 import { StatsView } from '../components/views/stats'
+import { GanttView } from '../components/views/gantt'
 import { TaskModal } from '../components/modals/TaskModal'
 import { DetailPanel } from '../components/modals/DetailPanel'
 import { EmptyState } from '../components/shared/EmptyState'
@@ -26,7 +27,7 @@ export function AppPage() {
     return () => { u1(); u2() }
   }, [])
 
-  const isEmpty = tasks.length === 0 && view !== 's'
+  const isEmpty = tasks.length === 0 && view !== 's' && view !== 'g'
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -44,9 +45,10 @@ export function AppPage() {
               {view === 't' && <TableView />}
               {view === 'b' && <BoardView />}
               {view === 'c' && <CalendarView />}
+              {view === 'g' && <GanttView />}
               {view === 's' && <StatsView />}
-              {(view === 'p' || view === 'g') && (
-                <div className="flex-1 flex items-center justify-center text-gray-400 text-[14px]">
+              {view === 'p' && (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--t3)', fontSize: 14 }}>
                   준비 중...
                 </div>
               )}
