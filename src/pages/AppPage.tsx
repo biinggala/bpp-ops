@@ -27,6 +27,7 @@ export function AppPage() {
   const subscribeMilestones = useMilestoneStore(s => s.subscribeFirebase)
   const openCommandPalette = useUiStore(s => s.openCommandPalette)
   const isTaskModalOpen = useUiStore(s => s.isTaskModalOpen)
+  const undo = useTaskStore(s => s.undo)
 
   useEffect(() => {
     const u1 = subscribeFirebase()
@@ -38,14 +39,22 @@ export function AppPage() {
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
+      const tag = (document.activeElement as HTMLElement)?.tagName
+      const isEditing = tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement as HTMLElement)?.isContentEditable
+
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
         if (!isTaskModalOpen) openCommandPalette()
       }
+
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !isEditing) {
+        e.preventDefault()
+        undo()
+      }
     }
     document.addEventListener('keydown', h)
     return () => document.removeEventListener('keydown', h)
-  }, [isTaskModalOpen, openCommandPalette])
+  }, [isTaskModalOpen, openCommandPalette, undo])
 
   const isEmpty = tasks.length === 0 && view !== 's' && view !== 'g' && view !== 'p'
 

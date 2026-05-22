@@ -6,10 +6,12 @@ import type { Task, Status } from '../types'
 
 interface TaskState {
   tasks: Task[]
+  history: Task[][]
   addTask: (t: Omit<Task, 'id'>) => void
   updateTask: (id: string, patch: Partial<Task>) => void
   deleteTask: (id: string) => void
   reorderTasks: (tasks: Task[]) => void
+  undo: () => void
   syncToFirebase: () => void
   subscribeFirebase: () => () => void
 }
@@ -18,30 +20,50 @@ function persist(tasks: Task[]) {
   saveToStorage(tasks)
 }
 
+const MAX_HISTORY = 50
+
+function pushHistory(get: () => TaskState) {
+  const prev = get().history
+  const snapshot = get().tasks
+  return prev.length >= MAX_HISTORY
+    ? [...prev.slice(1), snapshot]
+    : [...prev, snapshot]
+}
+
 export const useTaskStore = create<TaskState>((set, get) => ({
   tasks: loadFromStorage<Task[]>() ?? [],
+  history: [],
 
   addTask: (t) => {
     const task: Task = { ...t, id: gid() }
     const tasks = [...get().tasks, task]
-    set({ tasks }); persist(tasks)
+    set({ tasks, history: pushHistory(get) }); persist(tasks)
     get().syncToFirebase()
   },
 
   updateTask: (id, patch) => {
     const tasks = get().tasks.map(t => t.id === id ? { ...t, ...patch } : t)
-    set({ tasks }); persist(tasks)
+    set({ tasks, history: pushHistory(get) }); persist(tasks)
     get().syncToFirebase()
   },
 
   deleteTask: (id) => {
     const tasks = get().tasks.filter(t => t.id !== id)
-    set({ tasks }); persist(tasks)
+    set({ tasks, history: pushHistory(get) }); persist(tasks)
     get().syncToFirebase()
   },
 
   reorderTasks: (tasks) => {
-    set({ tasks }); persist(tasks)
+    set({ tasks, history: pushHistory(get) }); persist(tasks)
+    get().syncToFirebase()
+  },
+
+  undo: () => {
+    const { history } = get()
+    if (!history.length) return
+    const tasks = history[history.length - 1]
+    set({ tasks, history: history.slice(0, -1) })
+    persist(tasks)
     get().syncToFirebase()
   },
 
