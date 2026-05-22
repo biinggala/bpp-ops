@@ -44,6 +44,8 @@ export interface Task {
   projectId?: string
   milestoneId?: string
   tags?: string[]
+  blocking?: string[]   // task IDs this task is blocking
+  blockedBy?: string[]  // task IDs this task is blocked by
   order?: number
   checklist?: ChecklistItem[]
 }

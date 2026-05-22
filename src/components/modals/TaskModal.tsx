@@ -207,6 +207,27 @@ export function TaskModal() {
               onChange={tags => upd('tags', tags)}
             />
           </Field>
+
+          {editing && (
+            <>
+              <Field label="선행 태스크 (Blocked by)">
+                <DependencyPicker
+                  type="blockedBy"
+                  taskId={editing.id}
+                  selected={form.blockedBy ?? []}
+                  onChange={ids => upd('blockedBy', ids)}
+                />
+              </Field>
+              <Field label="후행 태스크 (Blocking)">
+                <DependencyPicker
+                  type="blocking"
+                  taskId={editing.id}
+                  selected={form.blocking ?? []}
+                  onChange={ids => upd('blocking', ids)}
+                />
+              </Field>
+            </>
+          )}
         </div>
 
         {/* Footer */}
@@ -345,6 +366,85 @@ function TagInput({ value, onChange }: { value: string[]; onChange: (tags: strin
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── DependencyPicker ──────────────────────────────────────────────────────────
+
+function DependencyPicker({ taskId, type, selected, onChange }: {
+  taskId: string
+  type: 'blocking' | 'blockedBy'
+  selected: string[]
+  onChange: (ids: string[]) => void
+}) {
+  const allTasks = useTaskStore(s => s.tasks)
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const candidates = allTasks.filter(t =>
+    t.id !== taskId &&
+    !selected.includes(t.id) &&
+    (query === '' || t.name.toLowerCase().includes(query.toLowerCase()))
+  )
+
+  const selectedTasks = allTasks.filter(t => selected.includes(t.id))
+
+  useEffect(() => {
+    if (!open) return
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+
+  const add = (id: string) => { onChange([...selected, id]); setQuery('') }
+  const remove = (id: string) => onChange(selected.filter(s => s !== id))
+
+  const depColor = type === 'blockedBy' ? '#ef4444' : '#f59e0b'
+  const depIcon = type === 'blockedBy' ? '⛔' : '⚡'
+
+  return (
+    <div ref={ref} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {selectedTasks.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {selectedTasks.map(t => (
+            <span key={t.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 'var(--r2)', fontSize: 11, background: depColor + '14', border: `1px solid ${depColor}30`, color: depColor }}>
+              {depIcon} {t.name}
+              <span onClick={() => remove(t.id)} style={{ cursor: 'pointer', fontSize: 13, opacity: .6 }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '1'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '.6'}
+              >×</span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div style={{ position: 'relative' }}>
+        <input
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          placeholder="태스크 검색..."
+          style={{ ...inputStyle, fontSize: 12 }}
+        />
+        {open && candidates.length > 0 && (
+          <div style={{ position: 'absolute', top: 'calc(100% + 3px)', left: 0, right: 0, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', zIndex: 300, padding: '4px 0', maxHeight: 200, overflowY: 'auto' }}>
+            {candidates.slice(0, 20).map(t => (
+              <div key={t.id} onMouseDown={e => { e.preventDefault(); add(t.id) }}
+                style={{ padding: '7px 12px', fontSize: 12, cursor: 'pointer', color: 'var(--t1)', transition: 'background .07s', display: 'flex', alignItems: 'center', gap: 8 }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.cat || '—'}</span>
+                {t.name}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

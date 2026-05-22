@@ -492,6 +492,22 @@ function Row({
           </div>
         )}
 
+        {/* Dependency indicators */}
+        {(task.blockedBy?.length || task.blocking?.length) ? (
+          <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+            {!!task.blockedBy?.length && (
+              <span title={`선행 태스크 ${task.blockedBy.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(239,68,68,.1)', color: '#ef4444', lineHeight: 1.6 }}>
+                ⛔ {task.blockedBy.length}
+              </span>
+            )}
+            {!!task.blocking?.length && (
+              <span title={`후행 태스크 ${task.blocking.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(245,158,11,.1)', color: '#f59e0b', lineHeight: 1.6 }}>
+                ⚡ {task.blocking.length}
+              </span>
+            )}
+          </div>
+        ) : null}
+
         {/* Milestone picker — visible on hover OR when assigned */}
         {showMilestonePicker && (hovered || task.milestoneId) && onMilestoneChange && (
           <MilestonePicker

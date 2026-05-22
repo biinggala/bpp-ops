@@ -58,6 +58,34 @@ export function DetailPanel() {
               {task.tags.map(tag => <TagBadge key={tag} tag={tag} />)}
             </Row>
           )}
+          {task.blockedBy && task.blockedBy.length > 0 && (
+            <Row label="선행 태스크">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {task.blockedBy.map(id => {
+                  const dep = tasks.find(t => t.id === id)
+                  return dep ? (
+                    <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '2px 8px', borderRadius: 'var(--r2)', background: 'rgba(239,68,68,.08)', color: '#ef4444', border: '1px solid rgba(239,68,68,.2)' }}>
+                      ⛔ {dep.name}
+                    </span>
+                  ) : null
+                })}
+              </div>
+            </Row>
+          )}
+          {task.blocking && task.blocking.length > 0 && (
+            <Row label="후행 태스크">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {task.blocking.map(id => {
+                  const dep = tasks.find(t => t.id === id)
+                  return dep ? (
+                    <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '2px 8px', borderRadius: 'var(--r2)', background: 'rgba(245,158,11,.08)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.2)' }}>
+                      ⚡ {dep.name}
+                    </span>
+                  ) : null
+                })}
+              </div>
+            </Row>
+          )}
           {task.memo && (
             <div style={{ marginTop: 4 }}>
               <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>메모</div>
