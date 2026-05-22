@@ -13,6 +13,21 @@ export interface Space {
   color: string   // hex or css color for dot
 }
 
+export interface Project {
+  id: string
+  name: string
+  color: string       // from PROJECT_PALETTE
+  dueDate?: string    // YYYY-MM-DD
+  clientName?: string
+}
+
+export interface Milestone {
+  id: string
+  projectId: string
+  name: string
+  dueDate: string     // YYYY-MM-DD
+}
+
 export interface Task {
   id: string
   type: TaskType
@@ -26,6 +41,8 @@ export interface Task {
   progress: number
   memo: string
   parentId?: string
+  projectId?: string
+  milestoneId?: string
   order?: number
   checklist?: ChecklistItem[]
 }
@@ -69,6 +86,12 @@ export const STATUS_COLORS: Record<Status, { bg: string; text: string }> = {
 export const SPACE_PALETTE = [
   '#007aff','#ef4444','#10b981','#f59e0b','#8b5cf6',
   '#06b6d4','#ec4899','#3730a3','#166534','#92400e',
+]
+
+// Project용 색상 팔레트
+export const PROJECT_PALETTE = [
+  '#2383e2','#8b5cf6','#059669','#dc2626','#d97706',
+  '#0891b2','#7c3aed','#be185d','#047857','#b45309',
 ]
 
 // Space 이름으로 배지 색상 생성 (해시 기반)

@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
 import { useUiStore } from '../../../store/uiStore'
+import { useMilestoneStore } from '../../../store/milestoneStore'
 import { getCatColor } from '../../../types'
 import { CategoryBadge } from '../../shared/Badge'
 import type { Task } from '../../../types'
@@ -37,7 +38,8 @@ export function GanttView() {
   const filteredTasks = useFilteredTasks()
   const allTasks = useTaskStore(s => s.tasks)
   const { updateTask } = useTaskStore()
-  const { setDetailTaskId, openTaskModal } = useUiStore()
+  const { setDetailTaskId, openTaskModal, projectId } = useUiStore()
+  const milestones = useMilestoneStore(s => s.milestones)
   const wrapRef = useRef<HTMLDivElement>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
@@ -127,6 +129,14 @@ export function GanttView() {
   const timelineW = totalDays * DAY_W
   const todayCol = dayDiff(rangeStart, today)
 
+  const milestoneMarkers = useMemo(() => {
+    if (!projectId) return []
+    return milestones
+      .filter(m => m.projectId === projectId)
+      .map(m => ({ id: m.id, name: m.name, col: dayDiff(rangeStart, toDate(m.dueDate)) }))
+      .filter(m => m.col >= 0 && m.col < totalDays)
+  }, [milestones, projectId, rangeStart, totalDays])
+
   useEffect(() => {
     const el = wrapRef.current
     if (el) el.scrollLeft = Math.max(0, todayCol * DAY_W - (el.clientWidth - LEFT_W) / 2)
@@ -196,17 +206,24 @@ export function GanttView() {
         {/* Day header */}
         <div style={{ display: 'flex', position: 'sticky', top: MONTH_H, zIndex: 10, height: DAY_H, background: 'var(--bg)', borderBottom: '2px solid var(--bd)' }}>
           <div style={{ width: LEFT_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 11, background: 'var(--bg2)', borderRight: '1px solid var(--bd)' }} />
-          <div style={{ display: 'flex', flexShrink: 0 }}>
+          <div style={{ position: 'relative', flexShrink: 0, width: timelineW }}>
             {days.map((d, i) => {
               const isToday = i === todayCol
               const isWeekend = d.getDay() === 0 || d.getDay() === 6
               const isMonthEnd = d.getDate() === new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
               return (
-                <div key={i} style={{ width: DAY_W, height: DAY_H, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: isToday ? 'var(--ac)' : 'var(--t3)', fontWeight: isToday ? 700 : 400, background: isToday ? 'var(--ac-l)' : isWeekend ? 'var(--bg2)' : 'transparent', borderRight: isMonthEnd ? '1px solid var(--bd)' : 'none' }}>
+                <div key={i} style={{ position: 'absolute', left: i * DAY_W, width: DAY_W, height: DAY_H, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: isToday ? 'var(--ac)' : 'var(--t3)', fontWeight: isToday ? 700 : 400, background: isToday ? 'var(--ac-l)' : isWeekend ? 'var(--bg2)' : 'transparent', borderRight: isMonthEnd ? '1px solid var(--bd)' : 'none' }}>
                   {d.getDate()}
                 </div>
               )
             })}
+            {milestoneMarkers.map(m => (
+              <div
+                key={m.id}
+                title={m.name}
+                style={{ position: 'absolute', left: m.col * DAY_W + Math.floor(DAY_W / 2) - 5, top: 2, fontSize: 10, color: '#8b5cf6', pointerEvents: 'none', zIndex: 2, lineHeight: 1 }}
+              >◆</div>
+            ))}
           </div>
         </div>
 
@@ -233,6 +250,7 @@ export function GanttView() {
                 rollup={rollup}
                 dragOffset={dragOffset}
                 isDragging={dragVisual?.taskId === task.id}
+                milestoneMarkers={milestoneMarkers}
                 onOpen={() => setDetailTaskId(task.id)}
                 onToggle={() => toggle(task.id)}
                 onAddSubtask={() => openTaskModal(undefined, task.id)}
@@ -252,6 +270,7 @@ export function GanttView() {
                     isChild
                     dragOffset={childDragOffset}
                     isDragging={dragVisual?.taskId === child.id}
+                    milestoneMarkers={milestoneMarkers}
                     onOpen={() => setDetailTaskId(child.id)}
                     onEdit={() => openTaskModal(child.id)}
                     onBarMouseDown={(startX) => startDrag({ taskId: child.id, origStart: child.start, origDue: child.due, startX })}
@@ -272,6 +291,7 @@ function GanttRow({
   task, rangeStart, todayCol, totalDays, timelineW, today,
   isChild = false, hasChildren = false, isExpanded = true,
   rollup = null, dragOffset = 0, isDragging = false,
+  milestoneMarkers = [],
   onOpen, onToggle, onAddSubtask, onEdit, onBarMouseDown,
 }: {
   task: Task
@@ -286,6 +306,7 @@ function GanttRow({
   rollup?: { col: number; span: number } | null
   dragOffset?: number
   isDragging?: boolean
+  milestoneMarkers?: { id: string; col: number; name: string }[]
   onOpen: () => void
   onToggle?: () => void
   onAddSubtask?: () => void
@@ -356,6 +377,15 @@ function GanttRow({
         {todayCol >= 0 && todayCol < totalDays && (
           <div style={{ position: 'absolute', left: todayCol * DAY_W + Math.floor(DAY_W / 2), top: 0, bottom: 0, width: 1, background: 'var(--ac)', opacity: .35, pointerEvents: 'none' }} />
         )}
+
+        {/* Milestone lines */}
+        {milestoneMarkers.map(m => (
+          <div
+            key={m.id}
+            title={m.name}
+            style={{ position: 'absolute', left: m.col * DAY_W + Math.floor(DAY_W / 2), top: 0, bottom: 0, width: 1, borderLeft: '1px dashed rgba(139,92,246,.45)', pointerEvents: 'none', zIndex: 1 }}
+          />
+        ))}
 
         {/* Rollup bar */}
         {!hasOwnBar && rollup && (

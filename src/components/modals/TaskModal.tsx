@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useSpaceStore } from '../../store/spaceStore'
+import { useProjectStore } from '../../store/projectStore'
+import { useMilestoneStore } from '../../store/milestoneStore'
 import { STATUS_LIST, PRIORITY_LIST } from '../../types'
 import type { Task } from '../../types'
 
@@ -11,9 +13,11 @@ const EMPTY: Omit<Task, 'id'> = {
 }
 
 export function TaskModal() {
-  const { isTaskModalOpen, editTaskId, newTaskParentId, closeTaskModal, space } = useUiStore()
+  const { isTaskModalOpen, editTaskId, newTaskParentId, closeTaskModal, space, projectId: uiProjectId } = useUiStore()
   const { tasks, addTask, updateTask } = useTaskStore()
   const spaces = useSpaceStore(s => s.spaces)
+  const projects = useProjectStore(s => s.projects)
+  const milestones = useMilestoneStore(s => s.milestones)
   const [form, setForm] = useState<Omit<Task, 'id'>>(EMPTY)
 
   const editing = editTaskId ? tasks.find(t => t.id === editTaskId) : null
@@ -25,11 +29,13 @@ export function TaskModal() {
       setForm({ ...editing })
     } else {
       const defaultCat = parentTask?.cat ?? space ?? spaces[0]?.name ?? ''
+      const defaultProjectId = parentTask?.projectId ?? uiProjectId ?? undefined
       setForm({
         ...EMPTY,
         cat: defaultCat,
         type: newTaskParentId ? '세부' : EMPTY.type,
         ...(newTaskParentId ? { parentId: newTaskParentId } : {}),
+        ...(defaultProjectId ? { projectId: defaultProjectId } : {}),
       })
     }
   }, [isTaskModalOpen, editTaskId])
@@ -99,6 +105,37 @@ export function TaskModal() {
                 <div style={{ ...inputStyle, color: 'var(--t3)' }}>사이드바에서 스페이스를 먼저 추가하세요</div>
               )}
             </Field>
+
+            <Field label="프로젝트">
+              <select
+                style={inputStyle}
+                value={form.projectId ?? ''}
+                onChange={e => {
+                  upd('projectId', e.target.value || undefined)
+                  upd('milestoneId', undefined)
+                }}
+              >
+                <option value="">선택 안 함</option>
+                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </Field>
+
+            {form.projectId && milestones.some(m => m.projectId === form.projectId) && (
+              <Field label="마일스톤">
+                <select
+                  style={inputStyle}
+                  value={form.milestoneId ?? ''}
+                  onChange={e => upd('milestoneId', e.target.value || undefined)}
+                >
+                  <option value="">선택 안 함</option>
+                  {milestones
+                    .filter(m => m.projectId === form.projectId)
+                    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+                    .map(m => <option key={m.id} value={m.id}>◆ {m.name}  ({m.dueDate})</option>)
+                  }
+                </select>
+              </Field>
+            )}
 
             <Field label="상태">
               <select style={inputStyle} value={form.status} onChange={e => upd('status', e.target.value as Task['status'])}>

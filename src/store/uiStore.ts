@@ -10,7 +10,9 @@ interface Filters {
 
 interface UiState {
   view: ViewType
-  space: string | null          // Space.name — null = 전체
+  space: string | null
+  projectId: string | null      // sidebar project filter
+  myTasksOnly: boolean          // quick filter: my tasks
   filters: Filters
   detailTaskId: string | null
   editTaskId: string | null
@@ -23,6 +25,8 @@ interface UiState {
 
   setView: (v: ViewType) => void
   setSpace: (s: string | null) => void
+  setProject: (id: string | null) => void
+  setMyTasksOnly: (v: boolean) => void
   setFilters: (f: Partial<Filters>) => void
   resetFilters: () => void
   setDetailTaskId: (id: string | null) => void
@@ -45,6 +49,8 @@ const defaultFilters: Filters = {
 export const useUiStore = create<UiState>((set, get) => ({
   view: 't',
   space: null,
+  projectId: null,
+  myTasksOnly: false,
   filters: { ...defaultFilters },
   detailTaskId: null,
   editTaskId: null,
@@ -56,7 +62,9 @@ export const useUiStore = create<UiState>((set, get) => ({
   calMonth: now.getMonth(),
 
   setView: (view) => set({ view }),
-  setSpace: (space) => set({ space }),
+  setSpace: (space) => set({ space, projectId: null }),
+  setProject: (projectId) => set({ projectId, space: null }),
+  setMyTasksOnly: (myTasksOnly) => set({ myTasksOnly }),
   setFilters: (f) => set(s => ({ filters: { ...s.filters, ...f } })),
   resetFilters: () => set({ filters: { ...defaultFilters } }),
   setDetailTaskId: (id) => set({ detailTaskId: id }),

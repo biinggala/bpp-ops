@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import { useUiStore } from '../store/uiStore'
 import { useTaskStore } from '../store/taskStore'
 import { useSpaceStore } from '../store/spaceStore'
+import { useProjectStore } from '../store/projectStore'
+import { useMilestoneStore } from '../store/milestoneStore'
 import { Sidebar } from '../components/layout/Sidebar'
 import { Topbar } from '../components/layout/Topbar'
 import { ViewBar } from '../components/layout/ViewBar'
@@ -10,6 +12,7 @@ import { BoardView } from '../components/views/board'
 import { CalendarView } from '../components/views/calendar'
 import { StatsView } from '../components/views/stats'
 import { GanttView } from '../components/views/gantt'
+import { ProjectView } from '../components/views/project'
 import { TaskModal } from '../components/modals/TaskModal'
 import { DetailPanel } from '../components/modals/DetailPanel'
 import { EmptyState } from '../components/shared/EmptyState'
@@ -20,14 +23,18 @@ export function AppPage() {
   const tasks = useTaskStore(s => s.tasks)
   const subscribeFirebase = useTaskStore(s => s.subscribeFirebase)
   const subscribeSpaces = useSpaceStore(s => s.subscribeFirebase)
+  const subscribeProjects = useProjectStore(s => s.subscribeFirebase)
+  const subscribeMilestones = useMilestoneStore(s => s.subscribeFirebase)
 
   useEffect(() => {
     const u1 = subscribeFirebase()
     const u2 = subscribeSpaces()
-    return () => { u1(); u2() }
+    const u3 = subscribeProjects()
+    const u4 = subscribeMilestones()
+    return () => { u1(); u2(); u3(); u4() }
   }, [])
 
-  const isEmpty = tasks.length === 0 && view !== 's' && view !== 'g'
+  const isEmpty = tasks.length === 0 && view !== 's' && view !== 'g' && view !== 'p'
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -47,11 +54,7 @@ export function AppPage() {
               {view === 'c' && <CalendarView />}
               {view === 'g' && <GanttView />}
               {view === 's' && <StatsView />}
-              {view === 'p' && (
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--t3)', fontSize: 14 }}>
-                  준비 중...
-                </div>
-              )}
+              {view === 'p' && <ProjectView />}
             </>
           )}
         </div>

@@ -7,7 +7,7 @@ const VIEWS: { id: ViewType; label: string }[] = [
   { id: 't', label: '리스트' },
   { id: 'b', label: '보드' },
   { id: 'c', label: '캘린더' },
-  { id: 'p', label: '담당자' },
+  { id: 'p', label: '프로젝트' },
   { id: 'g', label: '간트' },
   { id: 's', label: '통계' },
 ]

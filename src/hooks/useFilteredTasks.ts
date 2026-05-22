@@ -1,42 +1,34 @@
 import { useMemo } from 'react'
 import { useTaskStore } from '../store/taskStore'
 import { useUiStore } from '../store/uiStore'
+import { useAuthStore } from '../store/authStore'
 import type { Task } from '../types'
 
 export function useFilteredTasks(): Task[] {
   const tasks = useTaskStore(s => s.tasks)
-  const { space, filters } = useUiStore()
+  const { space, projectId, myTasksOnly, filters } = useUiStore()
+  const memberKey = useAuthStore(s => s.memberKey)
 
   return useMemo(() => {
     let result = [...tasks]
 
-    // space filter (사이드바에서 선택)
-    if (space) {
-      result = result.filter(t => t.cat === space)
-    }
+    if (space) result = result.filter(t => t.cat === space)
+    if (projectId) result = result.filter(t => t.projectId === projectId)
+    if (myTasksOnly && memberKey) result = result.filter(t => t.assignee.includes(memberKey))
 
-    // assignee filter
     if (filters.assignees.length) {
-      result = result.filter(t =>
-        filters.assignees.some(a => t.assignee.includes(a))
-      )
+      result = result.filter(t => filters.assignees.some(a => t.assignee.includes(a)))
     }
-
-    // status filter
     if (filters.statuses.length) {
       result = result.filter(t => filters.statuses.includes(t.status as never))
     }
-
-    // search
     if (filters.search.trim()) {
       const q = filters.search.trim().toLowerCase()
       result = result.filter(t =>
-        t.name.toLowerCase().includes(q) ||
-        t.memo.toLowerCase().includes(q)
+        t.name.toLowerCase().includes(q) || t.memo.toLowerCase().includes(q)
       )
     }
 
-    // sort
     if (filters.sort === 'due_asc') {
       result.sort((a, b) => {
         if (!a.due && !b.due) return 0
@@ -54,5 +46,5 @@ export function useFilteredTasks(): Task[] {
     }
 
     return result
-  }, [tasks, space, filters])
+  }, [tasks, space, projectId, myTasksOnly, memberKey, filters])
 }

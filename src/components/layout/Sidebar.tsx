@@ -3,45 +3,87 @@ import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useSpaceStore } from '../../store/spaceStore'
 import { useAuthStore } from '../../store/authStore'
+import { useProjectStore } from '../../store/projectStore'
 import { MEMBERS } from '../../types'
 import type { MemberKey } from '../../types'
 
 export function Sidebar() {
-  const { space, setSpace, filters, setFilters } = useUiStore()
+  const { space, setSpace, filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly } = useUiStore()
   const tasks = useTaskStore(s => s.tasks)
   const { spaces, addSpace, deleteSpace, updateSpace } = useSpaceStore()
+  const { projects, addProject, deleteProject } = useProjectStore()
   const { memberKey, signOutUser } = useAuthStore()
 
+  // Space state
   const [addingSpace, setAddingSpace] = useState(false)
   const [newSpaceName, setNewSpaceName] = useState('')
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editName, setEditName] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
-  const editRef = useRef<HTMLInputElement>(null)
+  const [editingSpaceId, setEditingSpaceId] = useState<string | null>(null)
+  const [editSpaceName, setEditSpaceName] = useState('')
+  const spaceInputRef = useRef<HTMLInputElement>(null)
+  const spaceEditRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => { if (addingSpace) inputRef.current?.focus() }, [addingSpace])
-  useEffect(() => { if (editingId) editRef.current?.select() }, [editingId])
+  // Project state
+  const [addingProject, setAddingProject] = useState(false)
+  const [newProjectName, setNewProjectName] = useState('')
+  const [newProjectDueDate, setNewProjectDueDate] = useState('')
+  const projectNameRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { if (addingSpace) spaceInputRef.current?.focus() }, [addingSpace])
+  useEffect(() => { if (editingSpaceId) spaceEditRef.current?.select() }, [editingSpaceId])
+  useEffect(() => { if (addingProject) projectNameRef.current?.focus() }, [addingProject])
 
   const countFor = (name: string | null) =>
     name ? tasks.filter(t => t.cat === name).length : tasks.length
 
-  const handleAdd = () => {
+  const handleAddSpace = () => {
     const trimmed = newSpaceName.trim()
     if (trimmed) addSpace(trimmed)
     setNewSpaceName('')
     setAddingSpace(false)
   }
 
-  const handleRename = (id: string) => {
-    if (editName.trim()) updateSpace(id, { name: editName.trim() })
-    setEditingId(null)
+  const handleRenameSpace = (id: string) => {
+    if (editSpaceName.trim()) updateSpace(id, { name: editSpaceName.trim() })
+    setEditingSpaceId(null)
   }
 
-  const handleDelete = (e: React.MouseEvent, id: string, name: string) => {
+  const handleDeleteSpace = (e: React.MouseEvent, id: string, name: string) => {
     e.stopPropagation()
     if (!confirm(`"${name}" 스페이스를 삭제할까요?`)) return
     if (space === name) setSpace(null)
     deleteSpace(id)
+  }
+
+  const handleAddProject = () => {
+    const trimmed = newProjectName.trim()
+    if (trimmed) {
+      addProject(trimmed, undefined, newProjectDueDate || undefined)
+    }
+    setNewProjectName('')
+    setNewProjectDueDate('')
+    setAddingProject(false)
+  }
+
+  const handleCancelAddProject = () => {
+    setNewProjectName('')
+    setNewProjectDueDate('')
+    setAddingProject(false)
+  }
+
+  const handleDeleteProject = (e: React.MouseEvent, id: string, name: string) => {
+    e.stopPropagation()
+    if (!confirm(`"${name}" 프로젝트를 삭제할까요?`)) return
+    if (projectId === id) setProject(null)
+    deleteProject(id)
+  }
+
+  const getDaysRemaining = (dueDate: string): { days: number; overdue: boolean } => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const due = new Date(dueDate)
+    due.setHours(0, 0, 0, 0)
+    const diff = Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    return { days: Math.abs(diff), overdue: diff < 0 }
   }
 
   const member = memberKey ? MEMBERS[memberKey as MemberKey] : null
@@ -87,31 +129,102 @@ export function Sidebar() {
 
       {/* Nav */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 6px' }}>
-        <SectionLabel>Spaces</SectionLabel>
 
+        {/* Quick nav items */}
         <NavItem
-          active={space === null}
-          onClick={() => setSpace(null)}
+          active={space === null && !myTasksOnly && projectId === null}
+          onClick={() => { setSpace(null); setProject(null); setMyTasksOnly(false) }}
           count={countFor(null)}
           icon="◈"
         >
           전체 업무
         </NavItem>
 
+        <NavItem
+          active={myTasksOnly}
+          onClick={() => { setMyTasksOnly(!myTasksOnly); setSpace(null); setProject(null) }}
+          count={tasks.filter(t => memberKey ? t.assignee === memberKey : false).length}
+          icon="☑"
+        >
+          내 할 일
+        </NavItem>
+
+        {/* Projects section */}
+        <SectionLabel>Projects</SectionLabel>
+
+        {projects.map(p => {
+          const taskCount = tasks.filter(t => t.projectId === p.id).length
+          const daysInfo = p.dueDate ? getDaysRemaining(p.dueDate) : null
+          return (
+            <ProjectItem
+              key={p.id}
+              active={projectId === p.id}
+              dot={p.color}
+              count={taskCount}
+              daysInfo={daysInfo}
+              onClick={() => { setProject(p.id); setMyTasksOnly(false) }}
+              onDelete={e => handleDeleteProject(e, p.id, p.name)}
+            >
+              {p.name}
+            </ProjectItem>
+          )
+        })}
+
+        {/* Add project */}
+        {addingProject ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '4px 8px 4px 14px', margin: '1px 0' }}>
+            <input
+              ref={projectNameRef}
+              style={{ flex: 1, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 'var(--r1)', padding: '3px 7px', fontSize: 12, color: 'var(--sb-t1)', outline: 'none' }}
+              placeholder="프로젝트 이름..."
+              value={newProjectName}
+              onChange={e => setNewProjectName(e.target.value)}
+              onBlur={() => {
+                // Only submit on blur if due date is not focused
+                setTimeout(() => {
+                  if (document.activeElement !== document.querySelector('[data-project-due]')) {
+                    handleAddProject()
+                  }
+                }, 100)
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') handleAddProject()
+                if (e.key === 'Escape') handleCancelAddProject()
+              }}
+            />
+            <input
+              data-project-due
+              type="date"
+              style={{ flex: 1, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 'var(--r1)', padding: '3px 7px', fontSize: 11, color: 'var(--sb-t2)', outline: 'none', colorScheme: 'dark' }}
+              value={newProjectDueDate}
+              onChange={e => setNewProjectDueDate(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') handleAddProject()
+                if (e.key === 'Escape') handleCancelAddProject()
+              }}
+            />
+          </div>
+        ) : (
+          <AddBtn onClick={() => setAddingProject(true)}>프로젝트 추가</AddBtn>
+        )}
+
+        {/* Spaces section */}
+        <SectionLabel>Spaces</SectionLabel>
+
         {spaces.map(s => (
           <div key={s.id} style={{ position: 'relative' }}>
-            {editingId === s.id ? (
+            {editingSpaceId === s.id ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', margin: '1px 0' }}>
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
                 <input
-                  ref={editRef}
+                  ref={spaceEditRef}
                   style={{ flex: 1, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)', borderRadius: 'var(--r1)', padding: '2px 6px', fontSize: 12, color: 'var(--sb-t1)', outline: 'none' }}
-                  value={editName}
-                  onChange={e => setEditName(e.target.value)}
-                  onBlur={() => handleRename(s.id)}
+                  value={editSpaceName}
+                  onChange={e => setEditSpaceName(e.target.value)}
+                  onBlur={() => handleRenameSpace(s.id)}
                   onKeyDown={e => {
-                    if (e.key === 'Enter') handleRename(s.id)
-                    if (e.key === 'Escape') setEditingId(null)
+                    if (e.key === 'Enter') handleRenameSpace(s.id)
+                    if (e.key === 'Escape') setEditingSpaceId(null)
                   }}
                 />
               </div>
@@ -121,8 +234,8 @@ export function Sidebar() {
                 dot={s.color}
                 count={countFor(s.name)}
                 onClick={() => setSpace(s.name)}
-                onEdit={() => { setEditingId(s.id); setEditName(s.name) }}
-                onDelete={e => handleDelete(e, s.id, s.name)}
+                onEdit={() => { setEditingSpaceId(s.id); setEditSpaceName(s.name) }}
+                onDelete={e => handleDeleteSpace(e, s.id, s.name)}
               >
                 {s.name}
               </SpaceItem>
@@ -134,14 +247,14 @@ export function Sidebar() {
         {addingSpace ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px 4px 28px', margin: '1px 0' }}>
             <input
-              ref={inputRef}
+              ref={spaceInputRef}
               style={{ flex: 1, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 'var(--r1)', padding: '3px 7px', fontSize: 12, color: 'var(--sb-t1)', outline: 'none' }}
               placeholder="스페이스 이름..."
               value={newSpaceName}
               onChange={e => setNewSpaceName(e.target.value)}
-              onBlur={handleAdd}
+              onBlur={handleAddSpace}
               onKeyDown={e => {
-                if (e.key === 'Enter') handleAdd()
+                if (e.key === 'Enter') handleAddSpace()
                 if (e.key === 'Escape') { setAddingSpace(false); setNewSpaceName('') }
               }}
             />
@@ -185,6 +298,50 @@ function NavItem({ children, active, onClick, count, icon }: {
       {icon && <span style={{ fontSize: 11, opacity: .6, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>}
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
       <span style={{ fontSize: 11, color: 'var(--sb-t3)', marginLeft: 'auto', flexShrink: 0 }}>{count}</span>
+    </div>
+  )
+}
+
+function ProjectItem({ children, active, dot, count, daysInfo, onClick, onDelete }: {
+  children: React.ReactNode; active: boolean; dot: string; count: number
+  daysInfo: { days: number; overdue: boolean } | null
+  onClick: () => void; onDelete: (e: React.MouseEvent) => void
+}) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '4px 8px 4px 14px', borderRadius: 'var(--r2)', cursor: 'pointer',
+        fontSize: 12, fontWeight: active ? 500 : 400, margin: '1px 0',
+        color: active ? 'var(--sb-t1)' : 'var(--sb-t2)',
+        background: active ? 'var(--sb-active)' : hovered ? 'var(--sb-hover)' : 'transparent',
+        transition: 'background .1s',
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: dot, flexShrink: 0 }} />
+      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
+
+      {hovered ? (
+        <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
+          <ActionIcon onClick={onDelete} danger>×</ActionIcon>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto', flexShrink: 0 }}>
+          {daysInfo && (
+            <span style={{
+              fontSize: 10, fontWeight: 600, flexShrink: 0,
+              color: daysInfo.overdue ? '#f87171' : 'var(--sb-t3)',
+            }}>
+              {daysInfo.overdue ? `D+${daysInfo.days}` : `D-${daysInfo.days}`}
+            </span>
+          )}
+          <span style={{ fontSize: 11, color: 'var(--sb-t3)', flexShrink: 0 }}>{count}</span>
+        </div>
+      )}
     </div>
   )
 }
