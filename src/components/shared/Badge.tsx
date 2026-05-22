@@ -5,8 +5,8 @@ function Badge({ children, style }: { children: React.ReactNode; style?: React.C
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center',
-      fontSize: 11, fontWeight: 500,
-      padding: '2px 7px', borderRadius: 4,
+      fontSize: 12, fontWeight: 500,
+      padding: '2px 8px', borderRadius: 4,
       whiteSpace: 'nowrap', flexShrink: 0,
       letterSpacing: '.01em',
       ...style,
@@ -38,7 +38,7 @@ export function PriorityBadge({ priority }: { priority: Priority }) {
 export function TagBadge({ tag, onRemove }: { tag: string; onRemove?: () => void }) {
   const c = getTagColor(tag)
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 6px', borderRadius: 3, fontSize: 11, fontWeight: 500, background: c.bg, color: c.text, whiteSpace: 'nowrap' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 3, fontSize: 12, fontWeight: 500, background: c.bg, color: c.text, whiteSpace: 'nowrap' }}>
       #{tag}
       {onRemove && (
         <span onClick={e => { e.stopPropagation(); onRemove() }} style={{ cursor: 'pointer', opacity: .65, fontSize: 12, lineHeight: 1 }}

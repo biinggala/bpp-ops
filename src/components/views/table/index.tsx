@@ -69,7 +69,7 @@ export function TableView() {
   const colHeader = (
     <div style={{ display: 'flex', background: 'var(--bg2)', borderBottom: '2px solid var(--bd)' }}>
       {COLS.map((c, i) => (
-        <div key={c.label} style={{ flex: c.flex, padding: '7px 12px', fontSize: 11, fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.04em', borderRight: i < COLS.length - 1 ? '1px solid var(--bd)' : 'none' }}>
+        <div key={c.label} style={{ flex: c.flex, padding: '8px 12px', fontSize: 12, fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.04em', borderRight: i < COLS.length - 1 ? '1px solid var(--bd)' : 'none' }}>
           {c.label}
         </div>
       ))}
@@ -521,7 +521,7 @@ function Row({
       }}
     >
       {/* 업무명 */}
-      <div style={{ flex: 3.5, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 5, minHeight: 38, overflow: 'hidden', borderRight: '1px solid var(--bd)' }}>
+      <div style={{ flex: 3.5, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 5, minHeight: 44, overflow: 'hidden', borderRight: '1px solid var(--bd)' }}>
         {isChild ? (
           <div style={{ width: 20, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingLeft: 16 }}>
             <span style={{ fontSize: 10, color: 'var(--t3)', lineHeight: 1 }}>└</span>
@@ -537,7 +537,7 @@ function Row({
           </button>
         )}
 
-        <span style={{ fontSize: 13, fontWeight: !isChild && hasChildren ? 500 : 400, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--t1)' }}>
+        <span style={{ fontSize: 14, fontWeight: !isChild && hasChildren ? 500 : 400, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--t1)' }}>
           {task.name}
         </span>
 
@@ -603,7 +603,7 @@ function Row({
           value={task.status}
           onClick={e => e.stopPropagation()}
           onChange={e => onStatusChange(e.target.value as Task['status'])}
-          style={{ border: 'none', background: 'transparent', fontSize: 12, cursor: 'pointer', outline: 'none', color: 'var(--t2)', fontFamily: 'var(--font)', appearance: 'none', width: '100%' }}
+          style={{ border: 'none', background: 'transparent', fontSize: 13, cursor: 'pointer', outline: 'none', color: 'var(--t2)', fontFamily: 'var(--font)', appearance: 'none', width: '100%' }}
         >
           <option>진행중</option>
           <option>대기</option>
@@ -614,7 +614,7 @@ function Row({
       {/* 마감일 */}
       <Cell flex={0.9}>
         {task.due ? (
-          <span style={{ fontSize: 12, color: overdue ? '#ef4444' : 'var(--t2)', fontWeight: overdue ? 500 : 400 }}>
+          <span style={{ fontSize: 13, color: overdue ? '#ef4444' : 'var(--t2)', fontWeight: overdue ? 500 : 400 }}>
             {overdue && '⚠ '}{fmtDate(task.due)}
           </span>
         ) : <Dash />}
@@ -625,7 +625,7 @@ function Row({
       <Cell flex={1.2}><ProgressBar value={task.progress} /></Cell>
       {/* 메모 */}
       <Cell flex={1.8} last>
-        <span style={{ fontSize: 12, color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.memo || ''}</span>
+        <span style={{ fontSize: 13, color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.memo || ''}</span>
       </Cell>
     </div>
   )
@@ -635,7 +635,7 @@ function Row({
 
 function Cell({ children, flex, last }: { children?: React.ReactNode; flex: number; last?: boolean }) {
   return (
-    <div style={{ flex, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 4, minHeight: 38, overflow: 'hidden', borderRight: last ? 'none' : '1px solid var(--bd)' }}>
+    <div style={{ flex, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 4, minHeight: 44, overflow: 'hidden', borderRight: last ? 'none' : '1px solid var(--bd)' }}>
       {children}
     </div>
   )

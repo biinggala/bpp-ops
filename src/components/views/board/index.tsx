@@ -32,16 +32,16 @@ export function BoardView() {
           return (
             <div
               key={status}
-              style={{ width: 260, flexShrink: 0, borderRadius: 'var(--r4)', background: dragOver === status ? 'rgba(35,131,226,.04)' : 'var(--bg2)', border: '1px solid var(--bd)', transition: 'background .15s' }}
+              style={{ width: 280, flexShrink: 0, borderRadius: 'var(--r4)', background: dragOver === status ? 'rgba(35,131,226,.06)' : 'var(--bg2)', border: '1px solid var(--bd)', transition: 'background .15s' }}
               onDragOver={e => { e.preventDefault(); setDragOver(status) }}
               onDragLeave={() => setDragOver(null)}
               onDrop={() => handleDrop(status)}
             >
               {/* Column header */}
-              <div style={{ padding: '10px 12px 8px', display: 'flex', alignItems: 'center', gap: 7, borderBottom: '1px solid var(--bd)' }}>
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: STATUS_COLOR[status], flexShrink: 0 }} />
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--t1)' }}>{status}</span>
-                <span style={{ fontSize: 11, color: 'var(--t3)', marginLeft: 2 }}>{col.length}</span>
+              <div style={{ padding: '12px 14px 10px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--bd)' }}>
+                <span style={{ width: 9, height: 9, borderRadius: '50%', background: STATUS_COLOR[status], flexShrink: 0 }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--t1)' }}>{status}</span>
+                <span style={{ fontSize: 12, color: 'var(--t3)', marginLeft: 2 }}>{col.length}</span>
               </div>
 
               {/* Cards */}
@@ -93,7 +93,7 @@ function BoardCard({ task, isDragging, onDragStart, onDragEnd, onClick, onEdit, 
       onMouseLeave={() => setHovered(false)}
       style={{
         background: 'var(--bg)', border: '1px solid var(--bd)',
-        borderRadius: 'var(--r3)', padding: '10px 12px', marginBottom: 6,
+        borderRadius: 'var(--r3)', padding: '12px 14px', marginBottom: 8,
         cursor: 'grab', opacity: isDragging ? .4 : 1,
         boxShadow: hovered ? 'var(--sh-md)' : 'var(--sh-sm)',
         transform: hovered ? 'translateY(-1px)' : 'none',
@@ -109,7 +109,7 @@ function BoardCard({ task, isDragging, onDragStart, onDragEnd, onClick, onEdit, 
         </div>
       )}
 
-      <div style={{ fontSize: 13, fontWeight: 400, color: 'var(--t1)', lineHeight: 1.5, marginBottom: 8, paddingRight: hovered ? 44 : 0 }}>
+      <div style={{ fontSize: 14, fontWeight: 400, color: 'var(--t1)', lineHeight: 1.5, marginBottom: 10, paddingRight: hovered ? 44 : 0 }}>
         {task.name}
       </div>
 
@@ -118,7 +118,7 @@ function BoardCard({ task, isDragging, onDragStart, onDragEnd, onClick, onEdit, 
         <PriorityBadge priority={task.priority} />
         <AssigneeGroup assignee={task.assignee} size={18} />
         {task.due && (
-          <span style={{ fontSize: 11, color: 'var(--t3)', marginLeft: 'auto' }}>{fmtDate(task.due)}</span>
+          <span style={{ fontSize: 12, color: 'var(--t3)', marginLeft: 'auto' }}>{fmtDate(task.due)}</span>
         )}
       </div>
 

@@ -6,7 +6,7 @@ export function ProgressBar({ value, height = 5 }: Props) {
       <div style={{ flex: 1, height, background: 'var(--bg4)', borderRadius: height }}>
         <div style={{ width: `${value}%`, height: '100%', background: 'var(--ac)', borderRadius: height, transition: 'width .2s' }} />
       </div>
-      <span style={{ fontSize: 11, color: 'var(--t3)', minWidth: 28, textAlign: 'right' }}>{value}%</span>
+      <span style={{ fontSize: 12, color: 'var(--t2)', minWidth: 28, textAlign: 'right' }}>{value}%</span>
     </div>
   )
 }

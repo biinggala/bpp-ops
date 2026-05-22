@@ -7,7 +7,7 @@ export function Topbar() {
 
   return (
     <header style={{
-      height: 48,
+      height: 52,
       background: 'var(--bg)',
       borderBottom: '1px solid var(--bd)',
       padding: '0 20px',
@@ -17,11 +17,11 @@ export function Topbar() {
       flexShrink: 0,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-        <h1 style={{ fontSize: 15, fontWeight: 600, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <h1 style={{ fontSize: 16, fontWeight: 600, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {space ?? '전체 업무'}
         </h1>
         {memberKey && (
-          <span style={{ fontSize: 12, color: 'var(--t3)', fontWeight: 400 }}>/ {memberKey}</span>
+          <span style={{ fontSize: 13, color: 'var(--t3)', fontWeight: 400 }}>/ {memberKey}</span>
         )}
       </div>
 
@@ -43,8 +43,8 @@ function Btn({ children, onClick, primary }: { children: React.ReactNode; onClic
       onClick={onClick}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 5,
-        padding: '5px 12px', borderRadius: 'var(--r2)',
-        fontSize: 12, fontWeight: 500, cursor: 'pointer',
+        padding: '6px 14px', borderRadius: 'var(--r2)',
+        fontSize: 13, fontWeight: 500, cursor: 'pointer',
         border: primary ? 'none' : '1px solid var(--bd2)',
         background: primary ? 'var(--ac)' : 'transparent',
         color: primary ? '#fff' : 'var(--t2)',

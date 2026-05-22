@@ -79,10 +79,10 @@ export const STATUS_LIST: Status[] = ['진행중', '대기', '검토중', '완�
 export const PRIORITY_LIST: Priority[] = ['높음', '중간', '낮음']
 
 export const STATUS_COLORS: Record<Status, { bg: string; text: string }> = {
-  진행중: { bg: 'rgba(0,122,255,.1)', text: '#007aff' },
-  대기:   { bg: '#f3f4f6',           text: '#6b7280' },
-  검토중: { bg: '#fef3c7',           text: '#d97706' },
-  완료:   { bg: '#d1fae5',           text: '#059669' },
+  진행중: { bg: 'rgba(35,131,226,.14)', text: '#1869c9' },
+  대기:   { bg: 'rgba(120,117,114,.12)', text: '#4b4947' },
+  검토중: { bg: '#fef3c7',              text: '#b45309' },
+  완료:   { bg: '#d1fae5',              text: '#047857' },
 }
 
 // Space용 색상 팔레트

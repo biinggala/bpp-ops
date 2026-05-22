@@ -297,7 +297,7 @@ function NavItem({ children, active, onClick, count, icon }: {
     >
       {icon && <span style={{ fontSize: 11, opacity: .6, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>}
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
-      <span style={{ fontSize: 11, color: 'var(--sb-t3)', marginLeft: 'auto', flexShrink: 0 }}>{count}</span>
+      <span style={{ fontSize: 12, color: 'var(--sb-t3)', marginLeft: 'auto', flexShrink: 0 }}>{count}</span>
     </div>
   )
 }
@@ -315,14 +315,14 @@ function ProjectItem({ children, active, dot, count, daysInfo, onClick, onDelete
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
-        padding: '4px 8px 4px 14px', borderRadius: 'var(--r2)', cursor: 'pointer',
-        fontSize: 12, fontWeight: active ? 500 : 400, margin: '1px 0',
+        padding: '5px 8px 5px 14px', borderRadius: 'var(--r2)', cursor: 'pointer',
+        fontSize: 13, fontWeight: active ? 500 : 400, margin: '1px 0',
         color: active ? 'var(--sb-t1)' : 'var(--sb-t2)',
         background: active ? 'var(--sb-active)' : hovered ? 'var(--sb-hover)' : 'transparent',
         transition: 'background .1s',
       }}
     >
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: dot, flexShrink: 0 }} />
+      <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flexShrink: 0 }} />
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
 
       {hovered ? (
@@ -358,14 +358,14 @@ function SpaceItem({ children, active, dot, count, onClick, onEdit, onDelete }: 
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
-        padding: '4px 8px 4px 14px', borderRadius: 'var(--r2)', cursor: 'pointer',
-        fontSize: 12, fontWeight: active ? 500 : 400, margin: '1px 0',
+        padding: '5px 8px 5px 14px', borderRadius: 'var(--r2)', cursor: 'pointer',
+        fontSize: 13, fontWeight: active ? 500 : 400, margin: '1px 0',
         color: active ? 'var(--sb-t1)' : 'var(--sb-t2)',
         background: active ? 'var(--sb-active)' : hovered ? 'var(--sb-hover)' : 'transparent',
         transition: 'background .1s',
       }}
     >
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: dot, flexShrink: 0 }} />
+      <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flexShrink: 0 }} />
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
 
       {hovered ? (
@@ -397,7 +397,7 @@ function AddBtn({ children, onClick }: { children: React.ReactNode; onClick: () 
   return (
     <div
       onClick={onClick}
-      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px 4px 14px', borderRadius: 'var(--r2)', cursor: 'pointer', fontSize: 12, color: 'var(--sb-t3)', margin: '1px 0', transition: 'background .1s' }}
+      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px 5px 14px', borderRadius: 'var(--r2)', cursor: 'pointer', fontSize: 13, color: 'var(--sb-t3)', margin: '1px 0', transition: 'background .1s' }}
       onMouseEnter={e => { e.currentTarget.style.background = 'var(--sb-hover)'; (e.currentTarget.style.color = 'var(--sb-t2)') }}
       onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; (e.currentTarget.style.color = 'var(--sb-t3)') }}
     >

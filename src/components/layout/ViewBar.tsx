@@ -31,7 +31,7 @@ export function ViewBar() {
 
   return (
     <div style={{
-      height: 40,
+      height: 44,
       background: 'var(--bg)',
       borderBottom: '1px solid var(--bd)',
       padding: '0 20px',
@@ -83,7 +83,7 @@ export function ViewBar() {
           <select
             value={filters.sort}
             onChange={e => setFilters({ sort: e.target.value as 'due_asc' | 'due_desc' | 'default' })}
-            style={{ padding: '3px 8px', borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', fontSize: 12, color: 'var(--t2)', outline: 'none', cursor: 'pointer', fontFamily: 'var(--font)' }}
+            style={{ padding: '4px 8px', borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', fontSize: 13, color: 'var(--t2)', outline: 'none', cursor: 'pointer', fontFamily: 'var(--font)' }}
           >
             <option value="due_asc">마감 가까운 순</option>
             <option value="due_desc">마감 먼 순</option>
@@ -100,8 +100,8 @@ function ViewTab({ children, active, onClick }: { children: React.ReactNode; act
     <button
       onClick={onClick}
       style={{
-        display: 'flex', alignItems: 'center', padding: '4px 10px',
-        borderRadius: 'var(--r1)', fontSize: 13, fontWeight: active ? 500 : 400,
+        display: 'flex', alignItems: 'center', padding: '4px 12px',
+        borderRadius: 'var(--r1)', fontSize: 14, fontWeight: active ? 500 : 400,
         cursor: 'pointer', border: 'none', whiteSpace: 'nowrap',
         background: 'transparent', fontFamily: 'var(--font)',
         color: active ? 'var(--ac)' : 'var(--t2)',
@@ -144,11 +144,11 @@ function MultiSelect<T extends string>({ label, options, selected, onChange }: {
         onClick={() => setOpen(o => !o)}
         style={{
           display: 'flex', alignItems: 'center', gap: 4,
-          padding: '3px 9px', borderRadius: 'var(--r1)',
+          padding: '4px 10px', borderRadius: 'var(--r1)',
           border: active ? '1px solid var(--ac)' : '1px solid var(--bd)',
           background: active ? 'var(--ac-l)' : 'transparent',
           color: active ? 'var(--ac)' : 'var(--t2)',
-          fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)',
+          fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font)',
           whiteSpace: 'nowrap',
         }}
       >
