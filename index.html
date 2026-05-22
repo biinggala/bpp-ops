@@ -579,11 +579,6 @@ textarea.dp-inp{padding:8px 10px;line-height:1.65;resize:vertical}
         <button class="btn btn-gh" onclick="openModal()">
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Add Task
         </button>
-        <button class="btn btn-gh" onclick="openDocModal()" title="회의록에서 태스크 가져오기" style="padding:5px 9px;font-size:11px">📄 Doc 가져오기</button>
-        <button id="doc-sync-btn" class="btn" onclick="applyDocImport()" title="구글 닥 To-do 동기화" style="display:none;padding:5px 11px;font-size:11px;background:#7c3aed;color:#fff;position:relative">
-          <span id="doc-sync-badge" style="position:absolute;top:-4px;right:-4px;width:8px;height:8px;border-radius:50%;background:#ef4444;display:none"></span>
-          📥 To-do 가져오기 <span id="doc-sync-cnt" style="background:rgba(255,255,255,.25);border-radius:8px;padding:1px 6px;font-size:10px;font-weight:700"></span>
-        </button>
         <button id="gcal-connect-btn" class="btn btn-gh" onclick="connectGcal()" title="Google 캘린더 연결" style="padding:5px 9px;font-size:11px;display:flex;align-items:center;gap:4px">
           <span style="width:8px;height:8px;border-radius:50%;background:#9ca3af;display:inline-block"></span>Google 캘린더
         </button>
@@ -655,9 +650,12 @@ textarea.dp-inp{padding:8px 10px;line-height:1.65;resize:vertical}
         </div>
         <button id="reset-btn" class="btn" onclick="resetFilters()" style="display:none;padding:4px 9px;font-size:11px;background:rgba(239,68,68,.08);color:#dc2626;border-color:rgba(239,68,68,.2)">✕ 필터 해제</button>
         <select id="sort-sel" onchange="currentSort=this.value;renderAll()" style="padding:5px 10px;border-radius:6px;border:1px solid var(--bd);background:rgba(255,255,255,.8);font-size:11px;font-family:inherit;outline:none;color:var(--ts);cursor:pointer">
+          <option value="default">기본 순서</option>
           <option value="due_asc">마감일 ↑ 가까운 순</option>
           <option value="due_desc">마감일 ↓ 먼 순</option>
-          <option value="default">기본 순서</option>
+          <option value="pri_desc">우선순위 ↑ 높은 순</option>
+          <option value="pri_asc">우선순위 ↓ 낮은 순</option>
+          <option value="pri_due">우선순위 + 마감일</option>
         </select>
       </div>
     </div>
@@ -840,30 +838,6 @@ textarea.dp-inp{padding:8px 10px;line-height:1.65;resize:vertical}
 
 
 <!-- Doc Import Modal -->
-<div class="mbg" id="doc-modal" onclick="if(event.target===this)closeDocModal()">
-  <div class="modal" style="max-width:560px;width:90%">
-    <div class="mhd">
-      <div style="width:8px;height:8px;border-radius:50%;background:#1a73e8"></div>
-      <span class="mtt">📄 회의록에서 태스크 가져오기</span>
-      <button class="mcl" onclick="closeDocModal()">×</button>
-    </div>
-    <div class="mbd" style="gap:10px">
-      <div class="fg" style="margin-bottom:0">
-        <div class="fl">Google Doc URL</div>
-        <div style="display:flex;gap:6px">
-          <input class="fi" id="doc-url-inp" type="url" placeholder="https://docs.google.com/document/d/..." onkeydown="if(event.key==='Enter')fetchDocPreview()" style="flex:1">
-          <button class="btn" onclick="fetchDocPreview()" style="background:var(--pu);color:#fff;border-color:var(--pu);white-space:nowrap;flex-shrink:0">미리보기</button>
-        </div>
-        <div style="font-size:10px;color:var(--tm);margin-top:5px">문서에 <b>"액션 아이템"</b> 섹션이 있어야 합니다. 목록 항목이 상위/세부 태스크로 변환됩니다.</div>
-      </div>
-      <div id="doc-preview"></div>
-    </div>
-    <div class="mft">
-      <button class="btn btn-gh" onclick="closeDocModal()">취소</button>
-      <button class="btn" id="doc-import-btn" onclick="importDocTasks()" style="display:none;background:var(--pu);color:#fff;border-color:var(--pu)">가져오기</button>
-    </div>
-  </div>
-</div>
 
 <!-- Modal -->
 <div class="mbg" id="modal" onclick="if(event.target===this)closeModal()">
@@ -1044,7 +1018,7 @@ var calY=TODAY.getFullYear(),calM=TODAY.getMonth();
 var ganttY=TODAY.getFullYear(),ganttM=TODAY.getMonth(),GANTT_SPAN=3;
 var calFilters=[];
 var currentCat=null;
-var currentSort='due_asc';
+var currentSort='default';
 var CAT_DOT={Strategy:'#f59e0b',Production:'#ef4444','Internal Ops':'#10b981','Biz Dev':'#06b6d4',Branding:'#8b5cf6',Analytics:'#3730a3',Community:'#166534'};
 var ALL_CATS=['Strategy','Production','Internal Ops','Biz Dev','Branding','Analytics','Community'];
 var CAT_ID_KEY={Strategy:'Strategy',Production:'Production','Internal Ops':'InternalOps','Biz Dev':'BizDev',Branding:'Branding',Analytics:'Analytics',Community:'Community'}; // [{field:'assignee'|'status'|'category', value:'...'}]
@@ -1092,9 +1066,30 @@ function updateSidebar(){
     if(el)el.textContent=tasks.filter(function(t){return t.cat===cat;}).length;
   });
 }
+var _pendingWrites=0;
+var _saveErrShown=false;
+var TS_KEY=SK+'_ts'; // localStorage 타임스탬프 키
 function save(n){
-  localStorage.setItem(SK,JSON.stringify(tasks));
-  if(FIREBASE_OK) db.ref('cringe/tasks').set(tasks);
+  var now=Date.now();
+  var snapJSON=JSON.stringify(tasks);
+  localStorage.setItem(SK,snapJSON);
+  localStorage.setItem(TS_KEY,String(now)); // 로컬 저장 시각 기록
+  _loadedFromStorage=true; // 이제부터는 storage 데이터
+  if(FIREBASE_OK){
+    _pendingWrites++;
+    db.ref('cringe').update({tasks:tasks,savedAt:now}).then(function(){
+      _pendingWrites=Math.max(0,_pendingWrites-1);
+      _saveErrShown=false;
+      console.log('[save] Firebase 성공 savedAt='+now);
+    },function(err){
+      _pendingWrites=Math.max(0,_pendingWrites-1);
+      console.error('[save] Firebase 실패',err);
+      if(!_saveErrShown){
+        _saveErrShown=true;
+        toast('⚠️ 클라우드 저장 실패 — 로컬에만 보관됨 ('+(err&&err.code||'unknown')+')');
+      }
+    });
+  }
   updateSidebar();
   if(n!==false){g('saved').classList.add('on');setTimeout(function(){g('saved').classList.remove('on');},2000);}
 }
@@ -1125,20 +1120,35 @@ function filtered(){
     if(q&&t.name.toLowerCase().indexOf(q)<0&&(t.memo||'').toLowerCase().indexOf(q)<0)return false;
     return true;
   });
-  if(currentSort==='due_asc'||currentSort==='due_desc'){
-    // compute effective due for each task: parent uses min(own.due, children.due)
-    function effDue(t){
-      if(t.type==='상위'){
-        var dates=[t.due].concat(getChildren(t.id).map(function(c){return c.due;})).filter(Boolean);
-        return dates.length?dates.slice().sort()[0]:'';
-      }
-      return t.due||'';
+  var PRI_RANK={'높음':0,'중간':1,'낮음':2};
+  function effDue(t){
+    if(t.type==='상위'){
+      var dates=[t.due].concat(getChildren(t.id).map(function(c){return c.due;})).filter(Boolean);
+      return dates.length?dates.slice().sort()[0]:'';
     }
+    return t.due||'';
+  }
+  function effPri(t){return PRI_RANK[t.priority]!=null?PRI_RANK[t.priority]:1;}
+  if(currentSort==='due_asc'||currentSort==='due_desc'){
     var asc=currentSort==='due_asc';
     result=result.slice().sort(function(a,b){
       var da=effDue(a),db=effDue(b);
       if(!da&&!db)return 0;if(!da)return 1;if(!db)return -1;
       return asc?da.localeCompare(db):db.localeCompare(da);
+    });
+  } else if(currentSort==='pri_desc'||currentSort==='pri_asc'){
+    var priAsc=currentSort==='pri_desc'; // pri_desc = 높음 먼저 = rank 오름차순
+    result=result.slice().sort(function(a,b){
+      var pa=effPri(a),pb=effPri(b);
+      return priAsc?pa-pb:pb-pa;
+    });
+  } else if(currentSort==='pri_due'){
+    result=result.slice().sort(function(a,b){
+      var pa=effPri(a),pb=effPri(b);
+      if(pa!==pb)return pa-pb;
+      var da=effDue(a),db=effDue(b);
+      if(!da&&!db)return 0;if(!da)return 1;if(!db)return -1;
+      return da.localeCompare(db);
     });
   }
   return result;
@@ -1411,8 +1421,12 @@ function migrateParentIds(){
       // orphaned task with no type — treat as subtask of last parent
       t.type='세부';t.parentId=lastParent.id;changed=true;
     }
+    // 우선순위 미설정 → 중간으로 backfill (드롭다운이 '높음'을 기본으로 보여주던 문제 해결)
+    if(!t.priority||['높음','중간','낮음'].indexOf(t.priority)<0){t.priority='중간';changed=true;}
   });
-  if(changed)save(false);
+  // 샘플 데이터(_loadedFromStorage=false)일 때는 Firebase에 저장 금지
+  // → Firebase에서 실제 데이터가 올 때까지 기다림
+  if(changed&&_loadedFromStorage)save(false);
 }
 
 function getChildren(parentId){
@@ -1452,20 +1466,34 @@ function quickToggleAssignee(id,key){var t=tasks.find(function(x){return x.id===
 function rowHtml(t,isChild){var od=isOD(t.due,t.status),done=t.status==='완료';var allChildren=getChildren(t.id);var collapsed=collapsedParents[t.id];var doneCount=allChildren.filter(function(c){return c.status==='완료';}).length;var chevron=(!isChild&&allChildren.length)?'<span onclick="event.stopPropagation();toggleCollapse(\''+t.id+'\')" style="cursor:pointer;font-size:17px;line-height:1;color:var(--pu);padding:3px 8px 3px 0;display:inline-flex;align-items:center;flex-shrink:0;transform:rotate('+(collapsed?'-90':'0')+'deg);transition:transform .2s">&#9662;</span>':(isChild?'<span style="display:inline-block;width:8px;flex-shrink:0"></span>':'<span style="display:inline-block;width:28px;flex-shrink:0"></span>');var badge=(!isChild&&allChildren.length)?'<span style="font-size:10px;color:var(--tm);margin-left:6px;background:rgba(0,0,0,.06);padding:1px 6px;border-radius:10px;flex-shrink:0">'+doneCount+'/'+allChildren.length+'</span>':'';var prefix=isChild?'<span style="color:var(--tm);font-size:11px;margin-right:4px;flex-shrink:0">&#9492;</span>':'';var rowStyle=isChild?'background:rgba(0,0,0,.015);':'border-left:3px solid var(--pu);';var did=t.id.replace(/'/g,'');var selCat='<select class="il-sel" onclick="event.stopPropagation()" onchange="quickSet(\''+did+'\',' +'\'cat\',this.value)">'+ALL_CATS.map(function(c){return'<option'+(t.cat===c?' selected':'')+'>'+esc(c)+'</option>';}).join('')+'</select>';var aArr=t.assignee?t.assignee.split(',').map(function(s){return s.trim();}).filter(Boolean):[];var selA='<div style="display:flex;flex-wrap:nowrap;gap:3px;overflow:hidden">'+['YL','SJ','HC'].map(function(k){var a=AM[k];var on=aArr.indexOf(k)>=0;return'<span onclick="event.stopPropagation();quickToggleAssignee(\''+did+'\',' +'\''+k+'\')" style="cursor:pointer;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600;background:'+(on?a.bg:'#f0f0f0')+';color:'+(on?'#374151':'#bbb')+'" title="'+a.n+(on?' 제거':' 추가')+'">'+a.n+'</span>';}).join('')+'</div>';var selStat='<select class="il-sel" onclick="event.stopPropagation()" onchange="quickSet(\''+did+'\',' +'\'status\',this.value)" style="background:'+(ST_BG[t.status]||'#f3f4f6')+';color:'+(ST_FG[t.status]||'#6b7280')+'">'+['대기','진행중','검토중','완료'].map(function(s){return'<option'+(t.status===s?' selected':'')+'>'+s+'</option>';}).join('')+'</select>';var selPri='<select class="il-sel" onclick="event.stopPropagation()" onchange="quickSet(\''+did+'\',' +'\'priority\',this.value)" style="background:'+(PRI_BG[t.priority]||'#f3f4f6')+';color:'+(PRI_FG[t.priority]||'#6b7280')+'">'+['높음','중간','낮음'].map(function(p){return'<option'+(t.priority===p?' selected':'')+'>'+p+'</option>';}).join('')+'</select>';return '<div class="tr'+(isChild?' sub':' par')+(done?' done':'')+'" data-id="'+t.id+'" draggable="true" ondragstart="_dragStart(event,\''+did+'\')" ondragend="_dragEnd(event)" ondragover="_dragOver(event,\''+did+'\')" ondrop="_drop(event,\''+did+'\')" style="'+rowStyle+'">'+'<div class="td" style="min-width:0;flex:1">'+chevron+prefix+'<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'+(done?'text-decoration:line-through;color:var(--tm);':'')+'font-weight:'+(isChild?400:700)+'">'+esc(t.name)+'</span>'+badge+'<div class="act">'+(!isChild&&t.type==='상위'?'<button class="ab" style="color:#7c3aed;font-size:13px;font-weight:900;padding:1px 5px" onclick="event.stopPropagation();openModal(null,\''+did+'\')">+</button>':'')+'<button class="ab e" data-eid="'+t.id+'">&#9999;</button><button class="ab g" data-gid="'+t.id+'" style="color:#1a73e8">&#128197;</button><button class="ab d" data-did="'+t.id+'">&#10005;</button></div></div>'+'<div class="td">'+selCat+'</div>'+'<div class="td">'+selA+'</div>'+'<div class="td" style="font-size:11px;color:var(--ts);white-space:nowrap;overflow:hidden">'+fmtDt(t.start)+'</div>'+'<div class="td" style="font-size:11px;color:'+(od?'#dc2626':'var(--ts)')+';white-space:nowrap;overflow:hidden">'+fmtDt(t.due)+(od?' &#9888;':'')+'</div>'+'<div class="td">'+selPri+'</div>'+'<div class="td">'+selStat+'</div>'+'<div class="td">'+progBauto(t)+'</div>'+'<div class="td"><span class="memotxt" title="'+esc(t.memo)+'">'+esc(t.memo)+'</span></div>'+'</div>';}
 
 function _renderTaskGroup(fl,rendered){
+  var flIds={};fl.forEach(function(t){flIds[t.id]=true;});
   var html='';
   fl.forEach(function(t){
     if(rendered[t.id])return;
     if(t.type==='상위'){
       rendered[t.id]=true;html+=rowHtml(t,false);
-      if(!collapsedParents[t.id]){getChildren(t.id).forEach(function(c){rendered[c.id]=true;html+=rowHtml(c,true);});}
+      if(!collapsedParents[t.id]){
+        getChildren(t.id).forEach(function(c){
+          if(!flIds[c.id])return; // 다른 그룹(아카이브 등)의 자녀는 건너뜀
+          rendered[c.id]=true;html+=rowHtml(c,true);
+        });
+      }
     }else if(!t.parentId){
       rendered[t.id]=true;html+=rowHtml(t,false);
     }else{
       var par=tasks.find(function(p){return p.id===t.parentId;});
-      if(par&&!rendered[par.id]){
+      if(par&&flIds[par.id]&&!rendered[par.id]){
         rendered[par.id]=true;html+=rowHtml(par,false);
-        if(!collapsedParents[par.id]){getChildren(par.id).forEach(function(c){rendered[c.id]=true;html+=rowHtml(c,true);});}
-      }else if(!rendered[t.id]){rendered[t.id]=true;html+=rowHtml(t,true);}
+        if(!collapsedParents[par.id]){
+          getChildren(par.id).forEach(function(c){
+            if(!flIds[c.id])return;
+            rendered[c.id]=true;html+=rowHtml(c,true);
+          });
+        }
+      }else if(!rendered[t.id]){
+        // 부모가 같은 그룹에 없음(예: 부모는 active, 본인만 완료) → 단독 자식 행으로 렌더
+        rendered[t.id]=true;html+=rowHtml(t,true);
+      }
     }
   });
   return html;
@@ -1473,14 +1501,20 @@ function _renderTaskGroup(fl,rendered){
 function renderTable(){
   var fl=filtered(),bd=g('tbody');
   if(!fl.length){bd.innerHTML='<div style="padding:20px;text-align:center;color:var(--tm)">표시할 태스크가 없습니다</div>';applyColW();return;}
-  // split: top-level done tasks go to archive; active tasks (and subtasks under active parents) stay on top
-  var doneTopIds=new Set();
-  fl.forEach(function(t){
-    var topT=t.parentId?tasks.find(function(p){return p.id===t.parentId;}):t;
-    if(topT&&topT.status==='완료')doneTopIds.add(topT.id);
-  });
-  var active=fl.filter(function(t){var rootId=t.parentId||t.id;return!doneTopIds.has(rootId);});
-  var done=fl.filter(function(t){var rootId=t.parentId||t.id;return doneTopIds.has(rootId);});
+  // 분할 규칙:
+  //   상위가 완료 → 본인 + 모든 자녀가 archive
+  //   세부가 완료 → 부모 상태 무관하게 본인이 archive (단독 행)
+  //   그 외 → active
+  var doneParentIds=new Set();
+  fl.forEach(function(t){if(t.type==='상위'&&t.status==='완료')doneParentIds.add(t.id);});
+  function _isArchived(t){
+    if(t.type==='상위')return t.status==='완료';
+    if(t.status==='완료')return true;
+    if(t.parentId&&doneParentIds.has(t.parentId))return true;
+    return false;
+  }
+  var active=fl.filter(function(t){return!_isArchived(t);});
+  var done=fl.filter(function(t){return _isArchived(t);});
   var rendered={};
   var html=_renderTaskGroup(active,rendered);
   if(done.length){
@@ -2022,134 +2056,6 @@ function _gFetch(method,url,body){
   }).then(function(r){if(r.status===204)return null;return r.json();});
 }
 
-// ── Google Docs Import ──
-var _docParsed=[];
-
-function _docIdFromUrl(url){var m=url.match(/\/document\/d\/([a-zA-Z0-9_-]+)/);return m?m[1]:null;}
-
-function openDocModal(){
-  if(!gcalToken){toast('먼저 상단 Google 캘린더 버튼으로 연결해주세요');connectGcal();return;}
-  g('doc-modal').classList.add('on');
-  g('doc-url-inp').value='';g('doc-preview').innerHTML='';
-  var btn=g('doc-import-btn');if(btn)btn.style.display='none';
-  _docParsed=[];
-}
-function closeDocModal(){g('doc-modal').classList.remove('on');}
-
-function fetchDocPreview(){
-  var url=g('doc-url-inp').value.trim();
-  var docId=_docIdFromUrl(url);
-  if(!docId){toast('올바른 Google Doc URL을 입력하세요');return;}
-  if(!gcalToken){toast('먼저 Google을 연결하세요');connectGcal();return;}
-  g('doc-preview').innerHTML='<div style="text-align:center;padding:20px;color:var(--tm)">📄 불러오는 중...</div>';
-  _gFetch('GET','https://docs.googleapis.com/v1/documents/'+docId).then(function(doc){
-    if(!doc||doc.error){toast('문서를 불러오지 못했습니다: '+(doc&&doc.error?doc.error.message:'권한 오류'));g('doc-preview').innerHTML='';return;}
-    _docParsed=_parseDocTasks(doc);
-    _renderDocPreview();
-  }).catch(function(){toast('오류가 발생했습니다');g('doc-preview').innerHTML='';});
-}
-
-function _parseTaskLine(text){
-  var name=text.replace(/^[-•*✓✗□■▸▹◦]+\s*/,'').trim();
-  var assignee='',due='',cat='Production';
-  var aM=name.match(/\[(YL|SJ|HC)\]/g);
-  if(aM){assignee=aM.map(function(m){return m.slice(1,-1);}).join(',');name=name.replace(/\[(YL|SJ|HC)\]/g,'').trim();}
-  var dM=name.match(/\[(\d{4}\/)?((\d{1,2})\/(\d{1,2}))\]/);
-  if(dM){
-    var yr=dM[1]?parseInt(dM[1]):new Date().getFullYear();
-    var parts=dM[2].split('/');
-    due=yr+'-'+String(parseInt(parts[0])).padStart(2,'0')+'-'+String(parseInt(parts[1])).padStart(2,'0');
-    name=name.replace(/\[(\d{4}\/)?\d{1,2}\/\d{1,2}\]/,'').trim();
-  }
-  var cM=name.match(/\[(Strategy|Production|Internal Ops|Biz Dev|Branding|Analytics|Community)\]/);
-  if(cM){cat=cM[1];name=name.replace(/\[(?:Strategy|Production|Internal Ops|Biz Dev|Branding|Analytics|Community)\]/,'').trim();}
-  name=name.replace(/\[\]/g,'').trim();
-  return{name:name,assignee:assignee,due:due,cat:cat};
-}
-
-var _NAME_MAP={'연주':'YL','세운':'SJ','희건':'HC','Yeonju':'YL','Sewoon':'SJ','Heegeon':'HC'};
-function _parseDocTasks(doc){
-  var content=doc.body.content;
-  var result=[];
-  var inSection=false;
-  var curAssignee='';
-  var parentOrigIdx=-1;
-  content.forEach(function(el){
-    if(!el.paragraph)return;
-    var para=el.paragraph;
-    var text=(para.elements||[]).map(function(e){return e.textRun?e.textRun.content:'';}).join('').replace(/\n$/,'').trim();
-    if(!text)return;
-    var lower=text.toLowerCase().replace(/\s/g,'');
-    if(lower.includes('액션아이템')||lower.includes('actionitem')){inSection=true;return;}
-    var style=(para.paragraphStyle||{}).namedStyleType||'';
-    if(inSection&&style.startsWith('HEADING')&&!para.bullet){inSection=false;return;}
-    if(!inSection||!para.bullet)return;
-    var level=para.bullet.nestingLevel||0;
-    if(level===0){
-      // person name line — set assignee context, don't add as task
-      var mapped=_NAME_MAP[text];
-      if(mapped){curAssignee=mapped;}
-      else{
-        // fallback: check partial match
-        var found='';
-        Object.keys(_NAME_MAP).forEach(function(k){if(text.indexOf(k)>=0)found=_NAME_MAP[k];});
-        curAssignee=found||text;
-      }
-      parentOrigIdx=-1;
-      return;
-    }
-    var name=text.replace(/^[-•*✓✗□■☐☑▸▹◦]+\s*/,'').trim();
-    var t={name:name,assignee:curAssignee,due:'',cat:'Production',include:true,origIdx:result.length};
-    if(level===1){t.type='상위';t.parentRef=null;parentOrigIdx=result.length;result.push(t);}
-    else{t.type='세부';t.parentRef=parentOrigIdx;result.push(t);}
-  });
-  return result;
-}
-
-function _renderDocPreview(){
-  var prev=g('doc-preview');
-  var btn=g('doc-import-btn');
-  if(!_docParsed.length){
-    prev.innerHTML='<div style="text-align:center;padding:20px;color:var(--tm)">액션 아이템을 찾을 수 없습니다.<br><span style="font-size:11px">문서에 "액션 아이템" 섹션과 목록 항목이 있는지 확인하세요.</span></div>';
-    if(btn)btn.style.display='none';return;
-  }
-  var html='<div style="margin-top:12px;border:1px solid var(--bd);border-radius:8px;overflow:hidden">';
-  html+='<div style="background:#f9f5ff;padding:8px 12px;font-size:11px;font-weight:700;color:var(--pu);border-bottom:1px solid var(--bd)">추출된 태스크 '+_docParsed.length+'개 — 가져올 항목 선택</div>';
-  _docParsed.forEach(function(t,i){
-    var isChild=t.type==='세부';
-    html+='<div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--bd);background:'+(isChild?'rgba(0,0,0,.02)':'#fff')+'">';
-    html+='<input type="checkbox"'+(t.include?' checked':'')+' onchange="_docParsed['+i+'].include=this.checked;_updateDocBtn()" style="flex-shrink:0;accent-color:var(--pu)">';
-    html+='<span style="'+(isChild?'padding-left:12px;':'')+'flex:1;font-size:12px;font-weight:'+(isChild?400:600)+'">'+(isChild?'<span style="color:var(--tm);margin-right:3px">└</span>':'')+esc(t.name)+'</span>';
-    if(t.assignee)html+='<span style="font-size:10px;background:#ede9fe;color:var(--pu);padding:1px 7px;border-radius:8px;flex-shrink:0">'+t.assignee+'</span>';
-    if(t.due)html+='<span style="font-size:10px;color:var(--tm);flex-shrink:0">'+t.due+'</span>';
-    html+='</div>';
-  });
-  html+='</div>';
-  prev.innerHTML=html;
-  if(btn)btn.style.display='';
-  _updateDocBtn();
-}
-
-function _updateDocBtn(){
-  var btn=g('doc-import-btn');if(!btn)return;
-  var cnt=_docParsed.filter(function(t){return t.include;}).length;
-  btn.textContent=cnt+'개 가져오기';
-}
-
-function importDocTasks(){
-  var toImport=_docParsed.filter(function(t){return t.include;});
-  if(!toImport.length){toast('가져올 태스크가 없습니다');return;}
-  var idMap={};
-  toImport.forEach(function(t){
-    var newId=gid();
-    var parentId='';
-    if(t.type==='세부'&&t.parentRef!==null&&t.parentRef!==undefined){parentId=idMap[t.parentRef]||'';}
-    idMap[t.origIdx]=newId;
-    tasks.push({id:newId,name:t.name,type:t.type,cat:t.cat||'Production',assignee:t.assignee||'',start:'',due:t.due||'',status:'대기',progress:0,memo:'',parentId:parentId});
-  });
-  save();renderAll();closeDocModal();toast(toImport.length+'개 태스크가 추가됐습니다 ✓');
-}
-
 function gcalDeleteTask(t){
   if(!gcalToken||!t||!t.gcalEventId)return;
   _gcalFetch('DELETE','/calendars/'+encodeURIComponent(GCAL_CAL_ID)+'/events/'+t.gcalEventId).catch(function(){});
@@ -2157,12 +2063,11 @@ function gcalDeleteTask(t){
 
 // ── renderAll ──
 function renderAll(){
-  renderTable();renderBoard();renderGantt();
+  renderTable();renderBoard();renderGantt();renderCal();
   var v=document.querySelector('.vtab.on');
   if(!v)return;
   var id=v.id.replace('tab-','');
-  if(id==='c')renderCal();
-  else if(id==='p')renderPerson();
+  if(id==='p')renderPerson();
   else if(id==='s')renderStats();
 }
 
@@ -2407,6 +2312,7 @@ function saveTask(){
     start:g('fstart').value,due:g('fdue').value,
     status:g('fstat').value,progress:parseInt(g('fprog').value)||0,
     memo:g('fmemo').value.trim(),parentId:parentId};
+  if(!editId)data.priority='중간'; // 새 태스크만 기본 우선순위 부여(edit 시 기존 값 보존)
   if(editId){var i=tasks.findIndex(function(t){return t.id===editId;});if(i>=0)tasks[i]=Object.assign({},tasks[i],data);toast('수정됨');}
   else{
     // Insert subtask right after its parent in the array
@@ -2424,7 +2330,7 @@ function saveTask(){
   save();closeModal();renderAll();
   var _st=editId?tasks.find(function(x){return x.id===editId;}):tasks[tasks.length-1];if(_st)gcalSyncTask(_st);
 }
-function clearAll(){if(!confirm('초기화할까요?'))return;localStorage.removeItem(SK);if(FIREBASE_OK)db.ref('cringe/tasks').remove();loadTasks();renderAll();toast('초기화 완료');}
+function clearAll(){if(!confirm('초기화할까요?'))return;localStorage.removeItem(SK);localStorage.removeItem(TS_KEY);if(FIREBASE_OK)db.ref('cringe').update({tasks:null,savedAt:0});loadTasks();renderAll();toast('초기화 완료');}
 
 // ── Event delegation ──
 document.addEventListener('click',function(e){
@@ -2448,7 +2354,7 @@ document.addEventListener('dblclick',function(e){
   }
 });
 document.addEventListener('keydown',function(e){
-  if(e.key==='Escape'){closeModal();closeDetail();closeFilterPanel();closeDocModal();closeIvModal();}
+  if(e.key==='Escape'){closeModal();closeDetail();closeFilterPanel();closeIvModal();}
 });
 
 // ── Interviewees ──
@@ -2865,8 +2771,11 @@ function renderInterviewees(){
 }
 
 // ── Load tasks ──
+var _loadedFromStorage=false; // localStorage에서 불러왔는지 여부 (false면 샘플 데이터)
 function loadTasks(){
-  var r=localStorage.getItem(SK);if(r){try{tasks=JSON.parse(r);}catch(e){tasks=[];}return;}
+  var r=localStorage.getItem(SK);
+  if(r){try{tasks=JSON.parse(r);}catch(e){tasks=[];}  _loadedFromStorage=true; return;}
+  _loadedFromStorage=false; // 샘플 데이터 상태 — Firebase 데이터 올 때까지 저장 금지
   tasks=[
     {id:gid(),type:'상위',name:'정부지원사업 지원',cat:'Strategy',assignee:'YL',start:'2026-03-01',due:'2026-05-31',priority:'높음',status:'진행중',progress:56,memo:''},
     {id:gid(),type:'세부',name:'예비창업패키지 신청서 작성',cat:'Strategy',assignee:'YL',start:'',due:'2026-03-24',priority:'높음',status:'진행중',progress:0,memo:''},
@@ -3380,20 +3289,72 @@ if(FIREBASE_OK){
 // 🔥 Firebase 실시간 동기화
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 if(FIREBASE_OK){
-  // 태스크 실시간 동기화 — 팀원 변경사항 자동 반영
-  db.ref('cringe/tasks').on('value',function(snapshot){
-    var data=snapshot.val();
-    if(data===null){
-      // Firebase 비어있음 → 현재 로컬 데이터 업로드
-      db.ref('cringe/tasks').set(tasks);
-    } else {
-      var incoming=Array.isArray(data)?data:Object.values(data);
+  // 태스크 실시간 동기화
+  // 규칙: localTs > 0 이면 로컬이 우선 (이 디바이스에서 한번이라도 저장한 적 있음)
+  //       localTs = 0 이면 첫 세션 → Firebase에서 가져옴
+  db.ref('cringe').on('value',function(snapshot){
+    if(_pendingWrites>0)return;
+    var root=snapshot.val();
+    var localTs=parseInt(localStorage.getItem(TS_KEY)||'0');
+    var localJSON=JSON.stringify(tasks);
+
+    if(!root||!root.tasks){
+      // Firebase 비어있음
+      if(tasks&&tasks.length&&localTs>0){
+        // 로컬에 데이터 있으면 Firebase에 올림
+        _pendingWrites++;
+        var now=Date.now();
+        db.ref('cringe').update({tasks:tasks,savedAt:now}).then(function(){
+          _pendingWrites=Math.max(0,_pendingWrites-1);
+          localStorage.setItem(TS_KEY,String(now));
+          console.log('[sync] 로컬→Firebase 업로드 완료');
+        },function(e){
+          _pendingWrites=Math.max(0,_pendingWrites-1);
+          console.error('[sync] 업로드 실패',e);
+        });
+      }
+      return;
+    }
+
+    var incoming=Array.isArray(root.tasks)?root.tasks:Object.values(root.tasks);
+    var fbTs=root.savedAt||0;
+    console.log('[sync] FB='+fbTs+' local='+localTs+' tasks='+incoming.length);
+
+    if(localTs===0){
+      // 첫 세션 (이 기기에서 한번도 저장 안 함) → Firebase 데이터로 초기화
+      if(!incoming.length)return;
       tasks=incoming;
+      var initTs=fbTs||Date.now();
       localStorage.setItem(SK,JSON.stringify(tasks));
-      updateSidebar();
-      renderAll();
+      localStorage.setItem(TS_KEY,String(initTs));
+      _loadedFromStorage=true; // 이제 Firebase 데이터로 초기화됨
+      updateSidebar();renderAll();
       if(detailId&&g('dp').classList.contains('on'))_clRefresh(detailId,'dp-');
       if(editId&&g('modal').classList.contains('on'))_clRefresh(editId,'mc-cl-');
+      console.log('[sync] 첫 세션: Firebase→로컬 ('+incoming.length+'개)');
+    } else if(fbTs>localTs){
+      // Firebase가 확실히 더 최신 (다른 팀원이 수정) → 적용
+      tasks=incoming;
+      localStorage.setItem(SK,JSON.stringify(tasks));
+      localStorage.setItem(TS_KEY,String(fbTs));
+      updateSidebar();renderAll();
+      if(detailId&&g('dp').classList.contains('on'))_clRefresh(detailId,'dp-');
+      if(editId&&g('modal').classList.contains('on'))_clRefresh(editId,'mc-cl-');
+      console.log('[sync] Firebase 최신→로컬 적용 ('+incoming.length+'개)');
+    } else if(localTs>=fbTs&&_loadedFromStorage){
+      // 로컬이 같거나 더 최신 + 실제 저장된 데이터 → Firebase에 push
+      var localCurrent=JSON.stringify(tasks);
+      var fbCurrent=JSON.stringify(incoming);
+      if(localCurrent===fbCurrent)return; // 동일하면 스킵
+      _pendingWrites++;
+      var pushTs=localTs; // 로컬 타임스탬프 유지
+      db.ref('cringe').update({tasks:tasks,savedAt:pushTs}).then(function(){
+        _pendingWrites=Math.max(0,_pendingWrites-1);
+        console.log('[sync] 로컬→Firebase 동기화 완료');
+      },function(e){
+        _pendingWrites=Math.max(0,_pendingWrites-1);
+        console.error('[sync] Firebase 동기화 실패',e);
+      });
     }
   });
 
@@ -3421,90 +3382,6 @@ if(FIREBASE_OK){
   });
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 📄 Google Docs To-do 실시간 동기화
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-var DOC_SYNC_URL='https://script.google.com/a/macros/crngfriends.com/s/AKfycbwJgMxHm0ispZWiSEyVoG_GOcnJxcfechC2Fyj0BdU417oe95xGGKAKqzmpU7HXhcI6Qg/exec';
-var _docPendingTasks=[];
-var _docPollTimer=null;
-
-function fetchDocTasks(){
-  fetch(DOC_SYNC_URL+'?t='+Date.now())
-    .then(function(r){return r.json();})
-    .then(function(data){
-      var items=Array.isArray(data)?data:(data.tasks||[]);
-      // 중복 제거: 이미 존재하는 이름 필터링
-      var newItems=items.filter(function(d){
-        if(!d.name)return false;
-        var dn=d.name.trim().toLowerCase();
-        return !tasks.some(function(t){return(t.name||'').trim().toLowerCase()===dn;});
-      });
-      _docPendingTasks=newItems;
-      var btn=g('doc-sync-btn');
-      var cnt=g('doc-sync-cnt');
-      var badge=g('doc-sync-badge');
-      if(!btn)return;
-      if(newItems.length>0){
-        btn.style.display='inline-flex';
-        if(cnt)cnt.textContent=newItems.length+'개';
-        if(badge)badge.style.display='block';
-      } else {
-        btn.style.display='none';
-        if(badge)badge.style.display='none';
-      }
-    })
-    .catch(function(e){console.warn('Doc sync fetch error:',e);});
-}
-
-function applyDocImport(){
-  if(!_docPendingTasks||!_docPendingTasks.length){
-    toast('새로운 To-do 항목이 없습니다');
-    return;
-  }
-  var added=0;
-  _docPendingTasks.forEach(function(d){
-    var dn=(d.name||'').trim();
-    if(!dn)return;
-    // 다시 한번 중복 체크
-    var exists=tasks.some(function(t){return(t.name||'').trim().toLowerCase()===dn.toLowerCase();});
-    if(exists)return;
-    tasks.push({
-      id:gid(),
-      type:d.type||'세부',
-      name:dn,
-      cat:d.cat||'Internal Ops',
-      assignee:d.assignee||'',
-      start:'',
-      due:d.due||'',
-      priority:d.priority||'중간',
-      status:d.status||'대기',
-      progress:0,
-      memo:d.memo||''
-    });
-    added++;
-  });
-  if(added>0){
-    save(true);
-    renderAll();
-    toast('📥 '+added+'개 To-do 추가됨');
-  } else {
-    toast('추가할 항목이 없습니다 (이미 존재)');
-  }
-  _docPendingTasks=[];
-  var btn=g('doc-sync-btn');
-  var badge=g('doc-sync-badge');
-  if(btn)btn.style.display='none';
-  if(badge)badge.style.display='none';
-}
-
-// 5분마다 자동 폴링
-function startDocPoll(){
-  fetchDocTasks();
-  if(_docPollTimer)clearInterval(_docPollTimer);
-  _docPollTimer=setInterval(fetchDocTasks,5*60*1000);
-}
-// 앱이 로드된 후 1.5초 뒤 첫 폴링 시작
-setTimeout(startDocPoll,1500);
 </script>
 <!-- Google Calendar export modal -->
 <div class="mbg" id="gcal-modal" onclick="if(event.target===this)closeGcalModal()" style="z-index:110">
