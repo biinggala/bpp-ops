@@ -908,6 +908,7 @@ var firebaseConfig = {
   appId:             "1:930969419587:web:c4b60dc42c2df13af9f9f6"
 };
 var FIREBASE_OK=false, db=null;
+var DEV_MODE=true; // 로컬 개발 시 로그인 우회 — 배포 전 false로 변경
 try {
   if(firebaseConfig.apiKey!=='여기에_API_KEY'){
     firebase.initializeApp(firebaseConfig);
@@ -2806,7 +2807,10 @@ function updateUserUI(){
     '<button onclick="signOutUser()" style="margin-left:4px;padding:4px 10px;border-radius:8px;border:1px solid rgba(0,0,0,.1);background:rgba(255,255,255,.7);cursor:pointer;font-size:11px;color:var(--tm)">로그아웃</button>';
 }
 
-if(FIREBASE_OK){
+if(DEV_MODE){
+  currentMemberKey='HC';
+  showApp();
+} else if(FIREBASE_OK){
   firebase.auth().onAuthStateChanged(function(user){
     if(user){
       var email=user.email||'';
