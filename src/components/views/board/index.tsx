@@ -53,7 +53,7 @@ export function BoardView() {
                     isDragging={dragging === task.id}
                     onDragStart={() => setDragging(task.id)}
                     onDragEnd={() => { setDragging(null); setDragOver(null) }}
-                    onClick={() => setDetailTaskId(task.id)}
+                    onClick={() => openTaskModal(task.id)}
                     onEdit={() => openTaskModal(task.id)}
                     onDelete={() => deleteTask(task.id)}
                   />

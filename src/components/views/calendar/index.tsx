@@ -23,7 +23,7 @@ function diffDays(a: Date, b: Date): number {
 }
 
 export function CalendarView() {
-  const { calYear, calMonth, calNav, calToday, setDetailTaskId } = useUiStore()
+  const { calYear, calMonth, calNav, calToday, openTaskModal } = useUiStore()
   const tasks = useFilteredTasks()
   const { updateTask } = useTaskStore()
 
@@ -157,7 +157,7 @@ export function CalendarView() {
                           setDraggingId(t.id)
                         }}
                         onDragEnd={() => { setDraggingId(null); setDragOver(null) }}
-                        onClick={() => setDetailTaskId(t.id)}
+                        onClick={() => openTaskModal(t.id)}
                         style={{
                           fontSize: 10, fontWeight: 500,
                           padding: '2px 6px', borderRadius: 3,

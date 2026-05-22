@@ -14,7 +14,6 @@ import { StatsView } from '../components/views/stats'
 import { GanttView } from '../components/views/gantt'
 import { ProjectView } from '../components/views/project'
 import { TaskModal } from '../components/modals/TaskModal'
-import { DetailPanel } from '../components/modals/DetailPanel'
 import { CommandPalette } from '../components/modals/CommandPalette'
 import { EmptyState } from '../components/shared/EmptyState'
 import { Toast } from '../components/shared/Toast'
@@ -75,7 +74,6 @@ export function AppPage() {
       </div>
 
       <TaskModal />
-      <DetailPanel />
       <CommandPalette />
       <Toast />
     </div>

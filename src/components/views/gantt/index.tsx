@@ -251,7 +251,7 @@ export function GanttView() {
                 dragOffset={dragOffset}
                 isDragging={dragVisual?.taskId === task.id}
                 milestoneMarkers={milestoneMarkers}
-                onOpen={() => setDetailTaskId(task.id)}
+                onOpen={() => openTaskModal(task.id)}
                 onToggle={() => toggle(task.id)}
                 onAddSubtask={() => openTaskModal(undefined, task.id)}
                 onBarMouseDown={(startX) => startDrag({ taskId: task.id, origStart: task.start, origDue: task.due, startX })}

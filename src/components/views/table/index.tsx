@@ -44,7 +44,7 @@ export function TableView() {
     setCollapsedMs(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
 
   const makeHandlers = (task: Task) => ({
-    onOpen: () => setDetailTaskId(task.id),
+    onOpen: () => openTaskModal(task.id),
     onEdit: (e: React.MouseEvent) => { e.stopPropagation(); openTaskModal(task.id) },
     onDelete: (e: React.MouseEvent) => {
       e.stopPropagation()
