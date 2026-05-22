@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useProjectStore } from '../../../store/projectStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useTaskStore } from '../../../store/taskStore'
@@ -17,7 +17,7 @@ function daysFrom(date: string, base: Date): number {
 
 export function ProjectView() {
   const { projects } = useProjectStore()
-  const { milestones, addMilestone, deleteMilestone } = useMilestoneStore()
+  const { milestones, addMilestone, updateMilestone, deleteMilestone } = useMilestoneStore()
   const tasks = useTaskStore(s => s.tasks)
   const { openTaskModal, setProject } = useUiStore()
   const now = useMemo(today, [])
@@ -68,6 +68,7 @@ export function ProjectView() {
               bottleneck={bottleneck}
               now={now}
               onAddMilestone={(name, dueDate) => addMilestone(project.id, name, dueDate)}
+              onUpdateMilestone={updateMilestone}
               onDeleteMilestone={deleteMilestone}
               onAddTask={() => { setProject(project.id); openTaskModal() }}
             />
@@ -80,16 +81,12 @@ export function ProjectView() {
 
 function ProjectCard({
   project, milestones, tasks, completed, progress, bottleneck, now,
-  onAddMilestone, onDeleteMilestone, onAddTask,
+  onAddMilestone, onUpdateMilestone, onDeleteMilestone, onAddTask,
 }: {
-  project: Project
-  milestones: Milestone[]
-  tasks: Task[]
-  completed: number
-  progress: number
-  bottleneck: Task[]
-  now: Date
+  project: Project; milestones: Milestone[]; tasks: Task[]
+  completed: number; progress: number; bottleneck: Task[]; now: Date
   onAddMilestone: (name: string, dueDate: string) => void
+  onUpdateMilestone: (id: string, patch: Partial<Omit<Milestone, 'id'>>) => void
   onDeleteMilestone: (id: string) => void
   onAddTask: () => void
 }) {
@@ -157,33 +154,15 @@ function ProjectCard({
       <div style={{ padding: '10px 18px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 11, color: 'var(--t3)', fontWeight: 500 }}>마일스톤</span>
-          {milestones.map(m => {
-            const diff = daysFrom(m.dueDate, now)
-            const overdue = diff < 0
-            const close = diff >= 0 && diff <= 7
-            return (
-              <div
-                key={m.id}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 4,
-                  padding: '3px 8px', borderRadius: 'var(--r2)', fontSize: 11,
-                  background: overdue ? 'rgba(239,68,68,.08)' : close ? 'rgba(245,158,11,.08)' : 'var(--bg3)',
-                  border: `1px solid ${overdue ? 'rgba(239,68,68,.2)' : close ? 'rgba(245,158,11,.2)' : 'var(--bd)'}`,
-                  color: overdue ? '#ef4444' : close ? '#d97706' : 'var(--t2)',
-                }}
-              >
-                <span style={{ fontSize: 8 }}>◆</span>
-                <span>{m.name}</span>
-                <span style={{ opacity: .65 }}>{overdue ? `D+${Math.abs(diff)}` : `D-${diff}`}</span>
-                <button
-                  onClick={() => onDeleteMilestone(m.id)}
-                  style={{ marginLeft: 2, background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', opacity: .45, fontSize: 13, padding: 0, lineHeight: 1, fontFamily: 'var(--font)' }}
-                  onMouseEnter={e => { e.currentTarget.style.opacity = '1' }}
-                  onMouseLeave={e => { e.currentTarget.style.opacity = '.45' }}
-                >×</button>
-              </div>
-            )
-          })}
+          {milestones.map(m => (
+            <EditableMilestoneChip
+              key={m.id}
+              milestone={m}
+              now={now}
+              onUpdate={(patch) => onUpdateMilestone(m.id, patch)}
+              onDelete={() => onDeleteMilestone(m.id)}
+            />
+          ))}
 
           {addingMs ? (
             <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -259,6 +238,88 @@ function ProjectCard({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── EditableMilestoneChip ────────────────────────────────────────────────────
+
+function EditableMilestoneChip({ milestone, now, onUpdate, onDelete }: {
+  milestone: Milestone; now: Date
+  onUpdate: (patch: Partial<Omit<Milestone, 'id'>>) => void
+  onDelete: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [hovered, setHovered] = useState(false)
+  const [tempName, setTempName] = useState(milestone.name)
+  const [tempDate, setTempDate] = useState(milestone.dueDate)
+
+  const diff = daysFrom(milestone.dueDate, now)
+  const overdue = diff < 0
+  const close = diff >= 0 && diff <= 7
+  const accent = overdue ? '#ef4444' : close ? '#d97706' : 'var(--t2)'
+  const bg = overdue ? 'rgba(239,68,68,.08)' : close ? 'rgba(245,158,11,.08)' : 'var(--bg3)'
+  const border = overdue ? 'rgba(239,68,68,.2)' : close ? 'rgba(245,158,11,.2)' : 'var(--bd)'
+
+  const save = () => {
+    if (tempName.trim()) onUpdate({ name: tempName.trim() })
+    if (tempDate) onUpdate({ dueDate: tempDate })
+    setEditing(false)
+  }
+  const cancel = () => { setTempName(milestone.name); setTempDate(milestone.dueDate); setEditing(false) }
+
+  const inp: React.CSSProperties = {
+    padding: '2px 6px', fontSize: 11, border: '1px solid var(--bd)',
+    borderRadius: 'var(--r1)', background: 'var(--bg)', color: 'var(--t1)',
+    outline: 'none', fontFamily: 'var(--font)',
+  }
+
+  if (editing) {
+    return (
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+        <input
+          autoFocus
+          value={tempName}
+          onChange={e => setTempName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
+          style={{ ...inp, width: 120 }}
+        />
+        <input
+          type="date"
+          value={tempDate}
+          onChange={e => setTempDate(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
+          style={{ ...inp, colorScheme: 'dark' }}
+        />
+        <button onClick={save} style={{ padding: '2px 7px', fontSize: 11, borderRadius: 'var(--r1)', border: 'none', background: 'var(--ac)', color: '#fff', cursor: 'pointer', fontFamily: 'var(--font)' }}>✓</button>
+        <button onClick={cancel} style={{ padding: '2px 7px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)' }}>✕</button>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 'var(--r2)', fontSize: 11, background: bg, border: `1px solid ${border}`, color: accent }}
+    >
+      <span style={{ fontSize: 8 }}>◆</span>
+      <span>{milestone.name}</span>
+      <span style={{ opacity: .65 }}>{overdue ? `D+${Math.abs(diff)}` : `D-${diff}`}</span>
+      {hovered && (
+        <button
+          onClick={() => { setTempName(milestone.name); setTempDate(milestone.dueDate); setEditing(true) }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', opacity: .55, fontSize: 11, padding: 0, lineHeight: 1, fontFamily: 'var(--font)' }}
+          onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+          onMouseLeave={e => e.currentTarget.style.opacity = '.55'}
+        >✎</button>
+      )}
+      <button
+        onClick={onDelete}
+        style={{ marginLeft: hovered ? 0 : 2, background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', opacity: .45, fontSize: 13, padding: 0, lineHeight: 1, fontFamily: 'var(--font)' }}
+        onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+        onMouseLeave={e => e.currentTarget.style.opacity = '.45'}
+      >×</button>
     </div>
   )
 }

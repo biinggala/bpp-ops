@@ -29,7 +29,7 @@ export function TableView() {
   const allTasks = useTaskStore(s => s.tasks)
   const { deleteTask, updateTask } = useTaskStore()
   const { openTaskModal, setDetailTaskId, projectId } = useUiStore()
-  const milestones = useMilestoneStore(s => s.milestones)
+  const { milestones, updateMilestone } = useMilestoneStore()
   const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set())
   const [collapsedMs, setCollapsedMs] = React.useState<Set<string>>(new Set())
   const today = React.useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
@@ -152,6 +152,7 @@ export function TableView() {
                   collapsed={isCollapsed}
                   onToggle={() => toggleMs(ms.id)}
                   onAddTask={() => openTaskModal(undefined, undefined, ms.id)}
+                  onUpdate={patch => updateMilestone(ms.id, patch)}
                 />
                 {!isCollapsed && renderRows(msTasks, true)}
               </React.Fragment>
@@ -191,15 +192,29 @@ export function TableView() {
 
 // ── MilestoneHeader (Jira-style section header) ───────────────────────────────
 
-function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onToggle, onAddTask }: {
+function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onToggle, onAddTask, onUpdate }: {
   milestone: Milestone; taskCount: number; completed: number; diff: number
   collapsed: boolean; onToggle: () => void; onAddTask: () => void
+  onUpdate: (patch: Partial<Omit<Milestone, 'id'>>) => void
 }) {
   const [hovered, setHovered] = React.useState(false)
+  const [editingName, setEditingName] = React.useState(false)
+  const [editingDate, setEditingDate] = React.useState(false)
+  const [tempName, setTempName] = React.useState(milestone.name)
+  const [tempDate, setTempDate] = React.useState(milestone.dueDate)
   const overdue = diff < 0
   const close = diff >= 0 && diff <= 7
   const accent = overdue ? '#ef4444' : close ? '#f59e0b' : '#8b5cf6'
   const progress = taskCount ? Math.round(completed / taskCount * 100) : 0
+
+  const saveName = () => { if (tempName.trim()) onUpdate({ name: tempName.trim() }); setEditingName(false) }
+  const saveDate = () => { if (tempDate) onUpdate({ dueDate: tempDate }); setEditingDate(false) }
+
+  const inlineInput: React.CSSProperties = {
+    fontSize: 12, padding: '1px 6px', borderRadius: 'var(--r1)',
+    border: '1px solid var(--bd)', background: 'var(--bg)', color: 'var(--t1)',
+    outline: 'none', fontFamily: 'var(--font)',
+  }
 
   return (
     <div
@@ -217,16 +232,59 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onT
       </button>
 
       <span style={{ fontSize: 11, color: accent, flexShrink: 0 }}>◆</span>
-      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--t1)' }}>{milestone.name}</span>
-      <span style={{ fontSize: 11, color: 'var(--t3)' }}>{milestone.dueDate}</span>
 
-      <span style={{
-        fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--r1)', flexShrink: 0,
-        background: overdue ? 'rgba(239,68,68,.1)' : close ? 'rgba(245,158,11,.1)' : 'rgba(139,92,246,.1)',
-        color: accent,
-      }}>
-        {overdue ? `D+${Math.abs(diff)}` : `D-${diff}`}
-      </span>
+      {/* Editable name */}
+      {editingName ? (
+        <input
+          autoFocus
+          value={tempName}
+          onChange={e => setTempName(e.target.value)}
+          onBlur={saveName}
+          onKeyDown={e => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') { setTempName(milestone.name); setEditingName(false) } }}
+          onClick={e => e.stopPropagation()}
+          style={{ ...inlineInput, fontSize: 13, fontWeight: 600, width: 160 }}
+        />
+      ) : (
+        <span
+          onClick={e => { e.stopPropagation(); setTempName(milestone.name); setEditingName(true) }}
+          title="클릭해서 이름 수정"
+          style={{ fontSize: 13, fontWeight: 600, color: 'var(--t1)', cursor: 'text', borderBottom: '1px solid transparent', transition: 'border-color .1s' }}
+          onMouseEnter={e => e.currentTarget.style.borderBottomColor = 'var(--bd)'}
+          onMouseLeave={e => e.currentTarget.style.borderBottomColor = 'transparent'}
+        >
+          {milestone.name}
+        </span>
+      )}
+
+      {/* Editable date */}
+      {editingDate ? (
+        <input
+          autoFocus
+          type="date"
+          value={tempDate}
+          onChange={e => setTempDate(e.target.value)}
+          onBlur={saveDate}
+          onKeyDown={e => { if (e.key === 'Enter') saveDate(); if (e.key === 'Escape') { setTempDate(milestone.dueDate); setEditingDate(false) } }}
+          onClick={e => e.stopPropagation()}
+          style={{ ...inlineInput, colorScheme: 'dark' }}
+        />
+      ) : (
+        <span
+          onClick={e => { e.stopPropagation(); setTempDate(milestone.dueDate); setEditingDate(true) }}
+          title="클릭해서 날짜 수정"
+          style={{ fontSize: 11, color: 'var(--t3)', cursor: 'pointer', borderBottom: '1px dashed transparent', transition: 'border-color .1s' }}
+          onMouseEnter={e => e.currentTarget.style.borderBottomColor = 'var(--bd)'}
+          onMouseLeave={e => e.currentTarget.style.borderBottomColor = 'transparent'}
+        >
+          {milestone.dueDate}
+        </span>
+      )}
+
+      {!editingDate && (
+        <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--r1)', flexShrink: 0, background: overdue ? 'rgba(239,68,68,.1)' : close ? 'rgba(245,158,11,.1)' : 'rgba(139,92,246,.1)', color: accent }}>
+          {overdue ? `D+${Math.abs(diff)}` : `D-${diff}`}
+        </span>
+      )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 4, flexShrink: 0 }}>
         <div style={{ width: 72, height: 4, background: 'var(--bd)', borderRadius: 2, overflow: 'hidden' }}>
@@ -235,7 +293,7 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onT
         <span style={{ fontSize: 11, color: 'var(--t3)', whiteSpace: 'nowrap' }}>{completed}/{taskCount} 완료</span>
       </div>
 
-      {hovered && (
+      {hovered && !editingName && !editingDate && (
         <button
           onClick={e => { e.stopPropagation(); onAddTask() }}
           style={{ marginLeft: 'auto', padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: `1px solid ${accent}`, background: 'transparent', color: accent, cursor: 'pointer', fontFamily: 'var(--font)', flexShrink: 0 }}
