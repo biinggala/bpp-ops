@@ -53,15 +53,7 @@ export function TableView() {
 
   const makeHandlers = (task: Task) => ({
     onOpen: () => openTaskModal(task.id),
-    onEdit: (e: React.MouseEvent) => { e.stopPropagation(); openTaskModal(task.id) },
-    onDelete: (e: React.MouseEvent) => {
-      e.stopPropagation()
-      if (!confirm('삭제할까요?')) return
-      getChildren(task.id).forEach(c => deleteTask(c.id))
-      deleteTask(task.id)
-    },
     onStatusChange: (s: Status) => updateTask(task.id, { status: s }),
-    onAddSubtask: (e: React.MouseEvent) => { e.stopPropagation(); openTaskModal(undefined, task.id) },
     onMilestoneChange: (msId: string | undefined) => updateTask(task.id, { milestoneId: msId }),
     onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, task }) },
   })
@@ -104,7 +96,7 @@ export function TableView() {
           {hasChildren && isExpanded && children.map((child, idx) => {
             const ch = makeHandlers(child)
             return (
-              <Row key={child.id} task={child} isChild isLastChild={idx === children.length - 1}
+              <Row key={child.id} task={child} isChild
                 milestones={pickerMilestones} showMilestonePicker={pickerMilestones.length > 0}
                 {...ch}
               />
@@ -487,18 +479,17 @@ function PickerRow({ onClick, active, label, sub, accent }: {
 // ── Row ───────────────────────────────────────────────────────────────────────
 
 function Row({
-  task, isChild = false, isLastChild = false,
+  task, isChild = false,
   hasChildren = false, isExpanded = true,
   childCount = 0, doneCount = 0,
   milestones = [], showMilestonePicker = false,
-  onToggle, onOpen, onEdit, onDelete, onStatusChange, onAddSubtask, onMilestoneChange, onContextMenu,
+  onToggle, onOpen, onStatusChange, onMilestoneChange, onContextMenu,
 }: {
-  task: Task; isChild?: boolean; isLastChild?: boolean
+  task: Task; isChild?: boolean
   hasChildren?: boolean; isExpanded?: boolean; childCount?: number; doneCount?: number
   milestones?: Milestone[]; showMilestonePicker?: boolean
   onToggle?: () => void; onOpen: () => void
-  onEdit: (e: React.MouseEvent) => void; onDelete: (e: React.MouseEvent) => void
-  onStatusChange: (s: Status) => void; onAddSubtask?: (e: React.MouseEvent) => void
+  onStatusChange: (s: Status) => void
   onMilestoneChange?: (id: string | undefined) => void
   onContextMenu?: (e: React.MouseEvent) => void
 }) {
@@ -513,18 +504,20 @@ function Row({
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', cursor: 'pointer',
-        background: isChild ? (hovered ? 'rgba(55,53,47,.03)' : 'var(--bg2)') : (hovered ? 'var(--bg3)' : 'transparent'),
+        background: hovered ? 'var(--bg3)' : (isChild ? 'var(--bg)' : 'transparent'),
         borderBottom: `1px solid var(--bd)`,
-        borderLeft: `3px solid ${hovered ? 'var(--ac)' : 'transparent'}`,
+        borderLeft: isChild
+          ? `3px solid ${hovered ? 'var(--ac)' : 'var(--bd2)'}`
+          : `3px solid ${hovered ? 'var(--ac)' : 'transparent'}`,
         transition: 'background .08s',
         opacity: task.status === '완료' ? .55 : 1,
       }}
     >
       {/* 업무명 */}
-      <div style={{ flex: 3.5, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 5, minHeight: 44, overflow: 'hidden', borderRight: '1px solid var(--bd)' }}>
+      <div style={{ flex: 3.5, padding: '8px 12px 8px 40px', display: 'flex', alignItems: 'center', gap: 5, minHeight: 44, overflow: 'hidden', borderRight: '1px solid var(--bd)' }}>
         {isChild ? (
-          <div style={{ width: 20, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingLeft: 16 }}>
-            <span style={{ fontSize: 10, color: 'var(--t3)', lineHeight: 1 }}>└</span>
+          <div style={{ width: 28, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingLeft: 20 }}>
+            <span style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1 }}>└</span>
           </div>
         ) : (
           <button
@@ -582,15 +575,6 @@ function Row({
           />
         )}
 
-        {hovered && (
-          <div style={{ display: 'flex', gap: 2, marginLeft: 2, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-            {!isChild && onAddSubtask && (
-              <RowBtn onClick={onAddSubtask} title="하위 업무 추가" accent>+ 하위</RowBtn>
-            )}
-            <RowBtn onClick={onEdit} title="수정">✎</RowBtn>
-            <RowBtn onClick={onDelete} title="삭제" danger>✕</RowBtn>
-          </div>
-        )}
       </div>
 
       {/* 스페이스 */}
@@ -643,20 +627,4 @@ function Cell({ children, flex, last }: { children?: React.ReactNode; flex: numb
 
 function Dash() {
   return <span style={{ color: 'var(--t3)', fontSize: 12 }}>—</span>
-}
-
-function RowBtn({ children, onClick, title, danger, accent }: {
-  children: React.ReactNode; onClick: (e: React.MouseEvent) => void; title: string; danger?: boolean; accent?: boolean
-}) {
-  return (
-    <span
-      onClick={onClick}
-      title={title}
-      style={{ height: 22, borderRadius: 4, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, cursor: 'pointer', border: accent ? '1px solid var(--ac)' : 'none', padding: accent ? '0 7px' : '0', width: accent ? 'auto' : 22, color: danger ? '#ef4444' : accent ? 'var(--ac)' : 'var(--t2)', background: accent ? 'var(--ac-l)' : 'transparent', transition: 'background .08s', fontFamily: 'var(--font)' }}
-      onMouseEnter={e => { e.currentTarget.style.background = danger ? 'rgba(239,68,68,.08)' : accent ? 'rgba(35,131,226,.18)' : 'var(--bg4)' }}
-      onMouseLeave={e => { e.currentTarget.style.background = accent ? 'var(--ac-l)' : 'transparent' }}
-    >
-      {children}
-    </span>
-  )
 }
