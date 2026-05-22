@@ -1,4 +1,4 @@
-import { getCatColor, STATUS_COLORS } from '../../types'
+import { getCatColor, getTagColor, STATUS_COLORS } from '../../types'
 import type { Status, Priority } from '../../types'
 
 function Badge({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
@@ -33,6 +33,21 @@ export function PriorityBadge({ priority }: { priority: Priority }) {
     낮음: { background: 'var(--bg3)',          color: 'var(--t3)' },
   }
   return <Badge style={map[priority]}>{priority}</Badge>
+}
+
+export function TagBadge({ tag, onRemove }: { tag: string; onRemove?: () => void }) {
+  const c = getTagColor(tag)
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 6px', borderRadius: 3, fontSize: 11, fontWeight: 500, background: c.bg, color: c.text, whiteSpace: 'nowrap' }}>
+      #{tag}
+      {onRemove && (
+        <span onClick={e => { e.stopPropagation(); onRemove() }} style={{ cursor: 'pointer', opacity: .65, fontSize: 12, lineHeight: 1 }}
+          onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '1'}
+          onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '.65'}
+        >×</span>
+      )}
+    </span>
+  )
 }
 
 export function TypeBadge({ type }: { type: '상위' | '세부' }) {

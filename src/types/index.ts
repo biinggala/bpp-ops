@@ -43,6 +43,7 @@ export interface Task {
   parentId?: string
   projectId?: string
   milestoneId?: string
+  tags?: string[]
   order?: number
   checklist?: ChecklistItem[]
 }
@@ -111,5 +112,17 @@ export function getCatColor(spaceName: string): { bg: string; text: string } {
   let h = 0
   for (let i = 0; i < spaceName.length; i++) h = spaceName.charCodeAt(i) + ((h << 5) - h)
   const color = SPACE_PALETTE[Math.abs(h) % SPACE_PALETTE.length]
+  return { bg: color + '18', text: color }
+}
+
+export const TAG_PALETTE = [
+  '#6366f1','#8b5cf6','#ec4899','#f43f5e','#f97316',
+  '#eab308','#22c55e','#06b6d4','#3b82f6','#14b8a6',
+]
+
+export function getTagColor(tag: string): { bg: string; text: string } {
+  let h = 0
+  for (let i = 0; i < tag.length; i++) h = tag.charCodeAt(i) + ((h << 5) - h)
+  const color = TAG_PALETTE[Math.abs(h) % TAG_PALETTE.length]
   return { bg: color + '18', text: color }
 }

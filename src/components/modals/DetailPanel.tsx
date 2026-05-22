@@ -1,6 +1,6 @@
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
-import { CategoryBadge, StatusBadge, PriorityBadge, TypeBadge } from '../shared/Badge'
+import { CategoryBadge, StatusBadge, PriorityBadge, TypeBadge, TagBadge } from '../shared/Badge'
 import { AssigneeGroup } from '../shared/Avatar'
 import { ProgressBar } from '../shared/ProgressBar'
 import { fmtDate } from '../../lib/utils'
@@ -53,6 +53,11 @@ export function DetailPanel() {
           <Row label="진행률">
             <div style={{ flex: 1 }}><ProgressBar value={task.progress} height={6} /></div>
           </Row>
+          {task.tags && task.tags.length > 0 && (
+            <Row label="태그">
+              {task.tags.map(tag => <TagBadge key={tag} tag={tag} />)}
+            </Row>
+          )}
           {task.memo && (
             <div style={{ marginTop: 4 }}>
               <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>메모</div>

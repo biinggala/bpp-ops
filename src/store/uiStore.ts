@@ -4,6 +4,7 @@ import type { ViewType, Status, MemberKey } from '../types'
 interface Filters {
   assignees: MemberKey[]
   statuses: Status[]
+  tags: string[]
   search: string
   sort: 'due_asc' | 'due_desc' | 'default'
 }
@@ -43,6 +44,7 @@ const now = new Date()
 const defaultFilters: Filters = {
   assignees: [],
   statuses: [],
+  tags: [],
   search: '',
   sort: 'due_asc',
 }

@@ -3,7 +3,7 @@ import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
-import { CategoryBadge, PriorityBadge } from '../../shared/Badge'
+import { CategoryBadge, PriorityBadge, TagBadge } from '../../shared/Badge'
 import { AssigneeGroup } from '../../shared/Avatar'
 import { ProgressBar } from '../../shared/ProgressBar'
 import { fmtDate, isOverdue } from '../../../lib/utils'
@@ -480,6 +480,16 @@ function Row({
           <span style={{ fontSize: 10, color: 'var(--t3)', background: 'var(--bg4)', borderRadius: 10, padding: '1px 6px', flexShrink: 0 }}>
             {doneCount}/{childCount}
           </span>
+        )}
+
+        {/* Tags */}
+        {task.tags && task.tags.length > 0 && (
+          <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+            {task.tags.slice(0, 3).map(tag => <TagBadge key={tag} tag={tag} />)}
+            {task.tags.length > 3 && (
+              <span style={{ fontSize: 10, color: 'var(--t3)', alignSelf: 'center' }}>+{task.tags.length - 3}</span>
+            )}
+          </div>
         )}
 
         {/* Milestone picker — visible on hover OR when assigned */}

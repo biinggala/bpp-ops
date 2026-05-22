@@ -22,6 +22,9 @@ export function useFilteredTasks(): Task[] {
     if (filters.statuses.length) {
       result = result.filter(t => filters.statuses.includes(t.status as never))
     }
+    if (filters.tags.length) {
+      result = result.filter(t => filters.tags.some(tag => t.tags?.includes(tag)))
+    }
     if (filters.search.trim()) {
       const q = filters.search.trim().toLowerCase()
       result = result.filter(t =>

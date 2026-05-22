@@ -1,5 +1,6 @@
 import React from 'react'
 import { useUiStore } from '../../store/uiStore'
+import { useTaskStore } from '../../store/taskStore'
 import type { ViewType, Status, MemberKey } from '../../types'
 import { STATUS_LIST } from '../../types'
 
@@ -20,7 +21,13 @@ const MEMBERS_FILTER: { key: MemberKey; label: string }[] = [
 
 export function ViewBar() {
   const { view, setView, filters, setFilters, resetFilters } = useUiStore()
-  const hasFilters = filters.assignees.length > 0 || filters.statuses.length > 0
+  const allTasks = useTaskStore(s => s.tasks)
+  const allTagOptions = React.useMemo(() => {
+    const s = new Set<string>()
+    allTasks.forEach(t => t.tags?.forEach(tag => s.add(tag)))
+    return Array.from(s).sort()
+  }, [allTasks])
+  const hasFilters = filters.assignees.length > 0 || filters.statuses.length > 0 || filters.tags.length > 0
   const showFilters = !['c', 's'].includes(view)
 
   return (
@@ -58,6 +65,14 @@ export function ViewBar() {
             selected={filters.statuses}
             onChange={v => setFilters({ statuses: v as Status[] })}
           />
+          {allTagOptions.length > 0 && (
+            <MultiSelect
+              label="태그"
+              options={allTagOptions.map(t => ({ value: t, label: `#${t}` }))}
+              selected={filters.tags}
+              onChange={v => setFilters({ tags: v })}
+            />
+          )}
           {hasFilters && (
             <button
               onClick={resetFilters}

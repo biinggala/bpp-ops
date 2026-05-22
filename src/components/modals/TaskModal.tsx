@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useSpaceStore } from '../../store/spaceStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMilestoneStore } from '../../store/milestoneStore'
-import { STATUS_LIST, PRIORITY_LIST } from '../../types'
+import { STATUS_LIST, PRIORITY_LIST, getTagColor } from '../../types'
 import type { Task } from '../../types'
 
 const EMPTY: Omit<Task, 'id'> = {
@@ -200,6 +200,13 @@ export function TaskModal() {
               placeholder="메모..."
             />
           </Field>
+
+          <Field label="태그">
+            <TagInput
+              value={form.tags ?? []}
+              onChange={tags => upd('tags', tags)}
+            />
+          </Field>
         </div>
 
         {/* Footer */}
@@ -245,4 +252,99 @@ const inputStyle: React.CSSProperties = {
   fontSize: 13, outline: 'none', color: 'var(--t1)',
   background: 'var(--bg)', fontFamily: 'var(--font)',
   transition: 'border-color .1s',
+}
+
+function TagInput({ value, onChange }: { value: string[]; onChange: (tags: string[]) => void }) {
+  const allTasks = useTaskStore(s => s.tasks)
+  const allTags = useMemo(() => {
+    const s = new Set<string>()
+    allTasks.forEach(t => t.tags?.forEach(tag => s.add(tag)))
+    return Array.from(s).sort()
+  }, [allTasks])
+
+  const [input, setInput] = useState('')
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const filtered = allTags.filter(t =>
+    t.toLowerCase().includes(input.toLowerCase()) && !value.includes(t)
+  )
+
+  const add = (tag: string) => {
+    const t = tag.trim().toLowerCase().replace(/\s+/g, '-')
+    if (t && !value.includes(t)) onChange([...value, t])
+    setInput('')
+  }
+
+  const remove = (tag: string) => onChange(value.filter(t => t !== tag))
+
+  useEffect(() => {
+    if (!open) return
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <div
+        onClick={() => { setOpen(true); (ref.current?.querySelector('input') as HTMLInputElement)?.focus() }}
+        style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '5px 8px', border: '1px solid var(--bd)', borderRadius: 'var(--r2)', background: 'var(--bg)', minHeight: 38, cursor: 'text', alignItems: 'center' }}
+      >
+        {value.map(tag => {
+          const c = getTagColor(tag)
+          return (
+            <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 3, fontSize: 11, fontWeight: 500, background: c.bg, color: c.text }}>
+              #{tag}
+              <span onClick={e => { e.stopPropagation(); remove(tag) }} style={{ cursor: 'pointer', fontSize: 13, lineHeight: 1, opacity: .6, fontFamily: 'var(--font)' }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '1'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '.6'}
+              >×</span>
+            </span>
+          )
+        })}
+        <input
+          value={input}
+          onChange={e => { setInput(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); if (input.trim()) add(input) }
+            if (e.key === 'Backspace' && !input && value.length) remove(value[value.length - 1])
+            if (e.key === 'Escape') setOpen(false)
+          }}
+          placeholder={value.length ? '' : '태그 추가... (Enter로 생성)'}
+          style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 12, color: 'var(--t1)', fontFamily: 'var(--font)', minWidth: 100, flex: 1 }}
+        />
+      </div>
+
+      {open && (filtered.length > 0 || (input.trim() && !allTags.includes(input.trim().toLowerCase()))) && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 3px)', left: 0, right: 0, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', zIndex: 300, padding: '4px 0', maxHeight: 180, overflowY: 'auto' }}>
+          {filtered.map(tag => {
+            const c = getTagColor(tag)
+            return (
+              <div key={tag} onMouseDown={e => { e.preventDefault(); add(tag) }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', cursor: 'pointer', fontSize: 12, transition: 'background .07s' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <span style={{ padding: '1px 6px', borderRadius: 3, fontSize: 11, background: c.bg, color: c.text, fontWeight: 500 }}>#{tag}</span>
+              </div>
+            )
+          })}
+          {input.trim() && !allTags.includes(input.trim().toLowerCase().replace(/\s+/g, '-')) && (
+            <div onMouseDown={e => { e.preventDefault(); add(input) }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', cursor: 'pointer', fontSize: 12, color: 'var(--ac)', transition: 'background .07s' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <span style={{ fontSize: 11, fontWeight: 500 }}>+</span>
+              "#{input.trim()}" 새 태그 생성
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
