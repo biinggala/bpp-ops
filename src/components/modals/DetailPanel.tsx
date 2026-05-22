@@ -7,69 +7,76 @@ import { fmtDate } from '../../lib/utils'
 
 export function DetailPanel() {
   const { detailTaskId, setDetailTaskId, openTaskModal } = useUiStore()
-  const { tasks, deleteTask, updateTask } = useTaskStore()
-
+  const { tasks, deleteTask } = useTaskStore()
   const task = detailTaskId ? tasks.find(t => t.id === detailTaskId) : null
-
   if (!task) return null
 
   return (
     <>
-      {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/22 z-[90] backdrop-blur-[2px]"
         onClick={() => setDetailTaskId(null)}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.18)', zIndex: 90 }}
       />
 
-      {/* Panel */}
-      <div className="fixed top-0 right-0 w-[460px] h-screen bg-[rgba(247,247,249,.97)] backdrop-blur-[40px] border-l border-black/[.08] shadow-[-6px_0_40px_rgba(0,0,0,.1)] z-[91] flex flex-col">
+      <div style={{
+        position: 'fixed', top: 0, right: 0, width: 440, height: '100vh',
+        background: 'var(--bg)', borderLeft: '1px solid var(--bd)',
+        boxShadow: 'var(--sh-lg)', zIndex: 91,
+        display: 'flex', flexDirection: 'column',
+        animation: 'slideIn .2s ease',
+      }}>
+        <style>{`@keyframes slideIn{from{transform:translateX(16px);opacity:.6}to{transform:translateX(0);opacity:1}}`}</style>
+
         {/* Header */}
-        <div className="px-[20px] pt-[18px] pb-[14px] border-b border-black/[.07] bg-white/50 flex items-start gap-[10px]">
-          <h2 className="text-[15px] font-bold text-gray-900 leading-[1.45] flex-1">{task.name}</h2>
-          <button onClick={() => setDetailTaskId(null)} className="w-[28px] h-[28px] rounded-lg border-none bg-transparent cursor-pointer text-gray-400 text-[20px] flex items-center justify-center hover:bg-gray-100 flex-shrink-0">×</button>
+        <div style={{ padding: '16px 20px 14px', borderBottom: '1px solid var(--bd)', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--t1)', lineHeight: 1.5, flex: 1 }}>{task.name}</h2>
+          <button onClick={() => setDetailTaskId(null)} style={{ width: 26, height: 26, borderRadius: 'var(--r1)', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--t3)', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontFamily: 'var(--font)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; e.currentTarget.style.color = 'var(--t1)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
+          >×</button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-[20px] py-[18px] flex flex-col gap-0">
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
           <Row label="유형"><TypeBadge type={task.type} /></Row>
-          <Row label="카테고리"><CategoryBadge cat={task.cat} /></Row>
+          {task.cat && <Row label="스페이스"><CategoryBadge cat={task.cat} /></Row>}
           <Row label="상태"><StatusBadge status={task.status} /></Row>
           <Row label="우선순위"><PriorityBadge priority={task.priority} /></Row>
-          <Row label="담당자"><AssigneeGroup assignee={task.assignee} size={24} /></Row>
+          {task.assignee && (
+            <Row label="담당자"><AssigneeGroup assignee={task.assignee} size={22} /></Row>
+          )}
           <Row label="기간">
-            <span className="text-[12px] text-gray-700">
-              {task.start ? fmtDate(task.start) : '–'} ~ {task.due ? fmtDate(task.due) : '–'}
+            <span style={{ fontSize: 13, color: 'var(--t2)' }}>
+              {task.start ? fmtDate(task.start) : '—'} → {task.due ? fmtDate(task.due) : '—'}
             </span>
           </Row>
           <Row label="진행률">
-            <div className="flex-1">
-              <ProgressBar value={task.progress} height={7} />
-            </div>
+            <div style={{ flex: 1 }}><ProgressBar value={task.progress} height={6} /></div>
           </Row>
           {task.memo && (
-            <Row label="메모">
-              <div className="text-[12px] text-gray-600 leading-[1.65] whitespace-pre-wrap bg-white/80 rounded-lg p-[10px] w-full border border-[#ede9fe]">
+            <div style={{ marginTop: 4 }}>
+              <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.04em' }}>메모</div>
+              <div style={{ fontSize: 13, color: 'var(--t2)', lineHeight: 1.7, whiteSpace: 'pre-wrap', background: 'var(--bg2)', borderRadius: 'var(--r3)', padding: '10px 12px', border: '1px solid var(--bd)' }}>
                 {task.memo}
               </div>
-            </Row>
+            </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="px-[20px] py-[14px] border-t border-black/[.07] bg-white/40 flex gap-[8px]">
+        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--bd)', display: 'flex', gap: 8 }}>
           <button
             onClick={() => { openTaskModal(task.id); setDetailTaskId(null) }}
-            className="flex-1 py-[8px] rounded-[8px] bg-[#007aff] text-white text-[12px] font-semibold border-none cursor-pointer hover:bg-[#0066d6]"
+            style={{ flex: 1, padding: '7px', borderRadius: 'var(--r2)', border: 'none', background: 'var(--ac)', color: '#fff', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font)' }}
           >
             수정
           </button>
           <button
             onClick={() => {
               if (!confirm('삭제할까요?')) return
-              deleteTask(task.id)
-              setDetailTaskId(null)
+              deleteTask(task.id); setDetailTaskId(null)
             }}
-            className="px-[14px] py-[8px] rounded-[8px] border border-red-200 text-red-500 text-[12px] bg-transparent cursor-pointer hover:bg-red-50"
+            style={{ padding: '7px 14px', borderRadius: 'var(--r2)', border: '1px solid rgba(239,68,68,.25)', background: 'transparent', color: '#ef4444', fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font)' }}
           >
             삭제
           </button>
@@ -81,9 +88,13 @@ export function DetailPanel() {
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-[10px] mb-[12px] pb-[12px] border-b border-black/[.06] last:border-b-0 last:mb-0 last:pb-0">
-      <div className="text-[10px] font-bold text-gray-400 w-[68px] flex-shrink-0 pt-[3px] tracking-[.4px] uppercase">{label}</div>
-      <div className="text-[12px] text-gray-800 flex-1 flex items-center flex-wrap gap-[5px]">{children}</div>
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--bd)' }}>
+      <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t3)', width: 72, flexShrink: 0, paddingTop: 2, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 13, color: 'var(--t1)', flex: 1, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 5 }}>
+        {children}
+      </div>
     </div>
   )
 }

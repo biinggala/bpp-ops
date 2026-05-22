@@ -3,8 +3,7 @@ import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useSpaceStore } from '../../store/spaceStore'
 import { useAuthStore } from '../../store/authStore'
-import { Avatar } from '../shared/Avatar'
-import { SPACE_PALETTE } from '../../types'
+import { MEMBERS } from '../../types'
 import type { MemberKey } from '../../types'
 
 export function Sidebar() {
@@ -21,14 +20,14 @@ export function Sidebar() {
   const editRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { if (addingSpace) inputRef.current?.focus() }, [addingSpace])
-  useEffect(() => { if (editingId) editRef.current?.focus() }, [editingId])
+  useEffect(() => { if (editingId) editRef.current?.select() }, [editingId])
 
-  const countFor = (spaceName: string | null) =>
-    spaceName ? tasks.filter(t => t.cat === spaceName).length : tasks.length
+  const countFor = (name: string | null) =>
+    name ? tasks.filter(t => t.cat === name).length : tasks.length
 
-  const handleAddSpace = () => {
-    if (!newSpaceName.trim()) { setAddingSpace(false); return }
-    addSpace(newSpaceName.trim())
+  const handleAdd = () => {
+    const trimmed = newSpaceName.trim()
+    if (trimmed) addSpace(trimmed)
     setNewSpaceName('')
     setAddingSpace(false)
   }
@@ -38,56 +37,75 @@ export function Sidebar() {
     setEditingId(null)
   }
 
-  const handleDeleteSpace = (e: React.MouseEvent, id: string, name: string) => {
+  const handleDelete = (e: React.MouseEvent, id: string, name: string) => {
     e.stopPropagation()
-    if (!confirm(`"${name}" 스페이스를 삭제할까요? 해당 카테고리 업무도 영향받습니다.`)) return
+    if (!confirm(`"${name}" 스페이스를 삭제할까요?`)) return
     if (space === name) setSpace(null)
     deleteSpace(id)
   }
 
+  const member = memberKey ? MEMBERS[memberKey as MemberKey] : null
+
   return (
-    <div className="w-[220px] bg-[#1c1c1e] flex flex-col flex-shrink-0 border-r border-white/[.06]">
-      {/* Header */}
-      <div className="px-[14px] py-[14px] flex items-center gap-[9px] border-b border-white/[.06]">
-        <div className="w-7 h-7 rounded-[9px] bg-[#007aff] flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0">
-          {memberKey ?? 'BPP'}
+    <aside style={{ width: 240, background: 'var(--sb-bg)', display: 'flex', flexDirection: 'column', flexShrink: 0, borderRight: '1px solid rgba(255,255,255,.06)' }}>
+
+      {/* Workspace header */}
+      <div style={{ padding: '14px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(255,255,255,.06)' }}>
+        <div style={{ width: 26, height: 26, borderRadius: 6, background: 'var(--ac)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+          {(member?.n?.[0] ?? 'W')}
         </div>
-        <div>
-          <div className="text-[13px] font-semibold text-white">업무 보드</div>
-          <div className="text-[9px] text-white/35 tracking-[.5px]">WORKSPACE</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--sb-t1)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            업무 보드
+          </div>
+          {member && (
+            <div style={{ fontSize: 11, color: 'var(--sb-t3)', marginTop: 1 }}>{member.n}</div>
+          )}
         </div>
+        {member && (
+          <button
+            onClick={() => signOutUser()}
+            title="로그아웃"
+            style={{ width: 22, height: 22, borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--sb-t3)', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--sb-hover)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            ↩
+          </button>
+        )}
       </div>
 
       {/* Search */}
-      <div className="px-[10px] py-[8px]">
+      <div style={{ padding: '8px 10px' }}>
         <input
-          className="w-full bg-white/[.07] border border-white/[.1] rounded-[5px] px-[9px] py-[6px] text-[11px] text-white/70 outline-none placeholder:text-white/28"
-          placeholder="🔍  검색..."
+          style={{ width: '100%', background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 'var(--r2)', padding: '5px 9px', fontSize: 12, color: 'var(--sb-t2)', outline: 'none' }}
+          placeholder="검색..."
           value={filters.search}
           onChange={e => setFilters({ search: e.target.value })}
         />
       </div>
 
       {/* Nav */}
-      <div className="px-[6px] overflow-y-auto flex-1">
-        <div className="px-[6px] pt-[10px] pb-[3px] text-[9px] font-semibold text-white/22 tracking-[1px] uppercase">
-          Spaces
-        </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 6px' }}>
+        <SectionLabel>Spaces</SectionLabel>
 
-        {/* 전체 */}
-        <SbItem active={space === null} dot="#7c3aed" onClick={() => setSpace(null)} count={countFor(null)}>
+        <NavItem
+          active={space === null}
+          onClick={() => setSpace(null)}
+          count={countFor(null)}
+          icon="◈"
+        >
           전체 업무
-        </SbItem>
+        </NavItem>
 
-        {/* Dynamic spaces */}
         {spaces.map(s => (
-          <div key={s.id} className="group/sb relative">
+          <div key={s.id} style={{ position: 'relative' }}>
             {editingId === s.id ? (
-              <div className="flex items-center gap-1 mx-[6px] my-[1px] px-[10px] py-[5px]">
-                <div className="w-[6px] h-[6px] rounded-full flex-shrink-0" style={{ background: s.color }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', margin: '1px 0' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
                 <input
                   ref={editRef}
-                  className="flex-1 bg-white/[.1] text-white text-[11px] rounded px-2 py-[2px] outline-none border border-white/20"
+                  style={{ flex: 1, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)', borderRadius: 'var(--r1)', padding: '2px 6px', fontSize: 12, color: 'var(--sb-t1)', outline: 'none' }}
                   value={editName}
                   onChange={e => setEditName(e.target.value)}
                   onBlur={() => handleRename(s.id)}
@@ -98,106 +116,136 @@ export function Sidebar() {
                 />
               </div>
             ) : (
-              <SbSubItem
+              <SpaceItem
                 active={space === s.name}
                 dot={s.color}
-                onClick={() => setSpace(s.name)}
                 count={countFor(s.name)}
+                onClick={() => setSpace(s.name)}
                 onEdit={() => { setEditingId(s.id); setEditName(s.name) }}
-                onDelete={e => handleDeleteSpace(e, s.id, s.name)}
+                onDelete={e => handleDelete(e, s.id, s.name)}
               >
                 {s.name}
-              </SbSubItem>
+              </SpaceItem>
             )}
           </div>
         ))}
 
-        {/* Add space input */}
+        {/* Add space */}
         {addingSpace ? (
-          <div className="flex items-center gap-2 mx-[6px] my-[1px] px-[10px] py-[5px]">
-            <div className="w-[6px] h-[6px] rounded-full bg-white/30 flex-shrink-0" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px 4px 28px', margin: '1px 0' }}>
             <input
               ref={inputRef}
-              className="flex-1 bg-white/[.1] text-white text-[11px] rounded px-2 py-[2px] outline-none border border-white/20 placeholder:text-white/30"
+              style={{ flex: 1, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 'var(--r1)', padding: '3px 7px', fontSize: 12, color: 'var(--sb-t1)', outline: 'none' }}
               placeholder="스페이스 이름..."
               value={newSpaceName}
               onChange={e => setNewSpaceName(e.target.value)}
-              onBlur={handleAddSpace}
+              onBlur={handleAdd}
               onKeyDown={e => {
-                if (e.key === 'Enter') handleAddSpace()
+                if (e.key === 'Enter') handleAdd()
                 if (e.key === 'Escape') { setAddingSpace(false); setNewSpaceName('') }
               }}
             />
           </div>
         ) : (
-          <button
-            onClick={() => setAddingSpace(true)}
-            className="flex items-center gap-[7px] px-[10px] py-[5px] pl-[24px] w-full text-[11px] text-white/30 hover:text-white/60 cursor-pointer bg-transparent border-none mx-[6px] my-[1px] transition-colors rounded-[5px] hover:bg-white/[.04]"
-          >
-            <span className="text-[14px] leading-none">+</span> 스페이스 추가
-          </button>
+          <AddBtn onClick={() => setAddingSpace(true)}>스페이스 추가</AddBtn>
         )}
       </div>
+    </aside>
+  )
+}
 
-      {/* Footer */}
-      {memberKey && (
-        <div className="mt-auto px-[8px] py-[10px] border-t border-white/[.07] flex items-center gap-2">
-          <Avatar memberKey={memberKey as MemberKey} size={24} />
-          <button
-            onClick={() => signOutUser()}
-            className="flex-1 py-[6px] bg-white/[.07] border-none rounded-[7px] text-white/50 text-[10px] font-medium cursor-pointer hover:bg-white/[.12] hover:text-white/80 transition-colors"
-          >
-            로그아웃
-          </button>
+/* ── Sub-components ── */
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ padding: '10px 8px 3px', fontSize: 11, fontWeight: 600, color: 'var(--sb-t3)', letterSpacing: '.06em', textTransform: 'uppercase' }}>
+      {children}
+    </div>
+  )
+}
+
+function NavItem({ children, active, onClick, count, icon }: {
+  children: React.ReactNode; active: boolean; onClick: () => void
+  count: number; icon?: string
+}) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '4px 8px', borderRadius: 'var(--r2)', cursor: 'pointer',
+        fontSize: 13, fontWeight: active ? 500 : 400, margin: '1px 0',
+        color: active ? 'var(--sb-t1)' : 'var(--sb-t2)',
+        background: active ? 'var(--sb-active)' : 'transparent',
+        transition: 'background .1s, color .1s',
+      }}
+      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--sb-hover)' }}
+      onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
+    >
+      {icon && <span style={{ fontSize: 11, opacity: .6, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>}
+      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
+      <span style={{ fontSize: 11, color: 'var(--sb-t3)', marginLeft: 'auto', flexShrink: 0 }}>{count}</span>
+    </div>
+  )
+}
+
+function SpaceItem({ children, active, dot, count, onClick, onEdit, onDelete }: {
+  children: React.ReactNode; active: boolean; dot: string; count: number
+  onClick: () => void; onEdit: () => void; onDelete: (e: React.MouseEvent) => void
+}) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '4px 8px 4px 14px', borderRadius: 'var(--r2)', cursor: 'pointer',
+        fontSize: 12, fontWeight: active ? 500 : 400, margin: '1px 0',
+        color: active ? 'var(--sb-t1)' : 'var(--sb-t2)',
+        background: active ? 'var(--sb-active)' : hovered ? 'var(--sb-hover)' : 'transparent',
+        transition: 'background .1s',
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: dot, flexShrink: 0 }} />
+      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
+
+      {hovered ? (
+        <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
+          <ActionIcon onClick={e => { e.stopPropagation(); onEdit() }}>✎</ActionIcon>
+          <ActionIcon onClick={onDelete} danger>×</ActionIcon>
         </div>
+      ) : (
+        <span style={{ fontSize: 11, color: 'var(--sb-t3)', marginLeft: 'auto', flexShrink: 0 }}>{count}</span>
       )}
     </div>
   )
 }
 
-function SbItem({ children, active, dot, onClick, count }: {
-  children: React.ReactNode; active: boolean; dot: string
-  onClick: () => void; count: number
-}) {
+function ActionIcon({ children, onClick, danger }: { children: React.ReactNode; onClick: (e: React.MouseEvent) => void; danger?: boolean }) {
   return (
-    <div
+    <span
       onClick={onClick}
-      className={`flex items-center gap-[7px] px-[10px] py-[6px] rounded-[5px] cursor-pointer text-[12px] mx-[6px] my-[1px] transition-all ${
-        active ? 'bg-[rgba(0,122,255,.25)] text-[#93c5fd]' : 'text-white/50 hover:bg-white/[.08] hover:text-white/90'
-      }`}
+      style={{ width: 18, height: 18, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, cursor: 'pointer', color: danger ? '#f87171' : 'var(--sb-t3)', transition: 'background .1s' }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.1)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
     >
-      <div className="w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: dot }} />
       {children}
-      <span className="ml-auto text-[10px] bg-white/[.1] px-[6px] py-[1px] rounded-lg text-white/35">{count}</span>
-    </div>
+    </span>
   )
 }
 
-function SbSubItem({ children, active, dot, onClick, count, onEdit, onDelete }: {
-  children: React.ReactNode; active: boolean; dot: string
-  onClick: () => void; count: number
-  onEdit: () => void; onDelete: (e: React.MouseEvent) => void
-}) {
+function AddBtn({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
   return (
     <div
       onClick={onClick}
-      className={`group flex items-center gap-[7px] px-[10px] py-[5px] pl-[24px] rounded-[5px] cursor-pointer text-[11px] mx-[6px] my-[1px] transition-all ${
-        active ? 'bg-[rgba(0,122,255,.18)] text-[#93c5fd]' : 'text-white/40 hover:bg-white/[.06] hover:text-white/80'
-      }`}
+      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px 4px 14px', borderRadius: 'var(--r2)', cursor: 'pointer', fontSize: 12, color: 'var(--sb-t3)', margin: '1px 0', transition: 'background .1s' }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'var(--sb-hover)'; (e.currentTarget.style.color = 'var(--sb-t2)') }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; (e.currentTarget.style.color = 'var(--sb-t3)') }}
     >
-      <div className="w-[6px] h-[6px] rounded-full flex-shrink-0" style={{ background: dot }} />
-      <span className="flex-1 truncate">{children}</span>
-      <span className="text-[10px] bg-white/[.1] px-[5px] py-[1px] rounded-lg text-white/35 group-hover:hidden">{count}</span>
-      <div className="hidden group-hover:flex items-center gap-[2px]">
-        <button
-          onClick={e => { e.stopPropagation(); onEdit() }}
-          className="text-[10px] text-white/30 hover:text-white/70 bg-transparent border-none cursor-pointer px-1 rounded"
-        >✏</button>
-        <button
-          onClick={onDelete}
-          className="text-[10px] text-white/30 hover:text-red-400 bg-transparent border-none cursor-pointer px-1 rounded"
-        >✕</button>
-      </div>
+      <span style={{ fontSize: 14, lineHeight: 1, opacity: .7 }}>+</span>
+      {children}
     </div>
   )
 }

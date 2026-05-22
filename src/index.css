@@ -1,15 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 @import "tailwindcss";
+
+/* ── Design tokens ── */
+:root {
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* Text */
+  --t1: #37352f;
+  --t2: #787774;
+  --t3: #9b9a97;
+
+  /* Background */
+  --bg:   #ffffff;
+  --bg2:  #f7f7f5;
+  --bg3:  rgba(55,53,47,.04);
+  --bg4:  rgba(55,53,47,.07);
+
+  /* Border */
+  --bd:   rgba(55,53,47,.09);
+  --bd2:  rgba(55,53,47,.16);
+
+  /* Accent */
+  --ac:   #2383e2;
+  --ac-l: rgba(35,131,226,.1);
+  --ac-d: #1a73d1;
+
+  /* Sidebar */
+  --sb-bg:    #191919;
+  --sb-t1:    rgba(255,255,255,.82);
+  --sb-t2:    rgba(255,255,255,.5);
+  --sb-t3:    rgba(255,255,255,.28);
+  --sb-hover: rgba(255,255,255,.06);
+  --sb-active:rgba(255,255,255,.1);
+
+  /* Shadow */
+  --sh-sm: 0 1px 2px rgba(0,0,0,.04), 0 1px 6px rgba(0,0,0,.04);
+  --sh-md: 0 4px 16px rgba(0,0,0,.08), 0 1px 4px rgba(0,0,0,.04);
+  --sh-lg: 0 8px 40px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.06);
+
+  /* Radius */
+  --r1: 4px;
+  --r2: 6px;
+  --r3: 8px;
+  --r4: 12px;
+}
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body, #root {
   height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
-  background: #f2f2f7;
-  color: #1c1c1e;
-  font-size: 15px;
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--t1);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-::-webkit-scrollbar { width: 5px; height: 5px; }
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(0,0,0,.15); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: rgba(55,53,47,.12); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(55,53,47,.2); }
+
+/* Form elements */
+input, select, textarea, button {
+  font-family: var(--font);
+}

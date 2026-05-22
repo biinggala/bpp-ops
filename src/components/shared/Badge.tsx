@@ -1,14 +1,16 @@
 import { getCatColor, STATUS_COLORS } from '../../types'
 import type { Status, Priority } from '../../types'
 
-function Badge({ children, style, className = '' }: {
-  children: React.ReactNode; style?: React.CSSProperties; className?: string
-}) {
+function Badge({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <span
-      className={`inline-flex items-center text-[10px] font-semibold px-[7px] py-[2px] rounded-full whitespace-nowrap flex-shrink-0 ${className}`}
-      style={style}
-    >
+    <span style={{
+      display: 'inline-flex', alignItems: 'center',
+      fontSize: 11, fontWeight: 500,
+      padding: '2px 7px', borderRadius: 4,
+      whiteSpace: 'nowrap', flexShrink: 0,
+      letterSpacing: '.01em',
+      ...style,
+    }}>
       {children}
     </span>
   )
@@ -25,24 +27,21 @@ export function StatusBadge({ status }: { status: Status }) {
 }
 
 export function PriorityBadge({ priority }: { priority: Priority }) {
-  const colors: Record<Priority, { bg: string; text: string }> = {
-    높음: { bg: '#fee2e2', text: '#b91c1c' },
-    중간: { bg: '#fef3c7', text: '#d97706' },
-    낮음: { bg: '#f3f4f6', text: '#6b7280' },
+  const map: Record<Priority, React.CSSProperties> = {
+    높음: { background: 'rgba(239,68,68,.1)',  color: '#dc2626' },
+    중간: { background: 'rgba(245,158,11,.1)', color: '#d97706' },
+    낮음: { background: 'var(--bg3)',          color: 'var(--t3)' },
   }
-  const c = colors[priority]
-  return <Badge style={{ background: c.bg, color: c.text }}>{priority}</Badge>
+  return <Badge style={map[priority]}>{priority}</Badge>
 }
 
 export function TypeBadge({ type }: { type: '상위' | '세부' }) {
   return (
-    <Badge
-      style={
-        type === '상위'
-          ? { background: 'rgba(0,122,255,.1)', color: '#007aff' }
-          : { background: 'rgba(0,0,0,.05)', color: '#6b7280' }
-      }
-    >
+    <Badge style={
+      type === '상위'
+        ? { background: 'var(--ac-l)', color: 'var(--ac)' }
+        : { background: 'var(--bg3)', color: 'var(--t3)' }
+    }>
       {type}
     </Badge>
   )

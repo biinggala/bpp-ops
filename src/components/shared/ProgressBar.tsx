@@ -1,18 +1,12 @@
-interface Props { value: number; height?: number; className?: string }
+interface Props { value: number; height?: number }
 
-export function ProgressBar({ value, height = 5, className = '' }: Props) {
+export function ProgressBar({ value, height = 5 }: Props) {
   return (
-    <div className={`flex items-center gap-[5px] w-full ${className}`}>
-      <div
-        className="flex-1 rounded-full overflow-hidden bg-gray-200"
-        style={{ height }}
-      >
-        <div
-          className="h-full rounded-full bg-[#007aff] transition-all"
-          style={{ width: `${value}%` }}
-        />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+      <div style={{ flex: 1, height, background: 'var(--bg4)', borderRadius: height }}>
+        <div style={{ width: `${value}%`, height: '100%', background: 'var(--ac)', borderRadius: height, transition: 'width .2s' }} />
       </div>
-      <span className="text-[10px] text-gray-500 min-w-[26px]">{value}%</span>
+      <span style={{ fontSize: 11, color: 'var(--t3)', minWidth: 28, textAlign: 'right' }}>{value}%</span>
     </div>
   )
 }
