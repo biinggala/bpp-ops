@@ -1,7 +1,7 @@
 {
   "hosting": {
     "site": "cringe-friends-1df62",
-    "public": "public",
+    "public": "dist",
     "ignore": [
       "firebase.json",
       "**/.*"
