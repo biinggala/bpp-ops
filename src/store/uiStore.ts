@@ -14,6 +14,7 @@ interface UiState {
   filters: Filters
   detailTaskId: string | null
   editTaskId: string | null
+  newTaskParentId: string | null
   isTaskModalOpen: boolean
   isFilterPanelOpen: boolean
   isColorSettingsOpen: boolean
@@ -25,7 +26,7 @@ interface UiState {
   setFilters: (f: Partial<Filters>) => void
   resetFilters: () => void
   setDetailTaskId: (id: string | null) => void
-  openTaskModal: (editId?: string) => void
+  openTaskModal: (editId?: string, parentId?: string) => void
   closeTaskModal: () => void
   setColorSettings: (open: boolean) => void
   calNav: (delta: number) => void
@@ -47,6 +48,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   filters: { ...defaultFilters },
   detailTaskId: null,
   editTaskId: null,
+  newTaskParentId: null,
   isTaskModalOpen: false,
   isFilterPanelOpen: false,
   isColorSettingsOpen: false,
@@ -58,8 +60,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   setFilters: (f) => set(s => ({ filters: { ...s.filters, ...f } })),
   resetFilters: () => set({ filters: { ...defaultFilters } }),
   setDetailTaskId: (id) => set({ detailTaskId: id }),
-  openTaskModal: (editId) => set({ isTaskModalOpen: true, editTaskId: editId ?? null }),
-  closeTaskModal: () => set({ isTaskModalOpen: false, editTaskId: null }),
+  openTaskModal: (editId, parentId) => set({ isTaskModalOpen: true, editTaskId: editId ?? null, newTaskParentId: parentId ?? null }),
+  closeTaskModal: () => set({ isTaskModalOpen: false, editTaskId: null, newTaskParentId: null }),
   setColorSettings: (open) => set({ isColorSettingsOpen: open }),
   calNav: (delta) => {
     const { calYear, calMonth } = get()

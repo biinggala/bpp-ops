@@ -11,17 +11,27 @@ const EMPTY: Omit<Task, 'id'> = {
 }
 
 export function TaskModal() {
-  const { isTaskModalOpen, editTaskId, closeTaskModal, space } = useUiStore()
+  const { isTaskModalOpen, editTaskId, newTaskParentId, closeTaskModal, space } = useUiStore()
   const { tasks, addTask, updateTask } = useTaskStore()
   const spaces = useSpaceStore(s => s.spaces)
   const [form, setForm] = useState<Omit<Task, 'id'>>(EMPTY)
 
   const editing = editTaskId ? tasks.find(t => t.id === editTaskId) : null
+  const parentTask = newTaskParentId ? tasks.find(t => t.id === newTaskParentId) : null
 
   useEffect(() => {
     if (!isTaskModalOpen) return
-    if (editing) setForm({ ...editing })
-    else setForm({ ...EMPTY, cat: space ?? spaces[0]?.name ?? '' })
+    if (editing) {
+      setForm({ ...editing })
+    } else {
+      const defaultCat = parentTask?.cat ?? space ?? spaces[0]?.name ?? ''
+      setForm({
+        ...EMPTY,
+        cat: defaultCat,
+        type: newTaskParentId ? '세부' : EMPTY.type,
+        ...(newTaskParentId ? { parentId: newTaskParentId } : {}),
+      })
+    }
   }, [isTaskModalOpen, editTaskId])
 
   if (!isTaskModalOpen) return null
@@ -45,7 +55,16 @@ export function TaskModal() {
 
         {/* Header */}
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--bd)', display: 'flex', alignItems: 'center', position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1 }}>
-          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--t1)' }}>{editing ? '업무 수정' : '새 업무'}</span>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--t1)' }}>
+              {editing ? '업무 수정' : parentTask ? '하위 업무 추가' : '새 업무'}
+            </div>
+            {parentTask && !editing && (
+              <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
+                ↳ {parentTask.name}
+              </div>
+            )}
+          </div>
           <CloseBtn onClick={closeTaskModal} />
         </div>
 
