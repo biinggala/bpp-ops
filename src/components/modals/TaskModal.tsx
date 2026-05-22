@@ -13,7 +13,7 @@ const EMPTY: Omit<Task, 'id'> = {
 }
 
 export function TaskModal() {
-  const { isTaskModalOpen, editTaskId, newTaskParentId, closeTaskModal, space, projectId: uiProjectId } = useUiStore()
+  const { isTaskModalOpen, editTaskId, newTaskParentId, newTaskMilestoneId, closeTaskModal, space, projectId: uiProjectId } = useUiStore()
   const { tasks, addTask, updateTask } = useTaskStore()
   const spaces = useSpaceStore(s => s.spaces)
   const projects = useProjectStore(s => s.projects)
@@ -30,12 +30,14 @@ export function TaskModal() {
     } else {
       const defaultCat = parentTask?.cat ?? space ?? spaces[0]?.name ?? ''
       const defaultProjectId = parentTask?.projectId ?? uiProjectId ?? undefined
+      const defaultMilestoneId = parentTask?.milestoneId ?? newTaskMilestoneId ?? undefined
       setForm({
         ...EMPTY,
         cat: defaultCat,
         type: newTaskParentId ? '세부' : EMPTY.type,
         ...(newTaskParentId ? { parentId: newTaskParentId } : {}),
         ...(defaultProjectId ? { projectId: defaultProjectId } : {}),
+        ...(defaultMilestoneId ? { milestoneId: defaultMilestoneId } : {}),
       })
     }
   }, [isTaskModalOpen, editTaskId])
