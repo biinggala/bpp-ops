@@ -46,11 +46,14 @@ export const usePresenceStore = create<PresenceState>((set) => ({
 
   setCurrentTask: (uid, taskId) => {
     void fbSet(ref(db, `/presence/${uid}/currentTask`), taskId)
-    set(s => ({
-      presences: {
-        ...s.presences,
-        [uid]: s.presences[uid] ? { ...s.presences[uid], currentTask: taskId } : s.presences[uid],
-      },
-    }))
+    set(s => {
+      if (!s.presences[uid]) return s
+      return {
+        presences: {
+          ...s.presences,
+          [uid]: { ...s.presences[uid], currentTask: taskId },
+        },
+      }
+    })
   },
 }))

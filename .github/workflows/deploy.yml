@@ -24,6 +24,15 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Deploy Firebase Database Rules
+        continue-on-error: true
+        run: |
+          echo "$FIREBASE_SA" > /tmp/sa.json
+          npx firebase-tools@latest deploy --only database --project crng-task-manager
+        env:
+          FIREBASE_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
+
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:

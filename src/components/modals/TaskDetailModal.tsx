@@ -157,7 +157,7 @@ export function TaskDetailModal() {
 
   // Who else is viewing
   const viewers = Object.entries(presences)
-    .filter(([pUid, p]) => pUid !== uid && p.currentTask === task.id && p.online)
+    .filter(([pUid, p]) => p != null && pUid !== uid && p.currentTask === task.id && p.online)
     .map(([, p]) => p)
 
   const taskMilestones = milestones.filter(m => m.projectId === task.projectId)
