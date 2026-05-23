@@ -38,6 +38,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       color: resolvedColor,
       inviteCode: gid().slice(0, 8),
       memberEmails: creatorEmail ? [creatorEmail] : [],
+      ...(creatorEmail ? { creatorEmail: creatorEmail.toLowerCase() } : {}),
       ...(dueDate ? { dueDate } : {}),
       ...(clientName ? { clientName } : {}),
     }

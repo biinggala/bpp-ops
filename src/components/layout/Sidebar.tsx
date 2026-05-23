@@ -30,7 +30,7 @@ export function Sidebar() {
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
   const [editProjectName, setEditProjectName] = useState('')
   const projectEditRef = useRef<HTMLInputElement>(null)
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string; name: string } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string; name: string; type: 'project' | 'space' } | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
   const [memberModal, setMemberModal] = useState<{ id: string; name: string } | null>(null)
 
@@ -75,11 +75,19 @@ export function Sidebar() {
     setEditingSpaceId(null)
   }
 
-  const handleDeleteSpace = (e: React.MouseEvent, id: string, name: string) => {
-    e.stopPropagation()
-    if (!confirm(`"${name}" 스페이스를 삭제할까요?`)) return
-    if (space === name) setSpace(null)
-    deleteSpace(id)
+  const isProjectCreator = (id: string): boolean => {
+    const p = projects.find(pj => pj.id === id)
+    if (!p || !email) return false
+    if (p.creatorEmail) return p.creatorEmail.toLowerCase() === email.toLowerCase()
+    return p.memberEmails?.[0]?.toLowerCase() === email.toLowerCase()
+  }
+
+  const handleLeaveProject = (id: string) => {
+    if (!email) return
+    if (!confirm('이 프로젝트에서 나가시겠어요?')) return
+    if (projectId === id) setProject(null)
+    removeMember(id, email)
+    setContextMenu(null)
   }
 
   const handleAddProject = () => {
@@ -110,7 +118,13 @@ export function Sidebar() {
   const handleContextMenu = (e: React.MouseEvent, id: string, name: string) => {
     e.preventDefault()
     e.stopPropagation()
-    setContextMenu({ x: e.clientX, y: e.clientY, id, name })
+    setContextMenu({ x: e.clientX, y: e.clientY, id, name, type: 'project' })
+  }
+
+  const handleSpaceContextMenu = (e: React.MouseEvent, id: string, name: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({ x: e.clientX, y: e.clientY, id, name, type: 'space' })
   }
 
   const getDaysRemaining = (dueDate: string): { days: number; overdue: boolean } => {
@@ -278,8 +292,7 @@ export function Sidebar() {
                   dot={s.color}
                   count={countFor(s.name)}
                   onClick={() => setSpace(s.name)}
-                  onEdit={() => { setEditingSpaceId(s.id); setEditSpaceName(s.name) }}
-                  onDelete={e => handleDeleteSpace(e, s.id, s.name)}
+                  onContextMenu={e => handleSpaceContextMenu(e, s.id, s.name)}
                 >
                   {s.name}
                 </SpaceItem>
@@ -356,33 +369,39 @@ export function Sidebar() {
           }}
           onClick={e => e.stopPropagation()}
         >
-          <ContextMenuItem
-            onClick={() => {
-              setEditingProjectId(contextMenu.id)
-              setEditProjectName(contextMenu.name)
-              setContextMenu(null)
-            }}
-          >
-            ✎&nbsp;&nbsp;이름 수정
-          </ContextMenuItem>
-          <ContextMenuItem
-            onClick={() => {
-              setMemberModal({ id: contextMenu.id, name: contextMenu.name })
-              setContextMenu(null)
-            }}
-          >
-            👥&nbsp;&nbsp;멤버 관리
-          </ContextMenuItem>
-          <div style={{ height: 1, background: 'var(--bd)', margin: '4px 0' }} />
-          <ContextMenuItem
-            danger
-            onClick={() => {
-              setDeleteConfirm({ id: contextMenu.id, name: contextMenu.name })
-              setContextMenu(null)
-            }}
-          >
-            ×&nbsp;&nbsp;삭제
-          </ContextMenuItem>
+          {contextMenu.type === 'space' ? (
+            <>
+              <ContextMenuItem onClick={() => { setEditingSpaceId(contextMenu.id); setEditSpaceName(contextMenu.name); setContextMenu(null) }}>
+                ✎&nbsp;&nbsp;이름 수정
+              </ContextMenuItem>
+              <div style={{ height: 1, background: 'var(--bd)', margin: '4px 0' }} />
+              <ContextMenuItem danger onClick={() => {
+                if (!confirm(`"${contextMenu.name}" 스페이스를 삭제할까요?`)) return
+                if (space === contextMenu.name) setSpace(null)
+                deleteSpace(contextMenu.id)
+                setContextMenu(null)
+              }}>
+                ×&nbsp;&nbsp;삭제
+              </ContextMenuItem>
+            </>
+          ) : isProjectCreator(contextMenu.id) ? (
+            <>
+              <ContextMenuItem onClick={() => { setEditingProjectId(contextMenu.id); setEditProjectName(contextMenu.name); setContextMenu(null) }}>
+                ✎&nbsp;&nbsp;이름 수정
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => { setMemberModal({ id: contextMenu.id, name: contextMenu.name }); setContextMenu(null) }}>
+                👥&nbsp;&nbsp;멤버 관리
+              </ContextMenuItem>
+              <div style={{ height: 1, background: 'var(--bd)', margin: '4px 0' }} />
+              <ContextMenuItem danger onClick={() => { setDeleteConfirm({ id: contextMenu.id, name: contextMenu.name }); setContextMenu(null) }}>
+                ×&nbsp;&nbsp;삭제
+              </ContextMenuItem>
+            </>
+          ) : (
+            <ContextMenuItem danger onClick={() => handleLeaveProject(contextMenu.id)}>
+              →&nbsp;&nbsp;나가기
+            </ContextMenuItem>
+          )}
         </div>
       )}
 
@@ -508,36 +527,28 @@ function ProjectItem({ children, active, dot, count, daysInfo, inviteCode, onCli
   )
 }
 
-function SpaceItem({ children, active, dot, count, onClick, onEdit, onDelete }: {
+function SpaceItem({ children, active, dot, count, onClick, onContextMenu }: {
   children: React.ReactNode; active: boolean; dot: string; count: number
-  onClick: () => void; onEdit: () => void; onDelete: (e: React.MouseEvent) => void
+  onClick: () => void; onContextMenu: (e: React.MouseEvent) => void
 }) {
-  const [hovered, setHovered] = useState(false)
   return (
     <div
       onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onContextMenu={onContextMenu}
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
         padding: '5px 8px 5px 14px', borderRadius: 'var(--r2)', cursor: 'pointer',
         fontSize: 13, fontWeight: active ? 500 : 400, margin: '1px 0',
         color: active ? 'var(--sb-t1)' : 'var(--sb-t2)',
-        background: active ? 'var(--sb-active)' : hovered ? 'var(--sb-hover)' : 'transparent',
+        background: active ? 'var(--sb-active)' : 'transparent',
         transition: 'background .1s',
       }}
+      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--sb-hover)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = active ? 'var(--sb-active)' : 'transparent' }}
     >
       <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flexShrink: 0 }} />
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
-
-      {hovered ? (
-        <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
-          <ActionIcon onClick={e => { e.stopPropagation(); onEdit() }}>✎</ActionIcon>
-          <ActionIcon onClick={onDelete} danger>×</ActionIcon>
-        </div>
-      ) : (
-        <span style={{ fontSize: 11, color: 'var(--sb-t3)', marginLeft: 'auto', flexShrink: 0 }}>{count}</span>
-      )}
+      <span style={{ fontSize: 11, color: 'var(--sb-t3)', marginLeft: 'auto', flexShrink: 0 }}>{count}</span>
     </div>
   )
 }

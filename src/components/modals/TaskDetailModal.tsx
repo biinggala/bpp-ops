@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -14,8 +14,6 @@ import { useProjectStore } from '../../store/projectStore'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { MEMBERS, STATUS_LIST, PRIORITY_LIST, STATUS_COLORS } from '../../types'
 import type { Task, Status, Priority, MemberKey } from '../../types'
-
-const MEMBER_KEYS: MemberKey[] = ['YL', 'SJ', 'HC']
 
 /* ── Helpers ── */
 
@@ -102,6 +100,18 @@ export function TaskDetailModal() {
   const { updateTask } = useTaskStore()
   const { uid } = useAuthStore()
   const { presences, setCurrentTask } = usePresenceStore()
+
+  const assigneeOptions = useMemo(() => {
+    const opts: { value: string; label: string }[] = (Object.keys(MEMBERS) as MemberKey[])
+      .map(k => ({ value: k, label: MEMBERS[k].n }))
+    const known = new Set(opts.map(o => o.value))
+    Object.values(presences).forEach(p => {
+      if (!p || known.has(p.memberKey)) return
+      known.add(p.memberKey)
+      opts.push({ value: p.memberKey, label: p.name })
+    })
+    return opts
+  }, [presences])
   const spaces = useSpaceStore(s => s.spaces)
   const projects = useProjectStore(s => s.projects)
   const milestones = useMilestoneStore(s => s.milestones)
@@ -232,7 +242,7 @@ export function TaskDetailModal() {
               <select value={task.assignee} onChange={e => upd({ assignee: e.target.value })}
                 style={{ border: 'none', background: 'transparent', fontSize: 13, cursor: 'pointer', outline: 'none', color: 'var(--t1)', fontFamily: 'var(--font)', width: '100%' }}>
                 <option value="">미배정</option>
-                {MEMBER_KEYS.map(k => <option key={k} value={k}>{MEMBERS[k].n}</option>)}
+                {assigneeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </PropRow>
 

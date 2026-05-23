@@ -193,7 +193,7 @@ export function TableView() {
               {/* Project header */}
               <div
                 onClick={() => togglePj(proj.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--bg2)', borderBottom: isCollapsed ? 'none' : '1px solid var(--bd)', cursor: 'pointer', borderLeft: `4px solid ${proj.color}` }}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--bg2)', borderBottom: isCollapsed ? 'none' : '1px solid var(--bd)', cursor: 'pointer', borderLeft: `3px solid ${proj.color}` }}
               >
                 <span style={{ width: 7, height: 7, borderRadius: '50%', background: proj.color, flexShrink: 0 }} />
                 <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--t1)', flex: 1 }}>{proj.name}</span>

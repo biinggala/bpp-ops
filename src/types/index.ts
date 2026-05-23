@@ -21,6 +21,7 @@ export interface Project {
   clientName?: string
   inviteCode?: string     // short code for invite links
   memberEmails?: string[] // if set, only these emails can see the project
+  creatorEmail?: string   // email of the user who created this project
 }
 
 export interface Milestone {

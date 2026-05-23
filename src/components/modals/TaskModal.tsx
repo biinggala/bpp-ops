@@ -5,8 +5,9 @@ import { useSpaceStore } from '../../store/spaceStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { useAuthStore } from '../../store/authStore'
-import { STATUS_LIST, PRIORITY_LIST, getTagColor } from '../../types'
-import type { Task } from '../../types'
+import { MEMBERS, STATUS_LIST, PRIORITY_LIST, getTagColor } from '../../types'
+import type { Task, MemberKey } from '../../types'
+import { usePresenceStore } from '../../store/presenceStore'
 
 const EMPTY: Omit<Task, 'id'> = {
   type: '세부', name: '', cat: '', assignee: '',
@@ -20,6 +21,18 @@ export function TaskModal() {
   const allProjects = useProjectStore(s => s.projects)
   const milestones = useMilestoneStore(s => s.milestones)
   const email = useAuthStore(s => s.email)
+  const presences = usePresenceStore(s => s.presences)
+  const assigneeOptions = useMemo(() => {
+    const opts: { value: string; label: string }[] = (Object.keys(MEMBERS) as MemberKey[])
+      .map(k => ({ value: k, label: MEMBERS[k].n }))
+    const known = new Set(opts.map(o => o.value))
+    Object.values(presences).forEach(p => {
+      if (!p || known.has(p.memberKey)) return
+      known.add(p.memberKey)
+      opts.push({ value: p.memberKey, label: p.name })
+    })
+    return opts
+  }, [presences])
   const projects = allProjects.filter(p =>
     !p.memberEmails?.length || (email ? p.memberEmails.includes(email) : false)
   )
@@ -166,17 +179,16 @@ export function TaskModal() {
           </div>
 
           <Field label="담당자">
-            <div style={{ display: 'flex', gap: 6 }}>
-              {(['YL', 'SJ', 'HC'] as const).map(key => {
-                const on = form.assignee.includes(key)
-                const label = { YL: '이연주', SJ: '정세운', HC: '최희건' }[key]
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {assigneeOptions.map(({ value, label }) => {
+                const on = form.assignee.split(',').map(s => s.trim()).includes(value)
                 return (
                   <button
-                    key={key}
+                    key={value}
                     type="button"
                     onClick={() => {
-                      const keys = form.assignee.split(',').filter(Boolean)
-                      upd('assignee', on ? keys.filter(k => k !== key).join(',') : [...keys, key].join(','))
+                      const keys = form.assignee.split(',').map(s => s.trim()).filter(Boolean)
+                      upd('assignee', on ? keys.filter(k => k !== value).join(',') : [...keys, value].join(','))
                     }}
                     style={{ padding: '5px 14px', borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 500, cursor: 'pointer', border: `1px solid ${on ? 'var(--ac)' : 'var(--bd)'}`, background: on ? 'var(--ac)' : 'transparent', color: on ? '#fff' : 'var(--t2)', transition: 'all .1s', fontFamily: 'var(--font)' }}
                   >
