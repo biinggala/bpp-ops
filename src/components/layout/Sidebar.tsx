@@ -4,6 +4,7 @@ import { useTaskStore } from '../../store/taskStore'
 import { useSpaceStore } from '../../store/spaceStore'
 import { useAuthStore } from '../../store/authStore'
 import { useProjectStore } from '../../store/projectStore'
+import { usePresenceStore } from '../../store/presenceStore'
 import { MEMBERS } from '../../types'
 import type { MemberKey } from '../../types'
 
@@ -87,6 +88,8 @@ export function Sidebar() {
   }
 
   const member = memberKey ? MEMBERS[memberKey as MemberKey] : null
+  const presences = usePresenceStore(s => s.presences)
+  const onlineUsers = Object.values(presences).filter(p => p.online)
 
   return (
     <aside style={{ width: 240, background: 'var(--sb-bg)', display: 'flex', flexDirection: 'column', flexShrink: 0, borderRight: '1px solid rgba(255,255,255,.06)' }}>
@@ -263,6 +266,33 @@ export function Sidebar() {
           <AddBtn onClick={() => setAddingSpace(true)}>스페이스 추가</AddBtn>
         )}
       </div>
+
+      {/* Online users */}
+      {onlineUsers.length > 0 && (
+        <div style={{ borderTop: '1px solid rgba(255,255,255,.06)', padding: '8px 10px' }}>
+          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--sb-t3)', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>
+            접속 중
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {onlineUsers.map(p => {
+              const m = MEMBERS[p.memberKey as MemberKey]
+              return (
+                <div key={p.memberKey} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ position: 'relative', flexShrink: 0 }}>
+                    <div style={{ width: 22, height: 22, borderRadius: '50%', background: m?.grad ?? 'var(--ac)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff' }}>
+                      {(m?.n ?? p.name)[0]}
+                    </div>
+                    <div style={{ position: 'absolute', bottom: 0, right: 0, width: 7, height: 7, borderRadius: '50%', background: '#22c55e', border: '1.5px solid var(--sb-bg)' }} />
+                  </div>
+                  <span style={{ fontSize: 12, color: 'var(--sb-t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m?.n ?? p.name}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </aside>
   )
 }

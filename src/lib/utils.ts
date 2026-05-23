@@ -1,3 +1,7 @@
+export function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
 export function gid(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
 }

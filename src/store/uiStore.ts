@@ -33,6 +33,8 @@ interface UiState {
   setFilters: (f: Partial<Filters>) => void
   resetFilters: () => void
   setDetailTaskId: (id: string | null) => void
+  openTaskDetail: (id: string) => void
+  closeTaskDetail: () => void
   openTaskModal: (editId?: string, parentId?: string, milestoneId?: string) => void
   closeTaskModal: () => void
   setColorSettings: (open: boolean) => void
@@ -76,6 +78,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   setFilters: (f) => set(s => ({ filters: { ...s.filters, ...f } })),
   resetFilters: () => set({ filters: { ...defaultFilters } }),
   setDetailTaskId: (id) => set({ detailTaskId: id }),
+  openTaskDetail: (id: string) => set({ detailTaskId: id }),
+  closeTaskDetail: () => set({ detailTaskId: null }),
   openTaskModal: (editId, parentId, milestoneId) => set({ isTaskModalOpen: true, editTaskId: editId ?? null, newTaskParentId: parentId ?? null, newTaskMilestoneId: milestoneId ?? null }),
   closeTaskModal: () => set({ isTaskModalOpen: false, editTaskId: null, newTaskParentId: null, newTaskMilestoneId: null }),
   setColorSettings: (open) => set({ isColorSettingsOpen: open }),

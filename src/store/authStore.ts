@@ -5,7 +5,7 @@ import { ALLOWED_EMAILS } from '../types'
 import type { MemberKey } from '../types'
 
 // 로컬 개발 시 로그인 우회 — 배포 전 false로 변경
-const DEV_MODE = true
+const DEV_MODE = false
 
 interface AuthState {
   memberKey: MemberKey | null

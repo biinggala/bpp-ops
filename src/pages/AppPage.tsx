@@ -4,6 +4,8 @@ import { useTaskStore } from '../store/taskStore'
 import { useSpaceStore } from '../store/spaceStore'
 import { useProjectStore } from '../store/projectStore'
 import { useMilestoneStore } from '../store/milestoneStore'
+import { useAuthStore } from '../store/authStore'
+import { usePresenceStore } from '../store/presenceStore'
 import { Sidebar } from '../components/layout/Sidebar'
 import { Topbar } from '../components/layout/Topbar'
 import { ViewBar } from '../components/layout/ViewBar'
@@ -13,9 +15,11 @@ import { CalendarView } from '../components/views/calendar'
 import { StatsView } from '../components/views/stats'
 import { GanttView } from '../components/views/gantt'
 import { TaskModal } from '../components/modals/TaskModal'
+import { TaskDetailModal } from '../components/modals/TaskDetailModal'
 import { CommandPalette } from '../components/modals/CommandPalette'
 import { EmptyState } from '../components/shared/EmptyState'
 import { Toast } from '../components/shared/Toast'
+import type { MemberKey } from '../types'
 
 export function AppPage() {
   const view = useUiStore(s => s.view)
@@ -27,6 +31,8 @@ export function AppPage() {
   const openCommandPalette = useUiStore(s => s.openCommandPalette)
   const isTaskModalOpen = useUiStore(s => s.isTaskModalOpen)
   const undo = useTaskStore(s => s.undo)
+  const { uid, memberKey, email } = useAuthStore()
+  const subscribePresence = usePresenceStore(s => s.subscribe)
 
   useEffect(() => {
     const u1 = subscribeFirebase()
@@ -35,6 +41,13 @@ export function AppPage() {
     const u4 = subscribeMilestones()
     return () => { u1(); u2(); u3(); u4() }
   }, [])
+
+  useEffect(() => {
+    if (!uid || !memberKey) return
+    const name = email?.split('@')[0] ?? memberKey
+    const unsub = subscribePresence(uid, memberKey as MemberKey, name)
+    return unsub
+  }, [uid, memberKey])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -81,6 +94,7 @@ export function AppPage() {
       </div>
 
       <TaskModal />
+      <TaskDetailModal />
       <CommandPalette />
       <Toast />
     </div>

@@ -32,7 +32,7 @@ export function TableView() {
   const filteredTasks = useFilteredTasks()
   const allTasks = useTaskStore(s => s.tasks)
   const { deleteTask, updateTask } = useTaskStore()
-  const { openTaskModal, projectId } = useUiStore()
+  const { openTaskModal, openTaskDetail, projectId } = useUiStore()
   const { milestones, updateMilestone } = useMilestoneStore()
   const projects = useProjectStore(s => s.projects)
   const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set())
@@ -52,7 +52,7 @@ export function TableView() {
     setCollapsedPj(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
 
   const makeHandlers = (task: Task) => ({
-    onOpen: () => openTaskModal(task.id),
+    onOpen: () => openTaskDetail(task.id),
     onUpdate: (patch: Partial<Task>) => updateTask(task.id, patch),
     onMilestoneChange: (msId: string | undefined) => updateTask(task.id, { milestoneId: msId }),
     onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, task }) },
