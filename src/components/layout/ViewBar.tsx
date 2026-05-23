@@ -1,6 +1,7 @@
 import React from 'react'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
+import { MEMBERS } from '../../types'
 import type { ViewType, Status, MemberKey } from '../../types'
 import { STATUS_LIST } from '../../types'
 
@@ -12,20 +13,33 @@ const VIEWS: { id: ViewType; label: string }[] = [
   { id: 's', label: '통계' },
 ]
 
-const MEMBERS_FILTER: { key: MemberKey; label: string }[] = [
-  { key: 'YL', label: '이연주' },
-  { key: 'SJ', label: '정세운' },
-  { key: 'HC', label: '최희건' },
+const SORT_OPTIONS = [
+  { value: 'due_asc' as const, label: '마감 가까운 순' },
+  { value: 'due_desc' as const, label: '마감 먼 순' },
+  { value: 'default' as const, label: '기본 순서' },
 ]
 
 export function ViewBar() {
   const { view, setView, filters, setFilters, resetFilters } = useUiStore()
   const allTasks = useTaskStore(s => s.tasks)
+
   const allTagOptions = React.useMemo(() => {
     const s = new Set<string>()
     allTasks.forEach(t => t.tags?.forEach(tag => s.add(tag)))
     return Array.from(s).sort()
   }, [allTasks])
+
+  const allAssigneeOptions = React.useMemo(() => {
+    const keys = new Set<string>()
+    allTasks.forEach(t => {
+      if (t.assignee) t.assignee.split(',').map(s => s.trim()).filter(Boolean).forEach(k => keys.add(k))
+    })
+    return Array.from(keys).sort().map(key => {
+      const known = MEMBERS[key as MemberKey]
+      return { value: key, label: known?.n ?? key }
+    })
+  }, [allTasks])
+
   const hasFilters = filters.assignees.length > 0 || filters.statuses.length > 0 || filters.tags.length > 0
   const showFilters = !['c', 's'].includes(view)
 
@@ -52,12 +66,14 @@ export function ViewBar() {
 
       {showFilters && (
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          <MultiSelect
-            label="담당자"
-            options={MEMBERS_FILTER.map(m => ({ value: m.key, label: m.label }))}
-            selected={filters.assignees}
-            onChange={v => setFilters({ assignees: v as MemberKey[] })}
-          />
+          {allAssigneeOptions.length > 0 && (
+            <MultiSelect
+              label="담당자"
+              options={allAssigneeOptions}
+              selected={filters.assignees}
+              onChange={v => setFilters({ assignees: v })}
+            />
+          )}
           <MultiSelect
             label="상태"
             options={STATUS_LIST.map(s => ({ value: s, label: s }))}
@@ -80,15 +96,11 @@ export function ViewBar() {
               ✕ 초기화
             </button>
           )}
-          <select
+          <SingleSelect
+            options={SORT_OPTIONS}
             value={filters.sort}
-            onChange={e => setFilters({ sort: e.target.value as 'due_asc' | 'due_desc' | 'default' })}
-            style={{ padding: '4px 8px', borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', fontSize: 13, color: 'var(--t2)', outline: 'none', cursor: 'pointer', fontFamily: 'var(--font)' }}
-          >
-            <option value="due_asc">마감 가까운 순</option>
-            <option value="due_desc">마감 먼 순</option>
-            <option value="default">기본 순서</option>
-          </select>
+            onChange={v => setFilters({ sort: v })}
+          />
         </div>
       )}
     </div>
@@ -118,6 +130,85 @@ function ViewTab({ children, active, onClick }: { children: React.ReactNode; act
 
 function Divider() {
   return <div style={{ width: 1, height: 16, background: 'var(--bd)', margin: '0 4px', flexShrink: 0 }} />
+}
+
+function SingleSelect<T extends string>({ options, value, onChange }: {
+  options: { value: T; label: string }[]
+  value: T
+  onChange: (v: T) => void
+}) {
+  const [open, setOpen] = React.useState(false)
+  const [pos, setPos] = React.useState({ top: 0, left: 0 })
+  const ref = React.useRef<HTMLDivElement>(null)
+  const btnRef = React.useRef<HTMLButtonElement>(null)
+  const current = options.find(o => o.value === value)
+
+  React.useEffect(() => {
+    if (!open) return
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+
+  const handleOpen = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 4, left: r.left })
+    }
+    setOpen(o => !o)
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block', flexShrink: 0 }}>
+      <button
+        ref={btnRef}
+        onClick={handleOpen}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 4,
+          padding: '4px 10px', borderRadius: 'var(--r1)',
+          border: '1px solid var(--bd)', background: 'transparent',
+          color: 'var(--t2)', fontSize: 13, cursor: 'pointer',
+          fontFamily: 'var(--font)', whiteSpace: 'nowrap',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.color = 'var(--t1)'; e.currentTarget.style.borderColor = 'var(--bd2)' }}
+        onMouseLeave={e => { e.currentTarget.style.color = 'var(--t2)'; e.currentTarget.style.borderColor = 'var(--bd)' }}
+      >
+        {current?.label ?? '정렬'}
+        <span style={{ fontSize: 9, opacity: .5 }}>▾</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'fixed', top: pos.top, left: pos.left,
+          background: 'var(--bg)', border: '1px solid var(--bd)',
+          borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)',
+          zIndex: 9000, minWidth: 140, padding: '4px 0',
+        }}>
+          {options.map(opt => (
+            <div
+              key={opt.value}
+              onClick={() => { onChange(opt.value); setOpen(false) }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '7px 12px', fontSize: 13, cursor: 'pointer',
+                color: opt.value === value ? 'var(--ac)' : 'var(--t1)',
+                fontWeight: opt.value === value ? 500 : 400,
+                background: 'transparent', transition: 'background .08s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              {opt.value === value && <span style={{ fontSize: 10, color: 'var(--ac)' }}>✓</span>}
+              {opt.value !== value && <span style={{ width: 10 }} />}
+              {opt.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function MultiSelect<T extends string>({ label, options, selected, onChange }: {

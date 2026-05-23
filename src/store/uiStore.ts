@@ -1,8 +1,8 @@
 import { create } from 'zustand'
-import type { ViewType, Status, MemberKey } from '../types'
+import type { ViewType, Status } from '../types'
 
 interface Filters {
-  assignees: MemberKey[]
+  assignees: string[]
   statuses: Status[]
   tags: string[]
   search: string

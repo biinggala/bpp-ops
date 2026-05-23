@@ -531,8 +531,11 @@ function Row({
         opacity: task.status === '완료' ? .55 : 1,
       }}
     >
-      {/* 업무명 */}
-      <div style={{ flex: 3.5, padding: '8px 12px 8px 40px', display: 'flex', alignItems: 'center', gap: 5, minHeight: 44, overflow: 'hidden', borderRight: '1px solid var(--bd)' }}>
+      {/* 업무명 — onDoubleClick here catches dblclick when first click changed DOM (span→input) */}
+      <div
+        onDoubleClick={e => { e.stopPropagation(); stopEdit(); onOpen() }}
+        style={{ flex: 3.5, padding: '8px 12px 8px 40px', display: 'flex', alignItems: 'center', gap: 5, minHeight: 44, overflow: 'hidden', borderRight: '1px solid var(--bd)' }}
+      >
         {isChild ? (
           <div style={{ width: 28, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingLeft: 20 }}>
             <span style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1 }}>└</span>
@@ -608,12 +611,11 @@ function Row({
       {/* 마감일 */}
       <Cell flex={0.9} onClick={startEdit('due')}>
         {editing === 'due' ? (
-          <input autoFocus type="date" value={task.due || ''}
-            onChange={e => { onUpdate({ due: e.target.value }); stopEdit() }}
+          <AutoDateInput
+            value={task.due || ''}
+            onChange={v => { onUpdate({ due: v }); stopEdit() }}
             onBlur={stopEdit}
-            onClick={e => e.stopPropagation()}
-            onKeyDown={e => { if (e.key === 'Escape') stopEdit() }}
-            style={{ border: 'none', outline: '1px solid var(--ac)', borderRadius: 3, background: 'var(--bg)', fontSize: 12, fontFamily: 'var(--font)', color: 'var(--t1)', width: '100%', padding: '2px 4px' }}
+            onEscape={stopEdit}
           />
         ) : (
           <span style={{ fontSize: 13, color: overdue ? '#ef4444' : task.due ? 'var(--t2)' : 'var(--t3)', fontWeight: overdue ? 500 : 400, cursor: 'pointer' }}>
@@ -621,23 +623,18 @@ function Row({
           </span>
         )}
       </Cell>
-      {/* 우선순위 */}
-      <Cell flex={0.8} onClick={startEdit('priority')}>
-        {editing === 'priority' ? (
-          <select autoFocus value={task.priority}
-            onChange={e => { onUpdate({ priority: e.target.value as Priority }); stopEdit() }}
-            onBlur={stopEdit}
-            onClick={e => e.stopPropagation()}
-            onKeyDown={e => { if (e.key === 'Escape') stopEdit() }}
-            style={{ border: 'none', outline: '1px solid var(--ac)', borderRadius: 3, background: 'var(--bg)', fontSize: 12, fontFamily: 'var(--font)', color: 'var(--t1)', width: '100%', padding: '2px 4px' }}
-          >
-            <option value="높음">높음</option>
-            <option value="중간">중간</option>
-            <option value="낮음">낮음</option>
-          </select>
-        ) : (
-          <span style={{ cursor: 'pointer' }}><PriorityBadge priority={task.priority} /></span>
-        )}
+      {/* 우선순위 — always visible select (single click opens dropdown) */}
+      <Cell flex={0.8}>
+        <select
+          value={task.priority}
+          onClick={e => e.stopPropagation()}
+          onChange={e => onUpdate({ priority: e.target.value as Priority })}
+          style={{ border: 'none', background: 'transparent', fontSize: 12, cursor: 'pointer', outline: 'none', color: 'var(--t2)', fontFamily: 'var(--font)', appearance: 'none', width: '100%' }}
+        >
+          <option value="높음">높음</option>
+          <option value="중간">중간</option>
+          <option value="낮음">낮음</option>
+        </select>
       </Cell>
       {/* 진행률 */}
       <Cell flex={1.2}><ProgressBar value={task.progress} /></Cell>
@@ -690,6 +687,30 @@ function InlineTextEdit({ value, onCommit, onCancel, fontSize = 13, bold = false
       }}
       onClick={e => e.stopPropagation()}
       style={{ flex: 1, width: '100%', border: 'none', outline: '1.5px solid var(--ac)', borderRadius: 3, background: 'var(--bg)', padding: '2px 6px', fontFamily: 'var(--font)', fontSize, fontWeight: bold ? 500 : 400, color: 'var(--t1)' }}
+    />
+  )
+}
+
+function AutoDateInput({ value, onChange, onBlur, onEscape }: {
+  value: string; onChange: (v: string) => void; onBlur: () => void; onEscape: () => void
+}) {
+  const ref = React.useRef<HTMLInputElement>(null)
+  React.useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.focus()
+    try { el.showPicker?.() } catch { /* some browsers don't support or block it */ }
+  }, [])
+  return (
+    <input
+      ref={ref}
+      type="date"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      onBlur={onBlur}
+      onClick={e => e.stopPropagation()}
+      onKeyDown={e => { if (e.key === 'Escape') onEscape() }}
+      style={{ border: 'none', outline: '1px solid var(--ac)', borderRadius: 3, background: 'var(--bg)', fontSize: 12, fontFamily: 'var(--font)', color: 'var(--t1)', width: '100%', padding: '2px 4px' }}
     />
   )
 }
