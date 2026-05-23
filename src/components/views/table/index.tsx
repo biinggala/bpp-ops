@@ -404,7 +404,9 @@ function MilestonePicker({ milestoneId, milestones, onChange }: {
   onChange: (id: string | undefined) => void
 }) {
   const [open, setOpen] = React.useState(false)
+  const [pos, setPos] = React.useState({ top: 0, left: 0 })
   const ref = React.useRef<HTMLDivElement>(null)
+  const btnRef = React.useRef<HTMLButtonElement>(null)
   const current = milestones.find(m => m.id === milestoneId)
 
   React.useEffect(() => {
@@ -414,10 +416,19 @@ function MilestonePicker({ milestoneId, milestones, onChange }: {
     return () => document.removeEventListener('mousedown', h)
   }, [open])
 
+  const handleOpen = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 3, left: r.left })
+    }
+    setOpen(o => !o)
+  }
+
   return (
     <div ref={ref} style={{ position: 'relative', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
       <button
-        onClick={() => setOpen(o => !o)}
+        ref={btnRef}
+        onClick={handleOpen}
         style={{
           display: 'flex', alignItems: 'center', gap: 3,
           padding: '2px 6px', borderRadius: 'var(--r2)', fontFamily: 'var(--font)',
@@ -435,7 +446,7 @@ function MilestonePicker({ milestoneId, milestones, onChange }: {
       </button>
 
       {open && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 3px)', left: 0, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', zIndex: 300, minWidth: 200, padding: '4px 0' }}>
+        <div style={{ position: 'fixed', top: pos.top, left: pos.left, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', zIndex: 9000, minWidth: 200, padding: '4px 0' }}>
           <PickerRow
             onClick={() => { onChange(undefined); setOpen(false) }}
             active={!milestoneId}

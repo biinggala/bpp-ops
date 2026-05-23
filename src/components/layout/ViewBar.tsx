@@ -124,24 +124,36 @@ function MultiSelect<T extends string>({ label, options, selected, onChange }: {
   label: string; options: { value: T; label: string }[]; selected: T[]; onChange: (v: T[]) => void
 }) {
   const [open, setOpen] = React.useState(false)
+  const [pos, setPos] = React.useState({ top: 0, left: 0 })
   const ref = React.useRef<HTMLDivElement>(null)
+  const btnRef = React.useRef<HTMLButtonElement>(null)
   const active = selected.length > 0
 
   React.useEffect(() => {
+    if (!open) return
     const h = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
     document.addEventListener('mousedown', h)
     return () => document.removeEventListener('mousedown', h)
-  }, [])
+  }, [open])
 
   const toggle = (v: T) =>
     onChange(selected.includes(v) ? selected.filter(s => s !== v) : [...selected, v])
 
+  const handleOpen = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 4, left: r.left })
+    }
+    setOpen(o => !o)
+  }
+
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-block', flexShrink: 0 }}>
       <button
-        onClick={() => setOpen(o => !o)}
+        ref={btnRef}
+        onClick={handleOpen}
         style={{
           display: 'flex', alignItems: 'center', gap: 4,
           padding: '4px 10px', borderRadius: 'var(--r1)',
@@ -158,10 +170,10 @@ function MultiSelect<T extends string>({ label, options, selected, onChange }: {
 
       {open && (
         <div style={{
-          position: 'absolute', top: 'calc(100% + 4px)', left: 0,
+          position: 'fixed', top: pos.top, left: pos.left,
           background: 'var(--bg)', border: '1px solid var(--bd)',
           borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)',
-          zIndex: 300, minWidth: 160, padding: '4px 0',
+          zIndex: 9000, minWidth: 160, padding: '4px 0',
         }}>
           {options.map(opt => (
             <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', fontSize: 13, color: 'var(--t1)', cursor: 'pointer', transition: 'background .08s' }}
@@ -175,7 +187,7 @@ function MultiSelect<T extends string>({ label, options, selected, onChange }: {
           {selected.length > 0 && (
             <>
               <div style={{ height: 1, background: 'var(--bd)', margin: '3px 0' }} />
-              <button onClick={() => onChange([])} style={{ width: '100%', padding: '6px 12px', fontSize: 12, color: 'var(--ac)', cursor: 'pointer', border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'var(--font)' }}>
+              <button onClick={() => { onChange([]); setOpen(false) }} style={{ width: '100%', padding: '6px 12px', fontSize: 12, color: 'var(--ac)', cursor: 'pointer', border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'var(--font)' }}>
                 전체 해제
               </button>
             </>

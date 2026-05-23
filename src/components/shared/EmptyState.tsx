@@ -7,38 +7,78 @@ export function EmptyState() {
   const hasSpaces = spaces.length > 0
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center">
-      <div className="text-[48px] select-none">📋</div>
+    <div style={{
+      flex: 1,
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 28,
+      padding: 40,
+      textAlign: 'center',
+    }}>
+      <div style={{ fontSize: 56, userSelect: 'none', lineHeight: 1 }}>📋</div>
 
       {!hasSpaces ? (
         <>
           <div>
-            <div className="text-[18px] font-bold text-gray-800 mb-2">시작해볼까요?</div>
-            <div className="text-[13px] text-gray-400 leading-relaxed">
-              왼쪽 사이드바에서 <strong>스페이스</strong>를 먼저 만들어보세요.<br />
+            <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--t1)', marginBottom: 10 }}>
+              시작해볼까요?
+            </div>
+            <div style={{ fontSize: 14, color: 'var(--t3)', lineHeight: 1.7, maxWidth: 340 }}>
+              왼쪽 사이드바에서 <strong style={{ color: 'var(--t2)' }}>스페이스</strong>를 먼저 만들어보세요.<br />
               스페이스는 팀의 업무 카테고리입니다.
             </div>
           </div>
-          <div className="flex items-center gap-3 text-[12px] text-gray-400">
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Step n={1} label="사이드바 하단 '스페이스 추가' 클릭" />
             <Arrow />
             <Step n={2} label="스페이스 이름 입력" />
             <Arrow />
-            <Step n={3} label="Add Task로 업무 추가" />
+            <Step n={3} label="업무 추가로 시작" />
           </div>
         </>
       ) : (
         <>
           <div>
-            <div className="text-[18px] font-bold text-gray-800 mb-2">업무가 없어요</div>
-            <div className="text-[13px] text-gray-400">첫 번째 업무를 추가해보세요</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--t1)', marginBottom: 10 }}>
+              업무가 없어요
+            </div>
+            <div style={{ fontSize: 14, color: 'var(--t3)', lineHeight: 1.6 }}>
+              첫 번째 업무를 추가해보세요
+            </div>
           </div>
+
           <button
             onClick={() => openTaskModal()}
-            className="flex items-center gap-2 px-[20px] py-[10px] rounded-[10px] bg-[#007aff] text-white text-[13px] font-semibold border-none cursor-pointer hover:bg-[#0066d6] transition-colors shadow-[0_2px_12px_rgba(0,122,255,.3)]"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '14px 32px',
+              borderRadius: 14,
+              background: 'var(--ac)',
+              color: '#fff',
+              fontSize: 15,
+              fontWeight: 600,
+              border: 'none',
+              cursor: 'pointer',
+              boxShadow: '0 4px 20px rgba(35,131,226,.35)',
+              transition: 'transform .12s, box-shadow .12s',
+              fontFamily: 'var(--font)',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.transform = 'translateY(-2px)'
+              e.currentTarget.style.boxShadow = '0 8px 28px rgba(35,131,226,.4)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.transform = 'translateY(0)'
+              e.currentTarget.style.boxShadow = '0 4px 20px rgba(35,131,226,.35)'
+            }}
           >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M6 1v10M1 6h10" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+            <svg width="16" height="16" viewBox="0 0 12 12" fill="none">
+              <path d="M6 1v10M1 6h10" stroke="white" strokeWidth="2" strokeLinecap="round"/>
             </svg>
             업무 추가
           </button>
@@ -50,15 +90,22 @@ export function EmptyState() {
 
 function Step({ n, label }: { n: number; label: string }) {
   return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="w-7 h-7 rounded-full bg-[rgba(0,122,255,.1)] text-[#007aff] text-[12px] font-bold flex items-center justify-center">
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+      <div style={{
+        width: 32, height: 32, borderRadius: '50%',
+        background: 'rgba(35,131,226,.1)', color: 'var(--ac)',
+        fontSize: 14, fontWeight: 700,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
         {n}
       </div>
-      <div className="text-[11px] text-gray-500 max-w-[100px] leading-snug">{label}</div>
+      <div style={{ fontSize: 12, color: 'var(--t3)', maxWidth: 110, lineHeight: 1.5 }}>{label}</div>
     </div>
   )
 }
 
 function Arrow() {
-  return <div className="text-gray-300 text-[18px] mb-5">→</div>
+  return (
+    <div style={{ color: 'var(--bd2)', fontSize: 20, marginBottom: 20, flexShrink: 0 }}>→</div>
+  )
 }
