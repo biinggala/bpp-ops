@@ -69,7 +69,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   syncToFirebase: () => {
     const tasks = get().tasks
-    fbSet(ref(db, 'cringe'), { tasks, savedAt: Date.now() }).catch((e: unknown) => console.warn('[sync]', e))
+    const now = Date.now()
+    fbSet(ref(db, 'cringe/tasks'), tasks).catch((e: unknown) => console.warn('[sync]', e))
+    fbSet(ref(db, 'cringe/savedAt'), now).catch((e: unknown) => console.warn('[sync savedAt]', e))
   },
 
   subscribeFirebase: () => {
@@ -81,7 +83,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       if (!root?.tasks) {
         const tasks = get().tasks
         if (tasks.length && localTs > 0) {
-          fbSet(ref(db, 'cringe'), { tasks, savedAt: Date.now() })
+          fbSet(ref(db, 'cringe/tasks'), tasks).catch(() => {})
+          fbSet(ref(db, 'cringe/savedAt'), Date.now()).catch(() => {})
         }
         return
       }
