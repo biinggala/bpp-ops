@@ -9,7 +9,7 @@ import { AssigneeGroup } from '../../shared/Avatar'
 import { ProgressBar } from '../../shared/ProgressBar'
 import { ContextMenu } from '../../shared/ContextMenu'
 import { fmtDate, isOverdue } from '../../../lib/utils'
-import type { Task, Milestone, Status } from '../../../types'
+import type { Task, Milestone, Status, Priority } from '../../../types'
 
 const COLS = [
   { label: '업무', flex: 3.5 },
@@ -53,7 +53,7 @@ export function TableView() {
 
   const makeHandlers = (task: Task) => ({
     onOpen: () => openTaskModal(task.id),
-    onStatusChange: (s: Status) => updateTask(task.id, { status: s }),
+    onUpdate: (patch: Partial<Task>) => updateTask(task.id, patch),
     onMilestoneChange: (msId: string | undefined) => updateTask(task.id, { milestoneId: msId }),
     onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, task }) },
   })
@@ -348,10 +348,10 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onT
         <span style={{ fontSize: 11, color: 'var(--t3)', whiteSpace: 'nowrap' }}>{completed}/{taskCount} 완료</span>
       </div>
 
-      {hovered && !editingName && !editingDate && (
+      {!editingName && !editingDate && (
         <button
           onClick={e => { e.stopPropagation(); onAddTask() }}
-          style={{ marginLeft: 'auto', padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: `1px solid ${accent}`, background: 'transparent', color: accent, cursor: 'pointer', fontFamily: 'var(--font)', flexShrink: 0 }}
+          style={{ marginLeft: 'auto', padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: `1px solid ${accent}`, background: 'transparent', color: accent, cursor: 'pointer', fontFamily: 'var(--font)', flexShrink: 0, opacity: hovered ? 1 : 0, pointerEvents: hovered ? 'auto' : 'none', transition: 'opacity .12s' }}
           onMouseEnter={e => { e.currentTarget.style.background = overdue ? 'rgba(239,68,68,.07)' : close ? 'rgba(245,158,11,.07)' : 'rgba(139,92,246,.07)' }}
           onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
         >
@@ -384,16 +384,14 @@ function UnassignedHeader({ count, collapsed, onToggle, onAddTask }: {
       </button>
       <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--t2)' }}>마일스톤 미배정</span>
       <span style={{ fontSize: 11, color: 'var(--t3)', background: 'var(--bg3)', borderRadius: 10, padding: '1px 7px' }}>{count}</span>
-      {hovered && (
-        <button
-          onClick={e => { e.stopPropagation(); onAddTask() }}
-          style={{ marginLeft: 'auto', padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)', flexShrink: 0 }}
-          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-        >
-          + 업무
-        </button>
-      )}
+      <button
+        onClick={e => { e.stopPropagation(); onAddTask() }}
+        style={{ marginLeft: 'auto', padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)', flexShrink: 0, opacity: hovered ? 1 : 0, pointerEvents: hovered ? 'auto' : 'none', transition: 'opacity .12s' }}
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+      >
+        + 업무
+      </button>
     </div>
   )
 }
@@ -483,27 +481,36 @@ function Row({
   hasChildren = false, isExpanded = true,
   childCount = 0, doneCount = 0,
   milestones = [], showMilestonePicker = false,
-  onToggle, onOpen, onStatusChange, onMilestoneChange, onContextMenu,
+  onToggle, onOpen, onUpdate, onMilestoneChange, onContextMenu,
 }: {
   task: Task; isChild?: boolean
   hasChildren?: boolean; isExpanded?: boolean; childCount?: number; doneCount?: number
   milestones?: Milestone[]; showMilestonePicker?: boolean
   onToggle?: () => void; onOpen: () => void
-  onStatusChange: (s: Status) => void
+  onUpdate: (patch: Partial<Task>) => void
   onMilestoneChange?: (id: string | undefined) => void
   onContextMenu?: (e: React.MouseEvent) => void
 }) {
   const [hovered, setHovered] = React.useState(false)
+  const [editing, setEditing] = React.useState<string | null>(null)
   const overdue = isOverdue(task.due, task.status)
+
+  const stopEdit = () => setEditing(null)
+  // e.detail >= 2 means this click is part of a double-click — let it bubble to onDoubleClick
+  const startEdit = (cell: string) => (e: React.MouseEvent) => {
+    if (e.detail >= 2) return
+    e.stopPropagation()
+    setEditing(cell)
+  }
 
   return (
     <div
-      onClick={onOpen}
+      onDoubleClick={() => { stopEdit(); onOpen() }}
       onContextMenu={onContextMenu}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: 'flex', cursor: 'pointer',
+        display: 'flex',
         background: hovered ? 'var(--bg3)' : (isChild ? 'var(--bg)' : 'transparent'),
         borderBottom: `1px solid var(--bd)`,
         borderLeft: isChild
@@ -530,9 +537,22 @@ function Row({
           </button>
         )}
 
-        <span style={{ fontSize: 14, fontWeight: !isChild && hasChildren ? 500 : 400, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--t1)' }}>
-          {task.name}
-        </span>
+        {editing === 'name' ? (
+          <InlineTextEdit
+            value={task.name}
+            onCommit={v => { onUpdate({ name: v }); stopEdit() }}
+            onCancel={stopEdit}
+            fontSize={14}
+            bold={!isChild && hasChildren}
+          />
+        ) : (
+          <span
+            onClick={startEdit('name')}
+            style={{ fontSize: 14, fontWeight: !isChild && hasChildren ? 500 : 400, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--t1)', cursor: 'text' }}
+          >
+            {task.name}
+          </span>
+        )}
 
         {hasChildren && !isExpanded && (
           <span style={{ fontSize: 10, color: 'var(--t3)', background: 'var(--bg4)', borderRadius: 10, padding: '1px 6px', flexShrink: 0 }}>
@@ -540,76 +560,90 @@ function Row({
           </span>
         )}
 
-        {/* Tags */}
         {task.tags && task.tags.length > 0 && (
           <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
             {task.tags.slice(0, 3).map(tag => <TagBadge key={tag} tag={tag} />)}
-            {task.tags.length > 3 && (
-              <span style={{ fontSize: 10, color: 'var(--t3)', alignSelf: 'center' }}>+{task.tags.length - 3}</span>
-            )}
+            {task.tags.length > 3 && <span style={{ fontSize: 10, color: 'var(--t3)', alignSelf: 'center' }}>+{task.tags.length - 3}</span>}
           </div>
         )}
 
-        {/* Dependency indicators */}
         {(task.blockedBy?.length || task.blocking?.length) ? (
           <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-            {!!task.blockedBy?.length && (
-              <span title={`선행 태스크 ${task.blockedBy.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(239,68,68,.1)', color: '#ef4444', lineHeight: 1.6 }}>
-                ⛔ {task.blockedBy.length}
-              </span>
-            )}
-            {!!task.blocking?.length && (
-              <span title={`후행 태스크 ${task.blocking.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(245,158,11,.1)', color: '#f59e0b', lineHeight: 1.6 }}>
-                ⚡ {task.blocking.length}
-              </span>
-            )}
+            {!!task.blockedBy?.length && <span title={`선행 태스크 ${task.blockedBy.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(239,68,68,.1)', color: '#ef4444', lineHeight: 1.6 }}>⛔ {task.blockedBy.length}</span>}
+            {!!task.blocking?.length && <span title={`후행 태스크 ${task.blocking.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(245,158,11,.1)', color: '#f59e0b', lineHeight: 1.6 }}>⚡ {task.blocking.length}</span>}
           </div>
         ) : null}
 
-        {/* Milestone picker — visible on hover OR when assigned */}
         {showMilestonePicker && (hovered || task.milestoneId) && onMilestoneChange && (
-          <MilestonePicker
-            milestoneId={task.milestoneId}
-            milestones={milestones}
-            onChange={onMilestoneChange}
-          />
+          <MilestonePicker milestoneId={task.milestoneId} milestones={milestones} onChange={onMilestoneChange} />
         )}
-
       </div>
 
       {/* 스페이스 */}
       <Cell flex={1.2}>{task.cat ? <CategoryBadge cat={task.cat} /> : <Dash />}</Cell>
       {/* 담당자 */}
       <Cell flex={1.2}><AssigneeGroup assignee={task.assignee} size={20} /></Cell>
-      {/* 상태 */}
+      {/* 상태 — select stays inline always */}
       <Cell flex={1}>
         <select
           value={task.status}
           onClick={e => e.stopPropagation()}
-          onChange={e => onStatusChange(e.target.value as Task['status'])}
+          onChange={e => onUpdate({ status: e.target.value as Status })}
           style={{ border: 'none', background: 'transparent', fontSize: 13, cursor: 'pointer', outline: 'none', color: 'var(--t2)', fontFamily: 'var(--font)', appearance: 'none', width: '100%' }}
         >
-          <option>진행중</option>
-          <option>대기</option>
-          <option>검토중</option>
-          <option>완료</option>
+          <option>진행중</option><option>대기</option><option>검토중</option><option>완료</option>
         </select>
       </Cell>
       {/* 마감일 */}
-      <Cell flex={0.9}>
-        {task.due ? (
-          <span style={{ fontSize: 13, color: overdue ? '#ef4444' : 'var(--t2)', fontWeight: overdue ? 500 : 400 }}>
-            {overdue && '⚠ '}{fmtDate(task.due)}
+      <Cell flex={0.9} onClick={startEdit('due')}>
+        {editing === 'due' ? (
+          <input autoFocus type="date" value={task.due || ''}
+            onChange={e => { onUpdate({ due: e.target.value }); stopEdit() }}
+            onBlur={stopEdit}
+            onClick={e => e.stopPropagation()}
+            onKeyDown={e => { if (e.key === 'Escape') stopEdit() }}
+            style={{ border: 'none', outline: '1px solid var(--ac)', borderRadius: 3, background: 'var(--bg)', fontSize: 12, fontFamily: 'var(--font)', color: 'var(--t1)', width: '100%', padding: '2px 4px' }}
+          />
+        ) : (
+          <span style={{ fontSize: 13, color: overdue ? '#ef4444' : task.due ? 'var(--t2)' : 'var(--t3)', fontWeight: overdue ? 500 : 400, cursor: 'pointer' }}>
+            {task.due ? (overdue ? '⚠ ' : '') + fmtDate(task.due) : '날짜 추가'}
           </span>
-        ) : <Dash />}
+        )}
       </Cell>
       {/* 우선순위 */}
-      <Cell flex={0.8}><PriorityBadge priority={task.priority} /></Cell>
+      <Cell flex={0.8} onClick={startEdit('priority')}>
+        {editing === 'priority' ? (
+          <select autoFocus value={task.priority}
+            onChange={e => { onUpdate({ priority: e.target.value as Priority }); stopEdit() }}
+            onBlur={stopEdit}
+            onClick={e => e.stopPropagation()}
+            onKeyDown={e => { if (e.key === 'Escape') stopEdit() }}
+            style={{ border: 'none', outline: '1px solid var(--ac)', borderRadius: 3, background: 'var(--bg)', fontSize: 12, fontFamily: 'var(--font)', color: 'var(--t1)', width: '100%', padding: '2px 4px' }}
+          >
+            <option value="높음">높음</option>
+            <option value="중간">중간</option>
+            <option value="낮음">낮음</option>
+          </select>
+        ) : (
+          <span style={{ cursor: 'pointer' }}><PriorityBadge priority={task.priority} /></span>
+        )}
+      </Cell>
       {/* 진행률 */}
       <Cell flex={1.2}><ProgressBar value={task.progress} /></Cell>
       {/* 메모 */}
-      <Cell flex={1.8} last>
-        <span style={{ fontSize: 13, color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.memo || ''}</span>
+      <Cell flex={1.8} last onClick={startEdit('memo')}>
+        {editing === 'memo' ? (
+          <InlineTextEdit
+            value={task.memo || ''}
+            onCommit={v => { onUpdate({ memo: v }); stopEdit() }}
+            onCancel={stopEdit}
+            fontSize={13}
+          />
+        ) : (
+          <span style={{ fontSize: 13, color: task.memo ? 'var(--t2)' : 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text', width: '100%' }}>
+            {task.memo || '메모 추가...'}
+          </span>
+        )}
       </Cell>
     </div>
   )
@@ -617,9 +651,9 @@ function Row({
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function Cell({ children, flex, last }: { children?: React.ReactNode; flex: number; last?: boolean }) {
+function Cell({ children, flex, last, onClick }: { children?: React.ReactNode; flex: number; last?: boolean; onClick?: (e: React.MouseEvent) => void }) {
   return (
-    <div style={{ flex, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 4, minHeight: 44, overflow: 'hidden', borderRight: last ? 'none' : '1px solid var(--bd)' }}>
+    <div onClick={onClick} style={{ flex, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 4, minHeight: 44, overflow: 'hidden', borderRight: last ? 'none' : '1px solid var(--bd)' }}>
       {children}
     </div>
   )
@@ -627,4 +661,24 @@ function Cell({ children, flex, last }: { children?: React.ReactNode; flex: numb
 
 function Dash() {
   return <span style={{ color: 'var(--t3)', fontSize: 12 }}>—</span>
+}
+
+function InlineTextEdit({ value, onCommit, onCancel, fontSize = 13, bold = false }: {
+  value: string; onCommit: (v: string) => void; onCancel: () => void; fontSize?: number; bold?: boolean
+}) {
+  const [v, setV] = React.useState(value)
+  return (
+    <input
+      autoFocus
+      value={v}
+      onChange={e => setV(e.target.value)}
+      onBlur={() => onCommit(v)}
+      onKeyDown={e => {
+        if (e.key === 'Enter') { e.preventDefault(); onCommit(v) }
+        if (e.key === 'Escape') { e.preventDefault(); onCancel() }
+      }}
+      onClick={e => e.stopPropagation()}
+      style={{ flex: 1, width: '100%', border: 'none', outline: '1.5px solid var(--ac)', borderRadius: 3, background: 'var(--bg)', padding: '2px 6px', fontFamily: 'var(--font)', fontSize, fontWeight: bold ? 500 : 400, color: 'var(--t1)' }}
+    />
+  )
 }

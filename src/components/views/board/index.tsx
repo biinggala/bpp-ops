@@ -96,8 +96,7 @@ function BoardCard({ task, isDragging, onDragStart, onDragEnd, onClick, onEdit, 
         borderRadius: 'var(--r3)', padding: '12px 14px', marginBottom: 8,
         cursor: 'grab', opacity: isDragging ? .4 : 1,
         boxShadow: hovered ? 'var(--sh-md)' : 'var(--sh-sm)',
-        transform: hovered ? 'translateY(-1px)' : 'none',
-        transition: 'box-shadow .15s, transform .15s',
+        transition: 'box-shadow .15s',
         position: 'relative',
       }}
     >
