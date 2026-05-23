@@ -4,6 +4,7 @@ import { useTaskStore } from '../../store/taskStore'
 import { useSpaceStore } from '../../store/spaceStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMilestoneStore } from '../../store/milestoneStore'
+import { useAuthStore } from '../../store/authStore'
 import { STATUS_LIST, PRIORITY_LIST, getTagColor } from '../../types'
 import type { Task } from '../../types'
 
@@ -16,8 +17,12 @@ export function TaskModal() {
   const { isTaskModalOpen, editTaskId, newTaskParentId, newTaskMilestoneId, closeTaskModal, space, projectId: uiProjectId } = useUiStore()
   const { tasks, addTask, updateTask } = useTaskStore()
   const spaces = useSpaceStore(s => s.spaces)
-  const projects = useProjectStore(s => s.projects)
+  const allProjects = useProjectStore(s => s.projects)
   const milestones = useMilestoneStore(s => s.milestones)
+  const email = useAuthStore(s => s.email)
+  const projects = allProjects.filter(p =>
+    !p.memberEmails?.length || (email ? p.memberEmails.includes(email) : false)
+  )
   const [form, setForm] = useState<Omit<Task, 'id'>>(EMPTY)
 
   const editing = editTaskId ? tasks.find(t => t.id === editTaskId) : null
