@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { useUiStore } from '../store/uiStore'
 import { useTaskStore } from '../store/taskStore'
 import { useSpaceStore } from '../store/spaceStore'
@@ -20,6 +20,24 @@ import { CommandPalette } from '../components/modals/CommandPalette'
 import { EmptyState } from '../components/shared/EmptyState'
 import { Toast } from '../components/shared/Toast'
 
+class TaskDetailErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+  static getDerivedStateFromError() { return { hasError: true } }
+  componentDidCatch(err: Error, info: React.ErrorInfo) {
+    console.error('[TaskDetail crash]', err, info)
+  }
+  render() {
+    if (this.state.hasError) return null
+    return this.props.children
+  }
+}
+
 export function AppPage() {
   const view = useUiStore(s => s.view)
   const tasks = useTaskStore(s => s.tasks)
@@ -40,6 +58,7 @@ export function AppPage() {
   const isTaskModalOpen = useUiStore(s => s.isTaskModalOpen)
   const undo = useTaskStore(s => s.undo)
   const { uid, memberKey, displayName, email } = useAuthStore()
+  const detailTaskId = useUiStore(s => s.detailTaskId)
   const subscribePresence = usePresenceStore(s => s.subscribe)
 
   useEffect(() => {
@@ -116,7 +135,9 @@ export function AppPage() {
       </div>
 
       <TaskModal />
-      <TaskDetailModal />
+      <TaskDetailErrorBoundary key={detailTaskId ?? 'none'}>
+        <TaskDetailModal />
+      </TaskDetailErrorBoundary>
       <CommandPalette />
       <Toast />
     </div>

@@ -33,12 +33,13 @@ export function TableView() {
   const allTasks = useTaskStore(s => s.tasks)
   const { deleteTask, updateTask } = useTaskStore()
   const { openTaskModal, openTaskDetail, projectId } = useUiStore()
-  const { milestones, updateMilestone } = useMilestoneStore()
+  const { milestones, updateMilestone, deleteMilestone } = useMilestoneStore()
   const projects = useProjectStore(s => s.projects)
   const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set())
   const [collapsedMs, setCollapsedMs] = React.useState<Set<string>>(new Set())
   const [collapsedPj, setCollapsedPj] = React.useState<Set<string>>(new Set())
   const [ctxMenu, setCtxMenu] = React.useState<CtxState>(null)
+  const [addingMs, setAddingMs] = React.useState<string | null>(null)
   const today = React.useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
 
   const rootTasks = filteredTasks.filter(t => !t.parentId)
@@ -66,6 +67,17 @@ export function TableView() {
         </div>
       ))}
     </div>
+  )
+
+  const addMsBtn = (pjId: string) => (
+    <button
+      onClick={() => setAddingMs(pjId)}
+      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', fontSize: 12, color: '#8b5cf6', background: 'transparent', border: 'none', borderTop: '1px solid var(--bd)', cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left', transition: 'background .1s' }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139,92,246,.05)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+    >
+      <span style={{ fontSize: 9, lineHeight: 1 }}>◆</span> 마일스톤 추가
+    </button>
   )
 
   const addBtn = (milestoneId?: string) => (
@@ -130,6 +142,7 @@ export function TableView() {
                 onToggle={() => toggleMs(ms.id)}
                 onAddTask={() => onAdd(ms.id)}
                 onUpdate={patch => updateMilestone(ms.id, patch)}
+                onDelete={() => deleteMilestone(ms.id)}
               />
               {!isCollapsed && renderRows(msTasks, pjMilestones)}
             </React.Fragment>
@@ -194,6 +207,10 @@ export function TableView() {
                     ? renderMilestoneGroups(pjTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
                     : renderRows(pjTasks, pjMilestones)
                   }
+                  {addingMs === proj.id
+                    ? <AddMilestoneInline projectId={proj.id} onDone={() => setAddingMs(null)} />
+                    : addMsBtn(proj.id)
+                  }
                   {addBtn()}
                 </>
               )}
@@ -238,6 +255,10 @@ export function TableView() {
           ? renderMilestoneGroups(rootTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
           : renderRows(rootTasks, [])
         }
+        {addingMs === projectId
+          ? <AddMilestoneInline projectId={projectId!} onDone={() => setAddingMs(null)} />
+          : addMsBtn(projectId!)
+        }
         {addBtn()}
       </div>
       {ctx}
@@ -247,10 +268,11 @@ export function TableView() {
 
 // ── MilestoneHeader (Jira-style section header) ───────────────────────────────
 
-function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onToggle, onAddTask, onUpdate }: {
+function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onToggle, onAddTask, onUpdate, onDelete }: {
   milestone: Milestone; taskCount: number; completed: number; diff: number
   collapsed: boolean; onToggle: () => void; onAddTask: () => void
   onUpdate: (patch: Partial<Omit<Milestone, 'id'>>) => void
+  onDelete?: () => void
 }) {
   const [hovered, setHovered] = React.useState(false)
   const [editingName, setEditingName] = React.useState(false)
@@ -349,14 +371,22 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onT
       </div>
 
       {!editingName && !editingDate && (
-        <button
-          onClick={e => { e.stopPropagation(); onAddTask() }}
-          style={{ marginLeft: 'auto', padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: `1px solid ${accent}`, background: 'transparent', color: accent, cursor: 'pointer', fontFamily: 'var(--font)', flexShrink: 0, opacity: hovered ? 1 : 0, pointerEvents: hovered ? 'auto' : 'none', transition: 'opacity .12s' }}
-          onMouseEnter={e => { e.currentTarget.style.background = overdue ? 'rgba(239,68,68,.07)' : close ? 'rgba(245,158,11,.07)' : 'rgba(139,92,246,.07)' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-        >
-          + 업무
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', opacity: hovered ? 1 : 0, pointerEvents: hovered ? 'auto' : 'none', transition: 'opacity .12s', flexShrink: 0 }}>
+          <button
+            onClick={e => { e.stopPropagation(); onAddTask() }}
+            style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: `1px solid ${accent}`, background: 'transparent', color: accent, cursor: 'pointer', fontFamily: 'var(--font)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = overdue ? 'rgba(239,68,68,.07)' : close ? 'rgba(245,158,11,.07)' : 'rgba(139,92,246,.07)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+          >+ 업무</button>
+          {onDelete && (
+            <button
+              onClick={e => { e.stopPropagation(); if (confirm(`"${milestone.name}" 마일스톤을 삭제할까요?`)) onDelete() }}
+              style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid rgba(239,68,68,.4)', background: 'transparent', color: '#ef4444', cursor: 'pointer', fontFamily: 'var(--font)' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,.07)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+            >삭제</button>
+          )}
+        </div>
       )}
     </div>
   )
@@ -392,6 +422,52 @@ function UnassignedHeader({ count, collapsed, onToggle, onAddTask }: {
       >
         + 업무
       </button>
+    </div>
+  )
+}
+
+// ── AddMilestoneInline ────────────────────────────────────────────────────────
+
+function AddMilestoneInline({ projectId, onDone }: { projectId: string; onDone: () => void }) {
+  const addMilestone = useMilestoneStore(s => s.addMilestone)
+  const [name, setName] = React.useState('')
+  const [date, setDate] = React.useState('')
+
+  const submit = () => {
+    if (!name.trim() || !date) return
+    addMilestone(projectId, name.trim(), date)
+    onDone()
+  }
+
+  const valid = name.trim() !== '' && date !== ''
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: '3px solid #8b5cf6', borderTop: '1px solid var(--bd)' }}>
+      <span style={{ fontSize: 9, color: '#8b5cf6', flexShrink: 0 }}>◆</span>
+      <input
+        autoFocus
+        placeholder="마일스톤 이름..."
+        value={name}
+        onChange={e => setName(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onDone() }}
+        style={{ flex: 1, border: '1px solid var(--ac)', borderRadius: 'var(--r1)', padding: '3px 8px', fontSize: 13, fontWeight: 600, background: 'var(--bg)', color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)' }}
+      />
+      <input
+        type="date"
+        value={date}
+        onChange={e => setDate(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onDone() }}
+        style={{ border: '1px solid var(--bd)', borderRadius: 'var(--r1)', padding: '3px 8px', fontSize: 11, background: 'var(--bg)', color: 'var(--t2)', outline: 'none', fontFamily: 'var(--font)' }}
+      />
+      <button
+        onClick={submit}
+        disabled={!valid}
+        style={{ padding: '3px 10px', fontSize: 11, borderRadius: 'var(--r1)', border: `1px solid ${valid ? '#8b5cf6' : 'var(--bd)'}`, background: valid ? 'rgba(139,92,246,.1)' : 'transparent', color: valid ? '#8b5cf6' : 'var(--t3)', cursor: valid ? 'pointer' : 'default', fontFamily: 'var(--font)', transition: 'background .1s' }}
+      >추가</button>
+      <button
+        onClick={onDone}
+        style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', color: 'var(--t3)', cursor: 'pointer', fontFamily: 'var(--font)' }}
+      >취소</button>
     </div>
   )
 }
