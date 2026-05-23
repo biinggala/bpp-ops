@@ -26,7 +26,7 @@ export function GanttView() {
   const filteredTasks = useFilteredTasks()
   const allTasks = useTaskStore(s => s.tasks)
   const { updateTask } = useTaskStore()
-  const { openTaskModal, projectId } = useUiStore()
+  const { openTaskModal, openTaskDetail, projectId } = useUiStore()
   const milestones = useMilestoneStore(s => s.milestones)
   const wrapRef = useRef<HTMLDivElement>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
@@ -254,7 +254,7 @@ export function GanttView() {
                 isDragging={dragVisual?.taskId === task.id}
                 isCascading={isInCascade}
                 milestoneMarkers={milestoneMarkers}
-                onOpen={() => openTaskModal(task.id)}
+                onOpen={() => openTaskDetail(task.id)}
                 onToggle={() => toggle(task.id)}
                 onAddSubtask={() => openTaskModal(undefined, task.id)}
                 onBarMouseDown={(startX) => startDrag({ taskId: task.id, origStart: task.start, origDue: task.due, startX })}
@@ -279,7 +279,7 @@ export function GanttView() {
                     isCascading={childInCascade}
                     milestoneMarkers={milestoneMarkers}
                     onOpen={() => openTaskModal(child.id)}
-                    onEdit={() => openTaskModal(child.id)}
+                    onEdit={() => openTaskDetail(child.id)}
                     onBarMouseDown={(startX) => startDrag({ taskId: child.id, origStart: child.start, origDue: child.due, startX })}
                   />
                 )

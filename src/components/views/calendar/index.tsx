@@ -14,7 +14,7 @@ const fmt = fmtYMD
 const parseDate = toDate
 
 export function CalendarView() {
-  const { calYear, calMonth, calNav, calToday, openTaskModal, projectId } = useUiStore()
+  const { calYear, calMonth, calNav, calToday, openTaskModal, openTaskDetail, projectId } = useUiStore()
   const tasks = useFilteredTasks()
   const { updateTask, tasks: allTasks } = useTaskStore()
   const milestones = useMilestoneStore(s => s.milestones)
@@ -184,7 +184,7 @@ export function CalendarView() {
                           setDraggingId(t.id)
                         }}
                         onDragEnd={() => { setDraggingId(null); setDragOver(null) }}
-                        onClick={() => openTaskModal(t.id)}
+                        onClick={() => openTaskDetail(t.id)}
                         style={{
                           fontSize: 10, fontWeight: 500,
                           padding: '2px 6px', borderRadius: 3,

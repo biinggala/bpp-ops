@@ -165,7 +165,7 @@ export function TableView() {
     <ContextMenu
       x={ctxMenu.x} y={ctxMenu.y} task={ctxMenu.task}
       onClose={() => setCtxMenu(null)}
-      onEdit={() => openTaskModal(ctxMenu.task.id)}
+      onEdit={() => { openTaskDetail(ctxMenu.task.id); setCtxMenu(null) }}
       onAddSubtask={() => openTaskModal(undefined, ctxMenu.task.id)}
       onStatusChange={s => updateTask(ctxMenu.task.id, { status: s })}
       onDelete={() => {

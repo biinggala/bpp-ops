@@ -16,7 +16,7 @@ const STATUS_COLOR: Record<Status, string> = {
 export function BoardView() {
   const tasks = useFilteredTasks()
   const { updateTask, deleteTask } = useTaskStore()
-  const { setDetailTaskId, openTaskModal } = useUiStore()
+  const { openTaskDetail, openTaskModal } = useUiStore()
   const [dragging, setDragging] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<Status | null>(null)
 
@@ -53,8 +53,8 @@ export function BoardView() {
                     isDragging={dragging === task.id}
                     onDragStart={() => setDragging(task.id)}
                     onDragEnd={() => { setDragging(null); setDragOver(null) }}
-                    onClick={() => openTaskModal(task.id)}
-                    onEdit={() => openTaskModal(task.id)}
+                    onClick={() => openTaskDetail(task.id)}
+                    onEdit={() => openTaskDetail(task.id)}
                     onDelete={() => deleteTask(task.id)}
                   />
                 ))}
