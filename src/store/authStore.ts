@@ -4,13 +4,11 @@ import { auth } from '../lib/firebase'
 import { ALLOWED_EMAILS } from '../types'
 import type { MemberKey } from '../types'
 
-// 로컬 개발 시 로그인 우회 — 배포 전 false로 변경
-const DEV_MODE = false
-
 interface AuthState {
   memberKey: MemberKey | null
   uid: string | null
   email: string | null
+  displayName: string | null
   photoURL: string | null
   loading: boolean
   error: string | null
@@ -21,15 +19,15 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  memberKey: DEV_MODE ? 'HC' : null,
-  uid: DEV_MODE ? 'dev-user' : null,
-  email: DEV_MODE ? 'biinggala@crngfriends.com' : null,
+  memberKey: null,
+  uid: null,
+  email: null,
+  displayName: null,
   photoURL: null,
-  loading: !DEV_MODE,
+  loading: true,
   error: null,
 
   signIn: async () => {
-    if (DEV_MODE) return
     set({ error: null })
     try {
       const provider = new GoogleAuthProvider()
@@ -41,27 +39,19 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   signOutUser: async () => {
-    if (DEV_MODE) return
     await signOut(auth)
-    set({ memberKey: null, uid: null, email: null, photoURL: null })
+    set({ memberKey: null, uid: null, email: null, displayName: null, photoURL: null })
   },
 
   subscribe: () => {
-    if (DEV_MODE) return () => {}
-
     const unsub = onAuthStateChanged(auth, (user) => {
       if (!user) {
-        set({ memberKey: null, uid: null, email: null, photoURL: null, loading: false })
+        set({ memberKey: null, uid: null, email: null, displayName: null, photoURL: null, loading: false })
         return
       }
       const email = user.email || ''
-      const key = ALLOWED_EMAILS[email]
-      if (!key) {
-        signOut(auth)
-        set({ error: `접근 권한이 없는 계정: ${email}`, loading: false })
-        return
-      }
-      set({ memberKey: key, uid: user.uid, email, photoURL: user.photoURL, loading: false, error: null })
+      const memberKey = ALLOWED_EMAILS[email] ?? null
+      set({ memberKey, uid: user.uid, email, displayName: user.displayName, photoURL: user.photoURL, loading: false, error: null })
     })
 
     return unsub

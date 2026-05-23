@@ -13,7 +13,7 @@ export function Sidebar() {
   const tasks = useTaskStore(s => s.tasks)
   const { spaces, addSpace, deleteSpace, updateSpace } = useSpaceStore()
   const { projects, addProject, deleteProject } = useProjectStore()
-  const { memberKey, signOutUser } = useAuthStore()
+  const { memberKey, displayName, signOutUser } = useAuthStore()
 
   // Space state
   const [addingSpace, setAddingSpace] = useState(false)
@@ -88,6 +88,7 @@ export function Sidebar() {
   }
 
   const member = memberKey ? MEMBERS[memberKey as MemberKey] : null
+  const userName = member?.n ?? displayName ?? null
   const presences = usePresenceStore(s => s.presences)
   const onlineUsers = Object.values(presences).filter(p => p.online)
 
@@ -96,28 +97,26 @@ export function Sidebar() {
 
       {/* Workspace header */}
       <div style={{ padding: '14px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(255,255,255,.06)' }}>
-        <div style={{ width: 26, height: 26, borderRadius: 6, background: 'var(--ac)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-          {(member?.n?.[0] ?? 'W')}
+        <div style={{ width: 26, height: 26, borderRadius: 6, background: member?.grad ?? 'var(--ac)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+          {(userName?.[0]?.toUpperCase() ?? 'W')}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--sb-t1)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             업무 보드
           </div>
-          {member && (
-            <div style={{ fontSize: 11, color: 'var(--sb-t3)', marginTop: 1 }}>{member.n}</div>
+          {userName && (
+            <div style={{ fontSize: 11, color: 'var(--sb-t3)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName}</div>
           )}
         </div>
-        {member && (
-          <button
-            onClick={() => signOutUser()}
-            title="로그아웃"
-            style={{ width: 22, height: 22, borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--sb-t3)', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--sb-hover)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-          >
-            ↩
-          </button>
-        )}
+        <button
+          onClick={() => signOutUser()}
+          title="로그아웃"
+          style={{ width: 22, height: 22, borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--sb-t3)', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'var(--sb-hover)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+        >
+          ↩
+        </button>
       </div>
 
       {/* Search */}
@@ -276,16 +275,18 @@ export function Sidebar() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {onlineUsers.map(p => {
               const m = MEMBERS[p.memberKey as MemberKey]
+              const avatarGrad = m?.grad ?? 'linear-gradient(135deg,#667eea,#764ba2)'
+              const displayName = p.name
               return (
                 <div key={p.memberKey} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <div style={{ position: 'relative', flexShrink: 0 }}>
-                    <div style={{ width: 22, height: 22, borderRadius: '50%', background: m?.grad ?? 'var(--ac)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff' }}>
-                      {(m?.n ?? p.name)[0]}
+                    <div style={{ width: 22, height: 22, borderRadius: '50%', background: avatarGrad, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff' }}>
+                      {displayName[0]?.toUpperCase() ?? '?'}
                     </div>
                     <div style={{ position: 'absolute', bottom: 0, right: 0, width: 7, height: 7, borderRadius: '50%', background: '#22c55e', border: '1.5px solid var(--sb-bg)' }} />
                   </div>
                   <span style={{ fontSize: 12, color: 'var(--sb-t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {m?.n ?? p.name}
+                    {displayName}
                   </span>
                 </div>
               )

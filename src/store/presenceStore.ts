@@ -1,11 +1,10 @@
 import { create } from 'zustand'
 import { ref, set as fbSet, onValue, onDisconnect } from 'firebase/database'
 import { db } from '../lib/firebase'
-import type { MemberKey } from '../types'
 
 export interface PresenceEntry {
-  memberKey: MemberKey
-  name: string
+  memberKey: string   // MemberKey ('YL'|'SJ'|'HC') or uid for guests
+  name: string        // Google display name
   online: boolean
   lastSeen: number
   currentTask?: string | null
@@ -14,7 +13,7 @@ export interface PresenceEntry {
 interface PresenceState {
   presences: Record<string, PresenceEntry>  // uid → entry
   myUid: string | null
-  subscribe: (uid: string, memberKey: MemberKey, name: string) => () => void
+  subscribe: (uid: string, memberKey: string, name: string) => () => void
   setCurrentTask: (uid: string, taskId: string | null) => void
 }
 

@@ -20,11 +20,13 @@ const MEMBER_KEYS: MemberKey[] = ['YL', 'SJ', 'HC']
 
 /* ── Helpers ── */
 
-function MemberAvatar({ memberKey, size = 28 }: { memberKey: MemberKey; size?: number }) {
-  const m = MEMBERS[memberKey]
+function MemberAvatar({ memberKey, name, size = 28 }: { memberKey: string; name?: string; size?: number }) {
+  const m = MEMBERS[memberKey as MemberKey]
+  const grad = m?.grad ?? 'linear-gradient(135deg,#667eea,#764ba2)'
+  const initial = (m?.n ?? name ?? memberKey)[0]?.toUpperCase() ?? '?'
   return (
-    <div style={{ width: size, height: size, borderRadius: '50%', background: m.grad, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.38, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-      {m.n[0]}
+    <div style={{ width: size, height: size, borderRadius: '50%', background: grad, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.38, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+      {initial}
     </div>
   )
 }
@@ -212,7 +214,7 @@ export function TaskDetailModal() {
               <div style={{ display: 'flex', gap: -4 }}>
                 {viewers.map((v, i) => (
                   <div key={i} title={`${v.name}님이 보고 있어요`} style={{ marginLeft: i === 0 ? 0 : -6, border: '2px solid var(--bg)', borderRadius: '50%' }}>
-                    <MemberAvatar memberKey={v.memberKey} size={26} />
+                    <MemberAvatar memberKey={v.memberKey} name={v.name} size={26} />
                   </div>
                 ))}
               </div>

@@ -19,7 +19,6 @@ import { TaskDetailModal } from '../components/modals/TaskDetailModal'
 import { CommandPalette } from '../components/modals/CommandPalette'
 import { EmptyState } from '../components/shared/EmptyState'
 import { Toast } from '../components/shared/Toast'
-import type { MemberKey } from '../types'
 
 export function AppPage() {
   const view = useUiStore(s => s.view)
@@ -31,7 +30,7 @@ export function AppPage() {
   const openCommandPalette = useUiStore(s => s.openCommandPalette)
   const isTaskModalOpen = useUiStore(s => s.isTaskModalOpen)
   const undo = useTaskStore(s => s.undo)
-  const { uid, memberKey, email } = useAuthStore()
+  const { uid, memberKey, displayName, email } = useAuthStore()
   const subscribePresence = usePresenceStore(s => s.subscribe)
 
   useEffect(() => {
@@ -43,11 +42,12 @@ export function AppPage() {
   }, [])
 
   useEffect(() => {
-    if (!uid || !memberKey) return
-    const name = email?.split('@')[0] ?? memberKey
-    const unsub = subscribePresence(uid, memberKey as MemberKey, name)
+    if (!uid) return
+    const presenceKey = memberKey ?? uid
+    const name = displayName ?? email?.split('@')[0] ?? uid
+    const unsub = subscribePresence(uid, presenceKey, name)
     return unsub
-  }, [uid, memberKey])
+  }, [uid])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {

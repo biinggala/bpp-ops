@@ -4,7 +4,7 @@ import { LoginPage } from './pages/LoginPage'
 import { AppPage } from './pages/AppPage'
 
 export default function App() {
-  const { memberKey, loading, subscribe } = useAuthStore()
+  const { uid, loading, subscribe } = useAuthStore()
 
   useEffect(() => {
     const unsub = subscribe()
@@ -19,5 +19,5 @@ export default function App() {
     )
   }
 
-  return memberKey ? <AppPage /> : <LoginPage />
+  return uid ? <AppPage /> : <LoginPage />
 }
