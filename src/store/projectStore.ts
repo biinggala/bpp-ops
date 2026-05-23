@@ -12,6 +12,8 @@ interface ProjectState {
   addProject: (name: string, color?: string, dueDate?: string, clientName?: string, creatorEmail?: string) => Project
   updateProject: (id: string, patch: Partial<Omit<Project, 'id'>>) => void
   deleteProject: (id: string) => void
+  addMember: (projectId: string, email: string) => void
+  removeMember: (projectId: string, email: string) => void
   joinByInvite: (code: string, email: string) => Project | null
   subscribeFirebase: () => () => void
 }
@@ -54,11 +56,37 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ projects }); persist(projects); syncFb(projects)
   },
 
+  addMember: (projectId, email) => {
+    const normalized = email.toLowerCase().trim()
+    const projects = get().projects.map(p => {
+      if (p.id !== projectId) return p
+      const current = p.memberEmails ?? []
+      if (current.some(e => e.toLowerCase() === normalized)) return p
+      return { ...p, memberEmails: [...current, normalized] }
+    })
+    set({ projects }); persist(projects); syncFb(projects)
+  },
+
+  removeMember: (projectId, email) => {
+    const normalized = email.toLowerCase().trim()
+    const projects = get().projects.map(p => {
+      if (p.id !== projectId) return p
+      return { ...p, memberEmails: (p.memberEmails ?? []).filter(e => e.toLowerCase() !== normalized) }
+    })
+    set({ projects }); persist(projects); syncFb(projects)
+  },
+
   joinByInvite: (code, email) => {
     const project = get().projects.find(p => p.inviteCode === code)
     if (!project) return null
-    if (project.memberEmails?.includes(email)) return project
-    const memberEmails = [...(project.memberEmails ?? []), email]
+    const normalized = email.toLowerCase().trim()
+    // If no memberEmails set (legacy open project) allow anyone; otherwise require pre-approval
+    if (project.memberEmails?.length && !project.memberEmails.some(e => e.toLowerCase() === normalized)) {
+      return null
+    }
+    if (project.memberEmails?.some(e => e.toLowerCase() === normalized)) return project
+    // Legacy open project: add email to list
+    const memberEmails = [...(project.memberEmails ?? []), normalized]
     const projects = get().projects.map(p => p.id === project.id ? { ...p, memberEmails } : p)
     set({ projects }); persist(projects); syncFb(projects)
     return { ...project, memberEmails }

@@ -6,13 +6,13 @@ import { useAuthStore } from '../../store/authStore'
 import { useProjectStore } from '../../store/projectStore'
 import { usePresenceStore } from '../../store/presenceStore'
 import { MEMBERS } from '../../types'
-import type { MemberKey } from '../../types'
+import type { MemberKey, Project } from '../../types'
 
 export function Sidebar() {
   const { space, setSpace, filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly } = useUiStore()
   const tasks = useTaskStore(s => s.tasks)
   const { spaces, addSpace, deleteSpace, updateSpace } = useSpaceStore()
-  const { projects, addProject, updateProject, deleteProject } = useProjectStore()
+  const { projects, addProject, updateProject, deleteProject, addMember, removeMember } = useProjectStore()
   const { memberKey, displayName, email, signOutUser } = useAuthStore()
 
   // Space state
@@ -32,6 +32,7 @@ export function Sidebar() {
   const projectEditRef = useRef<HTMLInputElement>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string; name: string } | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
+  const [memberModal, setMemberModal] = useState<{ id: string; name: string } | null>(null)
 
   useEffect(() => { if (addingSpace) spaceInputRef.current?.focus() }, [addingSpace])
   useEffect(() => { if (editingSpaceId) spaceEditRef.current?.select() }, [editingSpaceId])
@@ -49,8 +50,18 @@ export function Sidebar() {
     }
   }, [contextMenu])
 
+  const accessibleProjectIds = new Set(
+    projects
+      .filter(p => !p.memberEmails?.length || (email ? p.memberEmails.includes(email) : false))
+      .map(p => p.id)
+  )
+  const hasAccess = accessibleProjectIds.size > 0
+  const accessibleTasks = tasks.filter(t =>
+    t.projectId ? accessibleProjectIds.has(t.projectId) : hasAccess
+  )
+
   const countFor = (name: string | null) =>
-    name ? tasks.filter(t => t.cat === name).length : tasks.length
+    name ? accessibleTasks.filter(t => t.cat === name).length : accessibleTasks.length
 
   const handleAddSpace = () => {
     const trimmed = newSpaceName.trim()
@@ -354,6 +365,14 @@ export function Sidebar() {
           >
             ✎&nbsp;&nbsp;이름 수정
           </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => {
+              setMemberModal({ id: contextMenu.id, name: contextMenu.name })
+              setContextMenu(null)
+            }}
+          >
+            👥&nbsp;&nbsp;멤버 관리
+          </ContextMenuItem>
           <div style={{ height: 1, background: 'var(--bd)', margin: '4px 0' }} />
           <ContextMenuItem
             danger
@@ -375,6 +394,20 @@ export function Sidebar() {
           onCancel={() => setDeleteConfirm(null)}
         />
       )}
+
+      {/* Member management modal */}
+      {memberModal && (() => {
+        const proj = projects.find(p => p.id === memberModal.id)
+        if (!proj) return null
+        return (
+          <MemberManageModal
+            project={proj}
+            onAddMember={e => addMember(proj.id, e)}
+            onRemoveMember={e => removeMember(proj.id, e)}
+            onClose={() => setMemberModal(null)}
+          />
+        )
+      })()}
     </>
   )
 }
@@ -634,6 +667,88 @@ function DeleteConfirmModal({ name, onConfirm, onCancel }: {
             }}
           >
             삭제
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MemberManageModal({ project, onAddMember, onRemoveMember, onClose }: {
+  project: Project
+  onAddMember: (email: string) => void
+  onRemoveMember: (email: string) => void
+  onClose: () => void
+}) {
+  const [newEmail, setNewEmail] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => { inputRef.current?.focus() }, [])
+
+  const handleAdd = () => {
+    const e = newEmail.trim().toLowerCase()
+    if (!e || !e.includes('@')) return
+    onAddMember(e)
+    setNewEmail('')
+  }
+
+  const members = project.memberEmails ?? []
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={onClose}
+    >
+      <div
+        style={{ background: 'var(--bg2)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', padding: '24px', width: 420, boxShadow: '0 8px 40px rgba(0,0,0,.45)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+          <div style={{ width: 10, height: 10, borderRadius: '50%', background: project.color, flexShrink: 0 }} />
+          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--t1)' }}>{project.name} 멤버 관리</span>
+          <button onClick={onClose} style={{ marginLeft: 'auto', width: 24, height: 24, borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--t3)', fontSize: 14 }}>✕</button>
+        </div>
+
+        <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 12 }}>
+          추가된 이메일만 이 프로젝트에 접근할 수 있습니다.
+        </div>
+
+        {/* Current members */}
+        <div style={{ marginBottom: 16, maxHeight: 200, overflowY: 'auto' }}>
+          {members.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--t3)', padding: '8px 0' }}>멤버가 없습니다 (공개 프로젝트)</div>
+          ) : members.map(email => (
+            <div key={email} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--bd)' }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#667eea,#764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                {email[0]?.toUpperCase()}
+              </div>
+              <span style={{ flex: 1, fontSize: 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</span>
+              <button
+                onClick={() => onRemoveMember(email)}
+                style={{ padding: '2px 8px', borderRadius: 'var(--r1)', border: '1px solid rgba(239,68,68,.3)', background: 'transparent', color: '#f87171', fontSize: 11, cursor: 'pointer' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,.07)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                제거
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Add member */}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            ref={inputRef}
+            value={newEmail}
+            onChange={e => setNewEmail(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
+            placeholder="이메일 주소 입력..."
+            style={{ flex: 1, background: 'var(--bg3)', border: '1px solid var(--bd2)', borderRadius: 'var(--r2)', padding: '8px 10px', fontSize: 13, color: 'var(--t1)', outline: 'none' }}
+          />
+          <button
+            onClick={handleAdd}
+            style={{ padding: '8px 14px', borderRadius: 'var(--r2)', border: 'none', background: 'var(--ac)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+          >
+            초대
           </button>
         </div>
       </div>

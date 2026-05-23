@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useUiStore } from '../store/uiStore'
 import { useTaskStore } from '../store/taskStore'
 import { useSpaceStore } from '../store/spaceStore'
@@ -28,7 +28,14 @@ export function AppPage() {
   const subscribeProjects = useProjectStore(s => s.subscribeFirebase)
   const subscribeMilestones = useMilestoneStore(s => s.subscribeFirebase)
   const joinByInvite = useProjectStore(s => s.joinByInvite)
+  const projects = useProjectStore(s => s.projects)
   const setProject = useUiStore(s => s.setProject)
+  // Read invite code once at mount; sessionStorage is cleared immediately to avoid replay on refresh
+  const pendingInviteRef = useRef((() => {
+    const code = sessionStorage.getItem('pending_invite')
+    if (code) sessionStorage.removeItem('pending_invite')
+    return code
+  })())
   const openCommandPalette = useUiStore(s => s.openCommandPalette)
   const isTaskModalOpen = useUiStore(s => s.isTaskModalOpen)
   const undo = useTaskStore(s => s.undo)
@@ -51,18 +58,18 @@ export function AppPage() {
     return unsub
   }, [uid])
 
-  // Process pending invite code after login + Firebase sync (1s grace period)
+  // Process pending invite: retry whenever projects sync from Firebase
   useEffect(() => {
-    if (!uid || !email) return
-    const code = sessionStorage.getItem('pending_invite')
-    if (!code) return
-    sessionStorage.removeItem('pending_invite')
-    const t = setTimeout(() => {
-      const project = joinByInvite(code, email)
-      if (project) setProject(project.id)
-    }, 1000)
-    return () => clearTimeout(t)
-  }, [uid, email])
+    if (!uid || !email || !pendingInviteRef.current) return
+    const code = pendingInviteRef.current
+    // Check if project with this invite code exists yet in local state
+    const targetProject = projects.find(p => p.inviteCode === code)
+    if (!targetProject) return  // Not loaded from Firebase yet — wait for next sync
+    // Project found — attempt to join (may fail if email not approved)
+    const project = joinByInvite(code, email)
+    pendingInviteRef.current = null
+    if (project) setProject(project.id)
+  }, [uid, email, projects])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {

@@ -65,7 +65,7 @@ function ToolDivider() {
   return <div style={{ width: 1, height: 16, background: 'var(--bd2)', margin: '0 3px' }} />
 }
 
-function EditorToolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
+function EditorToolbar({ editor }: { editor: ReturnType<typeof useEditor> | null }) {
   if (!editor) return null
   const e = editor
   return (
@@ -139,8 +139,9 @@ export function TaskDetailModal() {
   const editorContent = initContent.startsWith('<') ? initContent : initContent ? `<p>${initContent}</p>` : ''
 
   const editor = useEditor({
+    immediatelyRender: false,
     extensions: [
-      StarterKit,   // already includes Underline, Link, ListItem, etc.
+      StarterKit,
       Placeholder.configure({ placeholder: '내용을 자유롭게 작성하세요...' }),
       TaskList,
       TaskItem.configure({ nested: true }),
@@ -148,7 +149,7 @@ export function TaskDetailModal() {
     ],
     content: editorContent,
     onUpdate: ({ editor }) => debouncedSave(editor.getHTML()),
-  }, [detailTaskId])  // recreate editor when task changes
+  }, [detailTaskId])
 
   if (!detailTaskId || !task) return null
 

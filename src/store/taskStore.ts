@@ -69,7 +69,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   syncToFirebase: () => {
     const tasks = get().tasks
-    fbSet(ref(db, 'cringe/tasks'), tasks).catch((e: unknown) => console.warn('[sync]', e))
+    fbSet(ref(db, 'cringe'), { tasks, savedAt: Date.now() }).catch((e: unknown) => console.warn('[sync]', e))
   },
 
   subscribeFirebase: () => {

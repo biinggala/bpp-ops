@@ -1,11 +1,31 @@
-import { useTaskStore } from '../../../store/taskStore'
+import { useMemo } from 'react'
+import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useSpaceStore } from '../../../store/spaceStore'
+import { usePresenceStore } from '../../../store/presenceStore'
 import { STATUS_COLORS, STATUS_LIST, MEMBERS, getCatColor } from '../../../types'
-import type { Status, MemberKey } from '../../../types'
+import type { MemberKey } from '../../../types'
+
+const GRAD_PALETTE = [
+  'linear-gradient(135deg,#f093fb,#f5576c)',
+  'linear-gradient(135deg,#4facfe,#00f2fe)',
+  'linear-gradient(135deg,#43e97b,#38f9d7)',
+  'linear-gradient(135deg,#fa709a,#fee140)',
+  'linear-gradient(135deg,#a18cd1,#fbc2eb)',
+  'linear-gradient(135deg,#ffecd2,#fcb69f)',
+  'linear-gradient(135deg,#667eea,#764ba2)',
+  'linear-gradient(135deg,#f6d365,#fda085)',
+]
+
+function gradForKey(key: string) {
+  let h = 0
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) & 0xffff
+  return GRAD_PALETTE[h % GRAD_PALETTE.length]
+}
 
 export function StatsView() {
-  const tasks = useTaskStore(s => s.tasks)
+  const tasks = useFilteredTasks()
   const spaces = useSpaceStore(s => s.spaces)
+  const presences = usePresenceStore(s => s.presences)
 
   const total = tasks.length
   const done = tasks.filter(t => t.status === '완료').length
@@ -22,6 +42,28 @@ export function StatsView() {
     { label: '연체',        val: overdue,            color: '#ef4444' },
     { label: '평균 진행률', val: `${avgProgress}%`,  color: '#8b5cf6' },
   ]
+
+  // Build dynamic assignee list from actual task assignees
+  const assigneeMap = useMemo(() => {
+    const nameByKey = new Map<string, string>()
+    // Known members
+    for (const [k, m] of Object.entries(MEMBERS)) nameByKey.set(k, m.n)
+    // Presence entries (online users with display names)
+    for (const p of Object.values(presences)) {
+      if (p.memberKey && p.name && !nameByKey.has(p.memberKey)) {
+        nameByKey.set(p.memberKey, p.name)
+      }
+    }
+    return nameByKey
+  }, [presences])
+
+  const assigneeKeys = useMemo(() => {
+    const keys = new Set<string>()
+    tasks.forEach(t => {
+      if (t.assignee) t.assignee.split(',').map(s => s.trim()).filter(Boolean).forEach(k => keys.add(k))
+    })
+    return Array.from(keys).sort()
+  }, [tasks])
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -62,54 +104,63 @@ export function StatsView() {
       </div>
 
       <Section title="담당자별">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-          {(Object.keys(MEMBERS) as MemberKey[]).map(key => {
-            const m = MEMBERS[key]
-            const myTasks = tasks.filter(t => t.assignee.includes(key))
-            const myProgress = myTasks.length
-              ? Math.round(myTasks.reduce((s, t) => s + t.progress, 0) / myTasks.length)
-              : 0
+        {assigneeKeys.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--t3)', padding: '8px 0' }}>
+            {total === 0 ? '업무가 없습니다' : '담당자가 지정된 업무가 없습니다'}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
+            {assigneeKeys.map(key => {
+              const knownMember = MEMBERS[key as MemberKey]
+              const name = assigneeMap.get(key) ?? key
+              const grad = knownMember?.grad ?? gradForKey(key)
+              const initial = name[0]?.toUpperCase() ?? '?'
+              const myTasks = tasks.filter(t => t.assignee.includes(key))
+              const myProgress = myTasks.length
+                ? Math.round(myTasks.reduce((s, t) => s + t.progress, 0) / myTasks.length)
+                : 0
 
-            return (
-              <div key={key} style={{
-                padding: '14px 16px', borderRadius: 'var(--r3)',
-                border: '1px solid var(--bd)', background: 'var(--bg2)',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                  <div style={{
-                    width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: '#fff', fontWeight: 700, fontSize: 11, background: m.grad,
-                  }}>
-                    {key}
+              return (
+                <div key={key} style={{
+                  padding: '14px 16px', borderRadius: 'var(--r3)',
+                  border: '1px solid var(--bd)', background: 'var(--bg2)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: '#fff', fontWeight: 700, fontSize: 13, background: grad,
+                    }}>
+                      {initial}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--t1)' }}>{name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--t3)' }}>{myTasks.length}개 업무</div>
+                    </div>
                   </div>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--t1)' }}>{m.n}</div>
-                    <div style={{ fontSize: 11, color: 'var(--t3)' }}>{myTasks.length}개 업무</div>
+
+                  {STATUS_LIST.map(status => (
+                    <div key={status} style={{
+                      display: 'flex', justifyContent: 'space-between',
+                      fontSize: 12, color: 'var(--t2)', padding: '5px 0',
+                      borderBottom: '1px solid var(--bd)',
+                    }}>
+                      <span>{status}</span>
+                      <span style={{ fontWeight: 600, color: 'var(--t1)' }}>
+                        {myTasks.filter(t => t.status === status).length}
+                      </span>
+                    </div>
+                  ))}
+
+                  <div style={{ marginTop: 10, fontSize: 12, color: 'var(--t2)' }}>
+                    평균 진행률{' '}
+                    <span style={{ fontWeight: 600, color: 'var(--t1)' }}>{myProgress}%</span>
                   </div>
                 </div>
-
-                {STATUS_LIST.map(status => (
-                  <div key={status} style={{
-                    display: 'flex', justifyContent: 'space-between',
-                    fontSize: 12, color: 'var(--t2)', padding: '5px 0',
-                    borderBottom: '1px solid var(--bd)',
-                  }}>
-                    <span>{status}</span>
-                    <span style={{ fontWeight: 600, color: 'var(--t1)' }}>
-                      {myTasks.filter(t => t.status === status).length}
-                    </span>
-                  </div>
-                ))}
-
-                <div style={{ marginTop: 10, fontSize: 12, color: 'var(--t2)' }}>
-                  평균 진행률{' '}
-                  <span style={{ fontWeight: 600, color: 'var(--t1)' }}>{myProgress}%</span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
+              )
+            })}
+          </div>
+        )}
       </Section>
     </div>
   )

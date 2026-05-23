@@ -59,7 +59,7 @@ export function TableView() {
   })
 
   const colHeader = (
-    <div style={{ display: 'flex', background: 'var(--bg2)', borderBottom: '2px solid var(--bd)' }}>
+    <div style={{ display: 'flex', background: 'var(--bg2)', borderBottom: '2px solid var(--bd)', borderLeft: '3px solid transparent' }}>
       {COLS.map((c, i) => (
         <div key={c.label} style={{ flex: c.flex, padding: '8px 12px', fontSize: 12, fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.04em', borderRight: i < COLS.length - 1 ? '1px solid var(--bd)' : 'none' }}>
           {c.label}
