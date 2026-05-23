@@ -14,9 +14,10 @@ export function useFilteredTasks(): Task[] {
 
   return useMemo(() => {
     // Projects this user can access (invited or legacy with no memberEmails)
+    const normalizedEmail = email?.toLowerCase() ?? ''
     const accessibleIds = new Set(
       projects
-        .filter(p => !p.memberEmails?.length || (email ? p.memberEmails.includes(email) : false))
+        .filter(p => !p.memberEmails?.length || (normalizedEmail ? p.memberEmails.some(e => e.toLowerCase() === normalizedEmail) : false))
         .map(p => p.id)
     )
     const hasAccess = accessibleIds.size > 0

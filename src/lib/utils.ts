@@ -22,7 +22,6 @@ export function parseAssignees(assignee: string): string[] {
 }
 
 const STORAGE_KEY = 'cringe_v9'
-const TS_KEY = STORAGE_KEY + '_ts'
 
 export function loadFromStorage<T>(key = STORAGE_KEY): T | null {
   try {
@@ -34,12 +33,12 @@ export function loadFromStorage<T>(key = STORAGE_KEY): T | null {
 export function saveToStorage<T>(data: T, key = STORAGE_KEY): void {
   try {
     localStorage.setItem(key, JSON.stringify(data))
-    localStorage.setItem(TS_KEY, String(Date.now()))
+    localStorage.setItem(key + '_ts', String(Date.now()))
   } catch { /* quota exceeded etc. */ }
 }
 
-export function getLocalTs(): number {
-  return parseInt(localStorage.getItem(TS_KEY) || '0')
+export function getLocalTs(key = STORAGE_KEY): number {
+  return parseInt(localStorage.getItem(key + '_ts') || '0')
 }
 
 export function addDays(d: Date, n: number): Date {
