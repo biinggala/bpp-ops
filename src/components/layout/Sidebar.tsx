@@ -13,7 +13,7 @@ export function Sidebar() {
   const tasks = useTaskStore(s => s.tasks)
   const { spaces, addSpace, deleteSpace, updateSpace } = useSpaceStore()
   const { projects, addProject, deleteProject } = useProjectStore()
-  const { memberKey, displayName, signOutUser } = useAuthStore()
+  const { memberKey, displayName, email, signOutUser } = useAuthStore()
 
   // Space state
   const [addingSpace, setAddingSpace] = useState(false)
@@ -58,7 +58,7 @@ export function Sidebar() {
   const handleAddProject = () => {
     const trimmed = newProjectName.trim()
     if (trimmed) {
-      addProject(trimmed, undefined, newProjectDueDate || undefined)
+      addProject(trimmed, undefined, newProjectDueDate || undefined, undefined, email || undefined)
     }
     setNewProjectName('')
     setNewProjectDueDate('')
@@ -90,6 +90,11 @@ export function Sidebar() {
   const member = memberKey ? MEMBERS[memberKey as MemberKey] : null
   const userName = member?.n ?? displayName ?? null
   const presences = usePresenceStore(s => s.presences)
+
+  // Only show projects the user has been invited to (or legacy projects with no member list)
+  const visibleProjects = projects.filter(p =>
+    !p.memberEmails?.length || (email ? p.memberEmails.includes(email) : false)
+  )
   const onlineUsers = Object.values(presences).filter(p => p.online)
 
   return (
@@ -154,7 +159,7 @@ export function Sidebar() {
         {/* Projects section */}
         <SectionLabel>Projects</SectionLabel>
 
-        {projects.map(p => {
+        {visibleProjects.map(p => {
           const taskCount = tasks.filter(t => t.projectId === p.id).length
           const daysInfo = p.dueDate ? getDaysRemaining(p.dueDate) : null
           return (
@@ -164,6 +169,7 @@ export function Sidebar() {
               dot={p.color}
               count={taskCount}
               daysInfo={daysInfo}
+              inviteCode={p.inviteCode}
               onClick={() => { setProject(p.id); setMyTasksOnly(false) }}
               onDelete={e => handleDeleteProject(e, p.id, p.name)}
             >
@@ -333,12 +339,25 @@ function NavItem({ children, active, onClick, count, icon }: {
   )
 }
 
-function ProjectItem({ children, active, dot, count, daysInfo, onClick, onDelete }: {
+function ProjectItem({ children, active, dot, count, daysInfo, inviteCode, onClick, onDelete }: {
   children: React.ReactNode; active: boolean; dot: string; count: number
   daysInfo: { days: number; overdue: boolean } | null
+  inviteCode?: string
   onClick: () => void; onDelete: (e: React.MouseEvent) => void
 }) {
   const [hovered, setHovered] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const copyLink = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!inviteCode) return
+    const link = `${window.location.origin}${window.location.pathname}?invite=${inviteCode}`
+    navigator.clipboard.writeText(link).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    })
+  }
+
   return (
     <div
       onClick={onClick}
@@ -358,6 +377,11 @@ function ProjectItem({ children, active, dot, count, daysInfo, onClick, onDelete
 
       {hovered ? (
         <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
+          {inviteCode && (
+            <ActionIcon onClick={copyLink} title={copied ? '복사됨!' : '초대 링크 복사'}>
+              {copied ? '✓' : '↗'}
+            </ActionIcon>
+          )}
           <ActionIcon onClick={onDelete} danger>×</ActionIcon>
         </div>
       ) : (
@@ -411,10 +435,11 @@ function SpaceItem({ children, active, dot, count, onClick, onEdit, onDelete }: 
   )
 }
 
-function ActionIcon({ children, onClick, danger }: { children: React.ReactNode; onClick: (e: React.MouseEvent) => void; danger?: boolean }) {
+function ActionIcon({ children, onClick, danger, title }: { children: React.ReactNode; onClick: (e: React.MouseEvent) => void; danger?: boolean; title?: string }) {
   return (
     <span
       onClick={onClick}
+      title={title}
       style={{ width: 18, height: 18, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, cursor: 'pointer', color: danger ? '#f87171' : 'var(--sb-t3)', transition: 'background .1s' }}
       onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.1)' }}
       onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}

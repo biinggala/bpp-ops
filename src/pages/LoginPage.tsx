@@ -2,6 +2,7 @@ import { useAuthStore } from '../store/authStore'
 
 export function LoginPage() {
   const { signIn, error } = useAuthStore()
+  const hasPendingInvite = !!sessionStorage.getItem('pending_invite')
 
   return (
     <div className="flex items-center justify-center h-full bg-[#f2f2f7]">
@@ -9,6 +10,13 @@ export function LoginPage() {
         <div className="text-[36px] mb-[12px]">🎯</div>
         <div className="text-[22px] font-bold text-gray-900 mb-1">크린지 프렌즈</div>
         <div className="text-[13px] text-gray-400 mb-[32px]">업무 보드에 로그인하세요</div>
+
+        {hasPendingInvite && (
+          <div style={{ marginBottom: 20, padding: '10px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, fontSize: 13, color: '#1d4ed8', lineHeight: 1.5 }}>
+            프로젝트 초대 링크로 접속하셨습니다.<br />
+            로그인하면 자동으로 참여됩니다.
+          </div>
+        )}
 
         <button
           onClick={signIn}

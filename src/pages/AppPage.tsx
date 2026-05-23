@@ -27,6 +27,8 @@ export function AppPage() {
   const subscribeSpaces = useSpaceStore(s => s.subscribeFirebase)
   const subscribeProjects = useProjectStore(s => s.subscribeFirebase)
   const subscribeMilestones = useMilestoneStore(s => s.subscribeFirebase)
+  const joinByInvite = useProjectStore(s => s.joinByInvite)
+  const setProject = useUiStore(s => s.setProject)
   const openCommandPalette = useUiStore(s => s.openCommandPalette)
   const isTaskModalOpen = useUiStore(s => s.isTaskModalOpen)
   const undo = useTaskStore(s => s.undo)
@@ -48,6 +50,19 @@ export function AppPage() {
     const unsub = subscribePresence(uid, presenceKey, name)
     return unsub
   }, [uid])
+
+  // Process pending invite code after login + Firebase sync (1s grace period)
+  useEffect(() => {
+    if (!uid || !email) return
+    const code = sessionStorage.getItem('pending_invite')
+    if (!code) return
+    sessionStorage.removeItem('pending_invite')
+    const t = setTimeout(() => {
+      const project = joinByInvite(code, email)
+      if (project) setProject(project.id)
+    }, 1000)
+    return () => clearTimeout(t)
+  }, [uid, email])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {

@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
-import Underline from '@tiptap/extension-underline'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import Highlight from '@tiptap/extension-highlight'
@@ -141,9 +140,8 @@ export function TaskDetailModal() {
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
-      Placeholder.configure({ placeholder: '내용을 자유롭게 작성하세요...\n\n/ 를 입력하면 블록을 추가할 수 있어요' }),
-      Underline,
+      StarterKit,   // already includes Underline, Link, ListItem, etc.
+      Placeholder.configure({ placeholder: '내용을 자유롭게 작성하세요...' }),
       TaskList,
       TaskItem.configure({ nested: true }),
       Highlight,

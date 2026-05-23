@@ -7,6 +7,13 @@ export default function App() {
   const { uid, loading, subscribe } = useAuthStore()
 
   useEffect(() => {
+    // Capture invite code from URL before it gets lost during login redirect
+    const params = new URLSearchParams(window.location.search)
+    const invite = params.get('invite')
+    if (invite) {
+      sessionStorage.setItem('pending_invite', invite)
+      window.history.replaceState({}, '', window.location.pathname)
+    }
     const unsub = subscribe()
     return unsub
   }, [])

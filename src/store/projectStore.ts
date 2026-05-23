@@ -9,9 +9,10 @@ const PROJECT_KEY = 'cringe_projects_v1'
 
 interface ProjectState {
   projects: Project[]
-  addProject: (name: string, color?: string, dueDate?: string, clientName?: string) => Project
+  addProject: (name: string, color?: string, dueDate?: string, clientName?: string, creatorEmail?: string) => Project
   updateProject: (id: string, patch: Partial<Omit<Project, 'id'>>) => void
   deleteProject: (id: string) => void
+  joinByInvite: (code: string, email: string) => Project | null
   subscribeFirebase: () => () => void
 }
 
@@ -26,13 +27,15 @@ function syncFb(projects: Project[]) {
 export const useProjectStore = create<ProjectState>((set, get) => ({
   projects: loadFromStorage<Project[]>(PROJECT_KEY) ?? [],
 
-  addProject: (name, color, dueDate, clientName) => {
+  addProject: (name, color, dueDate, clientName, creatorEmail) => {
     const existing = get().projects
     const resolvedColor = color ?? PROJECT_PALETTE[existing.length % PROJECT_PALETTE.length]
     const project: Project = {
       id: gid(),
       name: name.trim(),
       color: resolvedColor,
+      inviteCode: gid().slice(0, 8),
+      memberEmails: creatorEmail ? [creatorEmail] : [],
       ...(dueDate ? { dueDate } : {}),
       ...(clientName ? { clientName } : {}),
     }
@@ -49,6 +52,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   deleteProject: (id) => {
     const projects = get().projects.filter(p => p.id !== id)
     set({ projects }); persist(projects); syncFb(projects)
+  },
+
+  joinByInvite: (code, email) => {
+    const project = get().projects.find(p => p.inviteCode === code)
+    if (!project) return null
+    if (project.memberEmails?.includes(email)) return project
+    const memberEmails = [...(project.memberEmails ?? []), email]
+    const projects = get().projects.map(p => p.id === project.id ? { ...p, memberEmails } : p)
+    set({ projects }); persist(projects); syncFb(projects)
+    return { ...project, memberEmails }
   },
 
   subscribeFirebase: () => {
