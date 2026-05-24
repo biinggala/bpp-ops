@@ -1,11 +1,16 @@
 import { create } from 'zustand'
 import { ref, set as fbSet, onValue, off } from 'firebase/database'
 import { db } from '../lib/firebase'
-import { gid, loadFromStorage, saveToStorage } from '../lib/utils'
+import { gid, loadFromStorage, saveToStorage, getLocalTs } from '../lib/utils'
 import { PROJECT_PALETTE } from '../types'
 import type { Project } from '../types'
 
 const PROJECT_KEY = 'cringe_projects_v1'
+
+function dedupe(projects: Project[]): Project[] {
+  const seen = new Set<string>()
+  return projects.filter(p => p?.id && !seen.has(p.id) && !!seen.add(p.id))
+}
 
 interface ProjectState {
   projects: Project[]
@@ -24,11 +29,12 @@ function persist(projects: Project[]) {
 }
 
 function syncFb(projects: Project[]) {
-  fbSet(ref(db, 'cringe/projects'), projects).catch(() => {})
+  fbSet(ref(db, 'cringe/projects'), projects.length ? projects : null).catch(() => {})
+  fbSet(ref(db, 'cringe/projectsSavedAt'), Date.now()).catch(() => {})
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
-  projects: loadFromStorage<Project[]>(PROJECT_KEY) ?? [],
+  projects: dedupe(loadFromStorage<Project[]>(PROJECT_KEY) ?? []),
 
   addProject: (name, color, dueDate, clientName, creatorEmail) => {
     const existing = get().projects
@@ -114,13 +120,29 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   subscribeFirebase: () => {
-    const dbRef = ref(db, 'cringe/projects')
+    const dbRef = ref(db, 'cringe')
     const handler = onValue(dbRef, (snap) => {
-      const data = snap.val()
-      if (!data) return
-      const incoming: Project[] = Array.isArray(data) ? data : Object.values(data)
-      set({ projects: incoming })
-      persist(incoming)
+      const root = snap.val()
+      const localTs = getLocalTs(PROJECT_KEY)
+
+      if (!root?.projects) {
+        const projects = get().projects
+        if (projects.length > 0 && localTs > 0) {
+          fbSet(ref(db, 'cringe/projects'), projects).catch(() => {})
+          fbSet(ref(db, 'cringe/projectsSavedAt'), localTs).catch(() => {})
+        }
+        return
+      }
+
+      const fbTs: number = root.projectsSavedAt || 0
+      if (fbTs > localTs) {
+        const raw: Project[] = Array.isArray(root.projects)
+          ? root.projects
+          : Object.values(root.projects)
+        const incoming = dedupe(raw)
+        set({ projects: incoming })
+        saveToStorage(incoming, PROJECT_KEY)
+      }
     })
     return () => off(dbRef, 'value', handler)
   },
