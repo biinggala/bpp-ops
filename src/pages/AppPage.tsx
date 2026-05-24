@@ -52,6 +52,7 @@ export function AppPage() {
   const projects = useProjectStore(s => s.projects)
   const setProject = useUiStore(s => s.setProject)
   const [invitePending, setInvitePending] = useState<{ project: Project } | null>(null)
+  const dismissedInvites = useRef(new Set<string>())
   // Read invite code once at mount; sessionStorage is cleared immediately to avoid replay on refresh
   const pendingInviteRef = useRef((() => {
     const code = sessionStorage.getItem('pending_invite')
@@ -83,7 +84,7 @@ export function AppPage() {
     return unsub
   }, [uid])
 
-  // Process pending invite: retry whenever projects sync from Firebase
+  // Process pending invite from URL link
   useEffect(() => {
     if (!uid || !email || !pendingInviteRef.current) return
     const code = pendingInviteRef.current
@@ -100,6 +101,17 @@ export function AppPage() {
       setInvitePending({ project: result.project })
     }
   }, [uid, email, projects])
+
+  // Auto-detect pending invites from Firebase (no link needed)
+  useEffect(() => {
+    if (!email || invitePending) return
+    const normalizedEmail = email.toLowerCase()
+    const pending = projects.find(p =>
+      p.pendingEmails?.some(e => e.toLowerCase() === normalizedEmail) &&
+      !dismissedInvites.current.has(p.id)
+    )
+    if (pending) setInvitePending({ project: pending })
+  }, [email, projects, invitePending])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -160,7 +172,10 @@ export function AppPage() {
             setProject(invitePending.project.id)
             setInvitePending(null)
           }}
-          onDecline={() => setInvitePending(null)}
+          onDecline={() => {
+            dismissedInvites.current.add(invitePending.project.id)
+            setInvitePending(null)
+          }}
         />
       )}
     </div>
