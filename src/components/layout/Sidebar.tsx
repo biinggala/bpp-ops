@@ -13,7 +13,7 @@ export function Sidebar() {
   const tasks = useTaskStore(s => s.tasks)
   const { spaces, addSpace, deleteSpace, updateSpace } = useSpaceStore()
   const { projects, addProject, updateProject, deleteProject, addMember, removeMember } = useProjectStore()
-  const { memberKey, displayName, email, signOutUser } = useAuthStore()
+  const { memberKey, displayName, email, photoURL, signOutUser } = useAuthStore()
 
   // Space state
   const [addingSpace, setAddingSpace] = useState(false)
@@ -33,6 +33,8 @@ export function Sidebar() {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string; name: string; type: 'project' | 'space' } | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
   const [memberModal, setMemberModal] = useState<{ id: string; name: string } | null>(null)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const profileRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { if (addingSpace) spaceInputRef.current?.focus() }, [addingSpace])
   useEffect(() => { if (editingSpaceId) spaceEditRef.current?.select() }, [editingSpaceId])
@@ -49,6 +51,17 @@ export function Sidebar() {
       window.removeEventListener('contextmenu', close)
     }
   }, [contextMenu])
+
+  useEffect(() => {
+    if (!profileOpen) return
+    const close = (e: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false)
+      }
+    }
+    window.addEventListener('mousedown', close)
+    return () => window.removeEventListener('mousedown', close)
+  }, [profileOpen])
 
   const accessibleProjectIds = new Set(
     projects
@@ -150,9 +163,17 @@ export function Sidebar() {
       <aside style={{ width: 240, background: 'var(--sb-bg)', display: 'flex', flexDirection: 'column', flexShrink: 0, borderRight: '1px solid rgba(255,255,255,.06)' }}>
 
         {/* Workspace header */}
-        <div style={{ padding: '14px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(255,255,255,.06)' }}>
-          <div style={{ width: 26, height: 26, borderRadius: 6, background: member?.grad ?? 'var(--ac)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-            {(userName?.[0]?.toUpperCase() ?? 'W')}
+        <div style={{ padding: '14px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(255,255,255,.06)', position: 'relative' }} ref={profileRef}>
+          {/* Profile avatar — clickable */}
+          <div
+            onClick={() => setProfileOpen(o => !o)}
+            title="계정 정보"
+            style={{ width: 26, height: 26, borderRadius: 6, background: member?.grad ?? 'var(--ac)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0, cursor: 'pointer', overflow: 'hidden', outline: profileOpen ? '2px solid var(--ac)' : 'none', outlineOffset: 1 }}
+          >
+            {photoURL
+              ? <img src={photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : (userName?.[0]?.toUpperCase() ?? 'W')
+            }
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--sb-t1)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -171,6 +192,55 @@ export function Sidebar() {
           >
             ↩
           </button>
+
+          {/* Profile popover */}
+          {profileOpen && (
+            <div style={{
+              position: 'fixed',
+              top: (() => { const r = profileRef.current?.getBoundingClientRect(); return r ? r.bottom + 6 : 60 })(),
+              left: (() => { const r = profileRef.current?.getBoundingClientRect(); return r ? r.left : 12 })(),
+              zIndex: 9999,
+              background: 'var(--bg)',
+              border: '1px solid var(--bd)',
+              borderRadius: 'var(--r3)',
+              boxShadow: 'var(--sh-lg)',
+              padding: '12px',
+              minWidth: 220,
+              maxWidth: 280,
+            }}>
+              {/* Avatar + name */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: member?.grad ?? 'var(--ac)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: '#fff', flexShrink: 0, overflow: 'hidden' }}>
+                  {photoURL
+                    ? <img src={photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : (userName?.[0]?.toUpperCase() ?? 'W')
+                  }
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {userName && (
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {userName}
+                    </div>
+                  )}
+                  {email && (
+                    <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {email}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div style={{ borderTop: '1px solid var(--bd)', paddingTop: 8 }}>
+                <button
+                  onClick={() => { setProfileOpen(false); signOutUser() }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 'var(--r2)', border: 'none', background: 'transparent', fontSize: 12, color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg2)'; e.currentTarget.style.color = 'var(--t1)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t2)' }}
+                >
+                  <span style={{ fontSize: 13 }}>↩</span> 로그아웃
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Search */}
