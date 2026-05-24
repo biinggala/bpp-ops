@@ -14,8 +14,53 @@ import { useProjectStore } from '../../store/projectStore'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { AssigneeAvatar } from '../shared/Avatar'
-import { STATUS_LIST, PRIORITY_LIST, STATUS_COLORS } from '../../types'
+import { STATUS_LIST, PRIORITY_LIST } from '../../types'
 import type { Task, Status, Priority } from '../../types'
+
+const SIDEBAR_KEY = 'cringe_detail_sidebar_w'
+const MIN_SIDEBAR = 200
+const MAX_SIDEBAR = 480
+
+const STATUS_STYLE: Record<Status, { bg: string; color: string }> = {
+  '진행중': { bg: 'rgba(35,131,226,.15)', color: '#1869c9' },
+  '대기':   { bg: 'rgba(120,117,114,.14)', color: '#5a5857' },
+  '검토중': { bg: '#fef3c7',              color: '#b45309' },
+  '완료':   { bg: '#d1fae5',              color: '#047857' },
+}
+const PRIORITY_STYLE: Record<Priority, { bg: string; color: string }> = {
+  '높음': { bg: 'rgba(239,68,68,.13)',  color: '#dc2626' },
+  '중간': { bg: 'rgba(245,158,11,.14)', color: '#b45309' },
+  '낮음': { bg: 'rgba(59,130,246,.13)', color: '#1d4ed8' },
+}
+
+function ColoredSelect<T extends string>({
+  value, options, styles, onChange,
+}: {
+  value: T
+  options: T[]
+  styles: Record<T, { bg: string; color: string }>
+  onChange: (v: T) => void
+}) {
+  const s = styles[value]
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex' }}>
+      <span style={{
+        padding: '2px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600,
+        background: s.bg, color: s.color, pointerEvents: 'none', whiteSpace: 'nowrap',
+      }}>{value}</span>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value as T)}
+        style={{
+          position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer',
+          width: '100%', height: '100%', border: 'none',
+        }}
+      >
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  )
+}
 
 function PropRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -100,6 +145,31 @@ export function TaskDetailModal() {
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleValue, setTitleValue] = useState('')
   const saveTimer = useRef<number | null>(null)
+
+  const [sidebarW, setSidebarW] = useState<number>(() => {
+    const v = parseInt(localStorage.getItem(SIDEBAR_KEY) || '0')
+    return v >= MIN_SIDEBAR && v <= MAX_SIDEBAR ? v : 260
+  })
+  const resizingRef = useRef<{ startX: number; startW: number } | null>(null)
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = sidebarW
+    let latestW = startW
+    const onMove = (ev: MouseEvent) => {
+      latestW = Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, startW + ev.clientX - startX))
+      setSidebarW(latestW)
+    }
+    const onUp = () => {
+      localStorage.setItem(SIDEBAR_KEY, String(latestW))
+      resizingRef.current = null
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }, [sidebarW])
 
   // Register presence when this task is open
   useEffect(() => {
@@ -225,7 +295,7 @@ export function TaskDetailModal() {
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
           {/* Properties panel */}
-          <div style={{ width: 260, borderRight: '1px solid var(--bd)', padding: '16px 20px', overflowY: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 0 }}>
+          <div style={{ width: sidebarW, borderRight: '1px solid var(--bd)', padding: '16px 20px', overflowY: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>속성</div>
 
             <PropRow label="담당자">
@@ -237,17 +307,21 @@ export function TaskDetailModal() {
             </PropRow>
 
             <PropRow label="상태">
-              <select value={task.status} onChange={e => upd({ status: e.target.value as Status })}
-                style={{ border: 'none', background: 'transparent', fontSize: 13, cursor: 'pointer', outline: 'none', fontFamily: 'var(--font)', color: STATUS_COLORS[task.status].text, width: '100%', fontWeight: 500 }}>
-                {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <ColoredSelect
+                value={task.status}
+                options={STATUS_LIST as unknown as Status[]}
+                styles={STATUS_STYLE}
+                onChange={v => upd({ status: v })}
+              />
             </PropRow>
 
             <PropRow label="우선순위">
-              <select value={task.priority} onChange={e => upd({ priority: e.target.value as Priority })}
-                style={{ border: 'none', background: 'transparent', fontSize: 13, cursor: 'pointer', outline: 'none', color: 'var(--t1)', fontFamily: 'var(--font)', width: '100%' }}>
-                {PRIORITY_LIST.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
+              <ColoredSelect
+                value={task.priority}
+                options={PRIORITY_LIST as unknown as Priority[]}
+                styles={PRIORITY_STYLE}
+                onChange={v => upd({ priority: v })}
+              />
             </PropRow>
 
             <PropRow label="시작일">
@@ -326,6 +400,17 @@ export function TaskDetailModal() {
               )}
             </div>
           </div>
+
+          {/* Resize handle */}
+          <div
+            onMouseDown={handleResizeStart}
+            style={{
+              width: 5, cursor: 'col-resize', flexShrink: 0, position: 'relative', zIndex: 1,
+              background: 'transparent', transition: 'background .15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--ac)'; e.currentTarget.style.opacity = '.35' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.opacity = '1' }}
+          />
 
           {/* Editor area */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
