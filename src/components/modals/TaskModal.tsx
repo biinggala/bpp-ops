@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
-import { useSpaceStore } from '../../store/spaceStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { useAuthStore } from '../../store/authStore'
@@ -15,9 +14,8 @@ const EMPTY: Omit<Task, 'id'> = {
 }
 
 export function TaskModal() {
-  const { isTaskModalOpen, editTaskId, newTaskParentId, newTaskMilestoneId, newTaskProjectId, closeTaskModal, space, projectId: uiProjectId } = useUiStore()
+  const { isTaskModalOpen, editTaskId, newTaskParentId, newTaskMilestoneId, newTaskProjectId, closeTaskModal, projectId: uiProjectId } = useUiStore()
   const { tasks, addTask, updateTask } = useTaskStore()
-  const spaces = useSpaceStore(s => s.spaces)
   const allProjects = useProjectStore(s => s.projects)
   const milestones = useMilestoneStore(s => s.milestones)
   const email = useAuthStore(s => s.email)
@@ -47,7 +45,7 @@ export function TaskModal() {
     if (editing) {
       setForm({ ...editing })
     } else {
-      const defaultCat = parentTask?.cat ?? space ?? spaces[0]?.name ?? ''
+      const defaultCat = parentTask?.cat ?? ''
       const defaultProjectId = parentTask?.projectId ?? newTaskProjectId ?? uiProjectId ?? undefined
       const defaultMilestoneId = parentTask?.milestoneId ?? newTaskMilestoneId ?? undefined
       setForm({
@@ -114,17 +112,6 @@ export function TaskModal() {
                 <option value="상위">상위</option>
                 <option value="세부">세부</option>
               </select>
-            </Field>
-
-            <Field label="스페이스">
-              {spaces.length > 0 ? (
-                <select style={inputStyle} value={form.cat} onChange={e => upd('cat', e.target.value)}>
-                  <option value="">선택 안 함</option>
-                  {spaces.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                </select>
-              ) : (
-                <div style={{ ...inputStyle, color: 'var(--t3)' }}>사이드바에서 스페이스를 먼저 추가하세요</div>
-              )}
             </Field>
 
             <Field label="프로젝트">

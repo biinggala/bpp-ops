@@ -9,7 +9,6 @@ import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useAuthStore } from '../../store/authStore'
 import { usePresenceStore } from '../../store/presenceStore'
-import { useSpaceStore } from '../../store/spaceStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
@@ -136,7 +135,6 @@ export function TaskDetailModal() {
   const { presences, setCurrentTask } = usePresenceStore()
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const profiles = useUserProfileStore(s => s.profiles)
-  const spaces = useSpaceStore(s => s.spaces)
   const allProjects = useProjectStore(s => s.projects)
   const projects = allProjects
   const milestones = useMilestoneStore(s => s.milestones)
@@ -341,14 +339,6 @@ export function TaskDetailModal() {
                   style={{ flex: 1, accentColor: 'var(--ac)', cursor: 'pointer' }} />
                 <span style={{ fontSize: 12, color: 'var(--t2)', minWidth: 32, textAlign: 'right' }}>{task.progress}%</span>
               </div>
-            </PropRow>
-
-            <PropRow label="스페이스">
-              <select value={task.cat || ''} onChange={e => upd({ cat: e.target.value })}
-                style={{ border: 'none', background: 'transparent', fontSize: 13, cursor: 'pointer', outline: 'none', color: 'var(--t2)', fontFamily: 'var(--font)', width: '100%' }}>
-                <option value="">없음</option>
-                {spaces.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-              </select>
             </PropRow>
 
             <PropRow label="프로젝트">

@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
-import { useSpaceStore } from '../../store/spaceStore'
 import { useAuthStore } from '../../store/authStore'
 import { useProjectStore } from '../../store/projectStore'
 import { usePresenceStore } from '../../store/presenceStore'
@@ -9,19 +8,10 @@ import { MEMBERS } from '../../types'
 import type { MemberKey, Project } from '../../types'
 
 export function Sidebar() {
-  const { space, setSpace, filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly } = useUiStore()
+  const { filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly } = useUiStore()
   const tasks = useTaskStore(s => s.tasks)
-  const { spaces, addSpace, deleteSpace, updateSpace } = useSpaceStore()
   const { projects, addProject, updateProject, deleteProject, addMember, removeMember } = useProjectStore()
   const { memberKey, displayName, email, photoURL, signOutUser } = useAuthStore()
-
-  // Space state
-  const [addingSpace, setAddingSpace] = useState(false)
-  const [newSpaceName, setNewSpaceName] = useState('')
-  const [editingSpaceId, setEditingSpaceId] = useState<string | null>(null)
-  const [editSpaceName, setEditSpaceName] = useState('')
-  const spaceInputRef = useRef<HTMLInputElement>(null)
-  const spaceEditRef = useRef<HTMLInputElement>(null)
 
   // Project state
   const [addingProject, setAddingProject] = useState(false)
@@ -30,14 +20,12 @@ export function Sidebar() {
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
   const [editProjectName, setEditProjectName] = useState('')
   const projectEditRef = useRef<HTMLInputElement>(null)
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string; name: string; type: 'project' | 'space' } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string; name: string; type: 'project' } | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
   const [memberModal, setMemberModal] = useState<{ id: string; name: string } | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
   const profileRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { if (addingSpace) spaceInputRef.current?.focus() }, [addingSpace])
-  useEffect(() => { if (editingSpaceId) spaceEditRef.current?.select() }, [editingSpaceId])
   useEffect(() => { if (addingProject) projectNameRef.current?.focus() }, [addingProject])
   useEffect(() => { if (editingProjectId) projectEditRef.current?.select() }, [editingProjectId])
 
@@ -72,21 +60,6 @@ export function Sidebar() {
   const accessibleTasks = tasks.filter(t =>
     t.projectId ? accessibleProjectIds.has(t.projectId) : hasAccess
   )
-
-  const countFor = (name: string | null) =>
-    name ? accessibleTasks.filter(t => t.cat === name).length : accessibleTasks.length
-
-  const handleAddSpace = () => {
-    const trimmed = newSpaceName.trim()
-    if (trimmed) addSpace(trimmed)
-    setNewSpaceName('')
-    setAddingSpace(false)
-  }
-
-  const handleRenameSpace = (id: string) => {
-    if (editSpaceName.trim()) updateSpace(id, { name: editSpaceName.trim() })
-    setEditingSpaceId(null)
-  }
 
   const isProjectCreator = (id: string): boolean => {
     const p = projects.find(pj => pj.id === id)
@@ -132,12 +105,6 @@ export function Sidebar() {
     e.preventDefault()
     e.stopPropagation()
     setContextMenu({ x: e.clientX, y: e.clientY, id, name, type: 'project' })
-  }
-
-  const handleSpaceContextMenu = (e: React.MouseEvent, id: string, name: string) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setContextMenu({ x: e.clientX, y: e.clientY, id, name, type: 'space' })
   }
 
   const getDaysRemaining = (dueDate: string): { days: number; overdue: boolean } => {
@@ -257,9 +224,9 @@ export function Sidebar() {
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 6px' }}>
 
           <NavItem
-            active={space === null && !myTasksOnly && projectId === null}
-            onClick={() => { setSpace(null); setProject(null); setMyTasksOnly(false) }}
-            count={countFor(null)}
+            active={!myTasksOnly && projectId === null}
+            onClick={() => { setProject(null); setMyTasksOnly(false) }}
+            count={accessibleTasks.length}
             icon="◈"
           >
             전체 업무
@@ -267,7 +234,7 @@ export function Sidebar() {
 
           <NavItem
             active={myTasksOnly}
-            onClick={() => { setMyTasksOnly(!myTasksOnly); setSpace(null); setProject(null) }}
+            onClick={() => { setMyTasksOnly(!myTasksOnly); setProject(null) }}
             count={tasks.filter(t => memberKey ? t.assignee === memberKey : false).length}
             icon="☑"
           >
@@ -336,59 +303,6 @@ export function Sidebar() {
             <AddBtn onClick={() => setAddingProject(true)}>프로젝트 추가</AddBtn>
           )}
 
-          {/* Spaces section */}
-          <SectionLabel>Spaces</SectionLabel>
-
-          {spaces.map(s => (
-            <div key={s.id} style={{ position: 'relative' }}>
-              {editingSpaceId === s.id ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', margin: '1px 0' }}>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-                  <input
-                    ref={spaceEditRef}
-                    style={{ flex: 1, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)', borderRadius: 'var(--r1)', padding: '2px 6px', fontSize: 12, color: 'var(--sb-t1)', outline: 'none' }}
-                    value={editSpaceName}
-                    onChange={e => setEditSpaceName(e.target.value)}
-                    onBlur={() => handleRenameSpace(s.id)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') handleRenameSpace(s.id)
-                      if (e.key === 'Escape') setEditingSpaceId(null)
-                    }}
-                  />
-                </div>
-              ) : (
-                <SpaceItem
-                  active={space === s.name}
-                  dot={s.color}
-                  count={countFor(s.name)}
-                  onClick={() => setSpace(s.name)}
-                  onContextMenu={e => handleSpaceContextMenu(e, s.id, s.name)}
-                >
-                  {s.name}
-                </SpaceItem>
-              )}
-            </div>
-          ))}
-
-          {/* Add space */}
-          {addingSpace ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px 4px 28px', margin: '1px 0' }}>
-              <input
-                ref={spaceInputRef}
-                style={{ flex: 1, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 'var(--r1)', padding: '3px 7px', fontSize: 12, color: 'var(--sb-t1)', outline: 'none' }}
-                placeholder="스페이스 이름..."
-                value={newSpaceName}
-                onChange={e => setNewSpaceName(e.target.value)}
-                onBlur={handleAddSpace}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') handleAddSpace()
-                  if (e.key === 'Escape') { setAddingSpace(false); setNewSpaceName('') }
-                }}
-              />
-            </div>
-          ) : (
-            <AddBtn onClick={() => setAddingSpace(true)}>스페이스 추가</AddBtn>
-          )}
         </div>
 
         {/* Online users */}
@@ -439,22 +353,7 @@ export function Sidebar() {
           }}
           onClick={e => e.stopPropagation()}
         >
-          {contextMenu.type === 'space' ? (
-            <>
-              <ContextMenuItem onClick={() => { setEditingSpaceId(contextMenu.id); setEditSpaceName(contextMenu.name); setContextMenu(null) }}>
-                ✎&nbsp;&nbsp;이름 수정
-              </ContextMenuItem>
-              <div style={{ height: 1, background: 'var(--bd)', margin: '4px 0' }} />
-              <ContextMenuItem danger onClick={() => {
-                if (!confirm(`"${contextMenu.name}" 스페이스를 삭제할까요?`)) return
-                if (space === contextMenu.name) setSpace(null)
-                deleteSpace(contextMenu.id)
-                setContextMenu(null)
-              }}>
-                ×&nbsp;&nbsp;삭제
-              </ContextMenuItem>
-            </>
-          ) : isProjectCreator(contextMenu.id) ? (
+          {isProjectCreator(contextMenu.id) ? (
             <>
               <ContextMenuItem onClick={() => { setEditingProjectId(contextMenu.id); setEditProjectName(contextMenu.name); setContextMenu(null) }}>
                 ✎&nbsp;&nbsp;이름 수정
@@ -594,32 +493,6 @@ function ProjectItem({ children, active, dot, count, daysInfo, inviteCode, onCli
           <span style={{ fontSize: 11, color: 'var(--sb-t3)', flexShrink: 0 }}>{count}</span>
         </div>
       )}
-    </div>
-  )
-}
-
-function SpaceItem({ children, active, dot, count, onClick, onContextMenu }: {
-  children: React.ReactNode; active: boolean; dot: string; count: number
-  onClick: () => void; onContextMenu: (e: React.MouseEvent) => void
-}) {
-  return (
-    <div
-      onClick={onClick}
-      onContextMenu={onContextMenu}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        padding: '5px 8px 5px 14px', borderRadius: 'var(--r2)', cursor: 'pointer',
-        fontSize: 13, fontWeight: active ? 500 : 400, margin: '1px 0',
-        color: active ? 'var(--sb-t1)' : 'var(--sb-t2)',
-        background: active ? 'var(--sb-active)' : 'transparent',
-        transition: 'background .1s',
-      }}
-      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--sb-hover)' }}
-      onMouseLeave={e => { e.currentTarget.style.background = active ? 'var(--sb-active)' : 'transparent' }}
-    >
-      <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flexShrink: 0 }} />
-      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
-      <span style={{ fontSize: 11, color: 'var(--sb-t3)', marginLeft: 'auto', flexShrink: 0 }}>{count}</span>
     </div>
   )
 }

@@ -6,7 +6,7 @@ import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useProjectStore } from '../../../store/projectStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
 import { useAuthStore } from '../../../store/authStore'
-import { CategoryBadge, TagBadge } from '../../shared/Badge'
+import { TagBadge } from '../../shared/Badge'
 import { AssigneeAvatar } from '../../shared/Avatar'
 import { ProgressBar } from '../../shared/ProgressBar'
 import { ContextMenu } from '../../shared/ContextMenu'
@@ -22,7 +22,7 @@ const COL_STORAGE_KEY = 'cringe_table_cols_v1'
 
 const DEFAULT_COLS: ColDef[] = [
   { key: 'name',     label: '업무',    width: 300 },
-  { key: 'cat',      label: '스페이스', width: 110 },
+  { key: 'tags',     label: '태그',    width: 160 },
   { key: 'assignee', label: '담당자',  width: 140 },
   { key: 'status',   label: '상태',    width: 110 },
   { key: 'due',      label: '마감일',  width: 100 },
@@ -141,6 +141,12 @@ export function TableView() {
     return Object.values(allProfiles).map(p => ({ value: p.email, label: p.name }))
   }, [projects, allProfiles, getNameByEmail])
 
+  const allTags = React.useMemo(() => {
+    const s = new Set<string>()
+    allTasks.forEach(t => t.tags?.forEach(tag => s.add(tag)))
+    return Array.from(s).sort()
+  }, [allTasks])
+
   // ── Navigation helpers ──────────────────────────────────────────────────────
   const rootTasks = filteredTasks.filter(t => !t.parentId)
   const getChildren = (id: string) => allTasks.filter(t => t.parentId === id)
@@ -216,7 +222,7 @@ export function TableView() {
           <Row cols={cols} task={task} hasChildren={hasChildren} isExpanded={isExpanded}
             childCount={children.length} doneCount={children.filter(c => c.status === '완료').length}
             milestones={pickerMilestones} showMilestonePicker={pickerMilestones.length > 0}
-            assigneeOptions={aOpts}
+            assigneeOptions={aOpts} allTags={allTags}
             onToggle={() => toggle(task.id)} {...h}
           />
           {hasChildren && isExpanded && children.map(child => {
@@ -225,7 +231,7 @@ export function TableView() {
             return (
               <Row key={child.id} cols={cols} task={child} isChild
                 milestones={pickerMilestones} showMilestonePicker={pickerMilestones.length > 0}
-                assigneeOptions={cOpts}
+                assigneeOptions={cOpts} allTags={allTags}
                 {...ch}
               />
             )
@@ -412,6 +418,7 @@ function Row({
   childCount = 0, doneCount = 0,
   milestones = [], showMilestonePicker = false,
   assigneeOptions = [],
+  allTags = [],
   onToggle, onOpen, onUpdate, onMilestoneChange, onContextMenu,
 }: {
   cols: ColDef[]
@@ -419,6 +426,7 @@ function Row({
   hasChildren?: boolean; isExpanded?: boolean; childCount?: number; doneCount?: number
   milestones?: Milestone[]; showMilestonePicker?: boolean
   assigneeOptions?: { value: string; label: string }[]
+  allTags?: string[]
   onToggle?: () => void; onOpen: () => void
   onUpdate: (patch: Partial<Task>) => void
   onMilestoneChange?: (id: string | undefined) => void
@@ -501,10 +509,14 @@ function Row({
           </div>
         )
 
-      case 'cat':
+      case 'tags':
         return (
-          <div key="cat" style={cellBase(col, isLast)}>
-            {task.cat ? <CategoryBadge cat={task.cat} /> : <Dash />}
+          <div key="tags" style={{ ...cellBase(col, isLast), padding: '4px 8px' }}>
+            <TagMultiSelect
+              tags={task.tags ?? []}
+              allTags={allTags}
+              onChange={v => onUpdate({ tags: v })}
+            />
           </div>
         )
 
@@ -1049,6 +1061,140 @@ function InlineTextEdit({ value, onCommit, onCancel, fontSize = 13, bold = false
       onClick={e => e.stopPropagation()}
       style={{ flex: 1, width: '100%', border: 'none', outline: '1.5px solid var(--ac)', borderRadius: 3, background: 'var(--bg)', padding: '2px 6px', fontFamily: 'var(--font)', fontSize, fontWeight: bold ? 500 : 400, color: 'var(--t1)' }}
     />
+  )
+}
+
+// ── TagMultiSelect ────────────────────────────────────────────────────────────
+
+function TagMultiSelect({ tags, allTags, onChange }: {
+  tags: string[]
+  allTags: string[]
+  onChange: (tags: string[]) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [input, setInput] = useState('')
+  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const ref = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setInput('') }
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+
+  const handleOpen = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (open) { setOpen(false); setInput(''); return }
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 4, left: r.left })
+    }
+    setOpen(true)
+  }
+
+  const toggle = (tag: string) => {
+    const next = tags.includes(tag) ? tags.filter(t => t !== tag) : [...tags, tag]
+    onChange(next)
+  }
+
+  const addNew = (raw: string) => {
+    const trimmed = raw.trim()
+    if (!trimmed || tags.includes(trimmed)) return
+    onChange([...tags, trimmed])
+    setInput('')
+  }
+
+  const filtered = input.trim()
+    ? allTags.filter(t => t.toLowerCase().includes(input.toLowerCase()))
+    : allTags
+  const inputTrimmed = input.trim()
+  const canAddNew = inputTrimmed && !allTags.includes(inputTrimmed)
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
+      <div ref={btnRef} onClick={handleOpen}
+        style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 3, cursor: 'pointer', flex: 1, minWidth: 0 }}>
+        {tags.length === 0
+          ? <span style={{ fontSize: 12, color: 'var(--t3)' }}>—</span>
+          : tags.map(tag => <TagBadge key={tag} tag={tag} />)
+        }
+        <span style={{ fontSize: 9, color: 'var(--t3)', opacity: .6, marginLeft: 2 }}>▾</span>
+      </div>
+
+      {open && (
+        <div style={{
+          position: 'fixed', top: pos.top, left: pos.left, zIndex: 9000,
+          background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
+          boxShadow: 'var(--sh-md)', minWidth: 190, maxHeight: 280, display: 'flex', flexDirection: 'column',
+        }}>
+          <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--bd)', flexShrink: 0 }}>
+            <input
+              autoFocus
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  if (filtered.length === 1) toggle(filtered[0])
+                  else if (canAddNew) addNew(input)
+                  else if (inputTrimmed && tags.includes(inputTrimmed)) toggle(inputTrimmed)
+                }
+                if (e.key === 'Escape') { setOpen(false); setInput('') }
+              }}
+              placeholder="태그 검색 또는 추가..."
+              style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--bd)', borderRadius: 'var(--r1)', padding: '4px 8px', fontSize: 12, background: 'var(--bg2)', color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)' }}
+            />
+          </div>
+          <div style={{ overflowY: 'auto', padding: '4px 0' }}>
+            {canAddNew && (
+              <div
+                onMouseDown={e => { e.preventDefault(); addNew(input) }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 12, color: 'var(--ac)', cursor: 'pointer', transition: 'background .07s' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <span style={{ fontWeight: 700 }}>+</span> "{inputTrimmed}" 추가
+              </div>
+            )}
+            {filtered.map(tag => {
+              const isOn = tags.includes(tag)
+              return (
+                <div key={tag}
+                  onMouseDown={e => { e.preventDefault(); toggle(tag) }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', cursor: 'pointer', background: isOn ? 'rgba(35,131,226,.07)' : 'transparent', transition: 'background .07s' }}
+                  onMouseEnter={e => { if (!isOn) e.currentTarget.style.background = 'var(--bg3)' }}
+                  onMouseLeave={e => { if (!isOn) e.currentTarget.style.background = 'transparent' }}
+                >
+                  <span style={{ width: 14, height: 14, border: `2px solid ${isOn ? 'var(--ac)' : 'var(--bd2)'}`, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: isOn ? 'var(--ac)' : 'transparent', transition: 'all .1s' }}>
+                    {isOn && <span style={{ color: '#fff', fontSize: 9, fontWeight: 700 }}>✓</span>}
+                  </span>
+                  <TagBadge tag={tag} />
+                </div>
+              )
+            })}
+            {filtered.length === 0 && !canAddNew && (
+              <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--t3)' }}>태그가 없습니다</div>
+            )}
+          </div>
+          {tags.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--bd)', flexShrink: 0 }}>
+              <div
+                onMouseDown={e => { e.preventDefault(); onChange([]); setOpen(false) }}
+                style={{ padding: '6px 12px', fontSize: 12, color: 'var(--t3)', cursor: 'pointer', transition: 'background .07s' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                전체 해제
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
