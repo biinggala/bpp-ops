@@ -258,7 +258,7 @@ export function TableView() {
                 onAddTask={() => onAdd(ms.id)}
                 onUpdate={patch => updateMilestone(ms.id, patch)}
                 onDelete={() => deleteMilestone(ms.id)}
-                onContextMenu={(e) => { e.preventDefault(); setMsCtxMenu({ x: e.clientX, y: e.clientY, onAdd: () => onAdd(ms.id) }) }}
+                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMsCtxMenu({ x: e.clientX, y: e.clientY, onAdd: () => onAdd(ms.id) }) }}
               />
               {!isCollapsed && renderRows(msTasks, pjMilestones)}
             </React.Fragment>
@@ -270,7 +270,7 @@ export function TableView() {
               collapsed={collapsedMs.has('__none__')}
               onToggle={() => toggleMs('__none__')}
               onAddTask={() => onAdd()}
-              onContextMenu={(e) => { e.preventDefault(); setMsCtxMenu({ x: e.clientX, y: e.clientY, onAdd: () => onAdd() }) }} />
+              onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMsCtxMenu({ x: e.clientX, y: e.clientY, onAdd: () => onAdd() }) }} />
             {!collapsedMs.has('__none__') && renderRows(unassigned, pjMilestones)}
           </>
         )}
@@ -1058,19 +1058,30 @@ function MsContextMenu({ x, y, onAdd, onClose }: {
   x: number; y: number; onAdd: () => void; onClose: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
   useEffect(() => {
     const h = (e: MouseEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent) { if (e.key === 'Escape') onClose(); return }
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+      if (e instanceof KeyboardEvent) { if (e.key === 'Escape') onCloseRef.current(); return }
+      if (ref.current && !ref.current.contains(e.target as Node)) onCloseRef.current()
     }
-    document.addEventListener('mousedown', h)
-    document.addEventListener('keydown', h)
-    return () => { document.removeEventListener('mousedown', h); document.removeEventListener('keydown', h) }
-  }, [onClose])
+    // small delay so the right-click mousedown doesn't immediately close the menu
+    const id = window.setTimeout(() => {
+      document.addEventListener('mousedown', h)
+      document.addEventListener('keydown', h)
+    }, 10)
+    return () => {
+      clearTimeout(id)
+      document.removeEventListener('mousedown', h)
+      document.removeEventListener('keydown', h)
+    }
+  }, [])
+
   const cx = Math.min(x, window.innerWidth - 190)
   const cy = Math.min(y, window.innerHeight - 60)
   return (
-    <div ref={ref} style={{ position: 'fixed', left: cx, top: cy, width: 180, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: '0 8px 28px rgba(0,0,0,.18)', zIndex: 500, padding: '4px 0', userSelect: 'none' }}>
+    <div ref={ref} style={{ position: 'fixed', left: cx, top: cy, width: 180, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: '0 8px 28px rgba(0,0,0,.18)', zIndex: 9000, padding: '4px 0', userSelect: 'none' }}>
       <MsCtxItem icon="+" label="새 업무 추가" onClick={() => { onAdd(); onClose() }} />
     </div>
   )
