@@ -47,7 +47,7 @@ export function LoginPage() {
             textAlign: 'center',
           }}>
             프로젝트 초대 링크로 접속하셨습니다.<br />
-            로그인하면 자동으로 참여됩니다.
+            로그인 후 참여 수락을 눌러 프로젝트에 합류하세요.
           </div>
         )}
 

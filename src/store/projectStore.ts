@@ -14,7 +14,8 @@ interface ProjectState {
   deleteProject: (id: string) => void
   addMember: (projectId: string, email: string) => void
   removeMember: (projectId: string, email: string) => void
-  joinByInvite: (code: string, email: string) => Project | null
+  acceptInvite: (projectId: string, email: string) => void
+  findByInvite: (code: string, email: string) => { project: Project; status: 'active' | 'pending' } | null
   subscribeFirebase: () => () => void
 }
 
@@ -61,9 +62,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const normalized = email.toLowerCase().trim()
     const projects = get().projects.map(p => {
       if (p.id !== projectId) return p
-      const current = p.memberEmails ?? []
-      if (current.some(e => e.toLowerCase() === normalized)) return p
-      return { ...p, memberEmails: [...current, normalized] }
+      const active = p.memberEmails ?? []
+      const pending = p.pendingEmails ?? []
+      if (active.some(e => e.toLowerCase() === normalized)) return p
+      if (pending.some(e => e.toLowerCase() === normalized)) return p
+      return { ...p, pendingEmails: [...pending, normalized] }
     })
     set({ projects }); persist(projects); syncFb(projects)
   },
@@ -72,25 +75,42 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const normalized = email.toLowerCase().trim()
     const projects = get().projects.map(p => {
       if (p.id !== projectId) return p
-      return { ...p, memberEmails: (p.memberEmails ?? []).filter(e => e.toLowerCase() !== normalized) }
+      return {
+        ...p,
+        memberEmails: (p.memberEmails ?? []).filter(e => e.toLowerCase() !== normalized),
+        pendingEmails: (p.pendingEmails ?? []).filter(e => e.toLowerCase() !== normalized),
+      }
     })
     set({ projects }); persist(projects); syncFb(projects)
   },
 
-  joinByInvite: (code, email) => {
+  acceptInvite: (projectId, email) => {
+    const normalized = email.toLowerCase().trim()
+    const projects = get().projects.map(p => {
+      if (p.id !== projectId) return p
+      const pendingEmails = (p.pendingEmails ?? []).filter(e => e.toLowerCase() !== normalized)
+      const alreadyActive = (p.memberEmails ?? []).some(e => e.toLowerCase() === normalized)
+      const memberEmails = alreadyActive ? (p.memberEmails ?? []) : [...(p.memberEmails ?? []), normalized]
+      return { ...p, pendingEmails, memberEmails }
+    })
+    set({ projects }); persist(projects); syncFb(projects)
+  },
+
+  findByInvite: (code, email) => {
     const project = get().projects.find(p => p.inviteCode === code)
     if (!project) return null
     const normalized = email.toLowerCase().trim()
-    // If no memberEmails set (legacy open project) allow anyone; otherwise require pre-approval
-    if (project.memberEmails?.length && !project.memberEmails.some(e => e.toLowerCase() === normalized)) {
-      return null
+    // Legacy open project (no access lists) — treat as active
+    if (!project.memberEmails?.length && !project.pendingEmails?.length) {
+      return { project, status: 'active' }
     }
-    if (project.memberEmails?.some(e => e.toLowerCase() === normalized)) return project
-    // Legacy open project: add email to list
-    const memberEmails = [...(project.memberEmails ?? []), normalized]
-    const projects = get().projects.map(p => p.id === project.id ? { ...p, memberEmails } : p)
-    set({ projects }); persist(projects); syncFb(projects)
-    return { ...project, memberEmails }
+    if (project.memberEmails?.some(e => e.toLowerCase() === normalized)) {
+      return { project, status: 'active' }
+    }
+    if (project.pendingEmails?.some(e => e.toLowerCase() === normalized)) {
+      return { project, status: 'pending' }
+    }
+    return null
   },
 
   subscribeFirebase: () => {

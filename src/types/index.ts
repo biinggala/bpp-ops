@@ -19,9 +19,10 @@ export interface Project {
   color: string       // from PROJECT_PALETTE
   dueDate?: string    // YYYY-MM-DD
   clientName?: string
-  inviteCode?: string     // short code for invite links
-  memberEmails?: string[] // if set, only these emails can see the project
-  creatorEmail?: string   // email of the user who created this project
+  inviteCode?: string      // short code for invite links
+  memberEmails?: string[]  // fully joined members — only these emails can see the project
+  pendingEmails?: string[] // invited but not yet accepted
+  creatorEmail?: string    // email of the user who created this project
 }
 
 export interface Milestone {

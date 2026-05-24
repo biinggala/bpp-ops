@@ -775,6 +775,7 @@ function MemberManageModal({ project, currentEmail, onAddMember, onRemoveMember,
   }
 
   const members = project.memberEmails ?? []
+  const pending = project.pendingEmails ?? []
 
   return (
     <div
@@ -796,32 +797,55 @@ function MemberManageModal({ project, currentEmail, onAddMember, onRemoveMember,
         </div>
 
         {/* Current members */}
-        <div style={{ marginBottom: 16, maxHeight: 200, overflowY: 'auto' }}>
-          {members.length === 0 ? (
+        <div style={{ marginBottom: 16, maxHeight: 240, overflowY: 'auto' }}>
+          {members.length === 0 && pending.length === 0 ? (
             <div style={{ fontSize: 12, color: 'var(--t3)', padding: '8px 0' }}>멤버가 없습니다 (공개 프로젝트)</div>
-          ) : members.map(m => {
-            const isSelf = currentEmail ? m.toLowerCase() === currentEmail.toLowerCase() : false
-            return (
-              <div key={m} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--bd)' }}>
-                <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#667eea,#764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-                  {m[0]?.toUpperCase()}
-                </div>
-                <span style={{ flex: 1, fontSize: 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m}</span>
-                {isSelf ? (
-                  <span style={{ padding: '2px 8px', fontSize: 11, color: 'var(--t3)' }}>나</span>
-                ) : (
+          ) : (
+            <>
+              {members.map(m => {
+                const isSelf = currentEmail ? m.toLowerCase() === currentEmail.toLowerCase() : false
+                return (
+                  <div key={m} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--bd)' }}>
+                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#667eea,#764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                      {m[0]?.toUpperCase()}
+                    </div>
+                    <span style={{ flex: 1, fontSize: 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m}</span>
+                    {isSelf ? (
+                      <span style={{ padding: '2px 8px', fontSize: 11, color: 'var(--t3)' }}>나</span>
+                    ) : (
+                      <button
+                        onClick={() => onRemoveMember(m)}
+                        style={{ padding: '2px 8px', borderRadius: 'var(--r1)', border: '1px solid rgba(239,68,68,.3)', background: 'transparent', color: '#f87171', fontSize: 11, cursor: 'pointer' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,.07)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        제거
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+              {pending.map(m => (
+                <div key={m} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--bd)', opacity: 0.75 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#a3a3a3,#737373)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                    {m[0]?.toUpperCase()}
+                  </div>
+                  <span style={{ flex: 1, fontSize: 13, color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m}</span>
+                  <span style={{ padding: '2px 7px', borderRadius: 'var(--r1)', fontSize: 10, fontWeight: 600, color: '#d97706', background: 'rgba(217,119,6,.1)', border: '1px solid rgba(217,119,6,.25)', whiteSpace: 'nowrap' }}>
+                    초대됨
+                  </span>
                   <button
                     onClick={() => onRemoveMember(m)}
                     style={{ padding: '2px 8px', borderRadius: 'var(--r1)', border: '1px solid rgba(239,68,68,.3)', background: 'transparent', color: '#f87171', fontSize: 11, cursor: 'pointer' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,.07)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
-                    제거
+                    취소
                   </button>
-                )}
-              </div>
-            )
-          })}
+                </div>
+              ))}
+            </>
+          )}
         </div>
 
         {/* Add member */}

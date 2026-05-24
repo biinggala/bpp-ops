@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useUiStore } from '../store/uiStore'
 import { useTaskStore } from '../store/taskStore'
 import { useSpaceStore } from '../store/spaceStore'
@@ -6,6 +6,7 @@ import { useProjectStore } from '../store/projectStore'
 import { useMilestoneStore } from '../store/milestoneStore'
 import { useAuthStore } from '../store/authStore'
 import { usePresenceStore } from '../store/presenceStore'
+import type { Project } from '../types'
 import { Sidebar } from '../components/layout/Sidebar'
 import { Topbar } from '../components/layout/Topbar'
 import { ViewBar } from '../components/layout/ViewBar'
@@ -45,9 +46,11 @@ export function AppPage() {
   const subscribeSpaces = useSpaceStore(s => s.subscribeFirebase)
   const subscribeProjects = useProjectStore(s => s.subscribeFirebase)
   const subscribeMilestones = useMilestoneStore(s => s.subscribeFirebase)
-  const joinByInvite = useProjectStore(s => s.joinByInvite)
+  const findByInvite = useProjectStore(s => s.findByInvite)
+  const acceptInvite = useProjectStore(s => s.acceptInvite)
   const projects = useProjectStore(s => s.projects)
   const setProject = useUiStore(s => s.setProject)
+  const [invitePending, setInvitePending] = useState<{ project: Project } | null>(null)
   // Read invite code once at mount; sessionStorage is cleared immediately to avoid replay on refresh
   const pendingInviteRef = useRef((() => {
     const code = sessionStorage.getItem('pending_invite')
@@ -81,13 +84,18 @@ export function AppPage() {
   useEffect(() => {
     if (!uid || !email || !pendingInviteRef.current) return
     const code = pendingInviteRef.current
-    // Check if project with this invite code exists yet in local state
     const targetProject = projects.find(p => p.inviteCode === code)
     if (!targetProject) return  // Not loaded from Firebase yet — wait for next sync
-    // Project found — attempt to join (may fail if email not approved)
-    const project = joinByInvite(code, email)
+
+    const result = findByInvite(code, email)
     pendingInviteRef.current = null
-    if (project) setProject(project.id)
+
+    if (!result) return  // Not invited
+    if (result.status === 'active') {
+      setProject(result.project.id)
+    } else {
+      setInvitePending({ project: result.project })
+    }
   }, [uid, email, projects])
 
   useEffect(() => {
@@ -140,6 +148,58 @@ export function AppPage() {
       </TaskDetailErrorBoundary>
       <CommandPalette />
       <Toast />
+
+      {invitePending && (
+        <InviteAcceptModal
+          project={invitePending.project}
+          onAccept={() => {
+            if (email) acceptInvite(invitePending.project.id, email)
+            setProject(invitePending.project.id)
+            setInvitePending(null)
+          }}
+          onDecline={() => setInvitePending(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function InviteAcceptModal({ project, onAccept, onDecline }: {
+  project: Project
+  onAccept: () => void
+  onDecline: () => void
+}) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 20000, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', padding: '32px 28px', width: 360, boxShadow: '0 12px 48px rgba(0,0,0,.45)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+        {/* Project icon */}
+        <div style={{ width: 48, height: 48, borderRadius: 12, background: project.color, marginBottom: 18 }} />
+        <div style={{ fontSize: 13, color: 'var(--t3)', marginBottom: 6 }}>프로젝트 초대</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--t1)', marginBottom: 8, textAlign: 'center' }}>
+          {project.name}
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--t2)', marginBottom: 28, textAlign: 'center', lineHeight: 1.6 }}>
+          이 프로젝트에 초대되었습니다.<br />참여를 수락하시겠어요?
+        </div>
+        <div style={{ display: 'flex', gap: 10, width: '100%' }}>
+          <button
+            onClick={onDecline}
+            style={{ flex: 1, padding: '10px 0', borderRadius: 'var(--r2)', border: '1px solid var(--bd)', background: 'transparent', fontSize: 13, fontWeight: 500, color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg2)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          >
+            거절
+          </button>
+          <button
+            onClick={onAccept}
+            style={{ flex: 2, padding: '10px 0', borderRadius: 'var(--r2)', border: 'none', background: 'var(--ac)', fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer', fontFamily: 'var(--font)' }}
+            onMouseEnter={e => e.currentTarget.style.opacity = '.9'}
+            onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+          >
+            참여 수락
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
