@@ -148,7 +148,7 @@ export function TaskDetailModal() {
 
   const [sidebarW, setSidebarW] = useState<number>(() => {
     const v = parseInt(localStorage.getItem(SIDEBAR_KEY) || '0')
-    return v >= MIN_SIDEBAR && v <= MAX_SIDEBAR ? v : 260
+    return v >= MIN_SIDEBAR && v <= MAX_SIDEBAR ? v : 320
   })
   const resizingRef = useRef<{ startX: number; startW: number } | null>(null)
 
