@@ -67,6 +67,7 @@ function daysFrom(dateStr: string, base: Date) {
   return Math.round((new Date(dateStr).setHours(0, 0, 0, 0) - base.getTime()) / 86400000)
 }
 type CtxState = { x: number; y: number; task: Task } | null
+type MsCtxState = { x: number; y: number; onAdd: () => void } | null
 
 // ── TableView ─────────────────────────────────────────────────────────────────
 
@@ -85,6 +86,7 @@ export function TableView() {
   const [collapsedMs, setCollapsedMs] = useState<Set<string>>(new Set())
   const [collapsedPj, setCollapsedPj] = useState<Set<string>>(new Set())
   const [ctxMenu, setCtxMenu] = useState<CtxState>(null)
+  const [msCtxMenu, setMsCtxMenu] = useState<MsCtxState>(null)
   const [addingMs, setAddingMs] = useState<string | null>(null)
   const today = React.useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
 
@@ -256,6 +258,7 @@ export function TableView() {
                 onAddTask={() => onAdd(ms.id)}
                 onUpdate={patch => updateMilestone(ms.id, patch)}
                 onDelete={() => deleteMilestone(ms.id)}
+                onContextMenu={(e) => { e.preventDefault(); setMsCtxMenu({ x: e.clientX, y: e.clientY, onAdd: () => onAdd(ms.id) }) }}
               />
               {!isCollapsed && renderRows(msTasks, pjMilestones)}
             </React.Fragment>
@@ -266,7 +269,8 @@ export function TableView() {
             <UnassignedHeader count={unassigned.length}
               collapsed={collapsedMs.has('__none__')}
               onToggle={() => toggleMs('__none__')}
-              onAddTask={() => onAdd()} />
+              onAddTask={() => onAdd()}
+              onContextMenu={(e) => { e.preventDefault(); setMsCtxMenu({ x: e.clientX, y: e.clientY, onAdd: () => onAdd() }) }} />
             {!collapsedMs.has('__none__') && renderRows(unassigned, pjMilestones)}
           </>
         )}
@@ -308,6 +312,13 @@ export function TableView() {
         getChildren(ctxMenu.task.id).forEach(c => deleteTask(c.id))
         deleteTask(ctxMenu.task.id)
       }}
+    />
+  )
+  const msCtx = msCtxMenu && (
+    <MsContextMenu
+      x={msCtxMenu.x} y={msCtxMenu.y}
+      onAdd={msCtxMenu.onAdd}
+      onClose={() => setMsCtxMenu(null)}
     />
   )
 
@@ -368,6 +379,7 @@ export function TableView() {
           </div>
         )}
         {ctx}
+        {msCtx}
       </div>
     )
   }
@@ -387,6 +399,7 @@ export function TableView() {
         {addBtn()}
       </div>
       {ctx}
+      {msCtx}
     </div>
   )
 }
@@ -751,11 +764,12 @@ function AssigneeMultiSelect({ assignee, options, onChange }: {
 
 // ── MilestoneHeader ───────────────────────────────────────────────────────────
 
-function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onToggle, onAddTask, onUpdate, onDelete }: {
+function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onToggle, onAddTask, onUpdate, onDelete, onContextMenu }: {
   milestone: Milestone; taskCount: number; completed: number; diff: number
   collapsed: boolean; onToggle: () => void; onAddTask: () => void
   onUpdate: (patch: Partial<Omit<Milestone, 'id'>>) => void
   onDelete?: () => void
+  onContextMenu?: (e: React.MouseEvent) => void
 }) {
   const [hovered, setHovered] = useState(false)
   const [editingName, setEditingName] = useState(false)
@@ -780,6 +794,7 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onT
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onContextMenu={onContextMenu}
       style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: `3px solid ${accent}` }}
     >
       <button
@@ -869,14 +884,16 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onT
 
 // ── UnassignedHeader ──────────────────────────────────────────────────────────
 
-function UnassignedHeader({ count, collapsed, onToggle, onAddTask }: {
+function UnassignedHeader({ count, collapsed, onToggle, onAddTask, onContextMenu }: {
   count: number; collapsed: boolean; onToggle: () => void; onAddTask: () => void
+  onContextMenu?: (e: React.MouseEvent) => void
 }) {
   const [hovered, setHovered] = useState(false)
   return (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onContextMenu={onContextMenu}
       style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: '3px solid var(--bd)' }}
     >
       <button
@@ -1032,6 +1049,41 @@ function InlineTextEdit({ value, onCommit, onCancel, fontSize = 13, bold = false
       onClick={e => e.stopPropagation()}
       style={{ flex: 1, width: '100%', border: 'none', outline: '1.5px solid var(--ac)', borderRadius: 3, background: 'var(--bg)', padding: '2px 6px', fontFamily: 'var(--font)', fontSize, fontWeight: bold ? 500 : 400, color: 'var(--t1)' }}
     />
+  )
+}
+
+// ── MsContextMenu ─────────────────────────────────────────────────────────────
+
+function MsContextMenu({ x, y, onAdd, onClose }: {
+  x: number; y: number; onAdd: () => void; onClose: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const h = (e: MouseEvent | KeyboardEvent) => {
+      if (e instanceof KeyboardEvent) { if (e.key === 'Escape') onClose(); return }
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('mousedown', h)
+    document.addEventListener('keydown', h)
+    return () => { document.removeEventListener('mousedown', h); document.removeEventListener('keydown', h) }
+  }, [onClose])
+  const cx = Math.min(x, window.innerWidth - 190)
+  const cy = Math.min(y, window.innerHeight - 60)
+  return (
+    <div ref={ref} style={{ position: 'fixed', left: cx, top: cy, width: 180, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: '0 8px 28px rgba(0,0,0,.18)', zIndex: 500, padding: '4px 0', userSelect: 'none' }}>
+      <MsCtxItem icon="+" label="새 업무 추가" onClick={() => { onAdd(); onClose() }} />
+    </div>
+  )
+}
+
+function MsCtxItem({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) {
+  const [hov, setHov] = useState(false)
+  return (
+    <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', cursor: 'pointer', fontSize: 13, color: 'var(--t1)', background: hov ? 'var(--bg3)' : 'transparent', transition: 'background .06s' }}>
+      <span style={{ fontSize: 14, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>
+      {label}
+    </div>
   )
 }
 
