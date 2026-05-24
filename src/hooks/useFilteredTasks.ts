@@ -31,7 +31,13 @@ export function useFilteredTasks(): Task[] {
 
     if (space) result = result.filter(t => t.cat === space)
     if (projectId) result = result.filter(t => t.projectId === projectId)
-    if (myTasksOnly && memberKey) result = result.filter(t => t.assignee.includes(memberKey))
+    if (myTasksOnly) {
+      result = result.filter(t => {
+        if (memberKey && t.assignee.includes(memberKey)) return true
+        if (email && t.assignee.toLowerCase().includes(email.toLowerCase())) return true
+        return false
+      })
+    }
 
     if (filters.assignees.length) {
       result = result.filter(t => filters.assignees.some(a => t.assignee.includes(a)))

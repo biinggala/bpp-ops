@@ -1,7 +1,9 @@
 import { useMemo } from 'react'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useSpaceStore } from '../../../store/spaceStore'
-import { usePresenceStore } from '../../../store/presenceStore'
+import { useUserProfileStore } from '../../../store/userProfileStore'
+import { useProjectStore } from '../../../store/projectStore'
+import { useAuthStore } from '../../../store/authStore'
 import { STATUS_COLORS, STATUS_LIST, MEMBERS, getCatColor } from '../../../types'
 import type { MemberKey } from '../../../types'
 
@@ -25,7 +27,10 @@ function gradForKey(key: string) {
 export function StatsView() {
   const tasks = useFilteredTasks()
   const spaces = useSpaceStore(s => s.spaces)
-  const presences = usePresenceStore(s => s.presences)
+  const profiles = useUserProfileStore(s => s.profiles)
+  const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  const projects = useProjectStore(s => s.projects)
+  const email = useAuthStore(s => s.email)
 
   const total = tasks.length
   const done = tasks.filter(t => t.status === '완료').length
@@ -43,27 +48,27 @@ export function StatsView() {
     { label: '평균 진행률', val: `${avgProgress}%`,  color: '#8b5cf6' },
   ]
 
-  // Build dynamic assignee list from actual task assignees
-  const assigneeMap = useMemo(() => {
-    const nameByKey = new Map<string, string>()
-    // Known members
-    for (const [k, m] of Object.entries(MEMBERS)) nameByKey.set(k, m.n)
-    // Presence entries (online users with display names)
-    for (const p of Object.values(presences)) {
-      if (p.memberKey && p.name && !nameByKey.has(p.memberKey)) {
-        nameByKey.set(p.memberKey, p.name)
-      }
-    }
-    return nameByKey
-  }, [presences])
+  // Resolve display name for any assignee key (legacy MemberKey or email)
+  const resolveName = useMemo(() => (key: string): string => {
+    const legacy = MEMBERS[key as MemberKey]
+    if (legacy) return legacy.n
+    return getNameByEmail(key)
+  }, [profiles, getNameByEmail])
 
+  // Build assignee list: project members first, then anyone who appears in task.assignee
   const assigneeKeys = useMemo(() => {
+    const accessibleProjects = projects.filter(p =>
+      !p.memberEmails?.length || (email ? p.memberEmails.some(e => e.toLowerCase() === email.toLowerCase()) : false)
+    )
     const keys = new Set<string>()
+    // Add all active project members
+    accessibleProjects.forEach(p => p.memberEmails?.forEach(e => keys.add(e)))
+    // Also add any assignee key found in tasks (legacy MemberKeys etc.)
     tasks.forEach(t => {
       if (t.assignee) t.assignee.split(',').map(s => s.trim()).filter(Boolean).forEach(k => keys.add(k))
     })
     return Array.from(keys).sort()
-  }, [tasks])
+  }, [tasks, projects, email])
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -112,7 +117,7 @@ export function StatsView() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
             {assigneeKeys.map(key => {
               const knownMember = MEMBERS[key as MemberKey]
-              const name = assigneeMap.get(key) ?? key
+              const name = resolveName(key)
               const grad = knownMember?.grad ?? gradForKey(key)
               const initial = name[0]?.toUpperCase() ?? '?'
               const myTasks = tasks.filter(t => t.assignee.includes(key))

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth'
-import { auth } from '../lib/firebase'
+import { ref, set as fbSet } from 'firebase/database'
+import { auth, db } from '../lib/firebase'
 import { ALLOWED_EMAILS } from '../types'
 import type { MemberKey } from '../types'
 
@@ -52,6 +53,12 @@ export const useAuthStore = create<AuthState>((set) => ({
       const email = user.email || ''
       const memberKey = ALLOWED_EMAILS[email] ?? null
       set({ memberKey, uid: user.uid, email, displayName: user.displayName, photoURL: user.photoURL, loading: false, error: null })
+      // Write profile so other users can resolve this person's name
+      fbSet(ref(db, `cringe/userProfiles/${user.uid}`), {
+        email,
+        name: user.displayName ?? email.split('@')[0],
+        photoURL: user.photoURL ?? null,
+      }).catch(() => {})
     })
 
     return unsub

@@ -5,9 +5,9 @@ import { useSpaceStore } from '../../store/spaceStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { useAuthStore } from '../../store/authStore'
-import { MEMBERS, STATUS_LIST, PRIORITY_LIST, getTagColor } from '../../types'
-import type { Task, MemberKey } from '../../types'
-import { usePresenceStore } from '../../store/presenceStore'
+import { useUserProfileStore } from '../../store/userProfileStore'
+import { STATUS_LIST, PRIORITY_LIST, getTagColor } from '../../types'
+import type { Task } from '../../types'
 
 const EMPTY: Omit<Task, 'id'> = {
   type: '세부', name: '', cat: '', assignee: '',
@@ -21,22 +21,23 @@ export function TaskModal() {
   const allProjects = useProjectStore(s => s.projects)
   const milestones = useMilestoneStore(s => s.milestones)
   const email = useAuthStore(s => s.email)
-  const presences = usePresenceStore(s => s.presences)
-  const assigneeOptions = useMemo(() => {
-    const opts: { value: string; label: string }[] = (Object.keys(MEMBERS) as MemberKey[])
-      .map(k => ({ value: k, label: MEMBERS[k].n }))
-    const known = new Set(opts.map(o => o.value))
-    Object.values(presences).forEach(p => {
-      if (!p || known.has(p.memberKey)) return
-      known.add(p.memberKey)
-      opts.push({ value: p.memberKey, label: p.name })
-    })
-    return opts
-  }, [presences])
+  const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  const profiles = useUserProfileStore(s => s.profiles)
+
   const projects = allProjects.filter(p =>
     !p.memberEmails?.length || (email ? p.memberEmails.includes(email) : false)
   )
   const [form, setForm] = useState<Omit<Task, 'id'>>(EMPTY)
+
+  const assigneeOptions = useMemo(() => {
+    const selectedProject = allProjects.find(p => p.id === form.projectId)
+    const memberEmails = selectedProject?.memberEmails ?? []
+    if (memberEmails.length > 0) {
+      return memberEmails.map(e => ({ value: e, label: getNameByEmail(e) }))
+    }
+    // No project selected or open project — show all known profiles
+    return Object.values(profiles).map(p => ({ value: p.email, label: p.name }))
+  }, [form.projectId, allProjects, profiles, getNameByEmail])
 
   const editing = editTaskId ? tasks.find(t => t.id === editTaskId) : null
   const parentTask = newTaskParentId ? tasks.find(t => t.id === newTaskParentId) : null
@@ -68,7 +69,7 @@ export function TaskModal() {
   const submit = () => {
     if (!form.name.trim()) return
     if (editing) updateTask(editing.id, form)
-    else addTask(form)
+    else addTask({ ...form, createdBy: email ?? undefined })
     closeTaskModal()
   }
 

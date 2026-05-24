@@ -52,6 +52,7 @@ export interface Task {
   blockedBy?: string[]  // task IDs this task is blocked by
   order?: number
   checklist?: ChecklistItem[]
+  createdBy?: string  // email of the task creator
 }
 
 export interface ChecklistItem {

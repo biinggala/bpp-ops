@@ -6,6 +6,7 @@ import { useProjectStore } from '../store/projectStore'
 import { useMilestoneStore } from '../store/milestoneStore'
 import { useAuthStore } from '../store/authStore'
 import { usePresenceStore } from '../store/presenceStore'
+import { useUserProfileStore } from '../store/userProfileStore'
 import type { Project } from '../types'
 import { Sidebar } from '../components/layout/Sidebar'
 import { Topbar } from '../components/layout/Topbar'
@@ -63,13 +64,15 @@ export function AppPage() {
   const { uid, memberKey, displayName, email } = useAuthStore()
   const detailTaskId = useUiStore(s => s.detailTaskId)
   const subscribePresence = usePresenceStore(s => s.subscribe)
+  const subscribeProfiles = useUserProfileStore(s => s.subscribe)
 
   useEffect(() => {
     const u1 = subscribeFirebase()
     const u2 = subscribeSpaces()
     const u3 = subscribeProjects()
     const u4 = subscribeMilestones()
-    return () => { u1(); u2(); u3(); u4() }
+    const u5 = subscribeProfiles()
+    return () => { u1(); u2(); u3(); u4(); u5() }
   }, [])
 
   useEffect(() => {

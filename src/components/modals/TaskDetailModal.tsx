@@ -12,21 +12,10 @@ import { usePresenceStore } from '../../store/presenceStore'
 import { useSpaceStore } from '../../store/spaceStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMilestoneStore } from '../../store/milestoneStore'
-import { MEMBERS, STATUS_LIST, PRIORITY_LIST, STATUS_COLORS } from '../../types'
-import type { Task, Status, Priority, MemberKey } from '../../types'
-
-/* ── Helpers ── */
-
-function MemberAvatar({ memberKey, name, size = 28 }: { memberKey: string; name?: string; size?: number }) {
-  const m = MEMBERS[memberKey as MemberKey]
-  const grad = m?.grad ?? 'linear-gradient(135deg,#667eea,#764ba2)'
-  const initial = (m?.n ?? name ?? memberKey)[0]?.toUpperCase() ?? '?'
-  return (
-    <div style={{ width: size, height: size, borderRadius: '50%', background: grad, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.38, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-      {initial}
-    </div>
-  )
-}
+import { useUserProfileStore } from '../../store/userProfileStore'
+import { AssigneeAvatar } from '../shared/Avatar'
+import { STATUS_LIST, PRIORITY_LIST, STATUS_COLORS } from '../../types'
+import type { Task, Status, Priority } from '../../types'
 
 function PropRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -100,20 +89,11 @@ export function TaskDetailModal() {
   const { updateTask } = useTaskStore()
   const { uid } = useAuthStore()
   const { presences, setCurrentTask } = usePresenceStore()
-
-  const assigneeOptions = useMemo(() => {
-    const opts: { value: string; label: string }[] = (Object.keys(MEMBERS) as MemberKey[])
-      .map(k => ({ value: k, label: MEMBERS[k].n }))
-    const known = new Set(opts.map(o => o.value))
-    Object.values(presences).forEach(p => {
-      if (!p || known.has(p.memberKey)) return
-      known.add(p.memberKey)
-      opts.push({ value: p.memberKey, label: p.name })
-    })
-    return opts
-  }, [presences])
+  const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  const profiles = useUserProfileStore(s => s.profiles)
   const spaces = useSpaceStore(s => s.spaces)
-  const projects = useProjectStore(s => s.projects)
+  const allProjects = useProjectStore(s => s.projects)
+  const projects = allProjects
   const milestones = useMilestoneStore(s => s.milestones)
 
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved')
@@ -174,6 +154,16 @@ export function TaskDetailModal() {
   const currentProject = projects.find(p => p.id === task.projectId)
   const currentMilestone = milestones.find(m => m.id === task.milestoneId)
 
+  const assigneeOptions = useMemo(() => {
+    const memberEmails = currentProject?.memberEmails ?? []
+    if (memberEmails.length > 0) {
+      return memberEmails.map(e => ({ value: e, label: getNameByEmail(e) }))
+    }
+    return Object.values(profiles).map(p => ({ value: p.email, label: p.name }))
+  }, [currentProject, profiles, getNameByEmail])
+
+  const createdByName = task.createdBy ? getNameByEmail(task.createdBy) : null
+
   const upd = (patch: Partial<Task>) => updateTask(task.id, patch)
 
   return (
@@ -222,8 +212,8 @@ export function TaskDetailModal() {
               <span style={{ fontSize: 11, color: 'var(--t3)' }}>함께 보는 중</span>
               <div style={{ display: 'flex', gap: -4 }}>
                 {viewers.map((v, i) => (
-                  <div key={i} title={`${v.name}님이 보고 있어요`} style={{ marginLeft: i === 0 ? 0 : -6, border: '2px solid var(--bg)', borderRadius: '50%' }}>
-                    <MemberAvatar memberKey={v.memberKey} name={v.name} size={26} />
+                  <div key={i} title={`${v.name}님이 보고 있어요`} style={{ marginLeft: i === 0 ? 0 : -6 }}>
+                    <AssigneeAvatar assigneeKey={v.memberKey} size={26} />
                   </div>
                 ))}
               </div>
@@ -302,6 +292,15 @@ export function TaskDetailModal() {
                   <option value="">없음</option>
                   {taskMilestones.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
+              </PropRow>
+            )}
+
+            {createdByName && (
+              <PropRow label="생성자">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <AssigneeAvatar assigneeKey={task.createdBy!} size={20} />
+                  <span style={{ fontSize: 12, color: 'var(--t2)' }}>{createdByName}</span>
+                </div>
               </PropRow>
             )}
 
