@@ -19,6 +19,7 @@ interface UiState {
   editTaskId: string | null
   newTaskParentId: string | null
   newTaskMilestoneId: string | null
+  newTaskProjectId: string | null
   isTaskModalOpen: boolean
   isFilterPanelOpen: boolean
   isColorSettingsOpen: boolean
@@ -35,7 +36,7 @@ interface UiState {
   setDetailTaskId: (id: string | null) => void
   openTaskDetail: (id: string) => void
   closeTaskDetail: () => void
-  openTaskModal: (editId?: string, parentId?: string, milestoneId?: string) => void
+  openTaskModal: (editId?: string, parentId?: string, milestoneId?: string, projectId?: string) => void
   closeTaskModal: () => void
   setColorSettings: (open: boolean) => void
   openCommandPalette: () => void
@@ -64,6 +65,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   editTaskId: null,
   newTaskParentId: null,
   newTaskMilestoneId: null,
+  newTaskProjectId: null,
   isTaskModalOpen: false,
   isFilterPanelOpen: false,
   isColorSettingsOpen: false,
@@ -80,8 +82,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   setDetailTaskId: (id) => set({ detailTaskId: id }),
   openTaskDetail: (id: string) => set({ detailTaskId: id }),
   closeTaskDetail: () => set({ detailTaskId: null }),
-  openTaskModal: (editId, parentId, milestoneId) => set({ isTaskModalOpen: true, editTaskId: editId ?? null, newTaskParentId: parentId ?? null, newTaskMilestoneId: milestoneId ?? null }),
-  closeTaskModal: () => set({ isTaskModalOpen: false, editTaskId: null, newTaskParentId: null, newTaskMilestoneId: null }),
+  openTaskModal: (editId, parentId, milestoneId, projectId) => set({ isTaskModalOpen: true, editTaskId: editId ?? null, newTaskParentId: parentId ?? null, newTaskMilestoneId: milestoneId ?? null, newTaskProjectId: projectId ?? null }),
+  closeTaskModal: () => set({ isTaskModalOpen: false, editTaskId: null, newTaskParentId: null, newTaskMilestoneId: null, newTaskProjectId: null }),
   setColorSettings: (open) => set({ isColorSettingsOpen: open }),
   openCommandPalette: () => set({ isCommandPaletteOpen: true }),
   closeCommandPalette: () => set({ isCommandPaletteOpen: false }),

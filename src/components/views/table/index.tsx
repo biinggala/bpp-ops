@@ -258,7 +258,7 @@ export function TableView() {
                 onAddTask={() => onAdd(ms.id)}
                 onUpdate={patch => updateMilestone(ms.id, patch)}
                 onDelete={() => deleteMilestone(ms.id)}
-                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMsCtxMenu({ x: e.clientX, y: e.clientY, onAdd: () => onAdd(ms.id) }) }}
+                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMsCtxMenu({ x: e.clientX, y: e.clientY, onAdd: () => openTaskModal(undefined, undefined, ms.id, ms.projectId) }) }}
               />
               {!isCollapsed && renderRows(msTasks, pjMilestones)}
             </React.Fragment>
@@ -270,7 +270,7 @@ export function TableView() {
               collapsed={collapsedMs.has('__none__')}
               onToggle={() => toggleMs('__none__')}
               onAddTask={() => onAdd()}
-              onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMsCtxMenu({ x: e.clientX, y: e.clientY, onAdd: () => onAdd() }) }} />
+              onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMsCtxMenu({ x: e.clientX, y: e.clientY, onAdd: () => openTaskModal(undefined, undefined, undefined, pjMilestones[0]?.projectId) }) }} />
             {!collapsedMs.has('__none__') && renderRows(unassigned, pjMilestones)}
           </>
         )}
