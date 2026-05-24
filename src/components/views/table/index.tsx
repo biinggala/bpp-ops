@@ -10,7 +10,7 @@ import { TagBadge } from '../../shared/Badge'
 import { AssigneeAvatar } from '../../shared/Avatar'
 import { ProgressBar } from '../../shared/ProgressBar'
 import { ContextMenu } from '../../shared/ContextMenu'
-import { fmtDate, isOverdue, parseAssignees } from '../../../lib/utils'
+import { fmtDate, isOverdue, parseAssignees, stripHtml } from '../../../lib/utils'
 import type { Task, Milestone, Status, Priority } from '../../../types'
 
 // ── Column config ─────────────────────────────────────────────────────────────
@@ -592,7 +592,7 @@ function Row({
               />
             ) : (
               <span style={{ fontSize: 13, color: task.memo ? 'var(--t2)' : 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text', width: '100%' }}>
-                {task.memo || '—'}
+                {task.memo ? stripHtml(task.memo) : '—'}
               </span>
             )}
           </div>
