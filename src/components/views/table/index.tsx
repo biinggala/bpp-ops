@@ -1,32 +1,74 @@
-import React from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useProjectStore } from '../../../store/projectStore'
-import { CategoryBadge, PriorityBadge, TagBadge } from '../../shared/Badge'
-import { AssigneeGroup } from '../../shared/Avatar'
+import { useUserProfileStore } from '../../../store/userProfileStore'
+import { useAuthStore } from '../../../store/authStore'
+import { CategoryBadge, TagBadge } from '../../shared/Badge'
+import { AssigneeAvatar } from '../../shared/Avatar'
 import { ProgressBar } from '../../shared/ProgressBar'
 import { ContextMenu } from '../../shared/ContextMenu'
-import { fmtDate, isOverdue } from '../../../lib/utils'
+import { fmtDate, isOverdue, parseAssignees } from '../../../lib/utils'
 import type { Task, Milestone, Status, Priority } from '../../../types'
 
-const COLS = [
-  { label: '업무', flex: 3.5 },
-  { label: '스페이스', flex: 1.2 },
-  { label: '담당자', flex: 1.2 },
-  { label: '상태', flex: 1 },
-  { label: '마감일', flex: 0.9 },
-  { label: '우선순위', flex: 0.8 },
-  { label: '진행률', flex: 1.2 },
-  { label: '메모', flex: 1.8 },
+// ── Column config ─────────────────────────────────────────────────────────────
+
+type ColDef = { key: string; label: string; width: number }
+
+const MIN_COL_WIDTH = 60
+const COL_STORAGE_KEY = 'cringe_table_cols_v1'
+
+const DEFAULT_COLS: ColDef[] = [
+  { key: 'name',     label: '업무',    width: 300 },
+  { key: 'cat',      label: '스페이스', width: 110 },
+  { key: 'assignee', label: '담당자',  width: 140 },
+  { key: 'status',   label: '상태',    width: 110 },
+  { key: 'due',      label: '마감일',  width: 100 },
+  { key: 'priority', label: '우선순위', width: 100 },
+  { key: 'progress', label: '진행률',  width: 120 },
+  { key: 'memo',     label: '메모',    width: 180 },
 ]
+
+function loadCols(): ColDef[] {
+  try {
+    const raw = localStorage.getItem(COL_STORAGE_KEY)
+    if (raw) {
+      const saved: ColDef[] = JSON.parse(raw)
+      const defMap = new Map(DEFAULT_COLS.map(d => [d.key, d]))
+      const merged = saved
+        .filter(s => defMap.has(s.key))
+        .map(s => ({ ...defMap.get(s.key)!, width: Math.max(MIN_COL_WIDTH, s.width) }))
+      DEFAULT_COLS.forEach(d => { if (!merged.find(m => m.key === d.key)) merged.push(d) })
+      return merged
+    }
+  } catch { /* ignore */ }
+  return [...DEFAULT_COLS]
+}
+
+// ── Status / Priority styling ─────────────────────────────────────────────────
+
+const STATUS_STYLE: Record<Status, { bg: string; color: string }> = {
+  '진행중': { bg: 'rgba(35,131,226,.15)', color: '#1869c9' },
+  '대기':   { bg: 'rgba(120,117,114,.14)', color: '#5a5857' },
+  '검토중': { bg: '#fef3c7',              color: '#b45309' },
+  '완료':   { bg: '#d1fae5',              color: '#047857' },
+}
+const PRIORITY_STYLE: Record<Priority, { bg: string; color: string }> = {
+  '높음': { bg: 'rgba(239,68,68,.13)',  color: '#dc2626' },
+  '중간': { bg: 'rgba(245,158,11,.14)', color: '#b45309' },
+  '낮음': { bg: 'rgba(59,130,246,.13)', color: '#1d4ed8' },
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function daysFrom(dateStr: string, base: Date) {
   return Math.round((new Date(dateStr).setHours(0, 0, 0, 0) - base.getTime()) / 86400000)
 }
-
 type CtxState = { x: number; y: number; task: Task } | null
+
+// ── TableView ─────────────────────────────────────────────────────────────────
 
 export function TableView() {
   const filteredTasks = useFilteredTasks()
@@ -35,22 +77,74 @@ export function TableView() {
   const { openTaskModal, openTaskDetail, projectId } = useUiStore()
   const { milestones, updateMilestone, deleteMilestone } = useMilestoneStore()
   const projects = useProjectStore(s => s.projects)
-  const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set())
-  const [collapsedMs, setCollapsedMs] = React.useState<Set<string>>(new Set())
-  const [collapsedPj, setCollapsedPj] = React.useState<Set<string>>(new Set())
-  const [ctxMenu, setCtxMenu] = React.useState<CtxState>(null)
-  const [addingMs, setAddingMs] = React.useState<string | null>(null)
+  const allProfiles = useUserProfileStore(s => s.profiles)
+  const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  const userEmail = useAuthStore(s => s.email)
+
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [collapsedMs, setCollapsedMs] = useState<Set<string>>(new Set())
+  const [collapsedPj, setCollapsedPj] = useState<Set<string>>(new Set())
+  const [ctxMenu, setCtxMenu] = useState<CtxState>(null)
+  const [addingMs, setAddingMs] = useState<string | null>(null)
   const today = React.useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
 
+  // ── Column state ────────────────────────────────────────────────────────────
+  const [cols, setCols] = useState<ColDef[]>(loadCols)
+  const [draggingCol, setDraggingCol] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const resizingRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null)
+
+  useEffect(() => {
+    try { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(cols)) } catch { /* ignore */ }
+  }, [cols])
+
+  const handleResizeStart = useCallback((key: string, startX: number, startWidth: number, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    resizingRef.current = { key, startX, startWidth }
+    const onMove = (ev: MouseEvent) => {
+      const r = resizingRef.current
+      if (!r) return
+      const newW = Math.max(MIN_COL_WIDTH, r.startWidth + ev.clientX - r.startX)
+      setCols(prev => prev.map(c => c.key === r.key ? { ...c, width: newW } : c))
+    }
+    const onUp = () => {
+      resizingRef.current = null
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }, [])
+
+  const handleColDrop = useCallback((targetKey: string) => {
+    if (!draggingCol || draggingCol === targetKey) { setDraggingCol(null); setDropTarget(null); return }
+    setCols(prev => {
+      const from = prev.findIndex(c => c.key === draggingCol)
+      const to = prev.findIndex(c => c.key === targetKey)
+      const next = [...prev]
+      const [removed] = next.splice(from, 1)
+      next.splice(to, 0, removed)
+      return next
+    })
+    setDraggingCol(null)
+    setDropTarget(null)
+  }, [draggingCol])
+
+  // ── Assignee options ────────────────────────────────────────────────────────
+  const getAssigneeOptions = useCallback((pjId: string | undefined) => {
+    const project = projects.find(p => p.id === pjId)
+    const emails = project?.memberEmails ?? []
+    if (emails.length > 0) return emails.map(e => ({ value: e, label: getNameByEmail(e) }))
+    return Object.values(allProfiles).map(p => ({ value: p.email, label: p.name }))
+  }, [projects, allProfiles, getNameByEmail])
+
+  // ── Navigation helpers ──────────────────────────────────────────────────────
   const rootTasks = filteredTasks.filter(t => !t.parentId)
   const getChildren = (id: string) => allTasks.filter(t => t.parentId === id)
-
-  const toggle = (id: string) =>
-    setCollapsed(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
-  const toggleMs = (id: string) =>
-    setCollapsedMs(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
-  const togglePj = (id: string) =>
-    setCollapsedPj(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const toggle = (id: string) => setCollapsed(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const toggleMs = (id: string) => setCollapsedMs(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const togglePj = (id: string) => setCollapsedPj(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
 
   const makeHandlers = (task: Task) => ({
     onOpen: () => openTaskDetail(task.id),
@@ -59,57 +153,77 @@ export function TableView() {
     onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, task }) },
   })
 
+  // ── Column header row ───────────────────────────────────────────────────────
   const colHeader = (
-    <div style={{ display: 'flex', background: 'var(--bg2)', borderBottom: '2px solid var(--bd)', borderLeft: '3px solid transparent' }}>
-      {COLS.map((c, i) => (
-        <div key={c.label} style={{ flex: c.flex, padding: '8px 12px', fontSize: 12, fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.04em', borderRight: i < COLS.length - 1 ? '1px solid var(--bd)' : 'none' }}>
-          {c.label}
-        </div>
-      ))}
+    <div style={{ display: 'flex', background: 'var(--bg2)', borderBottom: '2px solid var(--bd)', borderLeft: '3px solid transparent', userSelect: 'none' }}>
+      {cols.map((col, idx) => {
+        const isLast = idx === cols.length - 1
+        const isDragTarget = dropTarget === col.key && draggingCol !== col.key
+        return (
+          <div
+            key={col.key}
+            draggable
+            onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; setDraggingCol(col.key) }}
+            onDragOver={e => { e.preventDefault(); setDropTarget(col.key) }}
+            onDragLeave={() => setDropTarget(null)}
+            onDrop={() => handleColDrop(col.key)}
+            onDragEnd={() => { setDraggingCol(null); setDropTarget(null) }}
+            style={{
+              width: col.width, minWidth: col.width, maxWidth: col.width, flexShrink: 0,
+              padding: '8px 12px', fontSize: 12, fontWeight: 600, color: 'var(--t3)',
+              textTransform: 'uppercase' as const, letterSpacing: '.04em',
+              borderRight: isLast ? 'none' : '1px solid var(--bd)',
+              position: 'relative',
+              background: isDragTarget ? 'var(--ac-l)' : draggingCol === col.key ? 'var(--bg3)' : 'transparent',
+              cursor: 'grab',
+              transition: 'background .1s',
+              display: 'flex', alignItems: 'center',
+            }}
+          >
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{col.label}</span>
+            {/* Resize handle */}
+            {!isLast && (
+              <div
+                onMouseDown={e => handleResizeStart(col.key, e.clientX, col.width, e)}
+                draggable={false}
+                style={{
+                  position: 'absolute', right: 0, top: 0, bottom: 0, width: 6,
+                  cursor: 'col-resize', zIndex: 1,
+                  background: 'transparent',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--ac)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              />
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 
-  const addMsBtn = (pjId: string) => (
-    <button
-      onClick={() => setAddingMs(pjId)}
-      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', fontSize: 12, color: '#8b5cf6', background: 'transparent', border: 'none', borderTop: '1px solid var(--bd)', cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left', transition: 'background .1s' }}
-      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139,92,246,.05)' }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-    >
-      <span style={{ fontSize: 9, lineHeight: 1 }}>◆</span> 마일스톤 추가
-    </button>
-  )
-
-  const addBtn = (milestoneId?: string) => (
-    <button
-      onClick={() => openTaskModal(undefined, undefined, milestoneId)}
-      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', fontSize: 13, color: 'var(--t3)', background: 'transparent', border: 'none', borderTop: '1px solid var(--bd)', cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font)', transition: 'background .1s' }}
-      onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; e.currentTarget.style.color = 'var(--t2)' }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
-    >
-      <span style={{ fontSize: 16, lineHeight: 1, marginTop: -1 }}>+</span> 업무 추가
-    </button>
-  )
-
-  // Render task rows with explicit milestone list for picker
+  // ── Row helpers ─────────────────────────────────────────────────────────────
   const renderRows = (tasks: Task[], pickerMilestones: Milestone[]) =>
     tasks.map(task => {
       const children = getChildren(task.id)
       const hasChildren = children.length > 0
       const isExpanded = !collapsed.has(task.id)
       const h = makeHandlers(task)
+      const aOpts = getAssigneeOptions(task.projectId)
       return (
         <React.Fragment key={task.id}>
-          <Row task={task} hasChildren={hasChildren} isExpanded={isExpanded}
+          <Row cols={cols} task={task} hasChildren={hasChildren} isExpanded={isExpanded}
             childCount={children.length} doneCount={children.filter(c => c.status === '완료').length}
             milestones={pickerMilestones} showMilestonePicker={pickerMilestones.length > 0}
+            assigneeOptions={aOpts}
             onToggle={() => toggle(task.id)} {...h}
           />
-          {hasChildren && isExpanded && children.map((child, idx) => {
+          {hasChildren && isExpanded && children.map(child => {
             const ch = makeHandlers(child)
+            const cOpts = getAssigneeOptions(child.projectId)
             return (
-              <Row key={child.id} task={child} isChild
+              <Row key={child.id} cols={cols} task={child} isChild
                 milestones={pickerMilestones} showMilestonePicker={pickerMilestones.length > 0}
+                assigneeOptions={cOpts}
                 {...ch}
               />
             )
@@ -118,7 +232,6 @@ export function TableView() {
       )
     })
 
-  // Render milestone-grouped sections (shared by single-project and multi-project modes)
   const renderMilestoneGroups = (tasks: Task[], pjMilestones: Milestone[], onAdd: (msId?: string) => void) => {
     const grouped: Record<string, Task[]> = {}
     for (const ms of pjMilestones) grouped[ms.id] = []
@@ -161,6 +274,28 @@ export function TableView() {
     )
   }
 
+  const addMsBtn = (pjId: string) => (
+    <button
+      onClick={() => setAddingMs(pjId)}
+      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', fontSize: 12, color: '#8b5cf6', background: 'transparent', border: 'none', borderTop: '1px solid var(--bd)', cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left', transition: 'background .1s' }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139,92,246,.05)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+    >
+      <span style={{ fontSize: 9, lineHeight: 1 }}>◆</span> 마일스톤 추가
+    </button>
+  )
+
+  const addBtn = (milestoneId?: string) => (
+    <button
+      onClick={() => openTaskModal(undefined, undefined, milestoneId)}
+      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', fontSize: 13, color: 'var(--t3)', background: 'transparent', border: 'none', borderTop: '1px solid var(--bd)', cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font)', transition: 'background .1s' }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; e.currentTarget.style.color = 'var(--t2)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
+    >
+      <span style={{ fontSize: 16, lineHeight: 1, marginTop: -1 }}>+</span> 업무 추가
+    </button>
+  )
+
   const ctx = ctxMenu && (
     <ContextMenu
       x={ctxMenu.x} y={ctxMenu.y} task={ctxMenu.task}
@@ -176,21 +311,19 @@ export function TableView() {
     />
   )
 
-  // ── Multi-project mode (no project filter) ────────────────────────────────
+  // ── Multi-project mode ──────────────────────────────────────────────────────
   if (!projectId) {
     const projectsWithTasks = projects.filter(p => rootTasks.some(t => t.projectId === p.id))
     const unassignedTasks = rootTasks.filter(t => !t.projectId || !projects.find(p => p.id === t.projectId))
-
     return (
-      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {projectsWithTasks.map(proj => {
           const pjMilestones = milestones.filter(m => m.projectId === proj.id).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
           const pjTasks = rootTasks.filter(t => t.projectId === proj.id)
           const isCollapsed = collapsedPj.has(proj.id)
           const doneCount = pjTasks.filter(t => t.status === '완료').length
           return (
-            <div key={proj.id} style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden', minWidth: 860 }}>
-              {/* Project header */}
+            <div key={proj.id} style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden' }}>
               <div
                 onClick={() => togglePj(proj.id)}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--bg2)', borderBottom: isCollapsed ? 'none' : '1px solid var(--bd)', cursor: 'pointer', borderLeft: `3px solid ${proj.color}` }}
@@ -205,24 +338,21 @@ export function TableView() {
                   {colHeader}
                   {pjMilestones.length > 0
                     ? renderMilestoneGroups(pjTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
-                    : renderRows(pjTasks, pjMilestones)
-                  }
+                    : renderRows(pjTasks, pjMilestones)}
                   {addingMs === proj.id
                     ? <AddMilestoneInline projectId={proj.id} onDone={() => setAddingMs(null)} />
-                    : addMsBtn(proj.id)
-                  }
+                    : addMsBtn(proj.id)}
                   {addBtn()}
                 </>
               )}
             </div>
           )
         })}
-
         {unassignedTasks.length > 0 && (
-          <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden', minWidth: 860 }}>
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden' }}>
             <div
               onClick={() => togglePj('__no_project__')}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--bg2)', borderBottom: collapsedPj.has('__no_project__') ? 'none' : '1px solid var(--bd)', cursor: 'pointer', borderLeft: '4px solid var(--bd)' }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--bg2)', borderBottom: collapsedPj.has('__no_project__') ? 'none' : '1px solid var(--bd)', cursor: 'pointer', borderLeft: '3px solid var(--bd)' }}
             >
               <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--t2)', flex: 1 }}>프로젝트 미배정</span>
               <span style={{ fontSize: 11, color: 'var(--t3)', background: 'var(--bg3)', borderRadius: 10, padding: '2px 8px' }}>{unassignedTasks.length}개</span>
@@ -242,23 +372,18 @@ export function TableView() {
     )
   }
 
-  // ── Single-project mode ───────────────────────────────────────────────────
-  const pjMilestones = milestones
-    .filter(m => m.projectId === projectId)
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-
+  // ── Single-project mode ─────────────────────────────────────────────────────
+  const pjMilestones = milestones.filter(m => m.projectId === projectId).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-      <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden', minWidth: 860 }}>
+    <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', padding: '20px 24px' }}>
+      <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden' }}>
         {colHeader}
         {pjMilestones.length > 0
           ? renderMilestoneGroups(rootTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
-          : renderRows(rootTasks, [])
-        }
+          : renderRows(rootTasks, [])}
         {addingMs === projectId
           ? <AddMilestoneInline projectId={projectId!} onDone={() => setAddingMs(null)} />
-          : addMsBtn(projectId!)
-        }
+          : addMsBtn(projectId!)}
         {addBtn()}
       </div>
       {ctx}
@@ -266,7 +391,365 @@ export function TableView() {
   )
 }
 
-// ── MilestoneHeader (Jira-style section header) ───────────────────────────────
+// ── Row ───────────────────────────────────────────────────────────────────────
+
+function Row({
+  cols, task, isChild = false,
+  hasChildren = false, isExpanded = true,
+  childCount = 0, doneCount = 0,
+  milestones = [], showMilestonePicker = false,
+  assigneeOptions = [],
+  onToggle, onOpen, onUpdate, onMilestoneChange, onContextMenu,
+}: {
+  cols: ColDef[]
+  task: Task; isChild?: boolean
+  hasChildren?: boolean; isExpanded?: boolean; childCount?: number; doneCount?: number
+  milestones?: Milestone[]; showMilestonePicker?: boolean
+  assigneeOptions?: { value: string; label: string }[]
+  onToggle?: () => void; onOpen: () => void
+  onUpdate: (patch: Partial<Task>) => void
+  onMilestoneChange?: (id: string | undefined) => void
+  onContextMenu?: (e: React.MouseEvent) => void
+}) {
+  const [hovered, setHovered] = useState(false)
+  const [editing, setEditing] = useState<string | null>(null)
+  const overdue = isOverdue(task.due, task.status)
+
+  const stopEdit = () => setEditing(null)
+  const startEdit = (cell: string) => (e: React.MouseEvent) => {
+    if (e.detail >= 2) return
+    e.stopPropagation()
+    setEditing(cell)
+  }
+
+  const cellBase = (col: ColDef, isLast: boolean): React.CSSProperties => ({
+    width: col.width, minWidth: col.width, maxWidth: col.width, flexShrink: 0,
+    padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 4,
+    minHeight: 44, overflow: 'hidden',
+    borderRight: isLast ? 'none' : '1px solid var(--bd)',
+  })
+
+  const renderCell = (col: ColDef, isLast: boolean) => {
+    switch (col.key) {
+
+      case 'name':
+        return (
+          <div
+            key="name"
+            onDoubleClick={e => { e.stopPropagation(); stopEdit(); onOpen() }}
+            style={{ ...cellBase(col, isLast), paddingLeft: isChild ? 52 : 40, gap: 5 }}
+          >
+            {isChild ? (
+              <span style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1, marginLeft: -12 }}>└</span>
+            ) : (
+              <button
+                onClick={e => { e.stopPropagation(); onToggle?.() }}
+                style={{ width: 18, height: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: hasChildren ? 'pointer' : 'default', borderRadius: 3, padding: 0, color: 'var(--t3)', fontSize: 9, visibility: hasChildren ? 'visible' : 'hidden', marginLeft: -22 }}
+                onMouseEnter={e => { if (hasChildren) { e.currentTarget.style.background = 'var(--bg4)'; e.currentTarget.style.color = 'var(--t1)' } }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
+              >
+                {isExpanded ? '▼' : '▶'}
+              </button>
+            )}
+            {editing === 'name' ? (
+              <InlineTextEdit
+                value={task.name}
+                onCommit={v => { onUpdate({ name: v }); stopEdit() }}
+                onCancel={stopEdit}
+                fontSize={14}
+                bold={!isChild && hasChildren}
+              />
+            ) : (
+              <span
+                onClick={startEdit('name')}
+                style={{ fontSize: 14, fontWeight: !isChild && hasChildren ? 500 : 400, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--t1)', cursor: 'text' }}
+              >
+                {task.name}
+              </span>
+            )}
+            {hasChildren && !isExpanded && (
+              <span style={{ fontSize: 10, color: 'var(--t3)', background: 'var(--bg4)', borderRadius: 10, padding: '1px 6px', flexShrink: 0 }}>{doneCount}/{childCount}</span>
+            )}
+            {task.tags && task.tags.length > 0 && (
+              <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+                {task.tags.slice(0, 2).map(tag => <TagBadge key={tag} tag={tag} />)}
+                {task.tags.length > 2 && <span style={{ fontSize: 10, color: 'var(--t3)', alignSelf: 'center' }}>+{task.tags.length - 2}</span>}
+              </div>
+            )}
+            {(task.blockedBy?.length || task.blocking?.length) ? (
+              <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                {!!task.blockedBy?.length && <span title={`선행 ${task.blockedBy.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(239,68,68,.1)', color: '#ef4444', lineHeight: 1.6 }}>⛔ {task.blockedBy.length}</span>}
+                {!!task.blocking?.length && <span title={`후행 ${task.blocking.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(245,158,11,.1)', color: '#f59e0b', lineHeight: 1.6 }}>⚡ {task.blocking.length}</span>}
+              </div>
+            ) : null}
+            {showMilestonePicker && (hovered || task.milestoneId) && onMilestoneChange && (
+              <MilestonePicker milestoneId={task.milestoneId} milestones={milestones} onChange={onMilestoneChange} />
+            )}
+          </div>
+        )
+
+      case 'cat':
+        return (
+          <div key="cat" style={cellBase(col, isLast)}>
+            {task.cat ? <CategoryBadge cat={task.cat} /> : <Dash />}
+          </div>
+        )
+
+      case 'assignee':
+        return (
+          <div key="assignee" style={{ ...cellBase(col, isLast), padding: '4px 8px' }}>
+            <AssigneeMultiSelect
+              assignee={task.assignee}
+              options={assigneeOptions}
+              onChange={v => onUpdate({ assignee: v })}
+            />
+          </div>
+        )
+
+      case 'status':
+        return (
+          <div key="status" style={{ ...cellBase(col, isLast), padding: '6px 10px' }}>
+            <ColoredSelect
+              value={task.status}
+              options={(['진행중','대기','검토중','완료'] as Status[])}
+              styleMap={STATUS_STYLE}
+              onChange={v => onUpdate({ status: v as Status })}
+            />
+          </div>
+        )
+
+      case 'due':
+        return (
+          <div key="due" style={cellBase(col, isLast)} onClick={startEdit('due')}>
+            {editing === 'due' ? (
+              <AutoDateInput
+                value={task.due || ''}
+                onChange={v => { onUpdate({ due: v }); stopEdit() }}
+                onBlur={stopEdit}
+                onEscape={stopEdit}
+              />
+            ) : (
+              <span style={{ fontSize: 13, color: overdue ? '#ef4444' : task.due ? 'var(--t2)' : 'var(--t3)', fontWeight: overdue ? 500 : 400, cursor: 'pointer' }}>
+                {task.due ? (overdue ? '⚠ ' : '') + fmtDate(task.due) : '—'}
+              </span>
+            )}
+          </div>
+        )
+
+      case 'priority':
+        return (
+          <div key="priority" style={{ ...cellBase(col, isLast), padding: '6px 10px' }}>
+            <ColoredSelect
+              value={task.priority}
+              options={(['높음','중간','낮음'] as Priority[])}
+              styleMap={PRIORITY_STYLE}
+              onChange={v => onUpdate({ priority: v as Priority })}
+            />
+          </div>
+        )
+
+      case 'progress':
+        return (
+          <div key="progress" style={cellBase(col, isLast)}>
+            <ProgressBar value={task.progress} />
+          </div>
+        )
+
+      case 'memo':
+        return (
+          <div key="memo" style={cellBase(col, isLast)} onClick={startEdit('memo')}>
+            {editing === 'memo' ? (
+              <InlineTextEdit
+                value={task.memo || ''}
+                onCommit={v => { onUpdate({ memo: v }); stopEdit() }}
+                onCancel={stopEdit}
+                fontSize={13}
+              />
+            ) : (
+              <span style={{ fontSize: 13, color: task.memo ? 'var(--t2)' : 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text', width: '100%' }}>
+                {task.memo || '—'}
+              </span>
+            )}
+          </div>
+        )
+
+      default:
+        return <div key={col.key} style={cellBase(col, isLast)} />
+    }
+  }
+
+  return (
+    <div
+      onDoubleClick={() => { stopEdit(); onOpen() }}
+      onContextMenu={onContextMenu}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex',
+        background: hovered ? 'var(--bg3)' : (isChild ? 'var(--bg)' : 'transparent'),
+        borderBottom: '1px solid var(--bd)',
+        borderLeft: isChild
+          ? `3px solid ${hovered ? 'var(--ac)' : 'var(--bd2)'}`
+          : `3px solid ${hovered ? 'var(--ac)' : 'transparent'}`,
+        transition: 'background .08s',
+        opacity: task.status === '완료' ? .55 : 1,
+      }}
+    >
+      {cols.map((col, idx) => renderCell(col, idx === cols.length - 1))}
+    </div>
+  )
+}
+
+// ── ColoredSelect — colored badge with overlaid native select ─────────────────
+
+function ColoredSelect<T extends string>({ value, options, styleMap, onChange }: {
+  value: T
+  options: T[]
+  styleMap: Record<T, { bg: string; color: string }>
+  onChange: (v: string) => void
+}) {
+  const s = styleMap[value] ?? { bg: 'var(--bg3)', color: 'var(--t2)' }
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex' }} onClick={e => e.stopPropagation()}>
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '3px 10px', borderRadius: 12,
+        background: s.bg, color: s.color,
+        fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap', lineHeight: 1.6,
+        pointerEvents: 'none',
+      }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+        {value}
+        <span style={{ fontSize: 9, opacity: .6 }}>▾</span>
+      </span>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{
+          position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%',
+          fontFamily: 'var(--font)',
+        }}
+      >
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  )
+}
+
+// ── AssigneeMultiSelect ───────────────────────────────────────────────────────
+
+function AssigneeMultiSelect({ assignee, options, onChange }: {
+  assignee: string
+  options: { value: string; label: string }[]
+  onChange: (v: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const ref = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLDivElement>(null)
+  const selected = parseAssignees(assignee)
+
+  useEffect(() => {
+    if (!open) return
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+
+  const handleOpen = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (open) { setOpen(false); return }
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 4, left: r.left })
+    }
+    setOpen(true)
+  }
+
+  const toggle = (value: string) => {
+    const next = selected.includes(value)
+      ? selected.filter(s => s !== value)
+      : [...selected, value]
+    onChange(next.join(','))
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
+      <div
+        ref={btnRef}
+        onClick={handleOpen}
+        style={{ display: 'flex', alignItems: 'center', gap: 2, cursor: 'pointer', minWidth: 0 }}
+      >
+        {selected.length === 0 ? (
+          <span style={{ fontSize: 12, color: 'var(--t3)' }}>—</span>
+        ) : (
+          selected.map((k, i) => (
+            <span key={k} style={{ marginLeft: i > 0 ? -6 : 0, zIndex: selected.length - i }}>
+              <AssigneeAvatar assigneeKey={k} size={22} />
+            </span>
+          ))
+        )}
+        {options.length > 0 && (
+          <span style={{ fontSize: 9, color: 'var(--t3)', marginLeft: 4, opacity: .7 }}>▾</span>
+        )}
+      </div>
+
+      {open && (
+        <div style={{
+          position: 'fixed', top: pos.top, left: pos.left, zIndex: 9000,
+          background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
+          boxShadow: 'var(--sh-md)', padding: '4px 0', minWidth: 180, maxHeight: 280, overflowY: 'auto',
+        }}>
+          {options.length === 0 ? (
+            <div style={{ padding: '8px 14px', fontSize: 12, color: 'var(--t3)' }}>멤버가 없습니다</div>
+          ) : (
+            <>
+              {selected.length > 0 && (
+                <div
+                  onMouseDown={e => { e.preventDefault(); onChange('') }}
+                  style={{ padding: '6px 12px', fontSize: 12, color: 'var(--t3)', cursor: 'pointer', borderBottom: '1px solid var(--bd)', transition: 'background .07s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  미배정으로 초기화
+                </div>
+              )}
+              {options.map(opt => {
+                const isOn = selected.includes(opt.value)
+                return (
+                  <div
+                    key={opt.value}
+                    onMouseDown={e => { e.preventDefault(); toggle(opt.value) }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '7px 12px', cursor: 'pointer', fontSize: 13,
+                      background: isOn ? 'rgba(35,131,226,.07)' : 'transparent',
+                      transition: 'background .07s',
+                    }}
+                    onMouseEnter={e => { if (!isOn) e.currentTarget.style.background = 'var(--bg3)' }}
+                    onMouseLeave={e => { if (!isOn) e.currentTarget.style.background = 'transparent' }}
+                  >
+                    <span style={{ width: 14, height: 14, border: `2px solid ${isOn ? 'var(--ac)' : 'var(--bd2)'}`, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: isOn ? 'var(--ac)' : 'transparent', transition: 'all .1s' }}>
+                      {isOn && <span style={{ color: '#fff', fontSize: 9, lineHeight: 1, fontWeight: 700 }}>✓</span>}
+                    </span>
+                    <AssigneeAvatar assigneeKey={opt.value} size={20} />
+                    <span style={{ color: isOn ? 'var(--t1)' : 'var(--t2)', fontWeight: isOn ? 500 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {opt.label}
+                    </span>
+                  </div>
+                )
+              })}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── MilestoneHeader ───────────────────────────────────────────────────────────
 
 function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onToggle, onAddTask, onUpdate, onDelete }: {
   milestone: Milestone; taskCount: number; completed: number; diff: number
@@ -274,11 +757,11 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onT
   onUpdate: (patch: Partial<Omit<Milestone, 'id'>>) => void
   onDelete?: () => void
 }) {
-  const [hovered, setHovered] = React.useState(false)
-  const [editingName, setEditingName] = React.useState(false)
-  const [editingDate, setEditingDate] = React.useState(false)
-  const [tempName, setTempName] = React.useState(milestone.name)
-  const [tempDate, setTempDate] = React.useState(milestone.dueDate)
+  const [hovered, setHovered] = useState(false)
+  const [editingName, setEditingName] = useState(false)
+  const [editingDate, setEditingDate] = useState(false)
+  const [tempName, setTempName] = useState(milestone.name)
+  const [tempDate, setTempDate] = useState(milestone.dueDate)
   const overdue = diff < 0
   const close = diff >= 0 && diff <= 7
   const accent = overdue ? '#ef4444' : close ? '#f59e0b' : '#8b5cf6'
@@ -307,15 +790,11 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onT
       >
         {collapsed ? '▶' : '▼'}
       </button>
-
       <span style={{ fontSize: 11, color: accent, flexShrink: 0 }}>◆</span>
 
-      {/* Editable name */}
       {editingName ? (
         <input
-          autoFocus
-          value={tempName}
-          onChange={e => setTempName(e.target.value)}
+          autoFocus value={tempName} onChange={e => setTempName(e.target.value)}
           onBlur={saveName}
           onKeyDown={e => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') { setTempName(milestone.name); setEditingName(false) } }}
           onClick={e => e.stopPropagation()}
@@ -333,13 +812,9 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onT
         </span>
       )}
 
-      {/* Editable date */}
       {editingDate ? (
         <input
-          autoFocus
-          type="date"
-          value={tempDate}
-          onChange={e => setTempDate(e.target.value)}
+          autoFocus type="date" value={tempDate} onChange={e => setTempDate(e.target.value)}
           onBlur={saveDate}
           onKeyDown={e => { if (e.key === 'Enter') saveDate(); if (e.key === 'Escape') { setTempDate(milestone.dueDate); setEditingDate(false) } }}
           onClick={e => e.stopPropagation()}
@@ -397,7 +872,7 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onT
 function UnassignedHeader({ count, collapsed, onToggle, onAddTask }: {
   count: number; collapsed: boolean; onToggle: () => void; onAddTask: () => void
 }) {
-  const [hovered, setHovered] = React.useState(false)
+  const [hovered, setHovered] = useState(false)
   return (
     <div
       onMouseEnter={() => setHovered(true)}
@@ -430,38 +905,29 @@ function UnassignedHeader({ count, collapsed, onToggle, onAddTask }: {
 
 function AddMilestoneInline({ projectId, onDone }: { projectId: string; onDone: () => void }) {
   const addMilestone = useMilestoneStore(s => s.addMilestone)
-  const [name, setName] = React.useState('')
-  const [date, setDate] = React.useState('')
-
+  const [name, setName] = useState('')
+  const [date, setDate] = useState('')
   const submit = () => {
     if (!name.trim() || !date) return
     addMilestone(projectId, name.trim(), date)
     onDone()
   }
-
   const valid = name.trim() !== '' && date !== ''
-
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: '3px solid #8b5cf6', borderTop: '1px solid var(--bd)' }}>
       <span style={{ fontSize: 9, color: '#8b5cf6', flexShrink: 0 }}>◆</span>
       <input
-        autoFocus
-        placeholder="마일스톤 이름..."
-        value={name}
-        onChange={e => setName(e.target.value)}
+        autoFocus placeholder="마일스톤 이름..." value={name} onChange={e => setName(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onDone() }}
         style={{ flex: 1, border: '1px solid var(--ac)', borderRadius: 'var(--r1)', padding: '3px 8px', fontSize: 13, fontWeight: 600, background: 'var(--bg)', color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)' }}
       />
       <input
-        type="date"
-        value={date}
-        onChange={e => setDate(e.target.value)}
+        type="date" value={date} onChange={e => setDate(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onDone() }}
         style={{ border: '1px solid var(--bd)', borderRadius: 'var(--r1)', padding: '3px 8px', fontSize: 11, background: 'var(--bg)', color: 'var(--t2)', outline: 'none', fontFamily: 'var(--font)' }}
       />
       <button
-        onClick={submit}
-        disabled={!valid}
+        onClick={submit} disabled={!valid}
         style={{ padding: '3px 10px', fontSize: 11, borderRadius: 'var(--r1)', border: `1px solid ${valid ? '#8b5cf6' : 'var(--bd)'}`, background: valid ? 'rgba(139,92,246,.1)' : 'transparent', color: valid ? '#8b5cf6' : 'var(--t3)', cursor: valid ? 'pointer' : 'default', fontFamily: 'var(--font)', transition: 'background .1s' }}
       >추가</button>
       <button
@@ -472,20 +938,18 @@ function AddMilestoneInline({ projectId, onDone }: { projectId: string; onDone: 
   )
 }
 
-// ── MilestonePicker (inline popover) ─────────────────────────────────────────
+// ── MilestonePicker ───────────────────────────────────────────────────────────
 
 function MilestonePicker({ milestoneId, milestones, onChange }: {
-  milestoneId: string | undefined
-  milestones: Milestone[]
-  onChange: (id: string | undefined) => void
+  milestoneId: string | undefined; milestones: Milestone[]; onChange: (id: string | undefined) => void
 }) {
-  const [open, setOpen] = React.useState(false)
-  const [pos, setPos] = React.useState({ top: 0, left: 0 })
-  const ref = React.useRef<HTMLDivElement>(null)
-  const btnRef = React.useRef<HTMLButtonElement>(null)
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const ref = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
   const current = milestones.find(m => m.id === milestoneId)
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) return
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
     document.addEventListener('mousedown', h)
@@ -503,8 +967,7 @@ function MilestonePicker({ milestoneId, milestones, onChange }: {
   return (
     <div ref={ref} style={{ position: 'relative', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
       <button
-        ref={btnRef}
-        onClick={handleOpen}
+        ref={btnRef} onClick={handleOpen}
         style={{
           display: 'flex', alignItems: 'center', gap: 3,
           padding: '2px 6px', borderRadius: 'var(--r2)', fontFamily: 'var(--font)',
@@ -520,24 +983,11 @@ function MilestonePicker({ milestoneId, milestones, onChange }: {
         <span>{current ? current.name : '미배정'}</span>
         <span style={{ fontSize: 7, opacity: .5 }}>▾</span>
       </button>
-
       {open && (
         <div style={{ position: 'fixed', top: pos.top, left: pos.left, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', zIndex: 9000, minWidth: 200, padding: '4px 0' }}>
-          <PickerRow
-            onClick={() => { onChange(undefined); setOpen(false) }}
-            active={!milestoneId}
-            label="— 없음 (미배정)"
-            accent={false}
-          />
+          <PickerRow onClick={() => { onChange(undefined); setOpen(false) }} active={!milestoneId} label="— 없음 (미배정)" accent={false} />
           {milestones.map(m => (
-            <PickerRow
-              key={m.id}
-              onClick={() => { onChange(m.id); setOpen(false) }}
-              active={m.id === milestoneId}
-              label={`◆ ${m.name}`}
-              sub={m.dueDate}
-              accent
-            />
+            <PickerRow key={m.id} onClick={() => { onChange(m.id); setOpen(false) }} active={m.id === milestoneId} label={`◆ ${m.name}`} sub={m.dueDate} accent />
           ))}
         </div>
       )}
@@ -561,187 +1011,7 @@ function PickerRow({ onClick, active, label, sub, accent }: {
   )
 }
 
-// ── Row ───────────────────────────────────────────────────────────────────────
-
-function Row({
-  task, isChild = false,
-  hasChildren = false, isExpanded = true,
-  childCount = 0, doneCount = 0,
-  milestones = [], showMilestonePicker = false,
-  onToggle, onOpen, onUpdate, onMilestoneChange, onContextMenu,
-}: {
-  task: Task; isChild?: boolean
-  hasChildren?: boolean; isExpanded?: boolean; childCount?: number; doneCount?: number
-  milestones?: Milestone[]; showMilestonePicker?: boolean
-  onToggle?: () => void; onOpen: () => void
-  onUpdate: (patch: Partial<Task>) => void
-  onMilestoneChange?: (id: string | undefined) => void
-  onContextMenu?: (e: React.MouseEvent) => void
-}) {
-  const [hovered, setHovered] = React.useState(false)
-  const [editing, setEditing] = React.useState<string | null>(null)
-  const overdue = isOverdue(task.due, task.status)
-
-  const stopEdit = () => setEditing(null)
-  // e.detail >= 2 means this click is part of a double-click — let it bubble to onDoubleClick
-  const startEdit = (cell: string) => (e: React.MouseEvent) => {
-    if (e.detail >= 2) return
-    e.stopPropagation()
-    setEditing(cell)
-  }
-
-  return (
-    <div
-      onDoubleClick={() => { stopEdit(); onOpen() }}
-      onContextMenu={onContextMenu}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: 'flex',
-        background: hovered ? 'var(--bg3)' : (isChild ? 'var(--bg)' : 'transparent'),
-        borderBottom: `1px solid var(--bd)`,
-        borderLeft: isChild
-          ? `3px solid ${hovered ? 'var(--ac)' : 'var(--bd2)'}`
-          : `3px solid ${hovered ? 'var(--ac)' : 'transparent'}`,
-        transition: 'background .08s',
-        opacity: task.status === '완료' ? .55 : 1,
-      }}
-    >
-      {/* 업무명 — onDoubleClick here catches dblclick when first click changed DOM (span→input) */}
-      <div
-        onDoubleClick={e => { e.stopPropagation(); stopEdit(); onOpen() }}
-        style={{ flex: 3.5, padding: '8px 12px 8px 40px', display: 'flex', alignItems: 'center', gap: 5, minHeight: 44, overflow: 'hidden', borderRight: '1px solid var(--bd)' }}
-      >
-        {isChild ? (
-          <div style={{ width: 28, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingLeft: 20 }}>
-            <span style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1 }}>└</span>
-          </div>
-        ) : (
-          <button
-            onClick={e => { e.stopPropagation(); onToggle?.() }}
-            style={{ width: 18, height: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: hasChildren ? 'pointer' : 'default', borderRadius: 3, padding: 0, color: 'var(--t3)', fontSize: 9, visibility: hasChildren ? 'visible' : 'hidden' }}
-            onMouseEnter={e => { if (hasChildren) { e.currentTarget.style.background = 'var(--bg4)'; e.currentTarget.style.color = 'var(--t1)' } }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
-          >
-            {isExpanded ? '▼' : '▶'}
-          </button>
-        )}
-
-        {editing === 'name' ? (
-          <InlineTextEdit
-            value={task.name}
-            onCommit={v => { onUpdate({ name: v }); stopEdit() }}
-            onCancel={stopEdit}
-            fontSize={14}
-            bold={!isChild && hasChildren}
-          />
-        ) : (
-          <span
-            onClick={startEdit('name')}
-            style={{ fontSize: 14, fontWeight: !isChild && hasChildren ? 500 : 400, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--t1)', cursor: 'text' }}
-          >
-            {task.name}
-          </span>
-        )}
-
-        {hasChildren && !isExpanded && (
-          <span style={{ fontSize: 10, color: 'var(--t3)', background: 'var(--bg4)', borderRadius: 10, padding: '1px 6px', flexShrink: 0 }}>
-            {doneCount}/{childCount}
-          </span>
-        )}
-
-        {task.tags && task.tags.length > 0 && (
-          <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
-            {task.tags.slice(0, 3).map(tag => <TagBadge key={tag} tag={tag} />)}
-            {task.tags.length > 3 && <span style={{ fontSize: 10, color: 'var(--t3)', alignSelf: 'center' }}>+{task.tags.length - 3}</span>}
-          </div>
-        )}
-
-        {(task.blockedBy?.length || task.blocking?.length) ? (
-          <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-            {!!task.blockedBy?.length && <span title={`선행 태스크 ${task.blockedBy.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(239,68,68,.1)', color: '#ef4444', lineHeight: 1.6 }}>⛔ {task.blockedBy.length}</span>}
-            {!!task.blocking?.length && <span title={`후행 태스크 ${task.blocking.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(245,158,11,.1)', color: '#f59e0b', lineHeight: 1.6 }}>⚡ {task.blocking.length}</span>}
-          </div>
-        ) : null}
-
-        {showMilestonePicker && (hovered || task.milestoneId) && onMilestoneChange && (
-          <MilestonePicker milestoneId={task.milestoneId} milestones={milestones} onChange={onMilestoneChange} />
-        )}
-      </div>
-
-      {/* 스페이스 */}
-      <Cell flex={1.2}>{task.cat ? <CategoryBadge cat={task.cat} /> : <Dash />}</Cell>
-      {/* 담당자 */}
-      <Cell flex={1.2}><AssigneeGroup assignee={task.assignee} size={20} /></Cell>
-      {/* 상태 — select stays inline always */}
-      <Cell flex={1}>
-        <select
-          value={task.status}
-          onClick={e => e.stopPropagation()}
-          onChange={e => onUpdate({ status: e.target.value as Status })}
-          style={{ border: 'none', background: 'transparent', fontSize: 13, cursor: 'pointer', outline: 'none', color: 'var(--t2)', fontFamily: 'var(--font)', appearance: 'none', width: '100%' }}
-        >
-          <option>진행중</option><option>대기</option><option>검토중</option><option>완료</option>
-        </select>
-      </Cell>
-      {/* 마감일 */}
-      <Cell flex={0.9} onClick={startEdit('due')}>
-        {editing === 'due' ? (
-          <AutoDateInput
-            value={task.due || ''}
-            onChange={v => { onUpdate({ due: v }); stopEdit() }}
-            onBlur={stopEdit}
-            onEscape={stopEdit}
-          />
-        ) : (
-          <span style={{ fontSize: 13, color: overdue ? '#ef4444' : task.due ? 'var(--t2)' : 'var(--t3)', fontWeight: overdue ? 500 : 400, cursor: 'pointer' }}>
-            {task.due ? (overdue ? '⚠ ' : '') + fmtDate(task.due) : '날짜 추가'}
-          </span>
-        )}
-      </Cell>
-      {/* 우선순위 — always visible select (single click opens dropdown) */}
-      <Cell flex={0.8}>
-        <select
-          value={task.priority}
-          onClick={e => e.stopPropagation()}
-          onChange={e => onUpdate({ priority: e.target.value as Priority })}
-          style={{ border: 'none', background: 'transparent', fontSize: 12, cursor: 'pointer', outline: 'none', color: 'var(--t2)', fontFamily: 'var(--font)', appearance: 'none', width: '100%' }}
-        >
-          <option value="높음">높음</option>
-          <option value="중간">중간</option>
-          <option value="낮음">낮음</option>
-        </select>
-      </Cell>
-      {/* 진행률 */}
-      <Cell flex={1.2}><ProgressBar value={task.progress} /></Cell>
-      {/* 메모 */}
-      <Cell flex={1.8} last onClick={startEdit('memo')}>
-        {editing === 'memo' ? (
-          <InlineTextEdit
-            value={task.memo || ''}
-            onCommit={v => { onUpdate({ memo: v }); stopEdit() }}
-            onCancel={stopEdit}
-            fontSize={13}
-          />
-        ) : (
-          <span style={{ fontSize: 13, color: task.memo ? 'var(--t2)' : 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text', width: '100%' }}>
-            {task.memo || '메모 추가...'}
-          </span>
-        )}
-      </Cell>
-    </div>
-  )
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function Cell({ children, flex, last, onClick }: { children?: React.ReactNode; flex: number; last?: boolean; onClick?: (e: React.MouseEvent) => void }) {
-  return (
-    <div onClick={onClick} style={{ flex, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 4, minHeight: 44, overflow: 'hidden', borderRight: last ? 'none' : '1px solid var(--bd)' }}>
-      {children}
-    </div>
-  )
-}
+// ── Misc helpers ──────────────────────────────────────────────────────────────
 
 function Dash() {
   return <span style={{ color: 'var(--t3)', fontSize: 12 }}>—</span>
@@ -750,12 +1020,10 @@ function Dash() {
 function InlineTextEdit({ value, onCommit, onCancel, fontSize = 13, bold = false }: {
   value: string; onCommit: (v: string) => void; onCancel: () => void; fontSize?: number; bold?: boolean
 }) {
-  const [v, setV] = React.useState(value)
+  const [v, setV] = useState(value)
   return (
     <input
-      autoFocus
-      value={v}
-      onChange={e => setV(e.target.value)}
+      autoFocus value={v} onChange={e => setV(e.target.value)}
       onBlur={() => onCommit(v)}
       onKeyDown={e => {
         if (e.key === 'Enter') { e.preventDefault(); onCommit(v) }
@@ -770,18 +1038,16 @@ function InlineTextEdit({ value, onCommit, onCancel, fontSize = 13, bold = false
 function AutoDateInput({ value, onChange, onBlur, onEscape }: {
   value: string; onChange: (v: string) => void; onBlur: () => void; onEscape: () => void
 }) {
-  const ref = React.useRef<HTMLInputElement>(null)
-  React.useEffect(() => {
+  const ref = useRef<HTMLInputElement>(null)
+  useEffect(() => {
     const el = ref.current
     if (!el) return
     el.focus()
-    try { el.showPicker?.() } catch { /* some browsers don't support or block it */ }
+    try { el.showPicker?.() } catch { /* ignore */ }
   }, [])
   return (
     <input
-      ref={ref}
-      type="date"
-      value={value}
+      ref={ref} type="date" value={value}
       onChange={e => onChange(e.target.value)}
       onBlur={onBlur}
       onClick={e => e.stopPropagation()}
