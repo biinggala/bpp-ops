@@ -10,7 +10,7 @@ import { STATUS_LIST, PRIORITY_LIST, getTagColor } from '../../types'
 import type { Task } from '../../types'
 
 const EMPTY: Omit<Task, 'id'> = {
-  type: '세부', name: '', cat: '', assignee: '',
+  type: '상위', name: '', cat: '', assignee: '',
   start: '', due: '', priority: '중간', status: '대기', progress: 0, memo: '',
 }
 
