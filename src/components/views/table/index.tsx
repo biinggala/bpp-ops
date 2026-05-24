@@ -450,10 +450,10 @@ function Row({
           <div
             key="name"
             onDoubleClick={e => { e.stopPropagation(); stopEdit(); onOpen() }}
-            style={{ ...cellBase(col, isLast), paddingLeft: isChild ? 52 : 40, gap: 5 }}
+            style={{ ...cellBase(col, isLast), paddingLeft: isChild ? 88 : 64, gap: 5 }}
           >
             {isChild ? (
-              <span style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1, marginLeft: -12 }}>└</span>
+              <span style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1, marginLeft: -16 }}>└</span>
             ) : (
               <button
                 onClick={e => { e.stopPropagation(); onToggle?.() }}
