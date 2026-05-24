@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { ref, set as fbSet, onValue, off } from 'firebase/database'
 import { db } from '../lib/firebase'
-import { gid, loadFromStorage, saveToStorage } from '../lib/utils'
+import { gid, loadFromStorage, saveToStorage, getLocalTs } from '../lib/utils'
 import type { Milestone } from '../types'
 
 const MILESTONE_KEY = 'cringe_milestones_v1'
@@ -20,7 +20,8 @@ function persist(milestones: Milestone[]) {
 }
 
 function syncFb(milestones: Milestone[]) {
-  fbSet(ref(db, 'cringe/milestones'), milestones).catch(() => {})
+  fbSet(ref(db, 'cringe/milestones'), milestones.length ? milestones : null).catch(() => {})
+  fbSet(ref(db, 'cringe/milestonesSavedAt'), Date.now()).catch(() => {})
 }
 
 export const useMilestoneStore = create<MilestoneState>((set, get) => ({
@@ -48,13 +49,29 @@ export const useMilestoneStore = create<MilestoneState>((set, get) => ({
   },
 
   subscribeFirebase: () => {
-    const dbRef = ref(db, 'cringe/milestones')
+    const dbRef = ref(db, 'cringe')
     const handler = onValue(dbRef, (snap) => {
-      const data = snap.val()
-      if (!data) return
-      const incoming: Milestone[] = Array.isArray(data) ? data : Object.values(data)
-      set({ milestones: incoming })
-      persist(incoming)
+      const root = snap.val()
+      const localTs = getLocalTs(MILESTONE_KEY)
+
+      if (!root?.milestones) {
+        // Firebase has no milestones — push local data if we have any
+        const milestones = get().milestones
+        if (milestones.length > 0 && localTs > 0) {
+          fbSet(ref(db, 'cringe/milestones'), milestones).catch(() => {})
+          fbSet(ref(db, 'cringe/milestonesSavedAt'), localTs).catch(() => {})
+        }
+        return
+      }
+
+      const fbTs: number = root.milestonesSavedAt || 0
+      if (fbTs > localTs) {
+        const incoming: Milestone[] = Array.isArray(root.milestones)
+          ? root.milestones
+          : Object.values(root.milestones)
+        set({ milestones: incoming })
+        saveToStorage(incoming, MILESTONE_KEY)
+      }
     })
     return () => off(dbRef, 'value', handler)
   },
