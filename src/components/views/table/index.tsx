@@ -349,7 +349,7 @@ export function TableView() {
           const isCollapsed = collapsedPj.has(proj.id)
           const doneCount = pjTasks.filter(t => t.status === '완료').length
           return (
-            <div key={proj.id} style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden' }}>
+            <div key={proj.id} style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'clip' }}>
               {/* Project header – fixed, not scrollable */}
               <div
                 onClick={() => togglePj(proj.id)}
@@ -364,10 +364,12 @@ export function TableView() {
                 <>
                   {/* Scrollable area: column header + task rows only */}
                   <div style={{ overflowX: 'auto' }}>
-                    {colHeader}
-                    {pjMilestones.length > 0
-                      ? renderMilestoneGroups(pjTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
-                      : renderRows(pjTasks, pjMilestones)}
+                    <div style={{ minWidth: 'max-content' }}>
+                      {colHeader}
+                      {pjMilestones.length > 0
+                        ? renderMilestoneGroups(pjTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
+                        : renderRows(pjTasks, pjMilestones)}
+                    </div>
                   </div>
                   {/* Add buttons – fixed, not scrollable */}
                   {addingMs === proj.id
@@ -380,7 +382,7 @@ export function TableView() {
           )
         })}
         {unassignedTasks.length > 0 && (
-          <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden' }}>
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'clip' }}>
             {/* Unassigned header – fixed */}
             <div
               onClick={() => togglePj('__no_project__')}
@@ -393,8 +395,10 @@ export function TableView() {
             {!collapsedPj.has('__no_project__') && (
               <>
                 <div style={{ overflowX: 'auto' }}>
-                  {colHeader}
-                  {renderRows(unassignedTasks, [])}
+                  <div style={{ minWidth: 'max-content' }}>
+                    {colHeader}
+                    {renderRows(unassignedTasks, [])}
+                  </div>
                 </div>
                 {addBtn()}
               </>
@@ -411,13 +415,15 @@ export function TableView() {
   const pjMilestones = milestones.filter(m => m.projectId === projectId).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-      <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden' }}>
+      <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'clip' }}>
         {/* Scrollable area: column header + task rows only */}
         <div style={{ overflowX: 'auto' }}>
-          {colHeader}
-          {pjMilestones.length > 0
-            ? renderMilestoneGroups(rootTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
-            : renderRows(rootTasks, [])}
+          <div style={{ minWidth: 'max-content' }}>
+            {colHeader}
+            {pjMilestones.length > 0
+              ? renderMilestoneGroups(rootTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
+              : renderRows(rootTasks, [])}
+          </div>
         </div>
         {/* Add buttons – fixed, not scrollable */}
         {addingMs === projectId
