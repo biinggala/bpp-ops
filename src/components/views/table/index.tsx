@@ -54,7 +54,7 @@ const STATUS_STYLE: Record<Status, { bg: string; color: string }> = {
   '진행중': { bg: 'rgba(35,131,226,.15)', color: '#1869c9' },
   '대기':   { bg: 'rgba(120,117,114,.14)', color: '#5a5857' },
   '검토중': { bg: '#fef3c7',              color: '#b45309' },
-  '완료':   { bg: 'transparent',           color: '#047857' },
+  '완료':   { bg: '#d1fae5',              color: '#047857' },
 }
 const PRIORITY_STYLE: Record<Priority, { bg: string; color: string }> = {
   '높음': { bg: 'rgba(239,68,68,.13)',  color: '#dc2626' },
@@ -628,7 +628,7 @@ function Row({
           ? `3px solid ${hovered ? 'var(--ac)' : 'var(--bd2)'}`
           : `3px solid ${hovered ? 'var(--ac)' : 'transparent'}`,
         transition: 'background .08s',
-        opacity: task.status === '완료' ? .55 : 1,
+        opacity: 1,
       }}
     >
       {cols.map((col, idx) => renderCell(col, idx === cols.length - 1))}
