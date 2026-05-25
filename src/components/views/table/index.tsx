@@ -96,6 +96,8 @@ export function TableView() {
   const [draggingCol, setDraggingCol] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
   const resizingRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null)
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null)
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null)
 
   useEffect(() => {
     try { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(cols)) } catch { /* ignore */ }
@@ -163,6 +165,22 @@ export function TableView() {
     onMilestoneChange: (msId: string | undefined) => updateTask(task.id, { milestoneId: msId }),
     onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, task }) },
   })
+
+  const canDropOnTask = useCallback((dragId: string, targetId: string) => {
+    if (dragId === targetId) return false
+    const target = allTasks.find(t => t.id === targetId)
+    if (!target || target.parentId) return false
+    const dragged = allTasks.find(t => t.id === dragId)
+    if (dragged?.parentId === targetId) return false
+    return true
+  }, [allTasks])
+
+  const handleTaskDrop = useCallback((targetId: string) => {
+    if (!draggingTaskId || !canDropOnTask(draggingTaskId, targetId)) return
+    updateTask(draggingTaskId, { parentId: targetId, type: '세부' })
+    setDraggingTaskId(null)
+    setDropTargetId(null)
+  }, [draggingTaskId, canDropOnTask, updateTask])
 
   // ── Column header row ───────────────────────────────────────────────────────
   const colHeader = (
@@ -235,6 +253,19 @@ export function TableView() {
             milestones={pickerMilestones} showMilestonePicker={pickerMilestones.length > 0}
             assigneeOptions={aOpts} allTags={allTags}
             onToggle={() => toggle(task.id)} {...h}
+            isDragging={draggingTaskId === task.id}
+            isDragTarget={dropTargetId === task.id && !!draggingTaskId && canDropOnTask(draggingTaskId, task.id)}
+            canDrag={!hasChildren}
+            canBeDropTarget={!task.parentId}
+            onDragStart={() => setDraggingTaskId(task.id)}
+            onDragEnd={() => { setDraggingTaskId(null); setDropTargetId(null) }}
+            onDragOver={e => {
+              if (!task.parentId && draggingTaskId && canDropOnTask(draggingTaskId, task.id)) {
+                e.preventDefault(); setDropTargetId(task.id)
+              }
+            }}
+            onDragLeave={() => setDropTargetId(prev => prev === task.id ? null : prev)}
+            onDrop={() => handleTaskDrop(task.id)}
           />
           {hasChildren && isExpanded && children.map(child => {
             const ch = makeHandlers(child)
@@ -244,6 +275,12 @@ export function TableView() {
                 milestones={pickerMilestones} showMilestonePicker={pickerMilestones.length > 0}
                 assigneeOptions={cOpts} allTags={allTags}
                 {...ch}
+                isDragging={draggingTaskId === child.id}
+                isDragTarget={false}
+                canDrag={true}
+                canBeDropTarget={false}
+                onDragStart={() => setDraggingTaskId(child.id)}
+                onDragEnd={() => { setDraggingTaskId(null); setDropTargetId(null) }}
               />
             )
           })}
@@ -445,6 +482,9 @@ function Row({
   assigneeOptions = [],
   allTags = [],
   onToggle, onOpen, onUpdate, onMilestoneChange, onContextMenu,
+  isDragging = false, isDragTarget = false,
+  canDrag = false, canBeDropTarget = false,
+  onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
 }: {
   cols: ColDef[]
   task: Task; isChild?: boolean
@@ -456,6 +496,11 @@ function Row({
   onUpdate: (patch: Partial<Task>) => void
   onMilestoneChange?: (id: string | undefined) => void
   onContextMenu?: (e: React.MouseEvent) => void
+  isDragging?: boolean; isDragTarget?: boolean
+  canDrag?: boolean; canBeDropTarget?: boolean
+  onDragStart?: () => void; onDragEnd?: () => void
+  onDragOver?: (e: React.DragEvent<HTMLDivElement>) => void
+  onDragLeave?: () => void; onDrop?: () => void
 }) {
   const [hovered, setHovered] = useState(false)
   const [editing, setEditing] = useState<string | null>(null)
@@ -499,6 +544,24 @@ function Row({
               boxShadow: '2px 0 4px rgba(0,0,0,.06)',
             }}
           >
+            {canDrag && (
+              <span
+                draggable
+                onDragStart={e => {
+                  e.stopPropagation()
+                  e.dataTransfer.effectAllowed = 'move'
+                  e.dataTransfer.setData('text/plain', task.id)
+                  onDragStart?.()
+                }}
+                onDragEnd={e => { e.stopPropagation(); onDragEnd?.() }}
+                style={{
+                  position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)',
+                  cursor: 'grab', color: 'var(--t3)', fontSize: 12,
+                  opacity: hovered ? 0.8 : 0, transition: 'opacity .1s',
+                  userSelect: 'none', lineHeight: 1,
+                }}
+              >⠿</span>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1, minWidth: 0, opacity: isDone ? 0.55 : 1 }}>
               {isChild ? (
                 <span style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1, flexShrink: 0 }}>└</span>
@@ -660,15 +723,27 @@ function Row({
       onContextMenu={onContextMenu}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onDragOver={onDragOver}
+      onDragLeave={e => {
+        const row = e.currentTarget
+        if (e.relatedTarget && row.contains(e.relatedTarget as Node)) return
+        onDragLeave?.()
+      }}
+      onDrop={e => { e.preventDefault(); onDrop?.() }}
       style={{
         display: 'flex',
         minWidth: '100%',
-        background: hovered ? 'var(--bg3)' : (isChild ? 'var(--bg)' : 'transparent'),
+        opacity: isDragging ? 0.4 : 1,
+        background: isDragTarget
+          ? 'var(--ac-l)'
+          : hovered ? 'var(--bg3)' : (isChild ? 'var(--bg)' : 'transparent'),
         borderBottom: '1px solid var(--bd)',
-        borderLeft: isChild
-          ? `3px solid ${hovered ? 'var(--ac)' : 'var(--bd2)'}`
-          : `3px solid ${hovered ? 'var(--ac)' : 'transparent'}`,
-        transition: 'background .08s',
+        borderLeft: isDragTarget
+          ? '3px solid var(--ac)'
+          : isChild
+            ? `3px solid ${hovered ? 'var(--ac)' : 'var(--bd2)'}`
+            : `3px solid ${hovered ? 'var(--ac)' : 'transparent'}`,
+        transition: 'background .08s, opacity .08s',
       }}
     >
       {cols.map((col, idx) => renderCell(col, idx === cols.length - 1))}
