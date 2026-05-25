@@ -94,7 +94,7 @@ export const STATUS_COLORS: Record<Status, { bg: string; text: string }> = {
   진행중: { bg: 'rgba(35,131,226,.14)', text: '#1869c9' },
   대기:   { bg: 'rgba(120,117,114,.12)', text: '#4b4947' },
   검토중: { bg: '#fef3c7',              text: '#b45309' },
-  완료:   { bg: '#d1fae5',              text: '#047857' },
+  완료:   { bg: 'transparent',           text: '#047857' },
 }
 
 // Space용 색상 팔레트
