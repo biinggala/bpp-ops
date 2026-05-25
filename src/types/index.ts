@@ -53,12 +53,19 @@ export interface Task {
   order?: number
   checklist?: ChecklistItem[]
   createdBy?: string  // email of the task creator
+  links?: TaskLink[]
 }
 
 export interface ChecklistItem {
   id: string
   text: string
   done: boolean
+}
+
+export interface TaskLink {
+  id: string
+  title: string
+  url: string
 }
 
 export interface Member {

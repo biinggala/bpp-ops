@@ -25,6 +25,7 @@ export function Sidebar() {
   const [memberModal, setMemberModal] = useState<{ id: string; name: string } | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
   const profileRef = useRef<HTMLDivElement>(null)
+  const [assetsExpanded, setAssetsExpanded] = useState(false)
 
   useEffect(() => { if (addingProject) projectNameRef.current?.focus() }, [addingProject])
   useEffect(() => { if (editingProjectId) projectEditRef.current?.select() }, [editingProjectId])
@@ -303,6 +304,38 @@ export function Sidebar() {
             <AddBtn onClick={() => setAddingProject(true)}>프로젝트 추가</AddBtn>
           )}
 
+          {/* ASSETS section */}
+          {(() => {
+            const allLinks = accessibleTasks.flatMap(t =>
+              (t.links ?? []).map(link => ({ link, task: t }))
+            )
+            const visibleLinks = assetsExpanded ? allLinks : allLinks.slice(0, 6)
+            return (
+              <>
+                <SectionLabel>Assets</SectionLabel>
+                {allLinks.length === 0 ? (
+                  <div style={{ padding: '4px 10px', fontSize: 11, color: 'var(--sb-t3)' }}>링크가 없습니다</div>
+                ) : (
+                  <>
+                    {visibleLinks.map(({ link, task }) => (
+                      <AssetLinkItem key={link.id} title={link.title} url={link.url} taskName={task.name} />
+                    ))}
+                    {allLinks.length > 6 && (
+                      <div
+                        onClick={() => setAssetsExpanded(e => !e)}
+                        style={{ padding: '4px 10px', fontSize: 11, color: 'var(--sb-t3)', cursor: 'pointer', transition: 'color .1s' }}
+                        onMouseEnter={e => (e.currentTarget.style.color = 'var(--sb-t2)')}
+                        onMouseLeave={e => (e.currentTarget.style.color = 'var(--sb-t3)')}
+                      >
+                        {assetsExpanded ? '접기' : `${allLinks.length - 6}개 더보기`}
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            )
+          })()}
+
         </div>
 
         {/* Online users */}
@@ -521,6 +554,25 @@ function AddBtn({ children, onClick }: { children: React.ReactNode; onClick: () 
     >
       <span style={{ fontSize: 14, lineHeight: 1, opacity: .7 }}>+</span>
       {children}
+    </div>
+  )
+}
+
+function AssetLinkItem({ title, url, taskName }: { title: string; url: string; taskName: string }) {
+  return (
+    <div
+      onClick={() => window.open(url, '_blank', 'noopener')}
+      style={{ padding: '5px 8px 5px 10px', borderRadius: 'var(--r2)', cursor: 'pointer', margin: '1px 0', transition: 'background .1s' }}
+      onMouseEnter={e => (e.currentTarget.style.background = 'var(--sb-hover)')}
+      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+      title={url}
+    >
+      <div style={{ fontSize: 12, color: 'var(--sb-t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
+        ↗ {title || url}
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--sb-t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
+        {taskName}
+      </div>
     </div>
   )
 }

@@ -10,8 +10,8 @@ import { TagBadge } from '../../shared/Badge'
 import { AssigneeAvatar } from '../../shared/Avatar'
 import { ProgressBar } from '../../shared/ProgressBar'
 import { ContextMenu } from '../../shared/ContextMenu'
-import { fmtDate, isOverdue, parseAssignees, stripHtml } from '../../../lib/utils'
-import type { Task, Milestone, Status, Priority } from '../../../types'
+import { fmtDate, isOverdue, parseAssignees, stripHtml, gid } from '../../../lib/utils'
+import type { Task, Milestone, Status, Priority, TaskLink } from '../../../types'
 
 // ── Column config ─────────────────────────────────────────────────────────────
 
@@ -23,6 +23,7 @@ const COL_STORAGE_KEY = 'cringe_table_cols_v1'
 const DEFAULT_COLS: ColDef[] = [
   { key: 'name',     label: '업무',    width: 300 },
   { key: 'tags',     label: '태그',    width: 160 },
+  { key: 'links',    label: '링크',    width: 140 },
   { key: 'assignee', label: '담당자',  width: 140 },
   { key: 'status',   label: '상태',    width: 110 },
   { key: 'due',      label: '마감일',  width: 100 },
@@ -598,6 +599,16 @@ function Row({
           </div>
         )
 
+      case 'links':
+        return (
+          <div key="links" style={{ ...cellBase(col, isLast), padding: '4px 8px' }}>
+            <LinksCell
+              links={task.links ?? []}
+              onChange={v => onUpdate({ links: v })}
+            />
+          </div>
+        )
+
       default:
         return <div key={col.key} style={cellBase(col, isLast)} />
     }
@@ -1061,6 +1072,118 @@ function InlineTextEdit({ value, onCommit, onCancel, fontSize = 13, bold = false
       onClick={e => e.stopPropagation()}
       style={{ flex: 1, width: '100%', border: 'none', outline: '1.5px solid var(--ac)', borderRadius: 3, background: 'var(--bg)', padding: '2px 6px', fontFamily: 'var(--font)', fontSize, fontWeight: bold ? 500 : 400, color: 'var(--t1)' }}
     />
+  )
+}
+
+// ── LinksCell ─────────────────────────────────────────────────────────────────
+
+function LinksCell({ links, onChange }: {
+  links: TaskLink[]
+  onChange: (links: TaskLink[]) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const [addTitle, setAddTitle] = useState('')
+  const [addUrl, setAddUrl] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false); setAddTitle(''); setAddUrl('')
+      }
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+
+  const handleOpen = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (open) { setOpen(false); return }
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 4, left: r.left })
+    }
+    setOpen(true)
+  }
+
+  const addLink = () => {
+    const url = addUrl.trim()
+    if (!url) return
+    onChange([...links, { id: gid(), title: addTitle.trim() || url, url }])
+    setAddTitle(''); setAddUrl('')
+  }
+
+  const removeLink = (id: string) => onChange(links.filter(l => l.id !== id))
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
+      <div ref={btnRef} onClick={handleOpen}
+        style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', flex: 1, minWidth: 0 }}>
+        {links.length === 0
+          ? <span style={{ fontSize: 12, color: 'var(--t3)' }}>—</span>
+          : <span style={{ fontSize: 12, color: 'var(--ac)', fontWeight: 500 }}>↗ {links.length}개</span>
+        }
+        <span style={{ fontSize: 9, color: 'var(--t3)', opacity: .6, marginLeft: 2 }}>▾</span>
+      </div>
+
+      {open && (
+        <div style={{
+          position: 'fixed', top: pos.top, left: pos.left, zIndex: 9000,
+          background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
+          boxShadow: 'var(--sh-md)', minWidth: 260, maxHeight: 320, display: 'flex', flexDirection: 'column',
+        }}>
+          {links.length > 0 && (
+            <div style={{ overflowY: 'auto', maxHeight: 200, padding: '4px 0' }}>
+              {links.map(l => (
+                <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <a href={l.url} target="_blank" rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    style={{ flex: 1, fontSize: 12, color: 'var(--ac)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={l.url}
+                  >↗ {l.title}</a>
+                  <span
+                    onMouseDown={e => { e.preventDefault(); removeLink(l.id) }}
+                    style={{ fontSize: 14, color: 'var(--t3)', cursor: 'pointer', flexShrink: 0, lineHeight: 1 }}
+                    onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
+                    onMouseLeave={e => (e.currentTarget.style.color = 'var(--t3)')}
+                  >×</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ borderTop: links.length > 0 ? '1px solid var(--bd)' : 'none', padding: '8px' }}>
+            <input
+              autoFocus={links.length === 0}
+              value={addTitle}
+              onChange={e => setAddTitle(e.target.value)}
+              placeholder="링크 제목 (선택)"
+              onKeyDown={e => { if (e.key === 'Enter') { const next = e.currentTarget.nextElementSibling as HTMLInputElement; next?.focus() } }}
+              style={{ width: '100%', boxSizing: 'border-box', marginBottom: 5, border: '1px solid var(--bd)', borderRadius: 'var(--r1)', padding: '4px 8px', fontSize: 12, background: 'var(--bg2)', color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)' }}
+            />
+            <div style={{ display: 'flex', gap: 5 }}>
+              <input
+                value={addUrl}
+                onChange={e => setAddUrl(e.target.value)}
+                placeholder="https://..."
+                onKeyDown={e => { if (e.key === 'Enter') addLink() }}
+                style={{ flex: 1, border: '1px solid var(--bd)', borderRadius: 'var(--r1)', padding: '4px 8px', fontSize: 12, background: 'var(--bg2)', color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)' }}
+              />
+              <button
+                onMouseDown={e => { e.preventDefault(); addLink() }}
+                disabled={!addUrl.trim()}
+                style={{ padding: '4px 10px', borderRadius: 'var(--r1)', border: 'none', background: addUrl.trim() ? 'var(--ac)' : 'var(--bg3)', color: addUrl.trim() ? '#fff' : 'var(--t3)', fontSize: 12, cursor: addUrl.trim() ? 'pointer' : 'default', fontFamily: 'var(--font)', flexShrink: 0 }}
+              >추가</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
