@@ -631,7 +631,7 @@ function Row({
           ? `3px solid ${hovered ? 'var(--ac)' : 'var(--bd2)'}`
           : `3px solid ${hovered ? 'var(--ac)' : 'transparent'}`,
         transition: 'background .08s',
-        opacity: 1,
+        opacity: task.status === '완료' ? .55 : 1,
       }}
     >
       {cols.map((col, idx) => renderCell(col, idx === cols.length - 1))}
