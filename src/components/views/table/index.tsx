@@ -341,14 +341,15 @@ export function TableView() {
     const projectsWithTasks = projects.filter(p => rootTasks.some(t => t.projectId === p.id))
     const unassignedTasks = rootTasks.filter(t => !t.projectId || !projects.find(p => p.id === t.projectId))
     return (
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {projectsWithTasks.map(proj => {
           const pjMilestones = milestones.filter(m => m.projectId === proj.id).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
           const pjTasks = rootTasks.filter(t => t.projectId === proj.id)
           const isCollapsed = collapsedPj.has(proj.id)
           const doneCount = pjTasks.filter(t => t.status === '완료').length
           return (
-            <div key={proj.id} style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflowX: 'auto' }}>
+            <div key={proj.id} style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden' }}>
+              {/* Project header – fixed, not scrollable */}
               <div
                 onClick={() => togglePj(proj.id)}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--bg2)', borderBottom: isCollapsed ? 'none' : '1px solid var(--bd)', cursor: 'pointer', borderLeft: `3px solid ${proj.color}` }}
@@ -360,10 +361,14 @@ export function TableView() {
               </div>
               {!isCollapsed && (
                 <>
-                  {colHeader}
-                  {pjMilestones.length > 0
-                    ? renderMilestoneGroups(pjTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
-                    : renderRows(pjTasks, pjMilestones)}
+                  {/* Scrollable area: column header + task rows only */}
+                  <div style={{ overflowX: 'auto' }}>
+                    {colHeader}
+                    {pjMilestones.length > 0
+                      ? renderMilestoneGroups(pjTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
+                      : renderRows(pjTasks, pjMilestones)}
+                  </div>
+                  {/* Add buttons – fixed, not scrollable */}
                   {addingMs === proj.id
                     ? <AddMilestoneInline projectId={proj.id} onDone={() => setAddingMs(null)} />
                     : addMsBtn(proj.id)}
@@ -374,7 +379,8 @@ export function TableView() {
           )
         })}
         {unassignedTasks.length > 0 && (
-          <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflowX: 'auto' }}>
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden' }}>
+            {/* Unassigned header – fixed */}
             <div
               onClick={() => togglePj('__no_project__')}
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--bg2)', borderBottom: collapsedPj.has('__no_project__') ? 'none' : '1px solid var(--bd)', cursor: 'pointer', borderLeft: '3px solid var(--bd)' }}
@@ -385,8 +391,10 @@ export function TableView() {
             </div>
             {!collapsedPj.has('__no_project__') && (
               <>
-                {colHeader}
-                {renderRows(unassignedTasks, [])}
+                <div style={{ overflowX: 'auto' }}>
+                  {colHeader}
+                  {renderRows(unassignedTasks, [])}
+                </div>
                 {addBtn()}
               </>
             )}
@@ -401,12 +409,16 @@ export function TableView() {
   // ── Single-project mode ─────────────────────────────────────────────────────
   const pjMilestones = milestones.filter(m => m.projectId === projectId).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
   return (
-    <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', padding: '20px 24px' }}>
-      <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflowX: 'auto' }}>
-        {colHeader}
-        {pjMilestones.length > 0
-          ? renderMilestoneGroups(rootTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
-          : renderRows(rootTasks, [])}
+    <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+      <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden' }}>
+        {/* Scrollable area: column header + task rows only */}
+        <div style={{ overflowX: 'auto' }}>
+          {colHeader}
+          {pjMilestones.length > 0
+            ? renderMilestoneGroups(rootTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
+            : renderRows(rootTasks, [])}
+        </div>
+        {/* Add buttons – fixed, not scrollable */}
         {addingMs === projectId
           ? <AddMilestoneInline projectId={projectId!} onDone={() => setAddingMs(null)} />
           : addMsBtn(projectId!)}
@@ -472,7 +484,7 @@ function Row({
               gap: 5,
               position: 'sticky',
               left: 0,
-              zIndex: 1,
+              zIndex: 2,
               background: hovered ? 'var(--bg3)' : 'var(--bg)',
               boxShadow: '2px 0 4px rgba(0,0,0,.06)',
             }}
@@ -834,7 +846,7 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onT
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onContextMenu={onContextMenu}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: `3px solid ${accent}` }}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: `3px solid ${accent}`, position: 'sticky', left: 0, zIndex: 4 }}
     >
       <button
         onClick={onToggle}
@@ -900,19 +912,19 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onT
       </div>
 
       {!editingName && !editingDate && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', opacity: hovered ? 1 : 0, pointerEvents: hovered ? 'auto' : 'none', transition: 'opacity .12s', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, position: 'sticky', right: 12, marginLeft: 'auto', flexShrink: 0, opacity: hovered ? 1 : 0, pointerEvents: hovered ? 'auto' : 'none', transition: 'opacity .12s' }}>
           <button
             onClick={e => { e.stopPropagation(); onAddTask() }}
-            style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: `1px solid ${accent}`, background: 'transparent', color: accent, cursor: 'pointer', fontFamily: 'var(--font)' }}
+            style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: `1px solid ${accent}`, background: 'var(--bg2)', color: accent, cursor: 'pointer', fontFamily: 'var(--font)' }}
             onMouseEnter={e => { e.currentTarget.style.background = overdue ? 'rgba(239,68,68,.07)' : close ? 'rgba(245,158,11,.07)' : 'rgba(139,92,246,.07)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg2)' }}
           >+ 업무</button>
           {onDelete && (
             <button
               onClick={e => { e.stopPropagation(); if (confirm(`"${milestone.name}" 마일스톤을 삭제할까요?`)) onDelete() }}
-              style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid rgba(239,68,68,.4)', background: 'transparent', color: '#ef4444', cursor: 'pointer', fontFamily: 'var(--font)' }}
+              style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid rgba(239,68,68,.4)', background: 'var(--bg2)', color: '#ef4444', cursor: 'pointer', fontFamily: 'var(--font)' }}
               onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,.07)' }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg2)' }}
             >삭제</button>
           )}
         </div>
@@ -933,7 +945,7 @@ function UnassignedHeader({ count, collapsed, onToggle, onAddTask, onContextMenu
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onContextMenu={onContextMenu}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: '3px solid var(--bd)' }}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: '3px solid var(--bd)', position: 'sticky', left: 0, zIndex: 4 }}
     >
       <button
         onClick={onToggle}
@@ -947,9 +959,9 @@ function UnassignedHeader({ count, collapsed, onToggle, onAddTask, onContextMenu
       <span style={{ fontSize: 11, color: 'var(--t3)', background: 'var(--bg3)', borderRadius: 10, padding: '1px 7px' }}>{count}</span>
       <button
         onClick={e => { e.stopPropagation(); onAddTask() }}
-        style={{ marginLeft: 'auto', padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)', flexShrink: 0, opacity: hovered ? 1 : 0, pointerEvents: hovered ? 'auto' : 'none', transition: 'opacity .12s' }}
+        style={{ position: 'sticky', right: 12, marginLeft: 'auto', padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'var(--bg2)', color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)', flexShrink: 0, opacity: hovered ? 1 : 0, pointerEvents: hovered ? 'auto' : 'none', transition: 'opacity .12s' }}
         onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
-        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+        onMouseLeave={e => e.currentTarget.style.background = 'var(--bg2)'}
       >
         + 업무
       </button>
