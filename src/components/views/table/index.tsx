@@ -753,7 +753,7 @@ function AssigneeMultiSelect({ assignee, options, onChange }: {
   }
 
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
+    <div ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%', isolation: 'isolate' }}>
       <div
         ref={btnRef}
         onClick={handleOpen}

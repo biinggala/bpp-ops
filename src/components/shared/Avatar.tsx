@@ -52,9 +52,9 @@ export function AssigneeGroup({ assignee, size = 22 }: { assignee: string; size?
   const keys = parseAssignees(assignee)
   if (!keys.length) return null
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', isolation: 'isolate' }}>
       {keys.map((k, i) => (
-        <span key={k} style={{ marginLeft: i > 0 ? -6 : 0, zIndex: keys.length - i }}>
+        <span key={k} style={{ marginLeft: i > 0 ? -6 : 0, zIndex: keys.length - i, position: 'relative' }}>
           <AssigneeAvatar assigneeKey={k} size={size} />
         </span>
       ))}
