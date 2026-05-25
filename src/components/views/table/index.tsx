@@ -164,7 +164,7 @@ export function TableView() {
 
   // ── Column header row ───────────────────────────────────────────────────────
   const colHeader = (
-    <div style={{ display: 'flex', background: 'var(--bg2)', borderBottom: '2px solid var(--bd)', borderLeft: '3px solid transparent', userSelect: 'none' }}>
+    <div style={{ display: 'flex', minWidth: '100%', background: 'var(--bg2)', borderBottom: '2px solid var(--bd)', borderLeft: '3px solid transparent', userSelect: 'none' }}>
       {cols.map((col, idx) => {
         const isLast = idx === cols.length - 1
         const isDragTarget = dropTarget === col.key && draggingCol !== col.key
@@ -211,6 +211,7 @@ export function TableView() {
           </div>
         )
       })}
+      <div style={{ flex: 1 }} />
     </div>
   )
 
@@ -463,17 +464,22 @@ function Row({
     setEditing(cell)
   }
 
-  const cellBase = (col: ColDef, isLast: boolean): React.CSSProperties => ({
+  const isDone = task.status === '완료'
+
+  const cellBase = (col: ColDef, isLast: boolean, applyDone = false): React.CSSProperties => ({
     width: col.width, minWidth: col.width, maxWidth: col.width, flexShrink: 0,
     padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 4,
     minHeight: 44, overflow: 'hidden',
     borderRight: isLast ? 'none' : '1px solid var(--bd)',
+    ...(applyDone && isDone ? { opacity: 0.55 } : {}),
   })
 
   const renderCell = (col: ColDef, isLast: boolean) => {
     switch (col.key) {
 
       case 'name':
+        // background stays fully opaque (covers scrolled content behind sticky cell);
+        // content wrapper gets opacity for done tasks instead
         return (
           <div
             key="name"
@@ -489,58 +495,60 @@ function Row({
               boxShadow: '2px 0 4px rgba(0,0,0,.06)',
             }}
           >
-            {isChild ? (
-              <span style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1, marginLeft: -16 }}>└</span>
-            ) : (
-              <button
-                onClick={e => { e.stopPropagation(); onToggle?.() }}
-                style={{ width: 18, height: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: hasChildren ? 'pointer' : 'default', borderRadius: 3, padding: 0, color: 'var(--t3)', fontSize: 9, visibility: hasChildren ? 'visible' : 'hidden', marginLeft: -22 }}
-                onMouseEnter={e => { if (hasChildren) { e.currentTarget.style.background = 'var(--bg4)'; e.currentTarget.style.color = 'var(--t1)' } }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
-              >
-                {isExpanded ? '▼' : '▶'}
-              </button>
-            )}
-            {editing === 'name' ? (
-              <InlineTextEdit
-                value={task.name}
-                onCommit={v => { onUpdate({ name: v }); stopEdit() }}
-                onCancel={stopEdit}
-                fontSize={14}
-                bold={!isChild && hasChildren}
-              />
-            ) : (
-              <span
-                onClick={startEdit('name')}
-                style={{ fontSize: 14, fontWeight: !isChild && hasChildren ? 500 : 400, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--t1)', cursor: 'text' }}
-              >
-                {task.name}
-              </span>
-            )}
-            {hasChildren && !isExpanded && (
-              <span style={{ fontSize: 10, color: 'var(--t3)', background: 'var(--bg4)', borderRadius: 10, padding: '1px 6px', flexShrink: 0 }}>{doneCount}/{childCount}</span>
-            )}
-            {task.tags && task.tags.length > 0 && (
-              <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
-                {task.tags.slice(0, 2).map(tag => <TagBadge key={tag} tag={tag} />)}
-                {task.tags.length > 2 && <span style={{ fontSize: 10, color: 'var(--t3)', alignSelf: 'center' }}>+{task.tags.length - 2}</span>}
-              </div>
-            )}
-            {(task.blockedBy?.length || task.blocking?.length) ? (
-              <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                {!!task.blockedBy?.length && <span title={`선행 ${task.blockedBy.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(239,68,68,.1)', color: '#ef4444', lineHeight: 1.6 }}>⛔ {task.blockedBy.length}</span>}
-                {!!task.blocking?.length && <span title={`후행 ${task.blocking.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(245,158,11,.1)', color: '#f59e0b', lineHeight: 1.6 }}>⚡ {task.blocking.length}</span>}
-              </div>
-            ) : null}
-            {showMilestonePicker && (hovered || task.milestoneId) && onMilestoneChange && (
-              <MilestonePicker milestoneId={task.milestoneId} milestones={milestones} onChange={onMilestoneChange} />
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1, minWidth: 0, opacity: isDone ? 0.55 : 1 }}>
+              {isChild ? (
+                <span style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1, flexShrink: 0 }}>└</span>
+              ) : (
+                <button
+                  onClick={e => { e.stopPropagation(); onToggle?.() }}
+                  style={{ width: 18, height: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: hasChildren ? 'pointer' : 'default', borderRadius: 3, padding: 0, color: 'var(--t3)', fontSize: 9, visibility: hasChildren ? 'visible' : 'hidden', marginLeft: -22 }}
+                  onMouseEnter={e => { if (hasChildren) { e.currentTarget.style.background = 'var(--bg4)'; e.currentTarget.style.color = 'var(--t1)' } }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
+                >
+                  {isExpanded ? '▼' : '▶'}
+                </button>
+              )}
+              {editing === 'name' ? (
+                <InlineTextEdit
+                  value={task.name}
+                  onCommit={v => { onUpdate({ name: v }); stopEdit() }}
+                  onCancel={stopEdit}
+                  fontSize={14}
+                  bold={!isChild && hasChildren}
+                />
+              ) : (
+                <span
+                  onClick={startEdit('name')}
+                  style={{ fontSize: 14, fontWeight: !isChild && hasChildren ? 500 : 400, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--t1)', cursor: 'text' }}
+                >
+                  {task.name}
+                </span>
+              )}
+              {hasChildren && !isExpanded && (
+                <span style={{ fontSize: 10, color: 'var(--t3)', background: 'var(--bg4)', borderRadius: 10, padding: '1px 6px', flexShrink: 0 }}>{doneCount}/{childCount}</span>
+              )}
+              {task.tags && task.tags.length > 0 && (
+                <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+                  {task.tags.slice(0, 2).map(tag => <TagBadge key={tag} tag={tag} />)}
+                  {task.tags.length > 2 && <span style={{ fontSize: 10, color: 'var(--t3)', alignSelf: 'center' }}>+{task.tags.length - 2}</span>}
+                </div>
+              )}
+              {(task.blockedBy?.length || task.blocking?.length) ? (
+                <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                  {!!task.blockedBy?.length && <span title={`선행 ${task.blockedBy.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(239,68,68,.1)', color: '#ef4444', lineHeight: 1.6 }}>⛔ {task.blockedBy.length}</span>}
+                  {!!task.blocking?.length && <span title={`후행 ${task.blocking.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(245,158,11,.1)', color: '#f59e0b', lineHeight: 1.6 }}>⚡ {task.blocking.length}</span>}
+                </div>
+              ) : null}
+              {showMilestonePicker && (hovered || task.milestoneId) && onMilestoneChange && (
+                <MilestonePicker milestoneId={task.milestoneId} milestones={milestones} onChange={onMilestoneChange} />
+              )}
+            </div>
           </div>
         )
 
       case 'tags':
         return (
-          <div key="tags" style={{ ...cellBase(col, isLast), padding: '4px 8px' }}>
+          <div key="tags" style={{ ...cellBase(col, isLast, true), padding: '4px 8px' }}>
             <TagMultiSelect
               tags={task.tags ?? []}
               allTags={allTags}
@@ -551,7 +559,7 @@ function Row({
 
       case 'assignee':
         return (
-          <div key="assignee" style={{ ...cellBase(col, isLast), padding: '4px 8px' }}>
+          <div key="assignee" style={{ ...cellBase(col, isLast, true), padding: '4px 8px' }}>
             <AssigneeMultiSelect
               assignee={task.assignee}
               options={assigneeOptions}
@@ -562,7 +570,7 @@ function Row({
 
       case 'status':
         return (
-          <div key="status" style={{ ...cellBase(col, isLast), padding: '6px 10px' }}>
+          <div key="status" style={{ ...cellBase(col, isLast, true), padding: '6px 10px' }}>
             <ColoredSelect
               value={task.status}
               options={(['진행중','대기','검토중','완료'] as Status[])}
@@ -574,7 +582,7 @@ function Row({
 
       case 'due':
         return (
-          <div key="due" style={cellBase(col, isLast)} onClick={startEdit('due')}>
+          <div key="due" style={cellBase(col, isLast, true)} onClick={startEdit('due')}>
             {editing === 'due' ? (
               <AutoDateInput
                 value={task.due || ''}
@@ -592,7 +600,7 @@ function Row({
 
       case 'priority':
         return (
-          <div key="priority" style={{ ...cellBase(col, isLast), padding: '6px 10px' }}>
+          <div key="priority" style={{ ...cellBase(col, isLast, true), padding: '6px 10px' }}>
             <ColoredSelect
               value={task.priority}
               options={(['높음','중간','낮음'] as Priority[])}
@@ -604,14 +612,14 @@ function Row({
 
       case 'progress':
         return (
-          <div key="progress" style={cellBase(col, isLast)}>
+          <div key="progress" style={cellBase(col, isLast, true)}>
             <ProgressBar value={task.progress} />
           </div>
         )
 
       case 'memo':
         return (
-          <div key="memo" style={cellBase(col, isLast)} onClick={startEdit('memo')}>
+          <div key="memo" style={cellBase(col, isLast, true)} onClick={startEdit('memo')}>
             {editing === 'memo' ? (
               <InlineTextEdit
                 value={task.memo || ''}
@@ -629,7 +637,7 @@ function Row({
 
       case 'links':
         return (
-          <div key="links" style={{ ...cellBase(col, isLast), padding: '4px 8px' }}>
+          <div key="links" style={{ ...cellBase(col, isLast, true), padding: '4px 8px' }}>
             <LinksCell
               links={task.links ?? []}
               onChange={v => onUpdate({ links: v })}
@@ -638,7 +646,7 @@ function Row({
         )
 
       default:
-        return <div key={col.key} style={cellBase(col, isLast)} />
+        return <div key={col.key} style={cellBase(col, isLast, true)} />
     }
   }
 
@@ -650,16 +658,17 @@ function Row({
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex',
+        minWidth: '100%',
         background: hovered ? 'var(--bg3)' : (isChild ? 'var(--bg)' : 'transparent'),
         borderBottom: '1px solid var(--bd)',
         borderLeft: isChild
           ? `3px solid ${hovered ? 'var(--ac)' : 'var(--bd2)'}`
           : `3px solid ${hovered ? 'var(--ac)' : 'transparent'}`,
         transition: 'background .08s',
-        opacity: task.status === '완료' ? .55 : 1,
       }}
     >
       {cols.map((col, idx) => renderCell(col, idx === cols.length - 1))}
+      <div style={{ flex: 1 }} />
     </div>
   )
 }
