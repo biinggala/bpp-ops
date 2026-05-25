@@ -211,9 +211,12 @@ export function TableView() {
   )
 
   // ── Row helpers ─────────────────────────────────────────────────────────────
+  const sortDoneLast = (arr: Task[]) =>
+    [...arr].sort((a, b) => (a.status === '완료' ? 1 : 0) - (b.status === '완료' ? 1 : 0))
+
   const renderRows = (tasks: Task[], pickerMilestones: Milestone[]) =>
-    tasks.map(task => {
-      const children = getChildren(task.id)
+    sortDoneLast(tasks).map(task => {
+      const children = sortDoneLast(getChildren(task.id))
       const hasChildren = children.length > 0
       const isExpanded = !collapsed.has(task.id)
       const h = makeHandlers(task)
