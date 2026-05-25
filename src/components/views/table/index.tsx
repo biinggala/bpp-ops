@@ -148,6 +148,8 @@ export function TableView() {
     return Array.from(s).sort()
   }, [allTasks])
 
+  const totalColWidth = React.useMemo(() => cols.reduce((sum, c) => sum + c.width, 0), [cols])
+
   // ── Navigation helpers ──────────────────────────────────────────────────────
   const rootTasks = filteredTasks.filter(t => !t.parentId)
   const getChildren = (id: string) => allTasks.filter(t => t.parentId === id)
@@ -269,6 +271,7 @@ export function TableView() {
                 milestone={ms} taskCount={msTasks.length}
                 completed={msTasks.filter(t => t.status === '완료').length}
                 diff={diff} collapsed={isCollapsed}
+                minWidth={totalColWidth}
                 onToggle={() => toggleMs(ms.id)}
                 onAddTask={() => onAdd(ms.id)}
                 onUpdate={patch => updateMilestone(ms.id, patch)}
@@ -283,6 +286,7 @@ export function TableView() {
           <>
             <UnassignedHeader count={unassigned.length}
               collapsed={collapsedMs.has('__none__')}
+              minWidth={totalColWidth}
               onToggle={() => toggleMs('__none__')}
               onAddTask={() => onAdd()}
               onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMsCtxMenu({ x: e.clientX, y: e.clientY, onAdd: () => openTaskModal(undefined, undefined, undefined, pjMilestones[0]?.projectId) }) }} />
@@ -364,12 +368,10 @@ export function TableView() {
                 <>
                   {/* Scrollable area: column header + task rows only */}
                   <div style={{ overflowX: 'auto' }}>
-                    <div style={{ minWidth: 'max-content' }}>
-                      {colHeader}
-                      {pjMilestones.length > 0
-                        ? renderMilestoneGroups(pjTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
-                        : renderRows(pjTasks, pjMilestones)}
-                    </div>
+                    {colHeader}
+                    {pjMilestones.length > 0
+                      ? renderMilestoneGroups(pjTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
+                      : renderRows(pjTasks, pjMilestones)}
                   </div>
                   {/* Add buttons – fixed, not scrollable */}
                   {addingMs === proj.id
@@ -395,10 +397,8 @@ export function TableView() {
             {!collapsedPj.has('__no_project__') && (
               <>
                 <div style={{ overflowX: 'auto' }}>
-                  <div style={{ minWidth: 'max-content' }}>
-                    {colHeader}
-                    {renderRows(unassignedTasks, [])}
-                  </div>
+                  {colHeader}
+                  {renderRows(unassignedTasks, [])}
                 </div>
                 {addBtn()}
               </>
@@ -418,12 +418,10 @@ export function TableView() {
       <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'clip' }}>
         {/* Scrollable area: column header + task rows only */}
         <div style={{ overflowX: 'auto' }}>
-          <div style={{ minWidth: 'max-content' }}>
-            {colHeader}
-            {pjMilestones.length > 0
-              ? renderMilestoneGroups(rootTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
-              : renderRows(rootTasks, [])}
-          </div>
+          {colHeader}
+          {pjMilestones.length > 0
+            ? renderMilestoneGroups(rootTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
+            : renderRows(rootTasks, [])}
         </div>
         {/* Add buttons – fixed, not scrollable */}
         {addingMs === projectId
@@ -497,7 +495,7 @@ function Row({
               position: 'sticky',
               left: 0,
               zIndex: 2,
-              background: hovered ? 'var(--bg3)' : 'var(--bg)',
+              background: hovered ? 'var(--bg2)' : 'var(--bg)',
               boxShadow: '2px 0 4px rgba(0,0,0,.06)',
             }}
           >
@@ -830,9 +828,9 @@ function AssigneeMultiSelect({ assignee, options, onChange }: {
 
 // ── MilestoneHeader ───────────────────────────────────────────────────────────
 
-function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onToggle, onAddTask, onUpdate, onDelete, onContextMenu }: {
+function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, minWidth, onToggle, onAddTask, onUpdate, onDelete, onContextMenu }: {
   milestone: Milestone; taskCount: number; completed: number; diff: number
-  collapsed: boolean; onToggle: () => void; onAddTask: () => void
+  collapsed: boolean; minWidth?: number; onToggle: () => void; onAddTask: () => void
   onUpdate: (patch: Partial<Omit<Milestone, 'id'>>) => void
   onDelete?: () => void
   onContextMenu?: (e: React.MouseEvent) => void
@@ -861,7 +859,7 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onT
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onContextMenu={onContextMenu}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: `3px solid ${accent}`, position: 'sticky', left: 0, zIndex: 4 }}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: `3px solid ${accent}`, position: 'sticky', left: 0, zIndex: 4, minWidth: minWidth ?? undefined }}
     >
       <button
         onClick={onToggle}
@@ -950,8 +948,8 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, onT
 
 // ── UnassignedHeader ──────────────────────────────────────────────────────────
 
-function UnassignedHeader({ count, collapsed, onToggle, onAddTask, onContextMenu }: {
-  count: number; collapsed: boolean; onToggle: () => void; onAddTask: () => void
+function UnassignedHeader({ count, collapsed, minWidth, onToggle, onAddTask, onContextMenu }: {
+  count: number; collapsed: boolean; minWidth?: number; onToggle: () => void; onAddTask: () => void
   onContextMenu?: (e: React.MouseEvent) => void
 }) {
   const [hovered, setHovered] = useState(false)
@@ -960,7 +958,7 @@ function UnassignedHeader({ count, collapsed, onToggle, onAddTask, onContextMenu
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onContextMenu={onContextMenu}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: '3px solid var(--bd)', position: 'sticky', left: 0, zIndex: 4 }}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: '3px solid var(--bd)', position: 'sticky', left: 0, zIndex: 4, minWidth: minWidth ?? undefined }}
     >
       <button
         onClick={onToggle}
