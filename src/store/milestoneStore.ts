@@ -65,7 +65,7 @@ export const useMilestoneStore = create<MilestoneState>((set, get) => ({
       }
 
       const fbTs: number = root.milestonesSavedAt || 0
-      if (fbTs > localTs) {
+      if (fbTs > localTs || localTs === 0) {
         const incoming: Milestone[] = Array.isArray(root.milestones)
           ? root.milestones
           : Object.values(root.milestones)

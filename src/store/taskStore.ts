@@ -90,7 +90,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       }
 
       const fbTs: number = root.savedAt || 0
-      if (fbTs > localTs) {
+      if (fbTs > localTs || localTs === 0) {
         const incoming: Task[] = Array.isArray(root.tasks)
           ? root.tasks
           : Object.values(root.tasks)

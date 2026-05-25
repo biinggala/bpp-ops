@@ -135,7 +135,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
 
       const fbTs: number = root.projectsSavedAt || 0
-      if (fbTs > localTs) {
+      if (fbTs > localTs || localTs === 0) {
         const raw: Project[] = Array.isArray(root.projects)
           ? root.projects
           : Object.values(root.projects)
