@@ -168,23 +168,27 @@ export function TableView() {
       {cols.map((col, idx) => {
         const isLast = idx === cols.length - 1
         const isDragTarget = dropTarget === col.key && draggingCol !== col.key
+        const isNameCol = col.key === 'name'
         return (
           <div
             key={col.key}
-            draggable
-            onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; setDraggingCol(col.key) }}
-            onDragOver={e => { e.preventDefault(); setDropTarget(col.key) }}
-            onDragLeave={() => setDropTarget(null)}
-            onDrop={() => handleColDrop(col.key)}
-            onDragEnd={() => { setDraggingCol(null); setDropTarget(null) }}
+            draggable={!isNameCol}
+            onDragStart={isNameCol ? undefined : e => { e.dataTransfer.effectAllowed = 'move'; setDraggingCol(col.key) }}
+            onDragOver={isNameCol ? undefined : e => { e.preventDefault(); setDropTarget(col.key) }}
+            onDragLeave={isNameCol ? undefined : () => setDropTarget(null)}
+            onDrop={isNameCol ? undefined : () => handleColDrop(col.key)}
+            onDragEnd={isNameCol ? undefined : () => { setDraggingCol(null); setDropTarget(null) }}
             style={{
               width: col.width, minWidth: col.width, maxWidth: col.width, flexShrink: 0,
               padding: '8px 12px', fontSize: 12, fontWeight: 600, color: 'var(--t3)',
               textTransform: 'uppercase' as const, letterSpacing: '.04em',
               borderRight: isLast ? 'none' : '1px solid var(--bd)',
-              position: 'relative',
-              background: isDragTarget ? 'var(--ac-l)' : draggingCol === col.key ? 'var(--bg3)' : 'transparent',
-              cursor: 'grab',
+              position: isNameCol ? 'sticky' : 'relative',
+              left: isNameCol ? 0 : undefined,
+              zIndex: isNameCol ? 3 : undefined,
+              background: isNameCol ? 'var(--bg2)' : isDragTarget ? 'var(--ac-l)' : draggingCol === col.key ? 'var(--bg3)' : 'transparent',
+              boxShadow: isNameCol ? '2px 0 4px rgba(0,0,0,.06)' : undefined,
+              cursor: isNameCol ? 'default' : 'grab',
               transition: 'background .1s',
               display: 'flex', alignItems: 'center',
             }}
@@ -344,7 +348,7 @@ export function TableView() {
           const isCollapsed = collapsedPj.has(proj.id)
           const doneCount = pjTasks.filter(t => t.status === '완료').length
           return (
-            <div key={proj.id} style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden' }}>
+            <div key={proj.id} style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflowX: 'auto' }}>
               <div
                 onClick={() => togglePj(proj.id)}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--bg2)', borderBottom: isCollapsed ? 'none' : '1px solid var(--bd)', cursor: 'pointer', borderLeft: `3px solid ${proj.color}` }}
@@ -370,7 +374,7 @@ export function TableView() {
           )
         })}
         {unassignedTasks.length > 0 && (
-          <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden' }}>
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflowX: 'auto' }}>
             <div
               onClick={() => togglePj('__no_project__')}
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--bg2)', borderBottom: collapsedPj.has('__no_project__') ? 'none' : '1px solid var(--bd)', cursor: 'pointer', borderLeft: '3px solid var(--bd)' }}
@@ -398,7 +402,7 @@ export function TableView() {
   const pjMilestones = milestones.filter(m => m.projectId === projectId).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
   return (
     <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', padding: '20px 24px' }}>
-      <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'hidden' }}>
+      <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflowX: 'auto' }}>
         {colHeader}
         {pjMilestones.length > 0
           ? renderMilestoneGroups(rootTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
@@ -462,7 +466,16 @@ function Row({
           <div
             key="name"
             onDoubleClick={e => { e.stopPropagation(); stopEdit(); onOpen() }}
-            style={{ ...cellBase(col, isLast), paddingLeft: isChild ? 88 : 64, gap: 5 }}
+            style={{
+              ...cellBase(col, isLast),
+              paddingLeft: isChild ? 88 : 64,
+              gap: 5,
+              position: 'sticky',
+              left: 0,
+              zIndex: 1,
+              background: hovered ? 'var(--bg3)' : 'var(--bg)',
+              boxShadow: '2px 0 4px rgba(0,0,0,.06)',
+            }}
           >
             {isChild ? (
               <span style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1, marginLeft: -16 }}>└</span>
