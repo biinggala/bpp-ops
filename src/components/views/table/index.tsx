@@ -753,7 +753,7 @@ function AssigneeMultiSelect({ assignee, options, onChange }: {
   }
 
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%', isolation: 'isolate' }}>
+    <div ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
       <div
         ref={btnRef}
         onClick={handleOpen}
@@ -763,7 +763,7 @@ function AssigneeMultiSelect({ assignee, options, onChange }: {
           <span style={{ fontSize: 12, color: 'var(--t3)' }}>—</span>
         ) : (
           selected.map((k, i) => (
-            <span key={k} style={{ marginLeft: i > 0 ? -6 : 0, zIndex: selected.length - i }}>
+            <span key={k} style={{ marginLeft: i > 0 ? -6 : 0, position: 'relative', zIndex: 1 - i }}>
               <AssigneeAvatar assigneeKey={k} size={22} />
             </span>
           ))
