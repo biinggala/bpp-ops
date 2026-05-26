@@ -136,7 +136,13 @@ function MobileTableView() {
           <span style={{ fontSize: 11, fontWeight: 500, flexShrink: 0, padding: '2px 8px', borderRadius: 10, background: st.bg, color: st.color, whiteSpace: 'nowrap' }}>
             {task.status}
           </span>
-          <span style={{ fontSize: 16, color: 'var(--t3)', marginLeft: 4, flexShrink: 0 }}>›</span>
+          {!isDone && (
+            <button
+              onClick={e => { e.stopPropagation(); openTaskModal(undefined, task.id) }}
+              style={{ width: 26, height: 26, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: 18, padding: 0, lineHeight: 1 }}
+            >⊕</button>
+          )}
+          <span style={{ fontSize: 16, color: 'var(--t3)', marginLeft: isDone ? 4 : 0, flexShrink: 0 }}>›</span>
         </div>
         {hasChildren && isExpanded && sortDoneLast(children).map(c => renderTask(c, true))}
       </React.Fragment>
