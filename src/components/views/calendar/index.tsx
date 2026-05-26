@@ -388,6 +388,7 @@ function MobGCalRow({ event }: { event: GCalEvent }) {
     >
       <span style={{ width: 7, height: 7, borderRadius: '50%', background: GCAL_TEXT, flexShrink: 0 }} />
       <span style={{ flex: 1, fontSize: 14, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {event.startTime && <span style={{ color: GCAL_TEXT, fontWeight: 500, marginRight: 5 }}>{event.startTime}</span>}
         {event.summary}
       </span>
       <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: GCAL_BG, color: GCAL_TEXT, flexShrink: 0 }}>
@@ -692,7 +693,7 @@ function DesktopCalendar() {
                       onMouseEnter={e => e.currentTarget.style.opacity = '.75'}
                       onMouseLeave={e => e.currentTarget.style.opacity = '1'}
                     >
-                      📅 {ev.summary}
+                      {ev.startTime ? `${ev.startTime} ` : '📅 '}{ev.summary}
                     </a>
                   ))}
 

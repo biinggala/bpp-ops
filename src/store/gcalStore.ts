@@ -5,8 +5,9 @@ import { auth } from '../lib/firebase'
 export interface GCalEvent {
   id: string
   summary: string
-  start: string   // YYYY-MM-DD (normalized to date only)
-  end: string     // YYYY-MM-DD exclusive for all-day, inclusive for timed
+  start: string      // YYYY-MM-DD
+  end: string        // YYYY-MM-DD
+  startTime?: string // e.g. "9:30am", "8pm" — only for timed (non-all-day) events
   allDay: boolean
   htmlLink: string
 }
@@ -125,7 +126,15 @@ export const useGCalStore = create<GCalState>((set, get) => ({
             end = d.toISOString().slice(0, 10)
           }
           if (end < start) end = start
-          return [{ id: item.id, summary: item.summary ?? '(제목 없음)', start, end, allDay, htmlLink: item.htmlLink ?? '' }]
+          let startTime: string | undefined
+          if (!allDay && item.start?.dateTime) {
+            const d = new Date(item.start.dateTime)
+            const h = d.getHours(); const m = d.getMinutes()
+            const ampm = h >= 12 ? 'pm' : 'am'
+            const h12 = h % 12 || 12
+            startTime = m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, '0')}${ampm}`
+          }
+          return [{ id: item.id, summary: item.summary ?? '(제목 없음)', start, end, startTime, allDay, htmlLink: item.htmlLink ?? '' }]
         } catch { return [] }
       })
       set({ events, loading: false })
