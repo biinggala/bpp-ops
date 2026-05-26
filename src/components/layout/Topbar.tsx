@@ -1,12 +1,17 @@
 import React from 'react'
 import { useUiStore } from '../../store/uiStore'
 import { useAuthStore } from '../../store/authStore'
+import { useProjectStore } from '../../store/projectStore'
 import { useMobile } from '../../hooks/useMobile'
 
 export function Topbar() {
-  const { space, openTaskModal, toggleSidebar } = useUiStore()
+  const { space, projectId, myTasksOnly, openTaskModal, toggleSidebar } = useUiStore()
   const { memberKey } = useAuthStore()
+  const projects = useProjectStore(s => s.projects)
   const isMobile = useMobile()
+
+  const activeProject = projectId ? projects.find(p => p.id === projectId) : null
+  const title = activeProject?.name ?? space ?? (myTasksOnly ? '내 할 일' : '전체 업무')
 
   return (
     <header style={{
@@ -40,7 +45,7 @@ export function Topbar() {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
         <h1 style={{ fontSize: isMobile ? 15 : 16, fontWeight: 600, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {space ?? '전체 업무'}
+          {title}
         </h1>
         {memberKey && !isMobile && (
           <span style={{ fontSize: 13, color: 'var(--t3)', fontWeight: 400 }}>/ {memberKey}</span>
