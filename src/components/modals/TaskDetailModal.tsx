@@ -12,6 +12,7 @@ import { usePresenceStore } from '../../store/presenceStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
+import { useMobile } from '../../hooks/useMobile'
 import { AssigneeAvatar } from '../shared/Avatar'
 import { STATUS_LIST, PRIORITY_LIST } from '../../types'
 import type { Task, Status, Priority, TaskLink } from '../../types'
@@ -238,6 +239,7 @@ export function TaskDetailModal() {
   const allProjects = useProjectStore(s => s.projects)
   const projects = allProjects
   const milestones = useMilestoneStore(s => s.milestones)
+  const isMobile = useMobile()
 
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved')
   const [editingTitle, setEditingTitle] = useState(false)
@@ -337,9 +339,9 @@ export function TaskDetailModal() {
   return (
     <div
       onClick={e => { if (e.target === e.currentTarget) close() }}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(6px)', padding: '20px' }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 200, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', backdropFilter: 'blur(6px)', padding: isMobile ? 0 : '20px' }}
     >
-      <div style={{ width: '100%', maxWidth: 1080, height: '88vh', background: 'var(--bg)', borderRadius: 'var(--r4)', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: 'var(--sh-lg)' }}>
+      <div style={{ width: '100%', maxWidth: isMobile ? '100%' : 1080, height: isMobile ? '92vh' : '88vh', background: 'var(--bg)', borderRadius: isMobile ? 'var(--r4) var(--r4) 0 0' : 'var(--r4)', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: 'var(--sh-lg)' }}>
 
         {/* ── Header ── */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--bd)', flexShrink: 0 }}>

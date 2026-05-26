@@ -3,16 +3,17 @@ import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
+import { useMobile } from '../../hooks/useMobile'
 import { MEMBERS } from '../../types'
 import type { ViewType, Status, MemberKey } from '../../types'
 import { STATUS_LIST } from '../../types'
 
-const VIEWS: { id: ViewType; label: string }[] = [
-  { id: 't', label: '리스트' },
-  { id: 'b', label: '보드' },
-  { id: 'c', label: '캘린더' },
-  { id: 'g', label: '간트' },
-  { id: 's', label: '통계' },
+const VIEWS: { id: ViewType; label: string; icon: string }[] = [
+  { id: 't', label: '리스트', icon: '≡' },
+  { id: 'b', label: '보드', icon: '⊞' },
+  { id: 'c', label: '캘린더', icon: '◪' },
+  { id: 'g', label: '간트', icon: '▤' },
+  { id: 's', label: '통계', icon: '◑' },
 ]
 
 const SORT_OPTIONS = [
@@ -23,6 +24,7 @@ const SORT_OPTIONS = [
 
 export function ViewBar() {
   const { view, setView, filters, setFilters, resetFilters } = useUiStore()
+  const isMobile = useMobile()
   const allTasks = useTaskStore(s => s.tasks)
   const projects = useProjectStore(s => s.projects)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
@@ -49,6 +51,37 @@ export function ViewBar() {
 
   const hasFilters = filters.assignees.length > 0 || filters.statuses.length > 0 || filters.tags.length > 0
   const showFilters = !['c', 's'].includes(view)
+
+  // Mobile: render only as bottom nav (the actual bar is rendered there)
+  if (isMobile) {
+    return (
+      <nav style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
+        height: 'calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px))',
+        background: 'var(--bg)', borderTop: '1px solid var(--bd)',
+        display: 'flex', alignItems: 'stretch',
+      }}>
+        {VIEWS.map(v => (
+          <button
+            key={v.id}
+            onClick={() => setView(v.id)}
+            style={{
+              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+              justifyContent: 'center', gap: 3,
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              color: view === v.id ? 'var(--ac)' : 'var(--t3)',
+              fontSize: 10, fontWeight: view === v.id ? 600 : 400,
+              fontFamily: 'var(--font)', paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+              transition: 'color .1s',
+            }}
+          >
+            <span style={{ fontSize: 18, lineHeight: 1 }}>{v.icon}</span>
+            {v.label}
+          </button>
+        ))}
+      </nav>
+    )
+  }
 
   return (
     <div style={{

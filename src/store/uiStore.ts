@@ -24,6 +24,7 @@ interface UiState {
   isFilterPanelOpen: boolean
   isColorSettingsOpen: boolean
   isCommandPaletteOpen: boolean
+  sidebarOpen: boolean
   calYear: number
   calMonth: number
 
@@ -41,6 +42,8 @@ interface UiState {
   setColorSettings: (open: boolean) => void
   openCommandPalette: () => void
   closeCommandPalette: () => void
+  setSidebarOpen: (v: boolean) => void
+  toggleSidebar: () => void
   calNav: (delta: number) => void
   calToday: () => void
 }
@@ -70,6 +73,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   isFilterPanelOpen: false,
   isColorSettingsOpen: false,
   isCommandPaletteOpen: false,
+  sidebarOpen: false,
   calYear: now.getFullYear(),
   calMonth: now.getMonth(),
 
@@ -87,6 +91,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   setColorSettings: (open) => set({ isColorSettingsOpen: open }),
   openCommandPalette: () => set({ isCommandPaletteOpen: true }),
   closeCommandPalette: () => set({ isCommandPaletteOpen: false }),
+  setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
+  toggleSidebar: () => set(s => ({ sidebarOpen: !s.sidebarOpen })),
   calNav: (delta) => {
     const { calYear, calMonth } = get()
     const d = new Date(calYear, calMonth + delta, 1)

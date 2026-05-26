@@ -7,6 +7,7 @@ import { useMilestoneStore } from '../store/milestoneStore'
 import { useAuthStore } from '../store/authStore'
 import { usePresenceStore } from '../store/presenceStore'
 import { useUserProfileStore } from '../store/userProfileStore'
+import { useMobile } from '../hooks/useMobile'
 import type { Project } from '../types'
 import { Sidebar } from '../components/layout/Sidebar'
 import { Topbar } from '../components/layout/Topbar'
@@ -41,6 +42,7 @@ class TaskDetailErrorBoundary extends React.Component<
 }
 
 export function AppPage() {
+  const isMobile = useMobile()
   const view = useUiStore(s => s.view)
   const tasks = useTaskStore(s => s.tasks)
   const subscribeFirebase = useTaskStore(s => s.subscribeFirebase)
@@ -140,9 +142,12 @@ export function AppPage() {
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <Topbar />
-        <ViewBar />
+        {!isMobile && <ViewBar />}
 
-        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+        <div
+          className="flex-1 overflow-hidden flex flex-col min-h-0"
+          style={isMobile ? { paddingBottom: 'calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px))' } : undefined}
+        >
           {isEmpty ? (
             <EmptyState />
           ) : (
@@ -156,6 +161,9 @@ export function AppPage() {
           )}
         </div>
       </div>
+
+      {/* Bottom tab nav — rendered outside scroll area to stay fixed */}
+      {isMobile && <ViewBar />}
 
       <TaskModal />
       <TaskDetailErrorBoundary key={detailTaskId ?? 'none'}>

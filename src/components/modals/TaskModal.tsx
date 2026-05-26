@@ -5,6 +5,7 @@ import { useProjectStore } from '../../store/projectStore'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { useAuthStore } from '../../store/authStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
+import { useMobile } from '../../hooks/useMobile'
 import { STATUS_LIST, PRIORITY_LIST, getTagColor } from '../../types'
 import type { Task } from '../../types'
 
@@ -21,6 +22,7 @@ export function TaskModal() {
   const email = useAuthStore(s => s.email)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const profiles = useUserProfileStore(s => s.profiles)
+  const isMobile = useMobile()
 
   const projects = allProjects.filter(p =>
     !p.memberEmails?.length || (email ? p.memberEmails.includes(email) : false)
@@ -76,7 +78,13 @@ export function TaskModal() {
       onClick={e => { if (e.target === e.currentTarget) closeTaskModal() }}
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(2px)' }}
     >
-      <div style={{ background: 'var(--bg)', borderRadius: 'var(--r4)', width: 560, maxHeight: '88vh', overflow: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,.18), 0 0 0 1px var(--bd)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{
+        background: 'var(--bg)', borderRadius: isMobile ? 0 : 'var(--r4)',
+        width: isMobile ? '100%' : 560, maxHeight: isMobile ? '100%' : '88vh',
+        height: isMobile ? '100%' : undefined,
+        overflow: 'auto', display: 'flex', flexDirection: 'column',
+        boxShadow: isMobile ? 'none' : '0 24px 64px rgba(0,0,0,.18), 0 0 0 1px var(--bd)',
+      }}>
 
         {/* Header */}
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--bd)', display: 'flex', alignItems: 'center', position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1 }}>

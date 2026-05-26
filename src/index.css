@@ -180,3 +180,9 @@ input, select, textarea, button {
 
 /* Selection */
 .ProseMirror ::selection { background: var(--ac-l); }
+
+/* ── Mobile / PWA ── */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+}
+:root { --bottom-nav-h: 56px; }

@@ -4,11 +4,13 @@ import { useTaskStore } from '../../store/taskStore'
 import { useAuthStore } from '../../store/authStore'
 import { useProjectStore } from '../../store/projectStore'
 import { usePresenceStore } from '../../store/presenceStore'
+import { useMobile } from '../../hooks/useMobile'
 import { MEMBERS } from '../../types'
 import type { MemberKey, Project } from '../../types'
 
 export function Sidebar() {
-  const { filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly } = useUiStore()
+  const { filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly, sidebarOpen, setSidebarOpen } = useUiStore()
+  const isMobile = useMobile()
   const tasks = useTaskStore(s => s.tasks)
   const { projects, addProject, updateProject, deleteProject, addMember, removeMember } = useProjectStore()
   const { memberKey, displayName, email, photoURL, signOutUser } = useAuthStore()
@@ -126,9 +128,27 @@ export function Sidebar() {
   )
   const onlineUsers = Object.values(presences).filter(p => p.online)
 
+  const closeSidebar = () => { if (isMobile) setSidebarOpen(false) }
+
   return (
     <>
-      <aside style={{ width: 240, background: 'var(--sb-bg)', display: 'flex', flexDirection: 'column', flexShrink: 0, borderRight: '1px solid rgba(255,255,255,.06)' }}>
+      {/* Mobile backdrop */}
+      {isMobile && sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 999, backdropFilter: 'blur(2px)' }}
+        />
+      )}
+      <aside style={{
+        width: 240, background: 'var(--sb-bg)', display: 'flex', flexDirection: 'column', flexShrink: 0,
+        borderRight: '1px solid rgba(255,255,255,.06)',
+        ...(isMobile ? {
+          position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 1000,
+          transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+          transition: 'transform .25s cubic-bezier(.4,0,.2,1)',
+          boxShadow: sidebarOpen ? '4px 0 24px rgba(0,0,0,.5)' : 'none',
+        } : {}),
+      }}>
 
         {/* Workspace header */}
         <div style={{ padding: '14px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(255,255,255,.06)', position: 'relative' }} ref={profileRef}>
@@ -226,7 +246,7 @@ export function Sidebar() {
 
           <NavItem
             active={!myTasksOnly && projectId === null}
-            onClick={() => { setProject(null); setMyTasksOnly(false) }}
+            onClick={() => { setProject(null); setMyTasksOnly(false); closeSidebar() }}
             count={accessibleTasks.length}
             icon="◈"
           >
@@ -235,7 +255,7 @@ export function Sidebar() {
 
           <NavItem
             active={myTasksOnly}
-            onClick={() => { setMyTasksOnly(!myTasksOnly); setProject(null) }}
+            onClick={() => { setMyTasksOnly(!myTasksOnly); setProject(null); closeSidebar() }}
             count={tasks.filter(t => memberKey ? t.assignee === memberKey : false).length}
             icon="☑"
           >
@@ -276,7 +296,7 @@ export function Sidebar() {
                 count={taskCount}
                 daysInfo={daysInfo}
                 inviteCode={p.inviteCode}
-                onClick={() => { setProject(p.id); setMyTasksOnly(false) }}
+                onClick={() => { setProject(p.id); setMyTasksOnly(false); closeSidebar() }}
                 onContextMenu={e => handleContextMenu(e, p.id, p.name)}
               >
                 {p.name}
