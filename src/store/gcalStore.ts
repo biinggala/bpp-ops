@@ -105,22 +105,25 @@ export const useGCalStore = create<GCalState>((set, get) => ({
 
       const data = await res.json()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const events: GCalEvent[] = (data.items ?? []).map((item: any) => {
-        const allDay = !!item.start?.date
-        const start = allDay
-          ? item.start.date
-          : item.start?.dateTime?.slice(0, 10) ?? ''
-        // All-day end is exclusive in GCal; make it inclusive for display
-        let end = allDay
-          ? item.end?.date ?? start
-          : item.end?.dateTime?.slice(0, 10) ?? start
-        if (allDay && end > start) {
-          // subtract 1 day to make inclusive
-          const d = new Date(end + 'T00:00:00')
-          d.setDate(d.getDate() - 1)
-          end = d.toISOString().slice(0, 10)
-        }
-        return { id: item.id, summary: item.summary ?? '(제목 없음)', start, end, allDay, htmlLink: item.htmlLink ?? '' }
+      const events: GCalEvent[] = (data.items ?? []).flatMap((item: any) => {
+        try {
+          const allDay = !!item.start?.date
+          const start = allDay
+            ? item.start.date
+            : item.start?.dateTime?.slice(0, 10) ?? ''
+          if (!start) return []
+          let end = allDay
+            ? item.end?.date ?? start
+            : item.end?.dateTime?.slice(0, 10) ?? start
+          if (!end) end = start
+          if (allDay && end > start) {
+            const d = new Date(end + 'T00:00:00')
+            d.setDate(d.getDate() - 1)
+            end = d.toISOString().slice(0, 10)
+          }
+          if (end < start) end = start
+          return [{ id: item.id, summary: item.summary ?? '(제목 없음)', start, end, allDay, htmlLink: item.htmlLink ?? '' }]
+        } catch { return [] }
       })
       set({ events, loading: false })
     } catch (e: unknown) {

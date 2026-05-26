@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react'
+import React, { useState, useMemo, useRef, useEffect, Component } from 'react'
 import { useUiStore } from '../../../store/uiStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
@@ -135,11 +135,12 @@ function MobileCalendar() {
   const gcalByDate = useMemo(() => {
     const map = new Map<string, GCalEvent[]>()
     gcalEvents.forEach(ev => {
+      if (!ev.start || !ev.end) return
       let cur = ev.start
-      while (cur <= ev.end) {
+      let guard = 0
+      while (cur <= ev.end && guard++ < 400) {
         if (!map.has(cur)) map.set(cur, [])
         map.get(cur)!.push(ev)
-        // advance 1 day
         const d = new Date(cur + 'T00:00:00')
         d.setDate(d.getDate() + 1)
         cur = d.toISOString().slice(0, 10)
@@ -346,12 +347,44 @@ function MobGCalRow({ event }: { event: GCalEvent }) {
   )
 }
 
+// ── Error boundary ────────────────────────────────────────────────────────────
+
+class CalendarErrorBoundary extends Component<{ children: React.ReactNode }, { error: string | null }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { error: null }
+  }
+  static getDerivedStateFromError(e: unknown) {
+    return { error: e instanceof Error ? e.message : '알 수 없는 오류' }
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24, color: 'var(--t2)' }}>
+          <div style={{ fontSize: 13, color: '#dc2626' }}>캘린더 로드 오류</div>
+          <div style={{ fontSize: 12, color: 'var(--t3)', textAlign: 'center', maxWidth: 280 }}>{this.state.error}</div>
+          <button
+            onClick={() => this.setState({ error: null })}
+            style={{ padding: '6px 14px', borderRadius: 'var(--r2)', border: '1px solid var(--bd)', background: 'transparent', fontSize: 13, color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)' }}
+          >
+            다시 시도
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 // ── Desktop calendar ──────────────────────────────────────────────────────────
 
 export function CalendarView() {
   const isMobile = useMobile()
-  if (isMobile) return <MobileCalendar />
-  return <DesktopCalendar />
+  return (
+    <CalendarErrorBoundary>
+      {isMobile ? <MobileCalendar /> : <DesktopCalendar />}
+    </CalendarErrorBoundary>
+  )
 }
 
 function DesktopCalendar() {
@@ -389,8 +422,10 @@ function DesktopCalendar() {
   const gcalByDate = useMemo(() => {
     const map: Record<string, GCalEvent[]> = {}
     gcalEvents.forEach(ev => {
+      if (!ev.start || !ev.end) return
       let cur = ev.start
-      while (cur <= ev.end) {
+      let guard = 0
+      while (cur <= ev.end && guard++ < 400) {
         if (!map[cur]) map[cur] = []
         map[cur].push(ev)
         const d = new Date(cur + 'T00:00:00'); d.setDate(d.getDate() + 1)
