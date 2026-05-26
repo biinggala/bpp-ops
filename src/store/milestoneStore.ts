@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { ref, onValue, off, update } from 'firebase/database'
+import { ref, set as fbSet, onValue, off } from 'firebase/database'
 import { db } from '../lib/firebase'
 import { gid, loadFromStorage, saveToStorage, getLocalTs } from '../lib/utils'
 import type { Milestone } from '../types'
@@ -21,11 +21,10 @@ function persist(milestones: Milestone[]) {
 }
 
 function syncFb(milestones: Milestone[]) {
-  // Atomic update: both keys change in a single server operation
-  update(ref(db, 'cringe'), {
-    milestones: milestones.length ? milestones : null,
-    milestonesSavedAt: Date.now(),
-  }).catch(() => {})
+  const now = Date.now()
+  // set() on the milestones path guarantees full replacement (no stale indices)
+  fbSet(ref(db, 'cringe/milestones'), milestones.length ? milestones : null).catch(() => {})
+  fbSet(ref(db, 'cringe/milestonesSavedAt'), now).catch(() => {})
 }
 
 export const useMilestoneStore = create<MilestoneState>((set, get) => ({
@@ -79,6 +78,9 @@ export const useMilestoneStore = create<MilestoneState>((set, get) => ({
           : Object.values(root.milestones)
         set({ milestones: incoming })
         saveToStorage(incoming, MILESTONE_KEY)
+      } else if (localTs > 0 && localTs >= fbTs) {
+        // Local is newer — push clean local data to overwrite any stale Firebase indices
+        syncFb(get().milestones)
       }
     })
     return () => off(dbRef, 'value', handler)
