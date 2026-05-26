@@ -144,6 +144,7 @@ function MobileTableView() {
   }
 
   const renderMsGroups = (tasks: Task[], pjMilestones: Milestone[]) => {
+    const today = new Date(); today.setHours(0, 0, 0, 0)
     const grouped: Record<string, Task[]> = {}
     for (const ms of pjMilestones) grouped[ms.id] = []
     const unassigned: Task[] = []
@@ -157,6 +158,12 @@ function MobileTableView() {
           const msTasks = grouped[ms.id] ?? []
           const isCollapsed = collapsedMs.has(ms.id)
           const done = msTasks.filter(t => t.status === '완료').length
+          const diff = daysFrom(ms.dueDate, today)
+          const overdue = diff < 0
+          const dLabel = overdue ? `D+${Math.abs(diff)}` : diff === 0 ? 'D-Day' : `D-${diff}`
+          const dColor = overdue ? '#ef4444' : diff <= 7 ? '#f59e0b' : 'var(--t3)'
+          const d = new Date(ms.dueDate + 'T00:00:00')
+          const dateLabel = `${d.getMonth() + 1}/${d.getDate()}`
           return (
             <React.Fragment key={ms.id}>
               <div
@@ -165,6 +172,8 @@ function MobileTableView() {
               >
                 <span style={{ fontSize: 10, color: '#8b5cf6' }}>◆</span>
                 <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--t1)' }}>{ms.name}</span>
+                <span style={{ fontSize: 11, color: 'var(--t3)', marginRight: 2 }}>{dateLabel}</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: dColor, background: overdue ? 'rgba(239,68,68,.08)' : diff <= 7 ? 'rgba(245,158,11,.1)' : 'var(--bg3)', borderRadius: 6, padding: '1px 6px', marginRight: 4 }}>{dLabel}</span>
                 <span style={{ fontSize: 11, color: 'var(--t3)', marginRight: 6 }}>{done}/{msTasks.length}</span>
                 <span style={{ fontSize: 9, color: 'var(--t3)' }}>{isCollapsed ? '▶' : '▼'}</span>
               </div>
