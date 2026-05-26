@@ -4,10 +4,12 @@ import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useProjectStore } from '../../../store/projectStore'
+import { useUserProfileStore } from '../../../store/userProfileStore'
 import { useGCalStore } from '../../../store/gcalStore'
 import type { GCalEvent } from '../../../store/gcalStore'
 import { useMobile } from '../../../hooks/useMobile'
-import { getCatColor } from '../../../types'
+import { getCatColor, MEMBERS, STATUS_LIST } from '../../../types'
+import type { MemberKey, Status } from '../../../types'
 import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade } from '../../../lib/utils'
 import type { Task } from '../../../types'
 
@@ -103,9 +105,24 @@ function GoogleDot() {
 // ── Mobile calendar ───────────────────────────────────────────────────────────
 
 function MobileCalendar() {
-  const { openTaskModal, openTaskDetail } = useUiStore()
+  const { openTaskModal, openTaskDetail, filters, setFilters, resetFilters, showGCal, setShowGCal } = useUiStore()
   const tasks = useFilteredTasks()
   const { token, events: gcalEvents, fetchEvents } = useGCalStore()
+  const allProjects = useProjectStore(s => s.projects)
+  const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+
+  const allAssigneeOptions = useMemo(() => {
+    const keys = new Set<string>()
+    allProjects.forEach(p => p.memberEmails?.forEach(e => keys.add(e)))
+    return Array.from(keys).sort().map(key => {
+      const known = MEMBERS[key as MemberKey]
+      return { value: key, label: known?.n ?? getNameByEmail(key) }
+    })
+  }, [allProjects, getNameByEmail])
+  const allTagOptions = useMemo(() => {
+    const s = new Set<string>(); tasks.forEach(t => t.tags?.forEach(tag => s.add(tag))); return Array.from(s).sort()
+  }, [tasks])
+  const hasFilters = filters.assignees.length > 0 || filters.statuses.length > 0 || filters.tags.length > 0 || filters.projects.length > 0
 
   const todayDate = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
   const todayStr  = useMemo(() => fmt(todayDate), [todayDate])
@@ -214,6 +231,47 @@ function MobileCalendar() {
           <GCalButton />
         </div>
 
+        {/* Filter row */}
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8, scrollbarWidth: 'none' }}>
+          {allProjects.length > 1 && (
+            <MobFilterSelect
+              label="프로젝트" active={filters.projects.length > 0}
+              options={allProjects.map(p => ({ value: p.id, label: p.name }))}
+              selected={filters.projects} onChange={v => setFilters({ projects: v })}
+            />
+          )}
+          {allAssigneeOptions.length > 0 && (
+            <MobFilterSelect
+              label="담당자" active={filters.assignees.length > 0}
+              options={allAssigneeOptions}
+              selected={filters.assignees} onChange={v => setFilters({ assignees: v })}
+            />
+          )}
+          <MobFilterSelect
+            label="상태" active={filters.statuses.length > 0}
+            options={STATUS_LIST.map(s => ({ value: s, label: s }))}
+            selected={filters.statuses} onChange={v => setFilters({ statuses: v as Status[] })}
+          />
+          {allTagOptions.length > 0 && (
+            <MobFilterSelect
+              label="태그" active={filters.tags.length > 0}
+              options={allTagOptions.map(t => ({ value: t, label: `#${t}` }))}
+              selected={filters.tags} onChange={v => setFilters({ tags: v })}
+            />
+          )}
+          <button
+            onClick={() => setShowGCal(!showGCal)}
+            style={{ flexShrink: 0, padding: '4px 10px', borderRadius: 20, border: showGCal ? '1px solid rgba(52,168,83,.4)' : '1px solid var(--bd)', background: showGCal ? 'rgba(52,168,83,.12)' : 'transparent', color: showGCal ? '#1a7a33' : 'var(--t3)', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}
+          >
+            📅 일정
+          </button>
+          {hasFilters && (
+            <button onClick={resetFilters} style={{ flexShrink: 0, padding: '4px 10px', borderRadius: 20, border: '1px solid rgba(239,68,68,.25)', background: 'rgba(239,68,68,.05)', color: '#dc2626', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}>
+              ✕ 초기화
+            </button>
+          )}
+        </div>
+
         {/* Date strip */}
         <div ref={stripRef} style={{ display: 'flex', gap: 2, overflowX: 'auto', paddingBottom: 10, scrollbarWidth: 'none' }}>
           {stripDates.map(dateStr => {
@@ -223,7 +281,7 @@ function MobileCalendar() {
             const isToday    = dateStr === todayStr
             const isSelected = dateStr === selectedDate
             const hasTasks   = tasksByDate.has(dateStr)
-            const hasGCal    = gcalByDate.has(dateStr)
+            const hasGCal    = showGCal && gcalByDate.has(dateStr)
             const isSun = d.getDay() === 0
             const isSat = d.getDay() === 6
             return (
@@ -263,7 +321,7 @@ function MobileCalendar() {
         {/* Per-day sections */}
         {contentDates.map(dateStr => {
           const dayTasks = tasksByDate.get(dateStr) ?? []
-          const dayGCal  = gcalByDate.get(dateStr) ?? []
+          const dayGCal  = showGCal ? (gcalByDate.get(dateStr) ?? []) : []
           const total = dayTasks.length + dayGCal.length
           return (
             <div key={dateStr} ref={el => { if (el) sectionRefs.current.set(dateStr, el) }}>
@@ -340,6 +398,67 @@ function MobGCalRow({ event }: { event: GCalEvent }) {
   )
 }
 
+// ── Mobile filter select ──────────────────────────────────────────────────────
+
+function MobFilterSelect<T extends string>({ label, active, options, selected, onChange }: {
+  label: string; active: boolean
+  options: { value: T; label: string }[]
+  selected: T[]; onChange: (v: T[]) => void
+}) {
+  const [open, setOpen] = React.useState(false)
+  const [pos, setPos] = React.useState({ top: 0, left: 0 })
+  const ref = React.useRef<HTMLDivElement>(null)
+  const btnRef = React.useRef<HTMLButtonElement>(null)
+
+  React.useEffect(() => {
+    if (!open) return
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+
+  const toggle = (v: T) => onChange(selected.includes(v) ? selected.filter(s => s !== v) : [...selected, v])
+
+  const handleOpen = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 180) })
+    }
+    setOpen(o => !o)
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        ref={btnRef}
+        onClick={handleOpen}
+        style={{ padding: '4px 10px', borderRadius: 20, border: active ? '1px solid var(--ac)' : '1px solid var(--bd)', background: active ? 'var(--ac-l)' : 'transparent', color: active ? 'var(--ac)' : 'var(--t2)', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}
+      >
+        {active ? `${label} (${selected.length})` : label} <span style={{ fontSize: 8, opacity: .5 }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ position: 'fixed', top: pos.top, left: pos.left, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', zIndex: 9000, minWidth: 160, padding: '4px 0' }}>
+          {options.map(opt => (
+            <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', fontSize: 13, color: 'var(--t1)', cursor: 'pointer' }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              <input type="checkbox" checked={selected.includes(opt.value)} onChange={() => toggle(opt.value)} style={{ accentColor: 'var(--ac)', width: 13, height: 13, cursor: 'pointer', flexShrink: 0 }} />
+              {opt.label}
+            </label>
+          ))}
+          {selected.length > 0 && (
+            <>
+              <div style={{ height: 1, background: 'var(--bd)', margin: '3px 0' }} />
+              <button onClick={() => { onChange([]); setOpen(false) }} style={{ width: '100%', padding: '6px 12px', fontSize: 12, color: 'var(--ac)', cursor: 'pointer', border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'var(--font)' }}>전체 해제</button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Error boundary ────────────────────────────────────────────────────────────
 
 class CalendarErrorBoundary extends Component<{ children: React.ReactNode }, { error: string | null }> {
@@ -381,7 +500,7 @@ export function CalendarView() {
 }
 
 function DesktopCalendar() {
-  const { calYear, calMonth, calNav, calToday, openTaskDetail, projectId } = useUiStore()
+  const { calYear, calMonth, calNav, calToday, openTaskDetail, projectId, showGCal } = useUiStore()
   const tasks = useFilteredTasks()
   const { updateTask, tasks: allTasks } = useTaskStore()
   const allMilestones = useMilestoneStore(s => s.milestones)
@@ -498,7 +617,7 @@ function DesktopCalendar() {
             const isToday      = dateStr === fmt(today)
             const isDragTarget = dragOver === dateStr
             const dayTasks     = tasksByDate(date)
-            const dayGCal      = gcalByDate[dateStr] ?? []
+            const dayGCal      = showGCal ? (gcalByDate[dateStr] ?? []) : []
             const dayMilestones = milestoneByDate[dateStr] ?? []
             const hasMilestone = dayMilestones.length > 0
             const dow = date.getDay()

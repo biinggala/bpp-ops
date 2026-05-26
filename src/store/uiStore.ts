@@ -5,6 +5,7 @@ interface Filters {
   assignees: string[]
   statuses: Status[]
   tags: string[]
+  projects: string[]
   search: string
   sort: 'due_asc' | 'due_desc' | 'default'
 }
@@ -27,6 +28,7 @@ interface UiState {
   sidebarOpen: boolean
   calYear: number
   calMonth: number
+  showGCal: boolean
 
   setView: (v: ViewType) => void
   setSpace: (s: string | null) => void
@@ -44,6 +46,7 @@ interface UiState {
   closeCommandPalette: () => void
   setSidebarOpen: (v: boolean) => void
   toggleSidebar: () => void
+  setShowGCal: (v: boolean) => void
   calNav: (delta: number) => void
   calToday: () => void
 }
@@ -54,6 +57,7 @@ const defaultFilters: Filters = {
   assignees: [],
   statuses: [],
   tags: [],
+  projects: [],
   search: '',
   sort: 'due_asc',
 }
@@ -76,6 +80,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   sidebarOpen: false,
   calYear: now.getFullYear(),
   calMonth: now.getMonth(),
+  showGCal: true,
 
   setView: (view) => set({ view }),
   setSpace: (space) => set({ space, projectId: null }),
@@ -93,6 +98,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   closeCommandPalette: () => set({ isCommandPaletteOpen: false }),
   setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
   toggleSidebar: () => set(s => ({ sidebarOpen: !s.sidebarOpen })),
+  setShowGCal: (showGCal) => set({ showGCal }),
   calNav: (delta) => {
     const { calYear, calMonth } = get()
     const d = new Date(calYear, calMonth + delta, 1)

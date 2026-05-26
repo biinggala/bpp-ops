@@ -39,6 +39,9 @@ export function useFilteredTasks(): Task[] {
       })
     }
 
+    if (filters.projects.length) {
+      result = result.filter(t => t.projectId ? filters.projects.includes(t.projectId) : false)
+    }
     if (filters.assignees.length) {
       result = result.filter(t => filters.assignees.some(a => t.assignee.includes(a)))
     }

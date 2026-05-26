@@ -23,7 +23,7 @@ const SORT_OPTIONS = [
 ]
 
 export function ViewBar() {
-  const { view, setView, filters, setFilters, resetFilters } = useUiStore()
+  const { view, setView, filters, setFilters, resetFilters, showGCal, setShowGCal } = useUiStore()
   const isMobile = useMobile()
   const allTasks = useTaskStore(s => s.tasks)
   const projects = useProjectStore(s => s.projects)
@@ -49,8 +49,12 @@ export function ViewBar() {
     })
   }, [allTasks, projects, getNameByEmail])
 
-  const hasFilters = filters.assignees.length > 0 || filters.statuses.length > 0 || filters.tags.length > 0
-  const showFilters = !['c', 's'].includes(view)
+  const allProjectOptions = React.useMemo(() =>
+    projects.map(p => ({ value: p.id, label: p.name }))
+  , [projects])
+
+  const hasFilters = filters.assignees.length > 0 || filters.statuses.length > 0 || filters.tags.length > 0 || filters.projects.length > 0
+  const showFilters = view !== 's'
 
   // Mobile: render only as bottom nav (the actual bar is rendered there)
   if (isMobile) {
@@ -116,6 +120,14 @@ export function ViewBar() {
 
       {showFilters && (
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          {allProjectOptions.length > 1 && (
+            <MultiSelect
+              label="프로젝트"
+              options={allProjectOptions}
+              selected={filters.projects}
+              onChange={v => setFilters({ projects: v })}
+            />
+          )}
           {allAssigneeOptions.length > 0 && (
             <MultiSelect
               label="담당자"
@@ -138,6 +150,21 @@ export function ViewBar() {
               onChange={v => setFilters({ tags: v })}
             />
           )}
+          {view === 'c' && (
+            <button
+              onClick={() => setShowGCal(!showGCal)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                padding: '4px 10px', borderRadius: 'var(--r1)',
+                border: showGCal ? '1px solid rgba(52,168,83,.4)' : '1px solid var(--bd)',
+                background: showGCal ? 'rgba(52,168,83,.12)' : 'transparent',
+                color: showGCal ? '#1a7a33' : 'var(--t3)',
+                fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap',
+              }}
+            >
+              📅 일정
+            </button>
+          )}
           {hasFilters && (
             <button
               onClick={resetFilters}
@@ -146,11 +173,13 @@ export function ViewBar() {
               ✕ 초기화
             </button>
           )}
-          <SingleSelect
-            options={SORT_OPTIONS}
-            value={filters.sort}
-            onChange={v => setFilters({ sort: v })}
-          />
+          {view !== 'c' && (
+            <SingleSelect
+              options={SORT_OPTIONS}
+              value={filters.sort}
+              onChange={v => setFilters({ sort: v })}
+            />
+          )}
         </div>
       )}
     </div>
