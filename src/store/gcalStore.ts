@@ -74,6 +74,8 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       return
     }
     set({ loading: true, error: null })
+    const abort = new AbortController()
+    const timer = setTimeout(() => abort.abort(), 10000)
     try {
       const url = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events')
       url.searchParams.set('timeMin', `${from}T00:00:00Z`)
@@ -84,25 +86,22 @@ export const useGCalStore = create<GCalState>((set, get) => ({
 
       const res = await fetch(url.toString(), {
         headers: { Authorization: `Bearer ${token}` },
+        signal: abort.signal,
       })
+      clearTimeout(timer)
 
-      if (res.status === 401) {
+      if (res.status === 401 || res.status === 403) {
         localStorage.removeItem('gcal_token')
         localStorage.removeItem('gcal_expiry')
-        set({ token: null, expiry: null, loading: false, error: '토큰이 만료됐습니다. 다시 연동해 주세요.' })
+        let detail = ''
+        try { const b = await res.json(); detail = b?.error?.message ?? '' } catch { /* ignore */ }
+        const msg = res.status === 401
+          ? '토큰이 만료됐습니다. 다시 연동해 주세요.'
+          : `캘린더 접근 권한 없음${detail ? ': ' + detail : ''}. 연동을 다시 해 주세요.`
+        set({ token: null, expiry: null, loading: false, error: msg })
         return
       }
-      if (!res.ok) {
-        let detail = ''
-        try {
-          const body = await res.json()
-          detail = body?.error?.message ?? body?.error?.status ?? ''
-        } catch { /* ignore */ }
-        if (res.status === 403) {
-          throw new Error(`캘린더 접근 거부 (403)${detail ? ': ' + detail : ''}. Google Cloud Console에서 Calendar API가 활성화되어 있는지 확인하거나, 연동을 다시 시도해 주세요.`)
-        }
-        throw new Error(`GCal API 오류: ${res.status}${detail ? ' - ' + detail : ''}`)
-      }
+      if (!res.ok) throw new Error(`GCal API 오류: ${res.status}`)
 
       const data = await res.json()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -125,7 +124,11 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       })
       set({ events, loading: false })
     } catch (e: unknown) {
-      set({ loading: false, error: e instanceof Error ? e.message : '이벤트 로드 오류' })
+      clearTimeout(timer)
+      const msg = e instanceof Error && e.name === 'AbortError'
+        ? '요청 시간 초과. 네트워크를 확인해 주세요.'
+        : (e instanceof Error ? e.message : '이벤트 로드 오류')
+      set({ loading: false, error: msg })
     }
   },
 }))
