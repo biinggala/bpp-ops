@@ -29,8 +29,11 @@ export function GanttView() {
   const { updateTask } = useTaskStore()
   const { openTaskModal, openTaskDetail, projectId } = useUiStore()
   const allMilestones = useMilestoneStore(s => s.milestones)
-  const existingProjectIds = useProjectStore(s => new Set(s.projects.map(p => p.id)))
-  const milestones = allMilestones.filter(m => existingProjectIds.has(m.projectId))
+  const projects = useProjectStore(s => s.projects)
+  const milestones = useMemo(() => {
+    const ids = new Set(projects.map(p => p.id))
+    return allMilestones.filter(m => ids.has(m.projectId))
+  }, [allMilestones, projects])
   const wrapRef = useRef<HTMLDivElement>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 

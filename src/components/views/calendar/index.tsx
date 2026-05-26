@@ -349,8 +349,11 @@ function DesktopCalendar() {
   const tasks = useFilteredTasks()
   const { updateTask, tasks: allTasks } = useTaskStore()
   const allMilestones = useMilestoneStore(s => s.milestones)
-  const existingProjectIds = useProjectStore(s => new Set(s.projects.map(p => p.id)))
-  const milestones = allMilestones.filter(m => existingProjectIds.has(m.projectId))
+  const projects = useProjectStore(s => s.projects)
+  const milestones = useMemo(() => {
+    const ids = new Set(projects.map(p => p.id))
+    return allMilestones.filter(m => ids.has(m.projectId))
+  }, [allMilestones, projects])
   const { token, events: gcalEvents, fetchEvents } = useGCalStore()
 
   // Fetch GCal events when month changes
