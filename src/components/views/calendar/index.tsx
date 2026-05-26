@@ -450,8 +450,8 @@ function DesktopCalendar() {
   const tasksByDate = (date: Date): Task[] => {
     const d = fmt(date)
     return tasks.filter(t => {
-      if (t.start && t.due) return t.start <= d && t.due >= d
-      return t.due === d || t.start === d
+      const key = t.due ?? t.start
+      return key === d
     })
   }
 
