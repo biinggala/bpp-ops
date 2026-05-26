@@ -623,8 +623,16 @@ function DesktopCalendar() {
             const hasMilestone = dayMilestones.length > 0
             const dow = date.getDay()
             const isWeekend = dow === 0 || dow === 6
-            // How many task chips we can show (leave 1 slot for GCal)
-            const maxTaskChips = dayGCal.length > 0 ? 2 : 3
+
+            // Combined chip list: GCal first, then tasks
+            type Chip = { kind: 'gcal'; ev: GCalEvent } | { kind: 'task'; t: Task }
+            const allChips: Chip[] = [
+              ...dayGCal.map(ev => ({ kind: 'gcal' as const, ev })),
+              ...dayTasks.map(t => ({ kind: 'task' as const, t })),
+            ]
+            const LIMIT = 5
+            const visibleChips = allChips.length <= LIMIT ? allChips : allChips.slice(0, LIMIT - 1)
+            const overflow = allChips.length - visibleChips.length
 
             return (
               <div
@@ -661,13 +669,30 @@ function DesktopCalendar() {
 
                 {/* Events */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 3px 4px' }}>
-                  {/* Task chips */}
-                  {dayTasks.slice(0, maxTaskChips).map(t => {
+                  {visibleChips.map((chip, ci) => {
+                    if (chip.kind === 'gcal') {
+                      const ev = chip.ev
+                      return (
+                        <a
+                          key={ev.id}
+                          href={ev.htmlLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={ev.summary}
+                          style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3, background: GCAL_BG, color: GCAL_TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none', display: 'block', cursor: 'pointer' }}
+                          onMouseEnter={e => e.currentTarget.style.opacity = '.75'}
+                          onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                        >
+                          {ev.startTime ? `${ev.startTime} ` : ''}{ev.summary}
+                        </a>
+                      )
+                    }
+                    const t = chip.t
                     const color = getCatColor(t.cat)
                     const isBeingDragged = draggingId === t.id
                     return (
                       <div
-                        key={t.id}
+                        key={t.id + ci}
                         draggable
                         onDragStart={e => { e.dataTransfer.setData('taskId', t.id); e.dataTransfer.setData('fromDate', dateStr); e.dataTransfer.effectAllowed = 'move'; setDraggingId(t.id) }}
                         onDragEnd={() => { setDraggingId(null); setDragOver(null) }}
@@ -680,28 +705,8 @@ function DesktopCalendar() {
                       </div>
                     )
                   })}
-
-                  {/* GCal chips */}
-                  {dayGCal.slice(0, 1).map(ev => (
-                    <a
-                      key={ev.id}
-                      href={ev.htmlLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={ev.summary}
-                      style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3, background: GCAL_BG, color: GCAL_TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none', display: 'block', cursor: 'pointer' }}
-                      onMouseEnter={e => e.currentTarget.style.opacity = '.75'}
-                      onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-                    >
-                      {ev.startTime ? `${ev.startTime} ` : '📅 '}{ev.summary}
-                    </a>
-                  ))}
-
-                  {/* Overflow indicator */}
-                  {(dayTasks.length > maxTaskChips || dayGCal.length > 1) && (
-                    <div style={{ fontSize: 10, color: 'var(--t3)', padding: '0 6px' }}>
-                      +{Math.max(0, dayTasks.length - maxTaskChips) + Math.max(0, dayGCal.length - 1)}개 더
-                    </div>
+                  {overflow > 0 && (
+                    <div style={{ fontSize: 10, color: 'var(--t3)', padding: '0 6px' }}>+{overflow}개 더</div>
                   )}
                 </div>
               </div>
