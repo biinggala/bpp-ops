@@ -78,9 +78,6 @@ export const useMilestoneStore = create<MilestoneState>((set, get) => ({
           : Object.values(root.milestones)
         set({ milestones: incoming })
         saveToStorage(incoming, MILESTONE_KEY)
-      } else if (localTs > 0 && localTs >= fbTs) {
-        // Local is newer — push clean local data to overwrite any stale Firebase indices
-        syncFb(get().milestones)
       }
     })
     return () => off(dbRef, 'value', handler)
