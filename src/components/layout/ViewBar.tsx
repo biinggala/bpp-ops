@@ -57,21 +57,22 @@ export function ViewBar() {
     return (
       <nav style={{
         position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
-        height: 'calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px))',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         background: 'var(--bg)', borderTop: '1px solid var(--bd)',
-        display: 'flex', alignItems: 'stretch',
+        display: 'flex',
       }}>
         {VIEWS.map(v => (
           <button
             key={v.id}
             onClick={() => setView(v.id)}
             style={{
-              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+              flex: 1, height: 'var(--bottom-nav-h)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
               justifyContent: 'center', gap: 3,
               background: 'transparent', border: 'none', cursor: 'pointer',
               color: view === v.id ? 'var(--ac)' : 'var(--t3)',
               fontSize: 10, fontWeight: view === v.id ? 600 : 400,
-              fontFamily: 'var(--font)', paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+              fontFamily: 'var(--font)',
               transition: 'color .1s',
             }}
           >
