@@ -3,6 +3,7 @@ import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useAuthStore } from '../../store/authStore'
 import { useProjectStore } from '../../store/projectStore'
+import { useMilestoneStore } from '../../store/milestoneStore'
 import { usePresenceStore } from '../../store/presenceStore'
 import { useMobile } from '../../hooks/useMobile'
 import { MEMBERS } from '../../types'
@@ -13,6 +14,7 @@ export function Sidebar() {
   const isMobile = useMobile()
   const tasks = useTaskStore(s => s.tasks)
   const { projects, addProject, updateProject, deleteProject, addMember, removeMember } = useProjectStore()
+  const deleteMilestonesForProject = useMilestoneStore(s => s.deleteMilestonesForProject)
   const { memberKey, displayName, email, photoURL, signOutUser } = useAuthStore()
 
   // Project state
@@ -101,6 +103,7 @@ export function Sidebar() {
   const handleDeleteProject = (id: string) => {
     if (projectId === id) setProject(null)
     deleteProject(id)
+    deleteMilestonesForProject(id)
     setDeleteConfirm(null)
   }
 

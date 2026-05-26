@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { ref, set as fbSet, onValue, off } from 'firebase/database'
+import { ref, onValue, off, update } from 'firebase/database'
 import { db } from '../lib/firebase'
 import { gid, loadFromStorage, saveToStorage, getLocalTs } from '../lib/utils'
 import type { Milestone } from '../types'
@@ -11,6 +11,7 @@ interface MilestoneState {
   addMilestone: (projectId: string, name: string, dueDate: string) => Milestone
   updateMilestone: (id: string, patch: Partial<Omit<Milestone, 'id'>>) => void
   deleteMilestone: (id: string) => void
+  deleteMilestonesForProject: (projectId: string) => void
   getMilestonesForProject: (projectId: string) => Milestone[]
   subscribeFirebase: () => () => void
 }
@@ -20,8 +21,11 @@ function persist(milestones: Milestone[]) {
 }
 
 function syncFb(milestones: Milestone[]) {
-  fbSet(ref(db, 'cringe/milestones'), milestones.length ? milestones : null).catch(() => {})
-  fbSet(ref(db, 'cringe/milestonesSavedAt'), Date.now()).catch(() => {})
+  // Atomic update: both keys change in a single server operation
+  update(ref(db, 'cringe'), {
+    milestones: milestones.length ? milestones : null,
+    milestonesSavedAt: Date.now(),
+  }).catch(() => {})
 }
 
 export const useMilestoneStore = create<MilestoneState>((set, get) => ({
@@ -44,6 +48,11 @@ export const useMilestoneStore = create<MilestoneState>((set, get) => ({
     set({ milestones }); persist(milestones); syncFb(milestones)
   },
 
+  deleteMilestonesForProject: (projectId) => {
+    const milestones = get().milestones.filter(m => m.projectId !== projectId)
+    set({ milestones }); persist(milestones); syncFb(milestones)
+  },
+
   getMilestonesForProject: (projectId) => {
     return get().milestones.filter(m => m.projectId === projectId)
   },
@@ -58,8 +67,7 @@ export const useMilestoneStore = create<MilestoneState>((set, get) => ({
         // Firebase has no milestones — push local data if we have any
         const milestones = get().milestones
         if (milestones.length > 0 && localTs > 0) {
-          fbSet(ref(db, 'cringe/milestones'), milestones).catch(() => {})
-          fbSet(ref(db, 'cringe/milestonesSavedAt'), localTs).catch(() => {})
+          syncFb(milestones)
         }
         return
       }

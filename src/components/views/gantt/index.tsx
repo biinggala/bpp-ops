@@ -3,6 +3,7 @@ import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
+import { useProjectStore } from '../../../store/projectStore'
 import { getCatColor } from '../../../types'
 import { CategoryBadge } from '../../shared/Badge'
 import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade } from '../../../lib/utils'
@@ -27,7 +28,9 @@ export function GanttView() {
   const allTasks = useTaskStore(s => s.tasks)
   const { updateTask } = useTaskStore()
   const { openTaskModal, openTaskDetail, projectId } = useUiStore()
-  const milestones = useMilestoneStore(s => s.milestones)
+  const allMilestones = useMilestoneStore(s => s.milestones)
+  const existingProjectIds = useProjectStore(s => new Set(s.projects.map(p => p.id)))
+  const milestones = allMilestones.filter(m => existingProjectIds.has(m.projectId))
   const wrapRef = useRef<HTMLDivElement>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 

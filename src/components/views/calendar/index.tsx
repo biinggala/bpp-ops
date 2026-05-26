@@ -3,6 +3,7 @@ import { useUiStore } from '../../../store/uiStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
+import { useProjectStore } from '../../../store/projectStore'
 import { useGCalStore } from '../../../store/gcalStore'
 import type { GCalEvent } from '../../../store/gcalStore'
 import { useMobile } from '../../../hooks/useMobile'
@@ -347,7 +348,9 @@ function DesktopCalendar() {
   const { calYear, calMonth, calNav, calToday, openTaskDetail, projectId } = useUiStore()
   const tasks = useFilteredTasks()
   const { updateTask, tasks: allTasks } = useTaskStore()
-  const milestones = useMilestoneStore(s => s.milestones)
+  const allMilestones = useMilestoneStore(s => s.milestones)
+  const existingProjectIds = useProjectStore(s => new Set(s.projects.map(p => p.id)))
+  const milestones = allMilestones.filter(m => existingProjectIds.has(m.projectId))
   const { token, events: gcalEvents, fetchEvents } = useGCalStore()
 
   // Fetch GCal events when month changes
