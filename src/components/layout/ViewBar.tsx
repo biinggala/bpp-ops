@@ -55,32 +55,41 @@ export function ViewBar() {
   // Mobile: render only as bottom nav (the actual bar is rendered there)
   if (isMobile) {
     return (
-      <nav style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-        background: 'var(--bg)', borderTop: '1px solid var(--bd)',
-        display: 'flex',
-      }}>
-        {VIEWS.map(v => (
-          <button
-            key={v.id}
-            onClick={() => setView(v.id)}
-            style={{
-              flex: 1, height: 'var(--bottom-nav-h)',
-              display: 'flex', flexDirection: 'column', alignItems: 'center',
-              justifyContent: 'center', gap: 3,
-              background: 'transparent', border: 'none', cursor: 'pointer',
-              color: view === v.id ? 'var(--ac)' : 'var(--t3)',
-              fontSize: 10, fontWeight: view === v.id ? 600 : 400,
-              fontFamily: 'var(--font)',
-              transition: 'color .1s',
-            }}
-          >
-            <span style={{ fontSize: 18, lineHeight: 1 }}>{v.icon}</span>
-            {v.label}
-          </button>
-        ))}
-      </nav>
+      <>
+        <nav style={{
+          position: 'fixed',
+          bottom: 'env(safe-area-inset-bottom, 0px)',
+          left: 0, right: 0, zIndex: 100,
+          height: 'var(--bottom-nav-h)',
+          background: 'var(--bg)', borderTop: '1px solid var(--bd)',
+          display: 'flex',
+        }}>
+          {VIEWS.map(v => (
+            <button
+              key={v.id}
+              onClick={() => setView(v.id)}
+              style={{
+                flex: 1, height: '100%',
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', gap: 3,
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                color: view === v.id ? 'var(--ac)' : 'var(--t3)',
+                fontSize: 10, fontWeight: view === v.id ? 600 : 400,
+                fontFamily: 'var(--font)',
+                transition: 'color .1s',
+              }}
+            >
+              <span style={{ fontSize: 18, lineHeight: 1 }}>{v.icon}</span>
+              {v.label}
+            </button>
+          ))}
+        </nav>
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 99,
+          height: 'env(safe-area-inset-bottom, 0px)',
+          background: 'var(--bg)',
+        }} />
+      </>
     )
   }
 
