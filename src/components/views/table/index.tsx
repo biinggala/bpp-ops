@@ -110,20 +110,37 @@ function MobileTableView() {
     const st = STATUS_STYLE[task.status]
     const handleTouchStart = (e: React.TouchEvent) => {
       const touch = e.touches[0]
+      const startX = touch.clientX
+      const startY = touch.clientY
       longPressActive.current = false
       longPressTimer.current = setTimeout(() => {
         longPressActive.current = true
-        setMobCtxMenu({ x: touch.clientX, y: touch.clientY, task })
+        // Vibrate feedback if available
+        if (navigator.vibrate) navigator.vibrate(30)
+        setMobCtxMenu({ x: startX, y: startY, task })
       }, 500)
     }
-    const handleTouchEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current) }
+    const handleTouchMove = (e: React.TouchEvent) => {
+      if (!longPressTimer.current) return
+      const touch = e.touches[0]
+      const dx = touch.clientX - (e.currentTarget.getBoundingClientRect().left)
+      const dy = touch.clientY - (e.currentTarget.getBoundingClientRect().top)
+      // Cancel long press if finger moved significantly (allow scroll)
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+        clearTimeout(longPressTimer.current)
+        longPressTimer.current = null
+      }
+    }
+    const handleTouchEnd = () => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null } }
     return (
       <React.Fragment key={task.id}>
         <div
+          draggable={false}
           onClick={() => { if (longPressActive.current) { longPressActive.current = false; return }; openTaskDetail(task.id) }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
-          onTouchMove={handleTouchEnd}
+          onTouchMove={handleTouchMove}
+          onDragStart={e => e.preventDefault()}
           style={{
             display: 'flex', alignItems: 'center', gap: 10,
             paddingTop: 12, paddingBottom: 12,
@@ -131,6 +148,8 @@ function MobileTableView() {
             borderBottom: '1px solid var(--bd)',
             borderLeft: isChild ? '2px solid var(--bd2)' : '2px solid transparent',
             cursor: 'pointer', userSelect: 'none',
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            WebkitTouchCallout: 'none' as any,
             opacity: isDone ? 0.55 : 1,
           }}
         >
