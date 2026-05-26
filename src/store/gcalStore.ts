@@ -92,7 +92,17 @@ export const useGCalStore = create<GCalState>((set, get) => ({
         set({ token: null, expiry: null, loading: false, error: '토큰이 만료됐습니다. 다시 연동해 주세요.' })
         return
       }
-      if (!res.ok) throw new Error(`GCal API 오류: ${res.status}`)
+      if (!res.ok) {
+        let detail = ''
+        try {
+          const body = await res.json()
+          detail = body?.error?.message ?? body?.error?.status ?? ''
+        } catch { /* ignore */ }
+        if (res.status === 403) {
+          throw new Error(`캘린더 접근 거부 (403)${detail ? ': ' + detail : ''}. Google Cloud Console에서 Calendar API가 활성화되어 있는지 확인하거나, 연동을 다시 시도해 주세요.`)
+        }
+        throw new Error(`GCal API 오류: ${res.status}${detail ? ' - ' + detail : ''}`)
+      }
 
       const data = await res.json()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
