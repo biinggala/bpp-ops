@@ -42,6 +42,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     try {
       const provider = new GoogleAuthProvider()
       provider.addScope('https://www.googleapis.com/auth/calendar.readonly')
+      provider.setCustomParameters({ prompt: 'consent', access_type: 'online' })
       const result = await signInWithPopup(auth, provider)
       const credential = GoogleAuthProvider.credentialFromResult(result)
       const token = credential?.accessToken

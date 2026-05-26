@@ -38,9 +38,19 @@ function GCalButton() {
   if (token) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: GCAL_TEXT, background: GCAL_BG, padding: '3px 8px', borderRadius: 20, fontWeight: 600 }}>
-          <GoogleDot /> 캘린더 연동됨
-        </span>
+        {error ? (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#dc2626', background: 'rgba(239,68,68,.08)', padding: '3px 8px', borderRadius: 20, fontWeight: 600, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={error}>
+            <GoogleDot /> 일정 로드 오류
+          </span>
+        ) : loading ? (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--t3)', background: 'var(--bg3)', padding: '3px 8px', borderRadius: 20 }}>
+            <GoogleDot /> 불러오는 중…
+          </span>
+        ) : (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: GCAL_TEXT, background: GCAL_BG, padding: '3px 8px', borderRadius: 20, fontWeight: 600 }}>
+            <GoogleDot /> 캘린더 연동됨
+          </span>
+        )}
         <button
           onClick={disconnect}
           title="연동 해제"
