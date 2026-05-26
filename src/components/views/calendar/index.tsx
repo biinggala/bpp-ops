@@ -131,20 +131,13 @@ function MobileCalendar() {
     return map
   }, [tasks])
 
-  // Group GCal events by date (may span multiple days)
+  // Group GCal events by START date only (avoid repeating multi-day events on every day in list view)
   const gcalByDate = useMemo(() => {
     const map = new Map<string, GCalEvent[]>()
     gcalEvents.forEach(ev => {
-      if (!ev.start || !ev.end) return
-      let cur = ev.start
-      let guard = 0
-      while (cur <= ev.end && guard++ < 400) {
-        if (!map.has(cur)) map.set(cur, [])
-        map.get(cur)!.push(ev)
-        const d = new Date(cur + 'T00:00:00')
-        d.setDate(d.getDate() + 1)
-        cur = d.toISOString().slice(0, 10)
-      }
+      if (!ev.start) return
+      if (!map.has(ev.start)) map.set(ev.start, [])
+      map.get(ev.start)!.push(ev)
     })
     return map
   }, [gcalEvents])
