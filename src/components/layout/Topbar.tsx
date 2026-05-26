@@ -15,15 +15,18 @@ export function Topbar() {
 
   return (
     <header style={{
-      height: 52,
+      paddingTop: 'env(safe-area-inset-top, 0px)',
       background: 'var(--bg)',
       borderBottom: '1px solid var(--bd)',
-      padding: '0 16px',
-      display: 'flex',
-      alignItems: 'center',
-      gap: 10,
       flexShrink: 0,
     }}>
+      <div style={{
+        height: 52,
+        padding: '0 16px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+      }}>
       {isMobile && (
         <button
           onClick={toggleSidebar}
@@ -75,6 +78,7 @@ export function Topbar() {
             새 업무
           </Btn>
         )}
+      </div>
       </div>
     </header>
   )
