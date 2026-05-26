@@ -392,7 +392,7 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
         </div>
 
         {/* Scrollable body */}
-        <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 'calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px))' }}>
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingBottom: 'calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px))' }}>
 
           {tab === 'details' && (
             <>
@@ -487,7 +487,7 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
                     <div
                       dangerouslySetInnerHTML={{ __html: task.memo! }}
                       className="task-editor-area"
-                      style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--t1)', pointerEvents: 'none' }}
+                      style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--t1)', pointerEvents: 'none', overflow: 'hidden' }}
                     />
                   ) : (
                     <span style={{ fontSize: 14, color: 'var(--t3)' }}>내용 없음 — 탭하여 편집</span>
@@ -538,7 +538,7 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
 
           <div
             onClick={() => editor?.commands.focus()}
-            style={{ flex: 1, overflowY: 'auto', padding: '20px', cursor: 'text' }}
+            style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '20px', cursor: 'text' }}
             className="task-editor-area"
           >
             <EditorContent editor={editor} />

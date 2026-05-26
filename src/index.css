@@ -69,6 +69,21 @@ input, select, textarea, button {
   font-family: var(--font);
 }
 
+/* ── Mobile notes preview ── */
+.task-editor-area {
+  overflow-wrap: break-word;
+  word-break: break-word;
+  min-width: 0;
+}
+.task-editor-area pre {
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: hidden;
+}
+.task-editor-area a {
+  word-break: break-all;
+}
+
 /* ── Tiptap / ProseMirror editor ── */
 .ProseMirror {
   outline: none;
