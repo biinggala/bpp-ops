@@ -104,8 +104,11 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       if (!res.ok) throw new Error(`GCal API 오류: ${res.status}`)
 
       const data = await res.json()
+      const seenIds = new Set<string>()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const events: GCalEvent[] = (data.items ?? []).flatMap((item: any) => {
+        if (!item.id || seenIds.has(item.id)) return []
+        seenIds.add(item.id)
         try {
           const allDay = !!item.start?.date
           const start = allDay

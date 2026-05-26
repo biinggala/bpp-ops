@@ -33,7 +33,7 @@ const MOB_STATUS: Record<string, { bg: string; color: string }> = {
 // ── GCal connect button ───────────────────────────────────────────────────────
 
 function GCalButton() {
-  const { token, loading, error, connect, disconnect } = useGCalStore()
+  const { token, loading, error, events: gcalEvents, connect, disconnect } = useGCalStore()
 
   if (token) {
     return (
@@ -48,7 +48,7 @@ function GCalButton() {
           </span>
         ) : (
           <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: GCAL_TEXT, background: GCAL_BG, padding: '3px 8px', borderRadius: 20, fontWeight: 600 }}>
-            <GoogleDot /> 캘린더 연동됨
+            <GoogleDot /> 캘린더 연동됨 {gcalEvents.length > 0 && `(${gcalEvents.length}개)`}
           </span>
         )}
         <button
