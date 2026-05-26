@@ -72,12 +72,15 @@ export const useMilestoneStore = create<MilestoneState>((set, get) => ({
       }
 
       const fbTs: number = root.milestonesSavedAt || 0
-      if (fbTs > localTs || localTs === 0) {
+      if (fbTs >= localTs || localTs === 0) {
         const incoming: Milestone[] = Array.isArray(root.milestones)
           ? root.milestones
           : Object.values(root.milestones)
-        set({ milestones: incoming })
-        saveToStorage(incoming, MILESTONE_KEY)
+        // Deduplicate by id in case of stale indices
+        const seen = new Set<string>()
+        const deduped = incoming.filter(m => m?.id && !seen.has(m.id) && seen.add(m.id))
+        set({ milestones: deduped })
+        saveToStorage(deduped, MILESTONE_KEY)
       }
     })
     return () => off(dbRef, 'value', handler)
