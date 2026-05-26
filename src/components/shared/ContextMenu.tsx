@@ -21,13 +21,18 @@ export function ContextMenu({ x, y, task, onClose, onEdit, onAddSubtask, onStatu
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const close = (e: MouseEvent | KeyboardEvent) => {
+    const close = (e: MouseEvent | TouchEvent | KeyboardEvent) => {
       if (e instanceof KeyboardEvent) { if (e.key === 'Escape') onClose(); return }
       if (ref.current && !ref.current.contains(e.target as Node)) onClose()
     }
     document.addEventListener('mousedown', close)
+    document.addEventListener('touchstart', close, { passive: true })
     document.addEventListener('keydown', close)
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', close) }
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('touchstart', close)
+      document.removeEventListener('keydown', close)
+    }
   }, [onClose])
 
   // Clamp to viewport

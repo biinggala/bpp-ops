@@ -76,7 +76,7 @@ type MsCtxState = { x: number; y: number; onAdd: () => void } | null
 function MobileTableView() {
   const filteredTasks = useFilteredTasks()
   const allTasks = useTaskStore(s => s.tasks)
-  const { updateTask } = useTaskStore()
+  const { updateTask, deleteTask } = useTaskStore()
   const { openTaskModal, openTaskDetail, projectId } = useUiStore()
   const { milestones } = useMilestoneStore()
   const projects = useProjectStore(s => s.projects)
@@ -89,6 +89,10 @@ function MobileTableView() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [collapsedMs, setCollapsedMs] = useState<Set<string>>(new Set())
   const [collapsedPj, setCollapsedPj] = useState<Set<string>>(new Set())
+
+  const [mobCtxMenu, setMobCtxMenu] = useState<{ x: number; y: number; task: Task } | null>(null)
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const longPressActive = useRef(false)
 
   const toggle = (id: string) =>
     setCollapsed(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -104,10 +108,22 @@ function MobileTableView() {
     const hasChildren = children.length > 0
     const isExpanded = !collapsed.has(task.id)
     const st = STATUS_STYLE[task.status]
+    const handleTouchStart = (e: React.TouchEvent) => {
+      const touch = e.touches[0]
+      longPressActive.current = false
+      longPressTimer.current = setTimeout(() => {
+        longPressActive.current = true
+        setMobCtxMenu({ x: touch.clientX, y: touch.clientY, task })
+      }, 500)
+    }
+    const handleTouchEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current) }
     return (
       <React.Fragment key={task.id}>
         <div
-          onClick={() => openTaskDetail(task.id)}
+          onClick={() => { if (longPressActive.current) { longPressActive.current = false; return }; openTaskDetail(task.id) }}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          onTouchMove={handleTouchEnd}
           style={{
             display: 'flex', alignItems: 'center', gap: 10,
             paddingTop: 12, paddingBottom: 12,
@@ -211,58 +227,75 @@ function MobileTableView() {
     </button>
   )
 
+  const mobCtxMenuEl = mobCtxMenu && (
+    <ContextMenu
+      x={mobCtxMenu.x} y={mobCtxMenu.y} task={mobCtxMenu.task}
+      onClose={() => setMobCtxMenu(null)}
+      onEdit={() => openTaskModal(mobCtxMenu.task.id)}
+      onAddSubtask={() => openTaskModal(undefined, mobCtxMenu.task.id)}
+      onStatusChange={s => updateTask(mobCtxMenu.task.id, { status: s })}
+      onDelete={() => deleteTask(mobCtxMenu.task.id)}
+    />
+  )
+
   // Multi-project mode
   if (!projectId) {
     const projectsWithTasks = projects.filter(p => rootTasks.some(t => t.projectId === p.id))
     const unassignedTasks = rootTasks.filter(t => !t.projectId || !projects.find(p => p.id === t.projectId))
     return (
-      <div style={{ flex: 1, overflowY: 'auto' }}>
-        {projectsWithTasks.map(proj => {
-          const pjMilestones = milestones.filter(m => m.projectId === proj.id).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-          const pjTasks = rootTasks.filter(t => t.projectId === proj.id)
-          const isCollapsed = collapsedPj.has(proj.id)
-          const doneCount = pjTasks.filter(t => t.status === '완료').length
-          return (
-            <div key={proj.id} style={{ borderBottom: '8px solid var(--bg2)' }}>
-              <div
-                onClick={() => togglePj(proj.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--bg)', borderBottom: '1px solid var(--bd)', cursor: 'pointer', borderLeft: `3px solid ${proj.color}` }}
-              >
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: proj.color, flexShrink: 0 }} />
-                <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--t1)' }}>{proj.name}</span>
-                <span style={{ fontSize: 11, color: 'var(--t3)', background: 'var(--bg3)', borderRadius: 10, padding: '2px 8px' }}>{doneCount}/{pjTasks.length}</span>
-                <span style={{ fontSize: 10, color: 'var(--t3)', marginLeft: 4 }}>{isCollapsed ? '▶' : '▼'}</span>
+      <>
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {projectsWithTasks.map(proj => {
+            const pjMilestones = milestones.filter(m => m.projectId === proj.id).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+            const pjTasks = rootTasks.filter(t => t.projectId === proj.id)
+            const isCollapsed = collapsedPj.has(proj.id)
+            const doneCount = pjTasks.filter(t => t.status === '완료').length
+            return (
+              <div key={proj.id} style={{ borderBottom: '8px solid var(--bg2)' }}>
+                <div
+                  onClick={() => togglePj(proj.id)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--bg)', borderBottom: '1px solid var(--bd)', cursor: 'pointer', borderLeft: `3px solid ${proj.color}` }}
+                >
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: proj.color, flexShrink: 0 }} />
+                  <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--t1)' }}>{proj.name}</span>
+                  <span style={{ fontSize: 11, color: 'var(--t3)', background: 'var(--bg3)', borderRadius: 10, padding: '2px 8px' }}>{doneCount}/{pjTasks.length}</span>
+                  <span style={{ fontSize: 10, color: 'var(--t3)', marginLeft: 4 }}>{isCollapsed ? '▶' : '▼'}</span>
+                </div>
+                {!isCollapsed && (
+                  <>
+                    {pjMilestones.length > 0
+                      ? renderMsGroups(pjTasks, pjMilestones)
+                      : sortDoneLast(pjTasks).map(t => renderTask(t))}
+                    {addTaskBtn()}
+                  </>
+                )}
               </div>
-              {!isCollapsed && (
-                <>
-                  {pjMilestones.length > 0
-                    ? renderMsGroups(pjTasks, pjMilestones)
-                    : sortDoneLast(pjTasks).map(t => renderTask(t))}
-                  {addTaskBtn()}
-                </>
-              )}
-            </div>
-          )
-        })}
-        {unassignedTasks.length > 0 && (
-          <>
-            {sortDoneLast(unassignedTasks).map(t => renderTask(t))}
-            {addTaskBtn()}
-          </>
-        )}
-      </div>
+            )
+          })}
+          {unassignedTasks.length > 0 && (
+            <>
+              {sortDoneLast(unassignedTasks).map(t => renderTask(t))}
+              {addTaskBtn()}
+            </>
+          )}
+        </div>
+        {mobCtxMenuEl}
+      </>
     )
   }
 
   // Single-project mode
   const pjMilestones = milestones.filter(m => m.projectId === projectId).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
   return (
-    <div style={{ flex: 1, overflowY: 'auto' }}>
-      {pjMilestones.length > 0
-        ? renderMsGroups(rootTasks, pjMilestones)
-        : sortDoneLast(rootTasks).map(t => renderTask(t))}
-      {addTaskBtn()}
-    </div>
+    <>
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {pjMilestones.length > 0
+          ? renderMsGroups(rootTasks, pjMilestones)
+          : sortDoneLast(rootTasks).map(t => renderTask(t))}
+        {addTaskBtn()}
+      </div>
+      {mobCtxMenuEl}
+    </>
   )
 }
 
