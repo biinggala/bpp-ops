@@ -411,19 +411,13 @@ function DesktopCalendar() {
     return map
   }, [milestones, projectId])
 
-  // GCal events indexed per date (multi-day events appear on each day)
+  // GCal events indexed by start date only (avoids long-span events flooding every cell)
   const gcalByDate = useMemo(() => {
     const map: Record<string, GCalEvent[]> = {}
     gcalEvents.forEach(ev => {
-      if (!ev.start || !ev.end) return
-      let cur = ev.start
-      let guard = 0
-      while (cur <= ev.end && guard++ < 400) {
-        if (!map[cur]) map[cur] = []
-        map[cur].push(ev)
-        const d = new Date(cur + 'T00:00:00'); d.setDate(d.getDate() + 1)
-        cur = d.toISOString().slice(0, 10)
-      }
+      if (!ev.start) return
+      if (!map[ev.start]) map[ev.start] = []
+      map[ev.start].push(ev)
     })
     return map
   }, [gcalEvents])
