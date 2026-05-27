@@ -15,6 +15,7 @@ export function Sidebar() {
   const tasks = useTaskStore(s => s.tasks)
   const { projects, addProject, updateProject, deleteProject, addMember, removeMember } = useProjectStore()
   const deleteMilestonesForProject = useMilestoneStore(s => s.deleteMilestonesForProject)
+  const milestones = useMilestoneStore(s => s.milestones)
   const { memberKey, displayName, email, photoURL, signOutUser } = useAuthStore()
 
   // Project state
@@ -329,9 +330,10 @@ export function Sidebar() {
 
           {/* ASSETS section */}
           {(() => {
-            const allLinks = accessibleTasks.flatMap(t =>
-              (t.links ?? []).map(link => ({ link, task: t }))
-            )
+            const doneMsIds = new Set(milestones.filter(m => m.done).map(m => m.id))
+            const allLinks = accessibleTasks
+              .filter(t => !t.milestoneId || !doneMsIds.has(t.milestoneId))
+              .flatMap(t => (t.links ?? []).map(link => ({ link, task: t })))
             const visibleLinks = assetsExpanded ? allLinks : allLinks.slice(0, 6)
             return (
               <>

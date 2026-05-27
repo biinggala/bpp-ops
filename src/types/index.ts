@@ -30,6 +30,7 @@ export interface Milestone {
   projectId: string
   name: string
   dueDate: string     // YYYY-MM-DD
+  done?: boolean
 }
 
 export interface Task {

@@ -78,7 +78,7 @@ function MobileTableView() {
   const allTasks = useTaskStore(s => s.tasks)
   const { updateTask, deleteTask } = useTaskStore()
   const { openTaskModal, openTaskDetail, projectId } = useUiStore()
-  const { milestones } = useMilestoneStore()
+  const { milestones, updateMilestone } = useMilestoneStore()
   const projects = useProjectStore(s => s.projects)
 
   const rootTasks = filteredTasks.filter(t => !t.parentId)
@@ -193,29 +193,37 @@ function MobileTableView() {
       if (task.milestoneId && grouped[task.milestoneId] !== undefined) grouped[task.milestoneId].push(task)
       else unassigned.push(task)
     }
+    const sortedMs = [...pjMilestones].sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0))
     return (
       <>
-        {pjMilestones.map(ms => {
+        {sortedMs.map(ms => {
           const msTasks = grouped[ms.id] ?? []
           const isCollapsed = collapsedMs.has(ms.id)
-          const done = msTasks.filter(t => t.status === '완료').length
+          const doneTasks = msTasks.filter(t => t.status === '완료').length
           const diff = daysFrom(ms.dueDate, today)
-          const overdue = diff < 0
+          const overdue = !ms.done && diff < 0
           const dLabel = overdue ? `D+${Math.abs(diff)}` : diff === 0 ? 'D-Day' : `D-${diff}`
-          const dColor = overdue ? '#ef4444' : diff <= 7 ? '#f59e0b' : 'var(--t3)'
+          const dColor = ms.done ? 'var(--t3)' : overdue ? '#ef4444' : diff <= 7 ? '#f59e0b' : 'var(--t3)'
+          const borderColor = ms.done ? 'var(--bd)' : '#8b5cf6'
           const d = new Date(ms.dueDate + 'T00:00:00')
           const dateLabel = `${d.getMonth() + 1}/${d.getDate()}`
           return (
             <React.Fragment key={ms.id}>
               <div
                 onClick={() => toggleMs(ms.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: '2px solid #8b5cf6', cursor: 'pointer' }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: `2px solid ${borderColor}`, cursor: 'pointer', opacity: ms.done ? 0.6 : 1 }}
               >
-                <span style={{ fontSize: 10, color: '#8b5cf6' }}>◆</span>
-                <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--t1)' }}>{ms.name}</span>
-                <span style={{ fontSize: 11, color: 'var(--t3)', marginRight: 2 }}>{dateLabel}</span>
-                <span style={{ fontSize: 11, fontWeight: 600, color: dColor, background: overdue ? 'rgba(239,68,68,.08)' : diff <= 7 ? 'rgba(245,158,11,.1)' : 'var(--bg3)', borderRadius: 6, padding: '1px 6px', marginRight: 4 }}>{dLabel}</span>
-                <span style={{ fontSize: 11, color: 'var(--t3)', marginRight: 6 }}>{done}/{msTasks.length}</span>
+                <button
+                  onClick={e => { e.stopPropagation(); updateMilestone(ms.id, { done: !ms.done }) }}
+                  style={{ width: 18, height: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: ms.done ? '2px solid #22c55e' : '2px solid var(--bd2)', background: ms.done ? '#22c55e' : 'transparent', color: '#fff', fontSize: 10, cursor: 'pointer', padding: 0, transition: 'all .15s' }}
+                >
+                  {ms.done ? '✓' : ''}
+                </button>
+                <span style={{ fontSize: 10, color: ms.done ? 'var(--t3)' : '#8b5cf6' }}>◆</span>
+                <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--t1)', textDecoration: ms.done ? 'line-through' : 'none' }}>{ms.name}</span>
+                {!ms.done && <span style={{ fontSize: 11, color: 'var(--t3)', marginRight: 2 }}>{dateLabel}</span>}
+                {!ms.done && <span style={{ fontSize: 11, fontWeight: 600, color: dColor, background: overdue ? 'rgba(239,68,68,.08)' : diff <= 7 ? 'rgba(245,158,11,.1)' : 'var(--bg3)', borderRadius: 6, padding: '1px 6px', marginRight: 4 }}>{dLabel}</span>}
+                <span style={{ fontSize: 11, color: 'var(--t3)', marginRight: 6 }}>{doneTasks}/{msTasks.length}</span>
                 <span style={{ fontSize: 9, color: 'var(--t3)' }}>{isCollapsed ? '▶' : '▼'}</span>
               </div>
               {!isCollapsed && sortDoneLast(msTasks).map(t => renderTask(t))}
@@ -545,9 +553,10 @@ export function TableView() {
       if (task.milestoneId && grouped[task.milestoneId] !== undefined) grouped[task.milestoneId].push(task)
       else unassigned.push(task)
     }
+    const sortedMs = [...pjMilestones].sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0))
     return (
       <>
-        {pjMilestones.map(ms => {
+        {sortedMs.map(ms => {
           const msTasks = grouped[ms.id] ?? []
           const isCollapsed = collapsedMs.has(ms.id)
           const diff = daysFrom(ms.dueDate, today)
@@ -559,6 +568,7 @@ export function TableView() {
                 diff={diff} collapsed={isCollapsed}
                 minWidth={totalColWidth}
                 onToggle={() => toggleMs(ms.id)}
+                onToggleDone={() => updateMilestone(ms.id, { done: !ms.done })}
                 onAddTask={() => onAdd(ms.id)}
                 onUpdate={patch => updateMilestone(ms.id, patch)}
                 onDelete={() => deleteMilestone(ms.id)}
@@ -1154,9 +1164,9 @@ function AssigneeMultiSelect({ assignee, options, onChange }: {
 
 // ── MilestoneHeader ───────────────────────────────────────────────────────────
 
-function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, minWidth, onToggle, onAddTask, onUpdate, onDelete, onContextMenu }: {
+function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, minWidth, onToggle, onToggleDone, onAddTask, onUpdate, onDelete, onContextMenu }: {
   milestone: Milestone; taskCount: number; completed: number; diff: number
-  collapsed: boolean; minWidth?: number; onToggle: () => void; onAddTask: () => void
+  collapsed: boolean; minWidth?: number; onToggle: () => void; onToggleDone: () => void; onAddTask: () => void
   onUpdate: (patch: Partial<Omit<Milestone, 'id'>>) => void
   onDelete?: () => void
   onContextMenu?: (e: React.MouseEvent) => void
@@ -1166,9 +1176,10 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
   const [editingDate, setEditingDate] = useState(false)
   const [tempName, setTempName] = useState(milestone.name)
   const [tempDate, setTempDate] = useState(milestone.dueDate)
-  const overdue = diff < 0
-  const close = diff >= 0 && diff <= 7
-  const accent = overdue ? '#ef4444' : close ? '#f59e0b' : '#8b5cf6'
+  const isDone = !!milestone.done
+  const overdue = !isDone && diff < 0
+  const close = !isDone && diff >= 0 && diff <= 7
+  const accent = isDone ? 'var(--t3)' : overdue ? '#ef4444' : close ? '#f59e0b' : '#8b5cf6'
   const progress = taskCount ? Math.round(completed / taskCount * 100) : 0
 
   const saveName = () => { if (tempName.trim()) onUpdate({ name: tempName.trim() }); setEditingName(false) }
@@ -1185,7 +1196,7 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onContextMenu={onContextMenu}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: `3px solid ${accent}`, position: 'sticky', left: 0, zIndex: 4, minWidth: minWidth ?? undefined }}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: `3px solid ${accent}`, position: 'sticky', left: 0, zIndex: 4, minWidth: minWidth ?? undefined, opacity: isDone ? 0.65 : 1, transition: 'opacity .2s' }}
     >
       <button
         onClick={onToggle}
@@ -1194,6 +1205,16 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
       >
         {collapsed ? '▶' : '▼'}
+      </button>
+      {/* Done toggle checkbox */}
+      <button
+        onClick={e => { e.stopPropagation(); onToggleDone() }}
+        title={isDone ? '완료 취소' : '마일스톤 완료'}
+        style={{ width: 16, height: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: isDone ? '2px solid #22c55e' : '2px solid var(--bd2)', background: isDone ? '#22c55e' : 'transparent', color: '#fff', fontSize: 9, cursor: 'pointer', padding: 0, transition: 'all .15s' }}
+        onMouseEnter={e => { if (!isDone) { e.currentTarget.style.borderColor = '#22c55e'; e.currentTarget.style.background = 'rgba(34,197,94,.15)' } }}
+        onMouseLeave={e => { if (!isDone) { e.currentTarget.style.borderColor = 'var(--bd2)'; e.currentTarget.style.background = 'transparent' } }}
+      >
+        {isDone ? '✓' : ''}
       </button>
       <span style={{ fontSize: 11, color: accent, flexShrink: 0 }}>◆</span>
 
@@ -1209,7 +1230,7 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
         <span
           onClick={e => { e.stopPropagation(); setTempName(milestone.name); setEditingName(true) }}
           title="클릭해서 이름 수정"
-          style={{ fontSize: 13, fontWeight: 600, color: 'var(--t1)', cursor: 'text', borderBottom: '1px solid transparent', transition: 'border-color .1s' }}
+          style={{ fontSize: 13, fontWeight: 600, color: 'var(--t1)', cursor: 'text', borderBottom: '1px solid transparent', transition: 'border-color .1s', textDecoration: isDone ? 'line-through' : 'none' }}
           onMouseEnter={e => e.currentTarget.style.borderBottomColor = 'var(--bd)'}
           onMouseLeave={e => e.currentTarget.style.borderBottomColor = 'transparent'}
         >
