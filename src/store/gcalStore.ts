@@ -15,29 +15,43 @@ export interface GCalEvent {
 interface GCalState {
   token: string | null
   expiry: number | null
+  wasConnected: boolean   // persists in localStorage; survives token expiry
+  autoRefreshing: boolean // true while silent background reconnect is in progress
   events: GCalEvent[]
   loading: boolean
   error: string | null
   connect: () => Promise<void>
   disconnect: () => void
   fetchEvents: (from: string, to: string) => Promise<void>
+  autoReconnect: () => Promise<void>
 }
 
-function loadStored(): { token: string | null; expiry: number | null } {
+function loadStored(): { token: string | null; expiry: number | null; wasConnected: boolean } {
   try {
+    const wasConnected = localStorage.getItem('gcal_connected') === '1'
     const token = localStorage.getItem('gcal_token')
     const expiry = Number(localStorage.getItem('gcal_expiry') ?? 0)
-    if (token && expiry > Date.now()) return { token, expiry }
+    if (token && expiry > Date.now()) return { token, expiry, wasConnected }
+    return { token: null, expiry: null, wasConnected }
   } catch { /* ignore */ }
-  return { token: null, expiry: null }
+  return { token: null, expiry: null, wasConnected: false }
+}
+
+function storeToken(token: string) {
+  const expiry = Date.now() + 3500 * 1000  // ~58 minutes
+  localStorage.setItem('gcal_token', token)
+  localStorage.setItem('gcal_expiry', String(expiry))
+  return expiry
 }
 
 export const useGCalStore = create<GCalState>((set, get) => ({
   ...loadStored(),
+  autoRefreshing: false,
   events: [],
   loading: false,
   error: null,
 
+  // Full connect: always shows consent screen. Called by user tapping the button.
   connect: async () => {
     set({ error: null, loading: true })
     try {
@@ -48,13 +62,11 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       const credential = GoogleAuthProvider.credentialFromResult(result)
       const token = credential?.accessToken
       if (!token) throw new Error('액세스 토큰을 받지 못했습니다')
-      const expiry = Date.now() + 3500 * 1000  // ~58 minutes
-      localStorage.setItem('gcal_token', token)
-      localStorage.setItem('gcal_expiry', String(expiry))
-      set({ token, expiry, loading: false, error: null })
+      const expiry = storeToken(token)
+      localStorage.setItem('gcal_connected', '1')
+      set({ token, expiry, wasConnected: true, loading: false, error: null })
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '구글 캘린더 연동 오류'
-      // User closed the popup — not an error to show
       const isCancel = msg.includes('popup-closed') || msg.includes('cancelled')
       set({ loading: false, error: isCancel ? null : msg })
     }
@@ -63,7 +75,34 @@ export const useGCalStore = create<GCalState>((set, get) => ({
   disconnect: () => {
     localStorage.removeItem('gcal_token')
     localStorage.removeItem('gcal_expiry')
-    set({ token: null, expiry: null, events: [], error: null })
+    localStorage.removeItem('gcal_connected')
+    set({ token: null, expiry: null, wasConnected: false, events: [], error: null })
+  },
+
+  // Silent background reconnect: no consent screen, no visible popup if Google session is active.
+  // Falls back gracefully if blocked (iOS Safari) — user will see the reconnect button.
+  autoReconnect: async () => {
+    const { wasConnected, token, autoRefreshing } = get()
+    if (!wasConnected || token || autoRefreshing) return
+    if (!auth.currentUser) return
+
+    set({ autoRefreshing: true, error: null })
+    try {
+      const provider = new GoogleAuthProvider()
+      provider.addScope('https://www.googleapis.com/auth/calendar.readonly')
+      // prompt:'none' = silent if Google session active; throws interaction_required if not
+      provider.setCustomParameters({ prompt: 'none' })
+      const result = await signInWithPopup(auth, provider)
+      const credential = GoogleAuthProvider.credentialFromResult(result)
+      const newToken = credential?.accessToken
+      if (!newToken) throw new Error('no token')
+      const expiry = storeToken(newToken)
+      set({ token: newToken, expiry, autoRefreshing: false, error: null })
+    } catch {
+      // Silent failure: popup blocked or session expired.
+      // Don't clear wasConnected — user can still manually reconnect.
+      set({ autoRefreshing: false })
+    }
   },
 
   fetchEvents: async (from: string, to: string) => {
@@ -99,6 +138,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
         const msg = res.status === 401
           ? '토큰이 만료됐습니다. 다시 연동해 주세요.'
           : `캘린더 접근 권한 없음${detail ? ': ' + detail : ''}. 연동을 다시 해 주세요.`
+        // Keep wasConnected so user sees reconnect button rather than initial connect
         set({ token: null, expiry: null, loading: false, error: msg })
         return
       }

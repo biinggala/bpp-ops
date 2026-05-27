@@ -35,7 +35,13 @@ const MOB_STATUS: Record<string, { bg: string; color: string }> = {
 // ── GCal connect button ───────────────────────────────────────────────────────
 
 function GCalButton() {
-  const { token, loading, error, events: gcalEvents, connect, disconnect } = useGCalStore()
+  const { token, loading, autoRefreshing, wasConnected, error, events: gcalEvents, connect, disconnect, autoReconnect } = useGCalStore()
+
+  // On mount: if user was connected before but token expired, silently refresh
+  React.useEffect(() => {
+    if (wasConnected && !token && !loading && !autoRefreshing) autoReconnect()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   if (token) {
     return (
@@ -63,6 +69,37 @@ function GCalButton() {
           ✕
         </button>
       </div>
+    )
+  }
+
+  // Silent reconnect in progress
+  if (autoRefreshing) {
+    return (
+      <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--t3)', background: 'var(--bg3)', padding: '3px 8px', borderRadius: 20 }}>
+        <GoogleDot /> 갱신 중…
+      </span>
+    )
+  }
+
+  // Was connected before but token expired and silent refresh failed → compact reconnect button
+  if (wasConnected) {
+    return (
+      <button
+        onClick={connect}
+        disabled={loading}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 5,
+          padding: '3px 8px', borderRadius: 20,
+          border: '1px solid rgba(52,168,83,.35)',
+          background: 'rgba(52,168,83,.07)',
+          fontSize: 12, color: '#1a7a33',
+          cursor: loading ? 'default' : 'pointer',
+          opacity: loading ? .6 : 1,
+          fontFamily: 'var(--font)', whiteSpace: 'nowrap',
+        }}
+      >
+        <GoogleDot /> {loading ? '연동 중…' : '캘린더 재연동'}
+      </button>
     )
   }
 
