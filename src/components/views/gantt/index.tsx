@@ -4,9 +4,10 @@ import { useTaskStore } from '../../../store/taskStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useProjectStore } from '../../../store/projectStore'
+import { useAuthStore } from '../../../store/authStore'
 import { getCatColor } from '../../../types'
 import { CategoryBadge } from '../../shared/Badge'
-import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade } from '../../../lib/utils'
+import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade, canAccessProject } from '../../../lib/utils'
 import type { Task, Milestone } from '../../../types'
 
 const DAY_W = 26
@@ -30,11 +31,13 @@ export function GanttView() {
   const { updateTask } = useTaskStore()
   const { openTaskModal, openTaskDetail, projectId } = useUiStore()
   const allMilestones = useMilestoneStore(s => s.milestones)
+  const { deleteMilestone } = useMilestoneStore()
   const projects = useProjectStore(s => s.projects)
+  const email = useAuthStore(s => s.email)
   const milestones = useMemo(() => {
-    const ids = new Set(projects.map(p => p.id))
-    return allMilestones.filter(m => ids.has(m.projectId))
-  }, [allMilestones, projects])
+    const accessibleIds = new Set(projects.filter(p => canAccessProject(p, email)).map(p => p.id))
+    return allMilestones.filter(m => accessibleIds.has(m.projectId))
+  }, [allMilestones, projects, email])
   const wrapRef = useRef<HTMLDivElement>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [hoveredMilestoneId, setHoveredMilestoneId] = useState<string | null>(null)
@@ -288,6 +291,9 @@ export function GanttView() {
                   todayCol={todayCol}
                   milestoneMarkers={milestoneMarkers}
                   onHoverChange={id => setHoveredMilestoneId(id)}
+                  onDelete={milestone ? () => {
+                    if (confirm(`"${milestone.name}" 마일스톤을 삭제할까요?`)) deleteMilestone(milestone.id)
+                  } : undefined}
                 />
               )}
 
@@ -362,7 +368,7 @@ export function GanttView() {
 
 // ── MilestoneHeaderRow ────────────────────────────────────────────────────────
 
-function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStart, timelineW, totalDays, todayCol, milestoneMarkers, onHoverChange }: {
+function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStart, timelineW, totalDays, todayCol, milestoneMarkers, onHoverChange, onDelete }: {
   milestone: Milestone | null
   isExpanded: boolean
   onToggle: () => void
@@ -373,6 +379,7 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
   todayCol: number
   milestoneMarkers: { id: string; col: number; name: string }[]
   onHoverChange?: (id: string | null) => void
+  onDelete?: () => void
 }) {
   const [hovered, setHovered] = useState(false)
   const isNull = milestone === null
@@ -408,6 +415,17 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
           <span style={{ fontSize: 10, color: accent, opacity: isDone ? .4 : .65, flexShrink: 0 }}>
             ~{milestone.dueDate.slice(5)}
           </span>
+        )}
+        {hovered && onDelete && (
+          <button
+            onClick={e => { e.stopPropagation(); onDelete() }}
+            style={{ flexShrink: 0, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: 13, borderRadius: 3, lineHeight: 1 }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'rgba(239,68,68,.1)' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--t3)'; e.currentTarget.style.background = 'transparent' }}
+            title="마일스톤 삭제"
+          >
+            ✕
+          </button>
         )}
       </div>
 
