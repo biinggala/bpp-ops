@@ -243,6 +243,9 @@ export function GanttView() {
           const dragOffset = dragVisual
             ? (dragVisual.taskId === task.id || isInCascade ? dragVisual.dayOffset : 0)
             : 0
+          const milestoneName = task.milestoneId
+            ? milestones.find(m => m.id === task.milestoneId)?.name
+            : undefined
 
           return (
             <div key={task.id}>
@@ -260,6 +263,7 @@ export function GanttView() {
                 isDragging={dragVisual?.taskId === task.id}
                 isCascading={isInCascade}
                 milestoneMarkers={milestoneMarkers}
+                milestoneName={milestoneName}
                 onOpen={() => openTaskDetail(task.id)}
                 onToggle={() => toggle(task.id)}
                 onAddSubtask={() => openTaskModal(undefined, task.id)}
@@ -270,6 +274,9 @@ export function GanttView() {
                 const childDragOffset = dragVisual
                   ? (dragVisual.taskId === child.id || childInCascade ? dragVisual.dayOffset : 0)
                   : 0
+                const childMilestoneName = child.milestoneId
+                  ? milestones.find(m => m.id === child.milestoneId)?.name
+                  : undefined
                 return (
                   <GanttRow
                     key={child.id}
@@ -284,8 +291,8 @@ export function GanttView() {
                     isDragging={dragVisual?.taskId === child.id}
                     isCascading={childInCascade}
                     milestoneMarkers={milestoneMarkers}
-                    onOpen={() => openTaskModal(child.id)}
-                    onEdit={() => openTaskDetail(child.id)}
+                    milestoneName={childMilestoneName}
+                    onOpen={() => openTaskDetail(child.id)}
                     onBarMouseDown={(startX) => startDrag({ taskId: child.id, origStart: child.start, origDue: child.due, startX })}
                   />
                 )
@@ -304,8 +311,8 @@ function GanttRow({
   task, rangeStart, todayCol, totalDays, timelineW, today,
   isChild = false, hasChildren = false, isExpanded = true,
   rollup = null, dragOffset = 0, isDragging = false, isCascading = false,
-  milestoneMarkers = [],
-  onOpen, onToggle, onAddSubtask, onEdit, onBarMouseDown,
+  milestoneMarkers = [], milestoneName,
+  onOpen, onToggle, onAddSubtask, onBarMouseDown,
 }: {
   task: Task
   rangeStart: Date
@@ -321,10 +328,10 @@ function GanttRow({
   isDragging?: boolean
   isCascading?: boolean
   milestoneMarkers?: { id: string; col: number; name: string }[]
+  milestoneName?: string
   onOpen: () => void
   onToggle?: () => void
   onAddSubtask?: () => void
-  onEdit?: () => void
   onBarMouseDown?: (startX: number) => void
 }) {
   const [hovered, setHovered] = useState(false)
@@ -342,7 +349,7 @@ function GanttRow({
     barWidth = Math.max((barRight - barLeft + 1) * DAY_W - 4, DAY_W - 4)
   }
 
-  const rowH = isChild ? ROW_H - 2 : ROW_H
+  const rowH = milestoneName ? ROW_H + 12 : isChild ? ROW_H - 2 : ROW_H
   const rowBg = hovered ? 'var(--bg2)' : isChild ? 'rgba(55,53,47,.015)' : 'var(--bg)'
 
   return (
@@ -369,18 +376,20 @@ function GanttRow({
 
         {task.cat && <CategoryBadge cat={task.cat} />}
 
-        <span style={{ fontSize: 12, flex: 1, color: isChild ? 'var(--t2)' : 'var(--t1)', fontWeight: !isChild && hasChildren ? 500 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {task.name}
-        </span>
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 1 }}>
+          <span style={{ fontSize: 12, color: isChild ? 'var(--t2)' : 'var(--t1)', fontWeight: !isChild && hasChildren ? 500 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {task.name}
+          </span>
+          {milestoneName && (
+            <span style={{ fontSize: 9, fontWeight: 600, color: '#8b5cf6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}>
+              ◆ {milestoneName}
+            </span>
+          )}
+        </div>
 
         {hovered && !isChild && onAddSubtask && (
           <button onClick={e => { e.stopPropagation(); onAddSubtask() }} style={{ flexShrink: 0, fontSize: 10, color: 'var(--ac)', background: 'var(--ac-l)', border: '1px solid var(--ac)', borderRadius: 3, padding: '2px 6px', cursor: 'pointer', fontFamily: 'var(--font)' }}>
             + 하위
-          </button>
-        )}
-        {hovered && isChild && onEdit && (
-          <button onClick={e => { e.stopPropagation(); onEdit() }} style={{ flexShrink: 0, fontSize: 11, color: 'var(--t2)', background: 'var(--bg4)', border: 'none', borderRadius: 3, padding: '2px 5px', cursor: 'pointer', fontFamily: 'var(--font)' }}>
-            ✎
           </button>
         )}
       </div>
