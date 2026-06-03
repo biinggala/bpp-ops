@@ -7,6 +7,7 @@ import { useProjectStore } from '../../../store/projectStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
 import { useGCalStore } from '../../../store/gcalStore'
 import type { GCalEvent } from '../../../store/gcalStore'
+import { useAuthStore } from '../../../store/authStore'
 import { useMobile } from '../../../hooks/useMobile'
 import { getCatColor, MEMBERS, STATUS_LIST } from '../../../types'
 import type { MemberKey, Status } from '../../../types'
@@ -147,15 +148,20 @@ function MobileCalendar() {
   const { token, events: gcalEvents, fetchEvents } = useGCalStore()
   const allProjects = useProjectStore(s => s.projects)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  const email = useAuthStore(s => s.email)
+
+  const accessibleProjects = useMemo(() =>
+    allProjects.filter(p => !p.memberEmails?.length || (email ? p.memberEmails.includes(email) : false))
+  , [allProjects, email])
 
   const allAssigneeOptions = useMemo(() => {
     const keys = new Set<string>()
-    allProjects.forEach(p => p.memberEmails?.forEach(e => keys.add(e)))
+    accessibleProjects.forEach(p => p.memberEmails?.forEach(e => keys.add(e)))
     return Array.from(keys).sort().map(key => {
       const known = MEMBERS[key as MemberKey]
       return { value: key, label: known?.n ?? getNameByEmail(key) }
     })
-  }, [allProjects, getNameByEmail])
+  }, [accessibleProjects, getNameByEmail])
   const allTagOptions = useMemo(() => {
     const s = new Set<string>(); tasks.forEach(t => t.tags?.forEach(tag => s.add(tag))); return Array.from(s).sort()
   }, [tasks])
@@ -270,10 +276,10 @@ function MobileCalendar() {
 
         {/* Filter row */}
         <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8, scrollbarWidth: 'none' }}>
-          {allProjects.length > 1 && (
+          {accessibleProjects.length > 1 && (
             <MobFilterSelect
               label="프로젝트" active={filters.projects.length > 0}
-              options={allProjects.map(p => ({ value: p.id, label: p.name }))}
+              options={accessibleProjects.map(p => ({ value: p.id, label: p.name }))}
               selected={filters.projects} onChange={v => setFilters({ projects: v })}
             />
           )}

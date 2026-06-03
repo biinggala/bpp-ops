@@ -3,6 +3,7 @@ import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
+import { useAuthStore } from '../../store/authStore'
 import { useMobile } from '../../hooks/useMobile'
 import { MEMBERS } from '../../types'
 import type { ViewType, Status, MemberKey } from '../../types'
@@ -28,6 +29,12 @@ export function ViewBar() {
   const allTasks = useTaskStore(s => s.tasks)
   const projects = useProjectStore(s => s.projects)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  const email = useAuthStore(s => s.email)
+
+  // Only show projects the current user is a member of (same rule as Sidebar)
+  const accessibleProjects = React.useMemo(() =>
+    projects.filter(p => !p.memberEmails?.length || (email ? p.memberEmails.includes(email) : false))
+  , [projects, email])
 
   const allTagOptions = React.useMemo(() => {
     const s = new Set<string>()
@@ -37,8 +44,8 @@ export function ViewBar() {
 
   const allAssigneeOptions = React.useMemo(() => {
     const keys = new Set<string>()
-    // Project members first
-    projects.forEach(p => p.memberEmails?.forEach(e => keys.add(e)))
+    // Only from accessible projects
+    accessibleProjects.forEach(p => p.memberEmails?.forEach(e => keys.add(e)))
     // Also include any assignee from existing tasks (catches legacy MemberKeys)
     allTasks.forEach(t => {
       if (t.assignee) t.assignee.split(',').map(s => s.trim()).filter(Boolean).forEach(k => keys.add(k))
@@ -47,11 +54,11 @@ export function ViewBar() {
       const known = MEMBERS[key as MemberKey]
       return { value: key, label: known?.n ?? getNameByEmail(key) }
     })
-  }, [allTasks, projects, getNameByEmail])
+  }, [allTasks, accessibleProjects, getNameByEmail])
 
   const allProjectOptions = React.useMemo(() =>
-    projects.map(p => ({ value: p.id, label: p.name }))
-  , [projects])
+    accessibleProjects.map(p => ({ value: p.id, label: p.name }))
+  , [accessibleProjects])
 
   const hasFilters = filters.assignees.length > 0 || filters.statuses.length > 0 || filters.tags.length > 0 || filters.projects.length > 0
   const showFilters = view !== 's'
