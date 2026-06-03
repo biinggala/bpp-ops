@@ -17,13 +17,17 @@ export function useFilteredTasks(): Task[] {
     const accessibleIds = new Set(
       projects.filter(p => canAccessProject(p, email)).map(p => p.id)
     )
+    // Tasks without a projectId are shown only if the user is the creator or assignee,
+    // never to unrelated users just because they happen to have any project access.
     const hasAccess = accessibleIds.size > 0
-
-    // New users (no accessible project) see nothing.
-    // Otherwise, show tasks from accessible projects only.
     let result = tasks.filter(t => {
-      if (!t.projectId) return hasAccess   // unassigned tasks: visible if user has any project
-      return accessibleIds.has(t.projectId)
+      if (t.projectId) return accessibleIds.has(t.projectId)
+      // No projectId: show only if this user created or is assigned to the task
+      if (!hasAccess) return false
+      if (t.createdBy && email && t.createdBy.toLowerCase() === email.toLowerCase()) return true
+      if (email && t.assignee?.toLowerCase().includes(email.toLowerCase())) return true
+      if (memberKey && t.assignee?.includes(memberKey)) return true
+      return false
     })
 
     if (space) result = result.filter(t => t.cat === space)

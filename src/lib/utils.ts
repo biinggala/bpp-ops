@@ -1,20 +1,15 @@
 import type { Project } from '../types'
 
-// Central access-check function used everywhere we filter projects.
-// A user can access a project if:
-//   1. Their email is in memberEmails (explicit member), OR
-//   2. Their email matches creatorEmail (project owner), OR
-//   3. The project has NO memberEmails AND NO creatorEmail (truly legacy, backward-compat only)
-// The old pattern `!p.memberEmails?.length` is intentionally NOT used here because
-// it grants access to projects that have memberEmails:[] due to a partially-set creator,
-// which exposes other users' data.
+// Central project access-check used everywhere.
+// Access is granted ONLY if the user's email is explicitly listed as a member
+// or matches the creator. Projects with no ownership data are denied — there is
+// no "public" fallback, because other users' legacy projects would otherwise leak.
 export function canAccessProject(p: Project, userEmail: string | null | undefined): boolean {
   const e = userEmail?.toLowerCase() ?? ''
   if (!e) return false
   if (p.memberEmails?.some(m => m.toLowerCase() === e)) return true
   if (p.creatorEmail && p.creatorEmail.toLowerCase() === e) return true
-  // Truly legacy project: no access records at all
-  return !p.memberEmails?.length && !p.creatorEmail
+  return false
 }
 
 export function stripHtml(html: string): string {
