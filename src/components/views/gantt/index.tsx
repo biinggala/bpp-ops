@@ -41,6 +41,7 @@ export function GanttView() {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [hoveredMilestoneId, setHoveredMilestoneId] = useState<string | null>(null)
+  const [msCtxMenu, setMsCtxMenu] = useState<{ x: number; y: number; milestone: Milestone } | null>(null)
 
   const allTasksRef = useRef(allTasks)
   useEffect(() => { allTasksRef.current = allTasks }, [allTasks])
@@ -224,7 +225,16 @@ export function GanttView() {
   }
 
   return (
-    <div ref={wrapRef} style={{ flex: 1, overflow: 'auto', background: 'var(--bg)' }}>
+    <div ref={wrapRef} style={{ flex: 1, overflow: 'auto', background: 'var(--bg)' }} onClick={() => setMsCtxMenu(null)}>
+      {msCtxMenu && (
+        <MilestoneCtxMenu
+          x={msCtxMenu.x}
+          y={msCtxMenu.y}
+          onClose={() => setMsCtxMenu(null)}
+          onAddTask={() => { openTaskModal(undefined, undefined, msCtxMenu.milestone.id, msCtxMenu.milestone.projectId); setMsCtxMenu(null) }}
+          onDelete={() => { if (confirm(`"${msCtxMenu.milestone.name}" 마일스톤을 삭제할까요?`)) { deleteMilestone(msCtxMenu.milestone.id); setMsCtxMenu(null) } }}
+        />
+      )}
       <div style={{ minWidth: LEFT_W + timelineW }}>
 
         {/* Month header */}
@@ -291,9 +301,7 @@ export function GanttView() {
                   todayCol={todayCol}
                   milestoneMarkers={milestoneMarkers}
                   onHoverChange={id => setHoveredMilestoneId(id)}
-                  onDelete={milestone ? () => {
-                    if (confirm(`"${milestone.name}" 마일스톤을 삭제할까요?`)) deleteMilestone(milestone.id)
-                  } : undefined}
+                  onContextMenu={milestone ? (x, y) => setMsCtxMenu({ x, y, milestone }) : undefined}
                 />
               )}
 
@@ -368,7 +376,7 @@ export function GanttView() {
 
 // ── MilestoneHeaderRow ────────────────────────────────────────────────────────
 
-function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStart, timelineW, totalDays, todayCol, milestoneMarkers, onHoverChange, onDelete }: {
+function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStart, timelineW, totalDays, todayCol, milestoneMarkers, onHoverChange, onContextMenu }: {
   milestone: Milestone | null
   isExpanded: boolean
   onToggle: () => void
@@ -379,7 +387,7 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
   todayCol: number
   milestoneMarkers: { id: string; col: number; name: string }[]
   onHoverChange?: (id: string | null) => void
-  onDelete?: () => void
+  onContextMenu?: (x: number, y: number) => void
 }) {
   const [hovered, setHovered] = useState(false)
   const isNull = milestone === null
@@ -395,6 +403,7 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
       style={{ display: 'flex', height: ROW_H + 2, borderBottom: '1px solid var(--bd)', background: hovered ? (isNull ? 'var(--bg2)' : `${accentBg}.07)`) : (isNull ? 'transparent' : `${accentBg}.03)`) }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
+      onContextMenu={onContextMenu ? e => { e.preventDefault(); onContextMenu(e.clientX, e.clientY) } : undefined}
     >
       {/* Left */}
       <div
@@ -415,17 +424,6 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
           <span style={{ fontSize: 10, color: accent, opacity: isDone ? .4 : .65, flexShrink: 0 }}>
             ~{milestone.dueDate.slice(5)}
           </span>
-        )}
-        {hovered && onDelete && (
-          <button
-            onClick={e => { e.stopPropagation(); onDelete() }}
-            style={{ flexShrink: 0, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: 13, borderRadius: 3, lineHeight: 1 }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'rgba(239,68,68,.1)' }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'var(--t3)'; e.currentTarget.style.background = 'transparent' }}
-            title="마일스톤 삭제"
-          >
-            ✕
-          </button>
         )}
       </div>
 
@@ -599,6 +597,47 @@ function MilestonePin({ marker, dayW, forceShow }: { marker: { id: string; name:
           ◆ {marker.name}
         </div>
       )}
+    </div>
+  )
+}
+
+function MilestoneCtxMenu({ x, y, onClose, onAddTask, onDelete }: {
+  x: number; y: number
+  onClose: () => void
+  onAddTask: () => void
+  onDelete: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const close = (e: MouseEvent | KeyboardEvent) => {
+      if (e instanceof KeyboardEvent) { if (e.key === 'Escape') onClose(); return }
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', close)
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', close) }
+  }, [onClose])
+
+  const menuW = 180
+  const cx = Math.min(x, window.innerWidth - menuW - 8)
+  const cy = Math.min(y, window.innerHeight - 100)
+
+  return (
+    <div ref={ref} onClick={e => e.stopPropagation()} style={{ position: 'fixed', left: cx, top: cy, width: menuW, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: '0 8px 28px rgba(0,0,0,.18)', zIndex: 500, padding: '4px 0', userSelect: 'none' }}>
+      <CtxItem icon="+" label="새 업무 추가" onClick={onAddTask} />
+      <div style={{ height: 1, background: 'var(--bd)', margin: '3px 0' }} />
+      <CtxItem icon="✕" label="마일스톤 삭제" onClick={onDelete} danger />
+    </div>
+  )
+}
+
+function CtxItem({ icon, label, onClick, danger }: { icon: string; label: string; onClick: () => void; danger?: boolean }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <div onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', cursor: 'pointer', fontSize: 13, color: danger ? '#ef4444' : 'var(--t1)', background: hovered ? 'var(--bg3)' : 'transparent', transition: 'background .06s' }}>
+      <span style={{ fontSize: 12, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>
+      {label}
     </div>
   )
 }
