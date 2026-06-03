@@ -140,11 +140,14 @@ export function GanttView() {
       .filter(m => m.col >= 0 && m.col < totalDays)
   }, [milestones, projectId, rangeStart, totalDays])
 
-  // Group root tasks by milestone
+  // Group root tasks by milestone — active milestones by due date, then unassigned, then done milestones
   const milestoneGroups = useMemo((): MilestoneGroup[] => {
-    const activeMilestones = milestones.filter(m => !projectId || m.projectId === projectId)
+    const all = milestones.filter(m => !projectId || m.projectId === projectId)
+    const active = all.filter(m => !m.done).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+    const done   = all.filter(m =>  m.done).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+
     const msMap = new Map<string, Task[]>()
-    for (const m of activeMilestones) msMap.set(m.id, [])
+    for (const m of all) msMap.set(m.id, [])
 
     const unassigned: Task[] = []
     for (const task of rootTasks) {
@@ -156,10 +159,9 @@ export function GanttView() {
     }
 
     const groups: MilestoneGroup[] = []
-    for (const m of activeMilestones) {
-      groups.push({ milestone: m, tasks: msMap.get(m.id)! })
-    }
+    for (const m of active) groups.push({ milestone: m, tasks: msMap.get(m.id)! })
     groups.push({ milestone: null, tasks: unassigned })
+    for (const m of done)   groups.push({ milestone: m, tasks: msMap.get(m.id)! })
     return groups
   }, [rootTasks, milestones, projectId])
 
@@ -371,34 +373,44 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
 }) {
   const [hovered, setHovered] = useState(false)
   const isNull = milestone === null
+  const isDone = milestone?.done === true
+  const accent = isDone ? '#6b7280' : '#8b5cf6'
+  const accentBg = isDone ? 'rgba(107,114,128,' : 'rgba(139,92,246,'
 
   return (
     <div
-      style={{ display: 'flex', height: ROW_H + 2, borderBottom: '1px solid var(--bd)', background: hovered ? (isNull ? 'var(--bg2)' : 'rgba(139,92,246,.07)') : (isNull ? 'transparent' : 'rgba(139,92,246,.03)') }}
+      style={{ display: 'flex', height: ROW_H + 2, borderBottom: '1px solid var(--bd)', background: hovered ? (isNull ? 'var(--bg2)' : `${accentBg}.07)`) : (isNull ? 'transparent' : `${accentBg}.03)`), position: 'relative' }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       {/* Left */}
       <div
         onClick={onToggle}
-        style={{ width: LEFT_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 2, background: hovered ? (isNull ? 'var(--bg2)' : 'rgba(139,92,246,.07)') : (isNull ? 'transparent' : 'rgba(139,92,246,.03)'), borderRight: '1px solid var(--bd)', display: 'flex', alignItems: 'center', paddingLeft: 4, paddingRight: 8, gap: 5, overflow: 'hidden', cursor: 'pointer', transition: 'background .08s' }}
+        style={{ width: LEFT_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 2, background: hovered ? (isNull ? 'var(--bg2)' : `${accentBg}.07)`) : (isNull ? 'transparent' : `${accentBg}.03)`), borderRight: '1px solid var(--bd)', display: 'flex', alignItems: 'center', paddingLeft: 4, paddingRight: 8, gap: 5, overflow: 'hidden', cursor: 'pointer', transition: 'background .08s' }}
       >
         <button
           onClick={e => { e.stopPropagation(); onToggle() }}
-          style={{ width: 18, height: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: isNull ? 'var(--t3)' : '#8b5cf6', fontSize: 9, borderRadius: 3 }}
+          style={{ width: 18, height: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: isNull ? 'var(--t3)' : accent, fontSize: 9, borderRadius: 3 }}
         >
           {isExpanded ? '▼' : '▶'}
         </button>
-        {!isNull && <span style={{ fontSize: 11, color: '#8b5cf6', flexShrink: 0, lineHeight: 1 }}>◆</span>}
-        <span style={{ fontSize: 12, fontWeight: 600, color: isNull ? 'var(--t3)' : '#8b5cf6', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {!isNull && <span style={{ fontSize: 11, color: accent, flexShrink: 0, lineHeight: 1, opacity: isDone ? .6 : 1 }}>◆</span>}
+        <span style={{ fontSize: 12, fontWeight: 600, color: isNull ? 'var(--t3)' : accent, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: isDone ? .6 : 1, textDecoration: isDone ? 'line-through' : 'none' }}>
           {milestone?.name ?? '마일스톤 미지정'}
         </span>
         {milestone?.dueDate && (
-          <span style={{ fontSize: 10, color: '#8b5cf6', opacity: .65, flexShrink: 0 }}>
+          <span style={{ fontSize: 10, color: accent, opacity: isDone ? .4 : .65, flexShrink: 0 }}>
             ~{milestone.dueDate.slice(5)}
           </span>
         )}
       </div>
+
+      {/* Hover tooltip — same style as MilestoneLine tooltip */}
+      {hovered && !isNull && (
+        <div style={{ position: 'absolute', left: LEFT_W + 8, top: '50%', transform: 'translateY(-50%)', background: isDone ? '#374151' : '#1e1b4b', color: isDone ? '#d1d5db' : '#c4b5fd', fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 5, whiteSpace: 'nowrap', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,.3)', zIndex: 20 }}>
+          ◆ {milestone.name}{isDone ? ' ✓' : ''}
+        </div>
+      )}
 
       {/* Timeline */}
       <div style={{ width: timelineW, flexShrink: 0, position: 'relative', height: ROW_H + 2 }}>
@@ -409,7 +421,7 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
           <MilestoneLine key={m.id} marker={m} dayW={DAY_W} />
         ))}
         {rollup && (
-          <div style={{ position: 'absolute', left: rollup.col * DAY_W + 2, width: rollup.span * DAY_W - 4, top: '50%', transform: 'translateY(-50%)', height: 8, borderRadius: 4, background: isNull ? 'rgba(100,100,100,.1)' : 'rgba(139,92,246,.18)', border: `1.5px solid ${isNull ? 'rgba(100,100,100,.3)' : 'rgba(139,92,246,.45)'}`, pointerEvents: 'none' }} />
+          <div style={{ position: 'absolute', left: rollup.col * DAY_W + 2, width: rollup.span * DAY_W - 4, top: '50%', transform: 'translateY(-50%)', height: 8, borderRadius: 4, background: isNull ? 'rgba(100,100,100,.1)' : `${accentBg}.18)`, border: `1.5px solid ${isNull ? 'rgba(100,100,100,.3)' : `${accentBg}.45)`}`, pointerEvents: 'none', opacity: isDone ? .5 : 1 }} />
         )}
       </div>
     </div>
