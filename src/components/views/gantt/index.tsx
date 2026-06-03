@@ -398,16 +398,44 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
   const handleMouseEnter = () => { setHovered(true);  onHoverChange?.(milestone?.id ?? null) }
   const handleMouseLeave = () => { setHovered(false); onHoverChange?.(null) }
 
+  // Long press for mobile
+  const lpTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lpActive = useRef(false)
+  const lpStart = useRef({ x: 0, y: 0 })
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (!onContextMenu) return
+    const t = e.touches[0]
+    lpStart.current = { x: t.clientX, y: t.clientY }
+    lpActive.current = false
+    lpTimer.current = setTimeout(() => {
+      lpActive.current = true
+      navigator.vibrate?.(40)
+      onContextMenu(lpStart.current.x, lpStart.current.y)
+    }, 500)
+  }
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (!lpTimer.current) return
+    const t = e.touches[0]
+    if (Math.abs(t.clientX - lpStart.current.x) > 6 || Math.abs(t.clientY - lpStart.current.y) > 6) {
+      clearTimeout(lpTimer.current); lpTimer.current = null
+    }
+  }
+  const onTouchEnd = () => { if (lpTimer.current) { clearTimeout(lpTimer.current); lpTimer.current = null } }
+
   return (
     <div
-      style={{ display: 'flex', height: ROW_H + 2, borderBottom: '1px solid var(--bd)', background: hovered ? (isNull ? 'var(--bg2)' : `${accentBg}.07)`) : (isNull ? 'transparent' : `${accentBg}.03)`) }}
+      style={{ display: 'flex', height: ROW_H + 2, borderBottom: '1px solid var(--bd)', background: hovered ? (isNull ? 'var(--bg2)' : `${accentBg}.07)`) : (isNull ? 'transparent' : `${accentBg}.03)`), WebkitTouchCallout: 'none', userSelect: 'none' } as React.CSSProperties}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onContextMenu={onContextMenu ? e => { e.preventDefault(); onContextMenu(e.clientX, e.clientY) } : undefined}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
     >
       {/* Left */}
       <div
-        onClick={onToggle}
+        onClick={() => { if (!lpActive.current) onToggle() }}
         style={{ width: LEFT_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 2, background: hovered ? (isNull ? 'var(--bg2)' : `${accentBg}.07)`) : (isNull ? 'transparent' : `${accentBg}.03)`), borderRight: '1px solid var(--bd)', display: 'flex', alignItems: 'center', paddingLeft: 4, paddingRight: 8, gap: 5, overflow: 'hidden', cursor: 'pointer', transition: 'background .08s' }}
       >
         <button
