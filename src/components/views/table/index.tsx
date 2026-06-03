@@ -136,6 +136,7 @@ function MobileTableView() {
     return (
       <React.Fragment key={task.id}>
         <div
+          className="lp-row"
           draggable={false}
           onClick={() => { if (longPressActive.current) { longPressActive.current = false; return }; openTaskDetail(task.id) }}
           onTouchStart={handleTouchStart}
@@ -1204,6 +1205,7 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
 
   return (
     <div
+      className="lp-row"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onContextMenu={onContextMenu}

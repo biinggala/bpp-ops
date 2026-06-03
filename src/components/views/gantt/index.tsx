@@ -425,7 +425,8 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
 
   return (
     <div
-      style={{ display: 'flex', height: ROW_H + 2, borderBottom: '1px solid var(--bd)', background: hovered ? (isNull ? 'var(--bg2)' : `${accentBg}.07)`) : (isNull ? 'transparent' : `${accentBg}.03)`), WebkitTouchCallout: 'none', userSelect: 'none' } as React.CSSProperties}
+      className="lp-row"
+      style={{ display: 'flex', height: ROW_H + 2, borderBottom: '1px solid var(--bd)', background: hovered ? (isNull ? 'var(--bg2)' : `${accentBg}.07)`) : (isNull ? 'transparent' : `${accentBg}.03)`) }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onContextMenu={onContextMenu ? e => { e.preventDefault(); onContextMenu(e.clientX, e.clientY) } : undefined}
@@ -525,6 +526,7 @@ function GanttRow({
 
   return (
     <div
+      className="lp-row"
       style={{ display: 'flex', height: rowH, borderBottom: '1px solid var(--bd)' }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}

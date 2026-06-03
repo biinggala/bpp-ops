@@ -201,3 +201,12 @@ input, select, textarea, button {
   .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 }
 :root { --bottom-nav-h: 56px; }
+
+/* Prevent iOS text drag/selection during long-press on interactive rows.
+   Applied to the row container — the * selector covers all child spans. */
+.lp-row, .lp-row * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-drag: none !important;
+}
