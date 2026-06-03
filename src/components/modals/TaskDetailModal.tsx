@@ -555,12 +555,14 @@ export function TaskDetailModal() {
   const { detailTaskId, closeTaskDetail } = useUiStore()
   const task = useTaskStore(s => s.tasks.find(t => t.id === detailTaskId))
   const { updateTask } = useTaskStore()
-  const { uid } = useAuthStore()
+  const { uid, email: userEmail } = useAuthStore()
   const { presences, setCurrentTask } = usePresenceStore()
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
-  const profiles = useUserProfileStore(s => s.profiles)
   const allProjects = useProjectStore(s => s.projects)
-  const projects = allProjects
+  // Only projects the current user is a member of
+  const projects = allProjects.filter(p =>
+    !p.memberEmails?.length || (userEmail ? p.memberEmails.includes(userEmail) : false)
+  )
   const milestones = useMilestoneStore(s => s.milestones)
   const isMobile = useMobile()
 
@@ -646,8 +648,11 @@ export function TaskDetailModal() {
     if (memberEmails.length > 0) {
       return memberEmails.map(e => ({ value: e, label: getNameByEmail(e) }))
     }
-    return Object.values(profiles).map(p => ({ value: p.email, label: p.name }))
-  }, [currentProject, profiles, getNameByEmail])
+    // Fallback: union of all accessible project members
+    const s = new Set<string>()
+    projects.forEach(p => p.memberEmails?.forEach(e => s.add(e)))
+    return Array.from(s).map(e => ({ value: e, label: getNameByEmail(e) }))
+  }, [currentProject, projects, getNameByEmail])
 
   const upd = (patch: Partial<Task>) => updateTask(task.id, patch)
 

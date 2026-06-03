@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
+import { useAccessibleTasks } from '../../../hooks/useAccessibleTasks'
 import { useTaskStore } from '../../../store/taskStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
@@ -330,14 +331,24 @@ function MobileTableView() {
 
 export function TableView() {
   const filteredTasks = useFilteredTasks()
-  const allTasks = useTaskStore(s => s.tasks)
+  const allTasks = useTaskStore(s => s.tasks)          // raw — only for task-tree traversal
+  const accessibleTasks = useAccessibleTasks()          // for option lists (tags etc.)
   const { deleteTask, updateTask } = useTaskStore()
   const { openTaskModal, openTaskDetail, projectId } = useUiStore()
   const { milestones, updateMilestone, deleteMilestone } = useMilestoneStore()
-  const projects = useProjectStore(s => s.projects)
-  const allProfiles = useUserProfileStore(s => s.profiles)
+  const allProjects = useProjectStore(s => s.projects)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const userEmail = useAuthStore(s => s.email)
+  // Only projects the current user is a member of
+  const projects = React.useMemo(() =>
+    allProjects.filter(p => !p.memberEmails?.length || (userEmail ? p.memberEmails.includes(userEmail) : false))
+  , [allProjects, userEmail])
+  // Union of all accessible project members — used as fallback for assignee dropdowns
+  const accessibleMemberEmails = React.useMemo(() => {
+    const s = new Set<string>()
+    projects.forEach(p => p.memberEmails?.forEach(e => s.add(e)))
+    return Array.from(s)
+  }, [projects])
   const isMobile = useMobile()
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
@@ -398,14 +409,14 @@ export function TableView() {
     const project = projects.find(p => p.id === pjId)
     const emails = project?.memberEmails ?? []
     if (emails.length > 0) return emails.map(e => ({ value: e, label: getNameByEmail(e) }))
-    return Object.values(allProfiles).map(p => ({ value: p.email, label: p.name }))
-  }, [projects, allProfiles, getNameByEmail])
+    return accessibleMemberEmails.map(e => ({ value: e, label: getNameByEmail(e) }))
+  }, [projects, accessibleMemberEmails, getNameByEmail])
 
   const allTags = React.useMemo(() => {
     const s = new Set<string>()
-    allTasks.forEach(t => t.tags?.forEach(tag => s.add(tag)))
+    accessibleTasks.forEach(t => t.tags?.forEach(tag => s.add(tag)))
     return Array.from(s).sort()
-  }, [allTasks])
+  }, [accessibleTasks])
 
   const totalColWidth = React.useMemo(() => cols.reduce((sum, c) => sum + c.width, 0), [cols])
 

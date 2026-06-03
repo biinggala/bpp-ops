@@ -22,7 +22,6 @@ export function TaskModal() {
   const milestones = useMilestoneStore(s => s.milestones)
   const email = useAuthStore(s => s.email)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
-  const profiles = useUserProfileStore(s => s.profiles)
   const isMobile = useMobile()
 
   const projects = allProjects.filter(p =>
@@ -30,15 +29,21 @@ export function TaskModal() {
   )
   const [form, setForm] = useState<Omit<Task, 'id'>>(EMPTY)
 
+  // Fallback: union of all accessible project members (never exposes global profiles)
+  const accessibleMemberEmails = useMemo(() => {
+    const s = new Set<string>()
+    projects.forEach(p => p.memberEmails?.forEach(e => s.add(e)))
+    return Array.from(s)
+  }, [projects])
+
   const assigneeOptions = useMemo(() => {
-    const selectedProject = allProjects.find(p => p.id === form.projectId)
+    const selectedProject = projects.find(p => p.id === form.projectId)
     const memberEmails = selectedProject?.memberEmails ?? []
     if (memberEmails.length > 0) {
       return memberEmails.map(e => ({ value: e, label: getNameByEmail(e) }))
     }
-    // No project selected or open project — show all known profiles
-    return Object.values(profiles).map(p => ({ value: p.email, label: p.name }))
-  }, [form.projectId, allProjects, profiles, getNameByEmail])
+    return accessibleMemberEmails.map(e => ({ value: e, label: getNameByEmail(e) }))
+  }, [form.projectId, projects, accessibleMemberEmails, getNameByEmail])
 
   const editing = editTaskId ? tasks.find(t => t.id === editTaskId) : null
   const parentTask = newTaskParentId ? tasks.find(t => t.id === newTaskParentId) : null
