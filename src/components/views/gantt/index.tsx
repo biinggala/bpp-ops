@@ -37,6 +37,7 @@ export function GanttView() {
   }, [allMilestones, projects])
   const wrapRef = useRef<HTMLDivElement>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [hoveredMilestoneId, setHoveredMilestoneId] = useState<string | null>(null)
 
   const allTasksRef = useRef(allTasks)
   useEffect(() => { allTasksRef.current = allTasks }, [allTasks])
@@ -259,7 +260,7 @@ export function GanttView() {
               )
             })}
             {milestoneMarkers.map(m => (
-              <MilestonePin key={m.id} marker={m} dayW={DAY_W} />
+              <MilestonePin key={m.id} marker={m} dayW={DAY_W} forceShow={hoveredMilestoneId === m.id} />
             ))}
           </div>
         </div>
@@ -286,6 +287,7 @@ export function GanttView() {
                   totalDays={totalDays}
                   todayCol={todayCol}
                   milestoneMarkers={milestoneMarkers}
+                  onHoverChange={id => setHoveredMilestoneId(id)}
                 />
               )}
 
@@ -360,7 +362,7 @@ export function GanttView() {
 
 // ── MilestoneHeaderRow ────────────────────────────────────────────────────────
 
-function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStart, timelineW, totalDays, todayCol, milestoneMarkers }: {
+function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStart, timelineW, totalDays, todayCol, milestoneMarkers, onHoverChange }: {
   milestone: Milestone | null
   isExpanded: boolean
   onToggle: () => void
@@ -370,6 +372,7 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
   totalDays: number
   todayCol: number
   milestoneMarkers: { id: string; col: number; name: string }[]
+  onHoverChange?: (id: string | null) => void
 }) {
   const [hovered, setHovered] = useState(false)
   const isNull = milestone === null
@@ -377,11 +380,14 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
   const accent = isDone ? '#6b7280' : '#8b5cf6'
   const accentBg = isDone ? 'rgba(107,114,128,' : 'rgba(139,92,246,'
 
+  const handleMouseEnter = () => { setHovered(true);  onHoverChange?.(milestone?.id ?? null) }
+  const handleMouseLeave = () => { setHovered(false); onHoverChange?.(null) }
+
   return (
     <div
-      style={{ display: 'flex', height: ROW_H + 2, borderBottom: '1px solid var(--bd)', background: hovered ? (isNull ? 'var(--bg2)' : `${accentBg}.07)`) : (isNull ? 'transparent' : `${accentBg}.03)`), position: 'relative' }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      style={{ display: 'flex', height: ROW_H + 2, borderBottom: '1px solid var(--bd)', background: hovered ? (isNull ? 'var(--bg2)' : `${accentBg}.07)`) : (isNull ? 'transparent' : `${accentBg}.03)`) }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       {/* Left */}
       <div
@@ -404,13 +410,6 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
           </span>
         )}
       </div>
-
-      {/* Hover tooltip — same style as MilestoneLine tooltip */}
-      {hovered && !isNull && (
-        <div style={{ position: 'absolute', left: LEFT_W + 8, top: '50%', transform: 'translateY(-50%)', background: isDone ? '#374151' : '#1e1b4b', color: isDone ? '#d1d5db' : '#c4b5fd', fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 5, whiteSpace: 'nowrap', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,.3)', zIndex: 20 }}>
-          ◆ {milestone.name}{isDone ? ' ✓' : ''}
-        </div>
-      )}
 
       {/* Timeline */}
       <div style={{ width: timelineW, flexShrink: 0, position: 'relative', height: ROW_H + 2 }}>
@@ -566,8 +565,9 @@ function GanttRow({
 
 // ── Milestone UI helpers ──────────────────────────────────────────────────────
 
-function MilestonePin({ marker, dayW }: { marker: { id: string; name: string; col: number }; dayW: number }) {
+function MilestonePin({ marker, dayW, forceShow }: { marker: { id: string; name: string; col: number }; dayW: number; forceShow?: boolean }) {
   const [hovered, setHovered] = useState(false)
+  const show = hovered || forceShow
   const left = marker.col * dayW + Math.floor(dayW / 2)
   return (
     <div
@@ -575,8 +575,8 @@ function MilestonePin({ marker, dayW }: { marker: { id: string; name: string; co
       onMouseLeave={() => setHovered(false)}
       style={{ position: 'absolute', left: left - 7, top: 2, zIndex: 3, cursor: 'default' }}
     >
-      <span style={{ fontSize: 12, color: '#8b5cf6', lineHeight: 1, display: 'block', filter: hovered ? 'drop-shadow(0 0 4px #8b5cf6aa)' : 'none', transition: 'filter .15s' }}>◆</span>
-      {hovered && (
+      <span style={{ fontSize: 12, color: '#8b5cf6', lineHeight: 1, display: 'block', filter: show ? 'drop-shadow(0 0 4px #8b5cf6aa)' : 'none', transition: 'filter .15s' }}>◆</span>
+      {show && (
         <div style={{ position: 'absolute', top: 18, left: '50%', transform: 'translateX(-50%)', background: '#1e1b4b', color: '#c4b5fd', fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 5, whiteSpace: 'nowrap', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,.3)', zIndex: 20 }}>
           ◆ {marker.name}
         </div>
