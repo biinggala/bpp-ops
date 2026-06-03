@@ -16,7 +16,7 @@ import { useMobile } from '../../hooks/useMobile'
 import { AssigneeAvatar } from '../shared/Avatar'
 import { STATUS_LIST, PRIORITY_LIST } from '../../types'
 import type { Task, Status, Priority, TaskLink } from '../../types'
-import { gid } from '../../lib/utils'
+import { gid, canAccessProject } from '../../lib/utils'
 
 const SIDEBAR_KEY = 'cringe_detail_sidebar_w'
 const MIN_SIDEBAR = 200
@@ -561,7 +561,7 @@ export function TaskDetailModal() {
   const allProjects = useProjectStore(s => s.projects)
   // Only projects the current user is a member of
   const projects = allProjects.filter(p =>
-    !p.memberEmails?.length || (userEmail ? p.memberEmails.includes(userEmail) : false)
+    canAccessProject(p, userEmail)
   )
   const milestones = useMilestoneStore(s => s.milestones)
   const isMobile = useMobile()

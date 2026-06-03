@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { canAccessProject } from '../../lib/utils'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useAuthStore } from '../../store/authStore'
@@ -59,7 +60,7 @@ export function Sidebar() {
 
   const accessibleProjectIds = new Set(
     projects
-      .filter(p => !p.memberEmails?.length || (email ? p.memberEmails.includes(email) : false))
+      .filter(p => canAccessProject(p, email))
       .map(p => p.id)
   )
   const hasAccess = accessibleProjectIds.size > 0
@@ -128,7 +129,7 @@ export function Sidebar() {
   const presences = usePresenceStore(s => s.presences)
 
   const visibleProjects = projects.filter(p =>
-    !p.memberEmails?.length || (email ? p.memberEmails.includes(email) : false)
+    canAccessProject(p, email)
   )
   const onlineUsers = Object.values(presences).filter(p => p.online)
 

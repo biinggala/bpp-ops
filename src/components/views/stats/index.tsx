@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { canAccessProject } from '../../../lib/utils'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useSpaceStore } from '../../../store/spaceStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
@@ -57,9 +58,7 @@ export function StatsView() {
 
   // Build assignee list: project members first, then anyone who appears in task.assignee
   const assigneeKeys = useMemo(() => {
-    const accessibleProjects = projects.filter(p =>
-      !p.memberEmails?.length || (email ? p.memberEmails.some(e => e.toLowerCase() === email.toLowerCase()) : false)
-    )
+    const accessibleProjects = projects.filter(p => canAccessProject(p, email))
     const keys = new Set<string>()
     // Add all active project members
     accessibleProjects.forEach(p => p.memberEmails?.forEach(e => keys.add(e)))

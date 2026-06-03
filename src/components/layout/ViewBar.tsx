@@ -1,4 +1,5 @@
 import React from 'react'
+import { canAccessProject } from '../../lib/utils'
 import { useUiStore } from '../../store/uiStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
@@ -33,7 +34,7 @@ export function ViewBar() {
 
   // Only show projects the current user is a member of (same rule as Sidebar)
   const accessibleProjects = React.useMemo(() =>
-    projects.filter(p => !p.memberEmails?.length || (email ? p.memberEmails.includes(email) : false))
+    projects.filter(p => canAccessProject(p, email))
   , [projects, email])
 
   const allTagOptions = React.useMemo(() => {

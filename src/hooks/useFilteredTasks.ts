@@ -3,6 +3,7 @@ import { useTaskStore } from '../store/taskStore'
 import { useUiStore } from '../store/uiStore'
 import { useAuthStore } from '../store/authStore'
 import { useProjectStore } from '../store/projectStore'
+import { canAccessProject } from '../lib/utils'
 import type { Task } from '../types'
 
 export function useFilteredTasks(): Task[] {
@@ -13,12 +14,8 @@ export function useFilteredTasks(): Task[] {
   const projects = useProjectStore(s => s.projects)
 
   return useMemo(() => {
-    // Projects this user can access (invited or legacy with no memberEmails)
-    const normalizedEmail = email?.toLowerCase() ?? ''
     const accessibleIds = new Set(
-      projects
-        .filter(p => !p.memberEmails?.length || (normalizedEmail ? p.memberEmails.some(e => e.toLowerCase() === normalizedEmail) : false))
-        .map(p => p.id)
+      projects.filter(p => canAccessProject(p, email)).map(p => p.id)
     )
     const hasAccess = accessibleIds.size > 0
 
