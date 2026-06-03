@@ -3,6 +3,7 @@ import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMilestoneStore } from '../../store/milestoneStore'
+import { useAccessibleTasks } from '../../hooks/useAccessibleTasks'
 import { useAuthStore } from '../../store/authStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { useMobile } from '../../hooks/useMobile'
@@ -289,12 +290,12 @@ const inputStyle: React.CSSProperties = {
 }
 
 function TagInput({ value, onChange }: { value: string[]; onChange: (tags: string[]) => void }) {
-  const allTasks = useTaskStore(s => s.tasks)
+  const accessibleTasks = useAccessibleTasks()
   const allTags = useMemo(() => {
     const s = new Set<string>()
-    allTasks.forEach(t => t.tags?.forEach(tag => s.add(tag)))
+    accessibleTasks.forEach(t => t.tags?.forEach(tag => s.add(tag)))
     return Array.from(s).sort()
-  }, [allTasks])
+  }, [accessibleTasks])
 
   const [input, setInput] = useState('')
   const [open, setOpen] = useState(false)
@@ -391,18 +392,18 @@ function DependencyPicker({ taskId, type, selected, onChange }: {
   selected: string[]
   onChange: (ids: string[]) => void
 }) {
-  const allTasks = useTaskStore(s => s.tasks)
+  const accessibleTasks = useAccessibleTasks()
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
-  const candidates = allTasks.filter(t =>
+  const candidates = accessibleTasks.filter(t =>
     t.id !== taskId &&
     !selected.includes(t.id) &&
     (query === '' || t.name.toLowerCase().includes(query.toLowerCase()))
   )
 
-  const selectedTasks = allTasks.filter(t => selected.includes(t.id))
+  const selectedTasks = accessibleTasks.filter(t => selected.includes(t.id))
 
   useEffect(() => {
     if (!open) return

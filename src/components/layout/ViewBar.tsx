@@ -1,9 +1,9 @@
 import React from 'react'
 import { useUiStore } from '../../store/uiStore'
-import { useTaskStore } from '../../store/taskStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { useAuthStore } from '../../store/authStore'
+import { useAccessibleTasks } from '../../hooks/useAccessibleTasks'
 import { useMobile } from '../../hooks/useMobile'
 import { MEMBERS } from '../../types'
 import type { ViewType, Status, MemberKey } from '../../types'
@@ -26,7 +26,7 @@ const SORT_OPTIONS = [
 export function ViewBar() {
   const { view, setView, filters, setFilters, resetFilters, showGCal, setShowGCal } = useUiStore()
   const isMobile = useMobile()
-  const allTasks = useTaskStore(s => s.tasks)
+  const accessibleTasks = useAccessibleTasks()
   const projects = useProjectStore(s => s.projects)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const email = useAuthStore(s => s.email)
@@ -38,23 +38,23 @@ export function ViewBar() {
 
   const allTagOptions = React.useMemo(() => {
     const s = new Set<string>()
-    allTasks.forEach(t => t.tags?.forEach(tag => s.add(tag)))
+    accessibleTasks.forEach(t => t.tags?.forEach(tag => s.add(tag)))
     return Array.from(s).sort()
-  }, [allTasks])
+  }, [accessibleTasks])
 
   const allAssigneeOptions = React.useMemo(() => {
     const keys = new Set<string>()
-    // Only from accessible projects
+    // From accessible project member lists
     accessibleProjects.forEach(p => p.memberEmails?.forEach(e => keys.add(e)))
-    // Also include any assignee from existing tasks (catches legacy MemberKeys)
-    allTasks.forEach(t => {
+    // Also scan accessible tasks for legacy MemberKey assignees
+    accessibleTasks.forEach(t => {
       if (t.assignee) t.assignee.split(',').map(s => s.trim()).filter(Boolean).forEach(k => keys.add(k))
     })
     return Array.from(keys).sort().map(key => {
       const known = MEMBERS[key as MemberKey]
       return { value: key, label: known?.n ?? getNameByEmail(key) }
     })
-  }, [allTasks, accessibleProjects, getNameByEmail])
+  }, [accessibleTasks, accessibleProjects, getNameByEmail])
 
   const allProjectOptions = React.useMemo(() =>
     accessibleProjects.map(p => ({ value: p.id, label: p.name }))
