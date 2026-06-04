@@ -365,6 +365,7 @@ export function TableView() {
   const [msCtxMenu, setMsCtxMenu] = useState<MsCtxState>(null)
   const [addingMs, setAddingMs] = useState<string | null>(null)
   const [draftMsId, setDraftMsId] = useState<string | null>(null)
+  const [draftSubtaskParentId, setDraftSubtaskParentId] = useState<string | null>(null)
   const today = React.useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
 
   // ── Column state ────────────────────────────────────────────────────────────
@@ -547,19 +548,37 @@ export function TableView() {
             const ch = makeHandlers(child)
             const cOpts = getAssigneeOptions(child.projectId)
             return (
-              <Row key={child.id} cols={cols} task={child} isChild
-                milestones={pickerMilestones} showMilestonePicker={pickerMilestones.length > 0}
-                assigneeOptions={cOpts} allTags={allTags}
-                {...ch}
-                isDragging={draggingTaskId === child.id}
-                isDragTarget={false}
-                canDrag={true}
-                canBeDropTarget={false}
-                onDragStart={() => setDraggingTaskId(child.id)}
-                onDragEnd={() => { setDraggingTaskId(null); setDropTargetId(null) }}
-              />
+              <React.Fragment key={child.id}>
+                <Row cols={cols} task={child} isChild
+                  milestones={pickerMilestones} showMilestonePicker={pickerMilestones.length > 0}
+                  assigneeOptions={cOpts} allTags={allTags}
+                  {...ch}
+                  isDragging={draggingTaskId === child.id}
+                  isDragTarget={false}
+                  canDrag={true}
+                  canBeDropTarget={false}
+                  onDragStart={() => setDraggingTaskId(child.id)}
+                  onDragEnd={() => { setDraggingTaskId(null); setDropTargetId(null) }}
+                />
+                {draftSubtaskParentId === child.id && (
+                  <AddTaskRow cols={cols} isSubtask parentId={child.id}
+                    assigneeOptions={cOpts} projectId={child.projectId} milestoneId={child.milestoneId}
+                    space={space ?? ''} addTask={addTask} userEmail={userEmail}
+                    onDone={another => { if (!another) setDraftSubtaskParentId(null) }}
+                    onCancel={() => setDraftSubtaskParentId(null)}
+                  />
+                )}
+              </React.Fragment>
             )
           })}
+          {draftSubtaskParentId === task.id && (
+            <AddTaskRow cols={cols} isSubtask parentId={task.id}
+              assigneeOptions={aOpts} projectId={task.projectId} milestoneId={task.milestoneId}
+              space={space ?? ''} addTask={addTask} userEmail={userEmail}
+              onDone={another => { if (!another) setDraftSubtaskParentId(null) }}
+              onCancel={() => setDraftSubtaskParentId(null)}
+            />
+          )}
         </React.Fragment>
       )
     })
@@ -668,8 +687,9 @@ export function TableView() {
       onEdit={() => { openTaskDetail(ctxMenu.task.id); setCtxMenu(null) }}
       onAddSubtask={() => {
         const parent = ctxMenu.task
-        const child = addTask({ type: '세부', cat: parent.cat, name: '새 하위 업무', assignee: '', start: '', due: '', priority: '중간', status: '대기', progress: 0, memo: '', parentId: parent.id, projectId: parent.projectId, milestoneId: parent.milestoneId, createdBy: userEmail ?? undefined })
-        openTaskDetail(child.id)
+        if (collapsed.has(parent.id)) toggle(parent.id)
+        setDraftSubtaskParentId(parent.id)
+        setCtxMenu(null)
       }}
       onStatusChange={s => updateTask(ctxMenu.task.id, { status: s })}
       onDelete={() => {
@@ -1566,16 +1586,138 @@ function AddRowStatusSelect({ value, onChange }: {
   )
 }
 
+// ── AddRowDatePicker ──────────────────────────────────────────────────────────
+
+function AddRowDatePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [viewYear, setViewYear] = useState(new Date().getFullYear())
+  const [viewMonth, setViewMonth] = useState(new Date().getMonth())
+  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const d = value ? new Date(value + 'T00:00:00') : new Date()
+    setViewYear(d.getFullYear()); setViewMonth(d.getMonth())
+    const h = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open, value])
+
+  const toggle = () => {
+    if (!open && triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 2, left: r.left })
+    }
+    setOpen(o => !o)
+  }
+
+  const prevMonth = () => setViewMonth(m => { if (m === 0) { setViewYear(y => y - 1); return 11 } return m - 1 })
+  const nextMonth = () => setViewMonth(m => { if (m === 11) { setViewYear(y => y + 1); return 0 } return m + 1 })
+
+  const firstDow = new Date(viewYear, viewMonth, 1).getDay()
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
+  const cells: (number | null)[] = []
+  for (let i = 0; i < firstDow; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  const today = new Date()
+  const todayD = today.getFullYear() === viewYear && today.getMonth() === viewMonth ? today.getDate() : null
+  const selD = (() => {
+    if (!value) return null
+    const d = new Date(value + 'T00:00:00')
+    return d.getFullYear() === viewYear && d.getMonth() === viewMonth ? d.getDate() : null
+  })()
+
+  const pick = (day: number) => {
+    const m = String(viewMonth + 1).padStart(2, '0'), dd = String(day).padStart(2, '0')
+    onChange(`${viewYear}-${m}-${dd}`)
+    setOpen(false)
+  }
+
+  const displayStr = value ? (() => {
+    const d = new Date(value + 'T00:00:00')
+    return `${d.getMonth() + 1}/${d.getDate()}`
+  })() : null
+
+  const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
+  const DAYS = ['일','월','화','수','목','금','토']
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative', width: '100%' }}
+      onKeyDown={e => { if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false) } }}
+    >
+      <div
+        ref={triggerRef} onClick={toggle}
+        style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', padding: '3px 6px', borderRadius: 3, outline: '1px solid var(--ac)', background: 'var(--bg)', width: '100%', boxSizing: 'border-box' as const }}
+      >
+        <span style={{ flex: 1, fontSize: 13, color: displayStr ? 'var(--t1)' : 'var(--t3)' }}>
+          {displayStr || '— 마감일'}
+        </span>
+        <span style={{ fontSize: 12, color: 'var(--t3)', flexShrink: 0 }}>▾</span>
+      </div>
+
+      {open && (
+        <div style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9001, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', width: 234, padding: '10px', userSelect: 'none' as const }}>
+          {/* Month nav */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <button onMouseDown={e => { e.preventDefault(); prevMonth() }} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--t2)', padding: '2px 6px', borderRadius: 3, lineHeight: 1 }}>‹</button>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--t1)' }}>{viewYear}년 {MONTHS[viewMonth]}</span>
+            <button onMouseDown={e => { e.preventDefault(); nextMonth() }} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--t2)', padding: '2px 6px', borderRadius: 3, lineHeight: 1 }}>›</button>
+          </div>
+          {/* Day headers */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 4 }}>
+            {DAYS.map((d, i) => (
+              <div key={d} style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, padding: '2px 0', color: i === 0 ? '#ef4444' : i === 6 ? '#3b82f6' : 'var(--t3)' }}>{d}</div>
+            ))}
+          </div>
+          {/* Day grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+            {cells.map((day, idx) => {
+              if (!day) return <div key={idx} />
+              const dow = (firstDow + day - 1) % 7
+              const isSel = day === selD
+              const isToday = day === todayD
+              return (
+                <div key={idx} onMouseDown={e => { e.preventDefault(); pick(day) }}
+                  style={{ textAlign: 'center', padding: '4px 0', borderRadius: 4, fontSize: 12, cursor: 'pointer', fontWeight: isSel || isToday ? 600 : 400, background: isSel ? 'var(--ac)' : isToday ? 'var(--ac-l)' : 'transparent', color: isSel ? '#fff' : dow === 0 ? '#ef4444' : dow === 6 ? '#3b82f6' : 'var(--t1)', outline: isToday && !isSel ? '1px solid var(--ac)' : 'none' }}
+                  onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'var(--bg3)' }}
+                  onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = isToday ? 'var(--ac-l)' : 'transparent' }}
+                >{day}</div>
+              )
+            })}
+          </div>
+          {value && (
+            <div style={{ borderTop: '1px solid var(--bd)', marginTop: 8, paddingTop: 6, textAlign: 'center' }}>
+              <span onMouseDown={e => { e.preventDefault(); onChange(''); setOpen(false) }}
+                style={{ fontSize: 11, color: 'var(--t3)', cursor: 'pointer' }}
+                onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'var(--t3)')}
+              >날짜 지우기</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── AddTaskRow ────────────────────────────────────────────────────────────────
 
-function AddTaskRow({ cols, assigneeOptions, milestoneId, projectId, space, addTask, userEmail, onDone, onCancel }: {
+function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, space, addTask, userEmail, isSubtask = false, onDone, onCancel }: {
   cols: ColDef[]
   assigneeOptions: { value: string; label: string }[]
   milestoneId?: string
+  parentId?: string
   projectId?: string
   space: string
   addTask: (t: Omit<Task, 'id'>) => Task
   userEmail: string | null
+  isSubtask?: boolean
   onDone: (addAnother: boolean) => void
   onCancel: () => void
 }) {
@@ -1599,9 +1741,9 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, projectId, space, addT
   const doSave = (addAnother: boolean) => {
     if (!name.trim()) { nameRef.current?.focus(); return }
     addTask({
-      type: '상위', cat: space, name: name.trim(), assignee,
+      type: parentId ? '세부' : '상위', cat: space, name: name.trim(), assignee,
       start: '', due, priority: '중간', status,
-      progress: 0, memo: '', projectId, milestoneId,
+      progress: 0, memo: '', parentId, projectId, milestoneId,
       createdBy: userEmail ?? undefined,
     })
     setName(''); setAssignee(''); setDue(''); setStatus('대기')
@@ -1630,7 +1772,7 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, projectId, space, addT
     switch (col.key) {
       case 'name':
         return (
-          <div key="name" style={{ ...base, position: 'sticky', left: 0, zIndex: 2, background: 'rgba(35,131,226,.04)', boxShadow: '2px 0 4px rgba(0,0,0,.06)', paddingLeft: 14 }}>
+          <div key="name" style={{ ...base, position: 'sticky', left: 0, zIndex: 2, background: 'rgba(35,131,226,.04)', boxShadow: '2px 0 4px rgba(0,0,0,.06)', paddingLeft: isSubtask ? 88 : 14 }}>
             <input
               ref={nameRef}
               value={name} onChange={e => setName(e.target.value)}
@@ -1648,10 +1790,7 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, projectId, space, addT
       case 'due':
         return (
           <div key="due" style={base}>
-            <input
-              type="date" value={due} onChange={e => setDue(e.target.value)}
-              style={{ ...inp, colorScheme: 'dark' }}
-            />
+            <AddRowDatePicker value={due} onChange={setDue} />
           </div>
         )
       case 'status':
