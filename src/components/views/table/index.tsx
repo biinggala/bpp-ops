@@ -1417,6 +1417,155 @@ function AddMilestoneInline({ projectId, onDone }: { projectId: string; onDone: 
   )
 }
 
+// ── AddRowAssigneeSelect — simple single-select for the add row ───────────────
+
+function AddRowAssigneeSelect({ value, options, onChange }: {
+  value: string
+  options: { value: string; label: string }[]
+  onChange: (v: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const current = options.find(o => o.value === value)
+
+  useEffect(() => {
+    if (!open) return
+    const h = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+
+  const toggle = () => {
+    if (!open && triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 2, left: r.left })
+    }
+    setOpen(o => !o)
+  }
+
+  const pick = (v: string) => { onChange(v); setOpen(false) }
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative', width: '100%' }}
+      onKeyDown={e => { if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false) } }}
+    >
+      <div
+        ref={triggerRef}
+        onClick={toggle}
+        style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', padding: '3px 6px', borderRadius: 3, outline: '1px solid var(--ac)', background: 'var(--bg)', width: '100%', boxSizing: 'border-box' }}
+      >
+        <span style={{ flex: 1, fontSize: 13, color: current ? 'var(--t1)' : 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {current ? current.label : '— 미배정'}
+        </span>
+        <span style={{ fontSize: 9, color: 'var(--t3)', flexShrink: 0 }}>▾</span>
+      </div>
+
+      {open && (
+        <div style={{
+          position: 'fixed', top: pos.top, left: pos.left, zIndex: 9001,
+          background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
+          boxShadow: 'var(--sh-md)', minWidth: 160, maxHeight: 240, overflowY: 'auto', padding: '4px 0',
+        }}>
+          <div
+            onMouseDown={e => { e.preventDefault(); pick('') }}
+            style={{ padding: '6px 12px', fontSize: 13, cursor: 'pointer', color: !value ? 'var(--ac)' : 'var(--t2)', fontWeight: !value ? 500 : 400 }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >— 미배정</div>
+          {options.map(opt => (
+            <div
+              key={opt.value}
+              onMouseDown={e => { e.preventDefault(); pick(opt.value) }}
+              style={{ padding: '6px 12px', fontSize: 13, cursor: 'pointer', color: opt.value === value ? 'var(--ac)' : 'var(--t2)', fontWeight: opt.value === value ? 500 : 400 }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >{opt.label}</div>
+          ))}
+          {options.length === 0 && (
+            <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--t3)' }}>멤버가 없습니다</div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── AddRowStatusSelect ────────────────────────────────────────────────────────
+
+function AddRowStatusSelect({ value, onChange }: {
+  value: Status
+  onChange: (v: Status) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const s = STATUS_STYLE[value]
+
+  useEffect(() => {
+    if (!open) return
+    const h = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+
+  const toggle = () => {
+    if (!open && triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 2, left: r.left })
+    }
+    setOpen(o => !o)
+  }
+
+  const pick = (v: Status) => { onChange(v); setOpen(false) }
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}
+      onKeyDown={e => { if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false) } }}
+    >
+      <div
+        ref={triggerRef}
+        onClick={toggle}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 12, background: s.bg, color: s.color, fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap', cursor: 'pointer' }}
+      >
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+        {value}
+        <span style={{ fontSize: 9, opacity: .6 }}>▾</span>
+      </div>
+      {open && (
+        <div style={{
+          position: 'fixed', top: pos.top, left: pos.left, zIndex: 9001,
+          background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
+          boxShadow: 'var(--sh-md)', minWidth: 120, padding: '4px 0',
+        }}>
+          {(['진행중','대기','검토중','완료'] as Status[]).map(st => {
+            const ss = STATUS_STYLE[st]
+            return (
+              <div
+                key={st}
+                onMouseDown={e => { e.preventDefault(); pick(st) }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', cursor: 'pointer', background: 'transparent' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: ss.color, flexShrink: 0 }} />
+                <span style={{ fontSize: 13, color: st === value ? ss.color : 'var(--t2)', fontWeight: st === value ? 600 : 400 }}>{st}</span>
+                {st === value && <span style={{ marginLeft: 'auto', fontSize: 10, color: ss.color }}>✓</span>}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── AddTaskRow ────────────────────────────────────────────────────────────────
 
 function AddTaskRow({ cols, assigneeOptions, milestoneId, projectId, space, addTask, userEmail, onDone, onCancel }: {
@@ -1460,14 +1609,9 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, projectId, space, addT
     if (addAnother) setTimeout(() => nameRef.current?.focus(), 0)
   }
 
-  // Catch Enter / Esc bubbling up from any child (Select, input, etc.)
   const handleContainerKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') { e.stopPropagation(); onCancel(); return }
-    // Don't intercept Enter on a <select> — browser uses it to confirm selection
-    if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'SELECT') {
-      e.preventDefault()
-      doSave(!e.shiftKey)
-    }
+    if (e.key === 'Enter') { e.preventDefault(); doSave(!e.shiftKey) }
   }
 
   const inp: React.CSSProperties = {
@@ -1497,8 +1641,8 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, projectId, space, addT
         )
       case 'assignee':
         return (
-          <div key="assignee" style={{ ...base, padding: '4px 8px' }}>
-            <AssigneeMultiSelect assignee={assignee} options={assigneeOptions} onChange={setAssignee} />
+          <div key="assignee" style={base}>
+            <AddRowAssigneeSelect value={assignee} options={assigneeOptions} onChange={setAssignee} />
           </div>
         )
       case 'due':
@@ -1513,12 +1657,7 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, projectId, space, addT
       case 'status':
         return (
           <div key="status" style={{ ...base, padding: '6px 10px' }}>
-            <ColoredSelect
-              value={status}
-              options={(['진행중','대기','검토중','완료'] as Status[])}
-              styleMap={STATUS_STYLE}
-              onChange={v => setStatus(v as Status)}
-            />
+            <AddRowStatusSelect value={status} onChange={setStatus} />
           </div>
         )
       default:
