@@ -1435,9 +1435,9 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, projectId, space, addT
   const [due, setDue] = useState('')
   const [status, setStatus] = useState<Status>('대기')
   const containerRef = useRef<HTMLDivElement>(null)
-  const fieldRefs = useRef<Record<string, HTMLElement | null>>({})
+  const nameRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => { fieldRefs.current['name']?.focus() }, [])
+  useEffect(() => { nameRef.current?.focus() }, [])
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -1447,14 +1447,8 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, projectId, space, addT
     return () => document.removeEventListener('mousedown', h)
   }, [onCancel])
 
-  const tabFields = cols
-    .filter(c => ['name', 'assignee', 'due', 'status'].includes(c.key))
-    .map(c => c.key)
-
-  const focusField = (key: string) => fieldRefs.current[key]?.focus()
-
   const doSave = (addAnother: boolean) => {
-    if (!name.trim()) { focusField('name'); return }
+    if (!name.trim()) { nameRef.current?.focus(); return }
     addTask({
       type: '상위', cat: space, name: name.trim(), assignee,
       start: '', due, priority: '중간', status,
@@ -1463,21 +1457,16 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, projectId, space, addT
     })
     setName(''); setAssignee(''); setDue(''); setStatus('대기')
     onDone(addAnother)
-    if (addAnother) setTimeout(() => focusField('name'), 0)
+    if (addAnother) setTimeout(() => nameRef.current?.focus(), 0)
   }
 
-  const handleKey = (fieldKey: string) => (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') { e.preventDefault(); onCancel(); return }
-    if (e.key === 'Enter') { e.preventDefault(); doSave(!e.shiftKey); return }
-    if (e.key === 'Tab') {
+  // Catch Enter / Esc bubbling up from any child (Select, input, etc.)
+  const handleContainerKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') { e.stopPropagation(); onCancel(); return }
+    // Don't intercept Enter on a <select> — browser uses it to confirm selection
+    if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'SELECT') {
       e.preventDefault()
-      const idx = tabFields.indexOf(fieldKey)
-      if (e.shiftKey) {
-        if (idx > 0) focusField(tabFields[idx - 1])
-      } else {
-        if (idx < tabFields.length - 1) focusField(tabFields[idx + 1])
-        else doSave(true)
-      }
+      doSave(!e.shiftKey)
     }
   }
 
@@ -1491,7 +1480,7 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, projectId, space, addT
     const base: React.CSSProperties = {
       width: col.width, minWidth: col.width, maxWidth: col.width, flexShrink: 0,
       padding: '6px 10px', display: 'flex', alignItems: 'center',
-      minHeight: 44, overflow: 'hidden',
+      minHeight: 44,
       borderRight: isLast ? 'none' : '1px solid var(--bd)',
     }
     switch (col.key) {
@@ -1499,52 +1488,37 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, projectId, space, addT
         return (
           <div key="name" style={{ ...base, position: 'sticky', left: 0, zIndex: 2, background: 'rgba(35,131,226,.04)', boxShadow: '2px 0 4px rgba(0,0,0,.06)', paddingLeft: 14 }}>
             <input
-              ref={el => { fieldRefs.current['name'] = el }}
+              ref={nameRef}
               value={name} onChange={e => setName(e.target.value)}
-              onKeyDown={handleKey('name')}
-              placeholder="업무 이름 입력..."
+              placeholder="업무 이름 입력... (Enter로 추가)"
               style={inp}
             />
           </div>
         )
       case 'assignee':
         return (
-          <div key="assignee" style={base}>
-            <select
-              ref={el => { fieldRefs.current['assignee'] = el }}
-              value={assignee} onChange={e => setAssignee(e.target.value)}
-              onKeyDown={handleKey('assignee')}
-              style={{ ...inp, cursor: 'pointer' }}
-            >
-              <option value="">— 미배정</option>
-              {assigneeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+          <div key="assignee" style={{ ...base, padding: '4px 8px' }}>
+            <AssigneeMultiSelect assignee={assignee} options={assigneeOptions} onChange={setAssignee} />
           </div>
         )
       case 'due':
         return (
           <div key="due" style={base}>
             <input
-              ref={el => { fieldRefs.current['due'] = el }}
               type="date" value={due} onChange={e => setDue(e.target.value)}
-              onKeyDown={handleKey('due')}
               style={{ ...inp, colorScheme: 'dark' }}
             />
           </div>
         )
       case 'status':
         return (
-          <div key="status" style={base}>
-            <select
-              ref={el => { fieldRefs.current['status'] = el }}
-              value={status} onChange={e => setStatus(e.target.value as Status)}
-              onKeyDown={handleKey('status')}
-              style={{ ...inp, cursor: 'pointer' }}
-            >
-              {(['진행중','대기','검토중','완료'] as Status[]).map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
+          <div key="status" style={{ ...base, padding: '6px 10px' }}>
+            <ColoredSelect
+              value={status}
+              options={(['진행중','대기','검토중','완료'] as Status[])}
+              styleMap={STATUS_STYLE}
+              onChange={v => setStatus(v as Status)}
+            />
           </div>
         )
       default:
@@ -1555,6 +1529,7 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, projectId, space, addT
   return (
     <div
       ref={containerRef}
+      onKeyDown={handleContainerKey}
       style={{
         display: 'flex', minWidth: '100%',
         background: 'rgba(35,131,226,.04)',
@@ -1563,23 +1538,7 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, projectId, space, addT
       }}
     >
       {cols.map((col, idx) => renderCell(col, idx === cols.length - 1))}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 8px', gap: 4, flexShrink: 0 }}>
-        <button
-          onMouseDown={e => { e.preventDefault(); doSave(true) }}
-          title="저장 후 새 행 (Enter)"
-          style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid var(--ac)', background: 'rgba(35,131,226,.1)', color: 'var(--ac)', cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}
-        >↵ 추가</button>
-        <button
-          onMouseDown={e => { e.preventDefault(); doSave(false) }}
-          title="저장 후 닫기 (Shift+Enter)"
-          style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}
-        >✓ 완료</button>
-        <button
-          onMouseDown={e => { e.preventDefault(); onCancel() }}
-          title="취소 (Esc)"
-          style={{ padding: '3px 6px', fontSize: 13, borderRadius: 'var(--r1)', border: 'none', background: 'transparent', color: 'var(--t3)', cursor: 'pointer', fontFamily: 'var(--font)', lineHeight: 1 }}
-        >✕</button>
-      </div>
+      <div style={{ flex: 1 }} />
     </div>
   )
 }
