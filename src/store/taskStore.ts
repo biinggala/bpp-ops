@@ -7,7 +7,7 @@ import type { Task, Status } from '../types'
 interface TaskState {
   tasks: Task[]
   history: Task[][]
-  addTask: (t: Omit<Task, 'id'>) => void
+  addTask: (t: Omit<Task, 'id'>) => Task
   updateTask: (id: string, patch: Partial<Task>) => void
   deleteTask: (id: string) => void
   reorderTasks: (tasks: Task[]) => void
@@ -39,6 +39,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const tasks = [...get().tasks, task]
     set({ tasks, history: pushHistory(get) }); persist(tasks)
     get().syncToFirebase()
+    return task
   },
 
   updateTask: (id, patch) => {

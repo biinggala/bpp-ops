@@ -77,10 +77,11 @@ type MsCtxState = { x: number; y: number; onAdd: () => void } | null
 function MobileTableView() {
   const filteredTasks = useFilteredTasks()
   const allTasks = useTaskStore(s => s.tasks)
-  const { updateTask, deleteTask } = useTaskStore()
-  const { openTaskModal, openTaskDetail, projectId } = useUiStore()
+  const { addTask, updateTask, deleteTask } = useTaskStore()
+  const { openTaskModal: _openTaskModal, openTaskDetail, projectId } = useUiStore()
   const { milestones, updateMilestone } = useMilestoneStore()
   const projects = useProjectStore(s => s.projects)
+  const userEmail = useAuthStore(s => s.email)
 
   const rootTasks = filteredTasks.filter(t => !t.parentId)
   const getChildren = (id: string) => allTasks.filter(t => t.parentId === id)
@@ -175,7 +176,7 @@ function MobileTableView() {
           </span>
           {!isDone && (
             <button
-              onClick={e => { e.stopPropagation(); openTaskModal(undefined, task.id) }}
+              onClick={e => { e.stopPropagation(); const child = addTask({ type: '세부', cat: task.cat, name: '새 하위 업무', assignee: '', start: '', due: '', priority: '중간', status: '대기', progress: 0, memo: '', parentId: task.id, projectId: task.projectId, milestoneId: task.milestoneId, createdBy: userEmail ?? undefined }); openTaskDetail(child.id) }}
               style={{ width: 26, height: 26, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: 18, padding: 0, lineHeight: 1 }}
             >⊕</button>
           )}
@@ -249,7 +250,7 @@ function MobileTableView() {
 
   const addTaskBtn = (milestoneId?: string) => (
     <button
-      onClick={() => openTaskModal(undefined, undefined, milestoneId)}
+      onClick={() => _openTaskModal(undefined, undefined, milestoneId)}
       style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', fontSize: 14, color: 'var(--ac)', background: 'transparent', border: 'none', borderTop: '1px solid var(--bd)', cursor: 'pointer', fontFamily: 'var(--font)' }}
     >
       <span style={{ fontSize: 20, lineHeight: 1 }}>+</span> 업무 추가
@@ -260,8 +261,13 @@ function MobileTableView() {
     <ContextMenu
       x={mobCtxMenu.x} y={mobCtxMenu.y} task={mobCtxMenu.task}
       onClose={() => setMobCtxMenu(null)}
-      onEdit={() => openTaskModal(mobCtxMenu.task.id)}
-      onAddSubtask={() => openTaskModal(undefined, mobCtxMenu.task.id)}
+      onEdit={() => { openTaskDetail(mobCtxMenu.task.id); setMobCtxMenu(null) }}
+      onAddSubtask={() => {
+        const parent = mobCtxMenu.task
+        const child = addTask({ type: '세부', cat: parent.cat, name: '새 하위 업무', assignee: '', start: '', due: '', priority: '중간', status: '대기', progress: 0, memo: '', parentId: parent.id, projectId: parent.projectId, milestoneId: parent.milestoneId, createdBy: userEmail ?? undefined })
+        openTaskDetail(child.id)
+        setMobCtxMenu(null)
+      }}
       onStatusChange={s => updateTask(mobCtxMenu.task.id, { status: s })}
       onDelete={() => deleteTask(mobCtxMenu.task.id)}
     />
@@ -586,7 +592,7 @@ export function TableView() {
                 onAddTask={() => { setDraftMsId(ms.id) }}
                 onUpdate={patch => updateMilestone(ms.id, patch)}
                 onDelete={() => deleteMilestone(ms.id)}
-                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMsCtxMenu({ x: e.clientX, y: e.clientY, onAdd: () => openTaskModal(undefined, undefined, ms.id, ms.projectId) }) }}
+                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMsCtxMenu({ x: e.clientX, y: e.clientY, onAdd: () => { if (collapsedMs.has(ms.id)) toggleMs(ms.id); setDraftMsId(ms.id) } }) }}
               />
               {!isCollapsed && renderRows(msTasks, pjMilestones)}
               {!isCollapsed && draftMsId === ms.id && (
@@ -612,7 +618,7 @@ export function TableView() {
               minWidth={totalColWidth}
               onToggle={() => toggleMs('__none__')}
               onAddTask={() => { setDraftMsId('__none__') }}
-              onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMsCtxMenu({ x: e.clientX, y: e.clientY, onAdd: () => openTaskModal(undefined, undefined, undefined, pjMilestones[0]?.projectId) }) }} />
+              onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMsCtxMenu({ x: e.clientX, y: e.clientY, onAdd: () => { if (collapsedMs.has('__none__')) toggleMs('__none__'); setDraftMsId('__none__') } }) }} />
             {!collapsedMs.has('__none__') && renderRows(unassigned, pjMilestones)}
             {!collapsedMs.has('__none__') && draftMsId === '__none__' && (
               <AddTaskRow
@@ -660,7 +666,11 @@ export function TableView() {
       x={ctxMenu.x} y={ctxMenu.y} task={ctxMenu.task}
       onClose={() => setCtxMenu(null)}
       onEdit={() => { openTaskDetail(ctxMenu.task.id); setCtxMenu(null) }}
-      onAddSubtask={() => openTaskModal(undefined, ctxMenu.task.id)}
+      onAddSubtask={() => {
+        const parent = ctxMenu.task
+        const child = addTask({ type: '세부', cat: parent.cat, name: '새 하위 업무', assignee: '', start: '', due: '', priority: '중간', status: '대기', progress: 0, memo: '', parentId: parent.id, projectId: parent.projectId, milestoneId: parent.milestoneId, createdBy: userEmail ?? undefined })
+        openTaskDetail(child.id)
+      }}
       onStatusChange={s => updateTask(ctxMenu.task.id, { status: s })}
       onDelete={() => {
         if (!confirm('삭제할까요?')) return
@@ -1415,7 +1425,7 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, projectId, space, addT
   milestoneId?: string
   projectId?: string
   space: string
-  addTask: (t: Omit<Task, 'id'>) => void
+  addTask: (t: Omit<Task, 'id'>) => Task
   userEmail: string | null
   onDone: (addAnother: boolean) => void
   onCancel: () => void
