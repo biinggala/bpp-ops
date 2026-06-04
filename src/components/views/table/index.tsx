@@ -334,8 +334,8 @@ export function TableView() {
   const filteredTasks = useFilteredTasks()
   const allTasks = useTaskStore(s => s.tasks)          // raw — only for task-tree traversal
   const accessibleTasks = useAccessibleTasks()          // for option lists (tags etc.)
-  const { deleteTask, updateTask } = useTaskStore()
-  const { openTaskModal, openTaskDetail, projectId } = useUiStore()
+  const { addTask, deleteTask, updateTask } = useTaskStore()
+  const { openTaskModal, openTaskDetail, projectId, space } = useUiStore()
   const { milestones, updateMilestone, deleteMilestone } = useMilestoneStore()
   const allProjects = useProjectStore(s => s.projects)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
@@ -358,6 +358,7 @@ export function TableView() {
   const [ctxMenu, setCtxMenu] = useState<CtxState>(null)
   const [msCtxMenu, setMsCtxMenu] = useState<MsCtxState>(null)
   const [addingMs, setAddingMs] = useState<string | null>(null)
+  const [draftMsId, setDraftMsId] = useState<string | null>(null)
   const today = React.useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
 
   // ── Column state ────────────────────────────────────────────────────────────
@@ -558,6 +559,7 @@ export function TableView() {
     })
 
   const renderMilestoneGroups = (tasks: Task[], pjMilestones: Milestone[], onAdd: (msId?: string) => void) => {
+    const pjId = pjMilestones[0]?.projectId
     const grouped: Record<string, Task[]> = {}
     for (const ms of pjMilestones) grouped[ms.id] = []
     const unassigned: Task[] = []
@@ -581,12 +583,25 @@ export function TableView() {
                 minWidth={totalColWidth}
                 onToggle={() => toggleMs(ms.id)}
                 onToggleDone={() => updateMilestone(ms.id, { done: !ms.done })}
-                onAddTask={() => onAdd(ms.id)}
+                onAddTask={() => { setDraftMsId(ms.id) }}
                 onUpdate={patch => updateMilestone(ms.id, patch)}
                 onDelete={() => deleteMilestone(ms.id)}
                 onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMsCtxMenu({ x: e.clientX, y: e.clientY, onAdd: () => openTaskModal(undefined, undefined, ms.id, ms.projectId) }) }}
               />
               {!isCollapsed && renderRows(msTasks, pjMilestones)}
+              {!isCollapsed && draftMsId === ms.id && (
+                <AddTaskRow
+                  cols={cols}
+                  assigneeOptions={getAssigneeOptions(pjId)}
+                  milestoneId={ms.id}
+                  projectId={pjId}
+                  space={space ?? ''}
+                  addTask={addTask}
+                  userEmail={userEmail}
+                  onDone={(another) => { if (!another) setDraftMsId(null) }}
+                  onCancel={() => setDraftMsId(null)}
+                />
+              )}
             </React.Fragment>
           )
         })}
@@ -596,9 +611,22 @@ export function TableView() {
               collapsed={collapsedMs.has('__none__')}
               minWidth={totalColWidth}
               onToggle={() => toggleMs('__none__')}
-              onAddTask={() => onAdd()}
+              onAddTask={() => { setDraftMsId('__none__') }}
               onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMsCtxMenu({ x: e.clientX, y: e.clientY, onAdd: () => openTaskModal(undefined, undefined, undefined, pjMilestones[0]?.projectId) }) }} />
             {!collapsedMs.has('__none__') && renderRows(unassigned, pjMilestones)}
+            {!collapsedMs.has('__none__') && draftMsId === '__none__' && (
+              <AddTaskRow
+                cols={cols}
+                assigneeOptions={getAssigneeOptions(pjId)}
+                milestoneId={undefined}
+                projectId={pjId}
+                space={space ?? ''}
+                addTask={addTask}
+                userEmail={userEmail}
+                onDone={(another) => { if (!another) setDraftMsId(null) }}
+                onCancel={() => setDraftMsId(null)}
+              />
+            )}
           </>
         )}
       </>
@@ -1375,6 +1403,173 @@ function AddMilestoneInline({ projectId, onDone }: { projectId: string; onDone: 
         onClick={onDone}
         style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', color: 'var(--t3)', cursor: 'pointer', fontFamily: 'var(--font)' }}
       >취소</button>
+    </div>
+  )
+}
+
+// ── AddTaskRow ────────────────────────────────────────────────────────────────
+
+function AddTaskRow({ cols, assigneeOptions, milestoneId, projectId, space, addTask, userEmail, onDone, onCancel }: {
+  cols: ColDef[]
+  assigneeOptions: { value: string; label: string }[]
+  milestoneId?: string
+  projectId?: string
+  space: string
+  addTask: (t: Omit<Task, 'id'>) => void
+  userEmail: string | null
+  onDone: (addAnother: boolean) => void
+  onCancel: () => void
+}) {
+  const [name, setName] = useState('')
+  const [assignee, setAssignee] = useState('')
+  const [due, setDue] = useState('')
+  const [status, setStatus] = useState<Status>('대기')
+  const containerRef = useRef<HTMLDivElement>(null)
+  const fieldRefs = useRef<Record<string, HTMLElement | null>>({})
+
+  useEffect(() => { fieldRefs.current['name']?.focus() }, [])
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) onCancel()
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [onCancel])
+
+  const tabFields = cols
+    .filter(c => ['name', 'assignee', 'due', 'status'].includes(c.key))
+    .map(c => c.key)
+
+  const focusField = (key: string) => fieldRefs.current[key]?.focus()
+
+  const doSave = (addAnother: boolean) => {
+    if (!name.trim()) { focusField('name'); return }
+    addTask({
+      type: '상위', cat: space, name: name.trim(), assignee,
+      start: '', due, priority: '중간', status,
+      progress: 0, memo: '', projectId, milestoneId,
+      createdBy: userEmail ?? undefined,
+    })
+    setName(''); setAssignee(''); setDue(''); setStatus('대기')
+    onDone(addAnother)
+    if (addAnother) setTimeout(() => focusField('name'), 0)
+  }
+
+  const handleKey = (fieldKey: string) => (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') { e.preventDefault(); onCancel(); return }
+    if (e.key === 'Enter') { e.preventDefault(); doSave(!e.shiftKey); return }
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      const idx = tabFields.indexOf(fieldKey)
+      if (e.shiftKey) {
+        if (idx > 0) focusField(tabFields[idx - 1])
+      } else {
+        if (idx < tabFields.length - 1) focusField(tabFields[idx + 1])
+        else doSave(true)
+      }
+    }
+  }
+
+  const inp: React.CSSProperties = {
+    width: '100%', border: 'none', outline: '1px solid var(--ac)',
+    borderRadius: 3, background: 'var(--bg)', padding: '3px 6px',
+    fontFamily: 'var(--font)', fontSize: 13, color: 'var(--t1)',
+  }
+
+  const renderCell = (col: ColDef, isLast: boolean) => {
+    const base: React.CSSProperties = {
+      width: col.width, minWidth: col.width, maxWidth: col.width, flexShrink: 0,
+      padding: '6px 10px', display: 'flex', alignItems: 'center',
+      minHeight: 44, overflow: 'hidden',
+      borderRight: isLast ? 'none' : '1px solid var(--bd)',
+    }
+    switch (col.key) {
+      case 'name':
+        return (
+          <div key="name" style={{ ...base, position: 'sticky', left: 0, zIndex: 2, background: 'rgba(35,131,226,.04)', boxShadow: '2px 0 4px rgba(0,0,0,.06)', paddingLeft: 14 }}>
+            <input
+              ref={el => { fieldRefs.current['name'] = el }}
+              value={name} onChange={e => setName(e.target.value)}
+              onKeyDown={handleKey('name')}
+              placeholder="업무 이름 입력..."
+              style={inp}
+            />
+          </div>
+        )
+      case 'assignee':
+        return (
+          <div key="assignee" style={base}>
+            <select
+              ref={el => { fieldRefs.current['assignee'] = el }}
+              value={assignee} onChange={e => setAssignee(e.target.value)}
+              onKeyDown={handleKey('assignee')}
+              style={{ ...inp, cursor: 'pointer' }}
+            >
+              <option value="">— 미배정</option>
+              {assigneeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+        )
+      case 'due':
+        return (
+          <div key="due" style={base}>
+            <input
+              ref={el => { fieldRefs.current['due'] = el }}
+              type="date" value={due} onChange={e => setDue(e.target.value)}
+              onKeyDown={handleKey('due')}
+              style={{ ...inp, colorScheme: 'dark' }}
+            />
+          </div>
+        )
+      case 'status':
+        return (
+          <div key="status" style={base}>
+            <select
+              ref={el => { fieldRefs.current['status'] = el }}
+              value={status} onChange={e => setStatus(e.target.value as Status)}
+              onKeyDown={handleKey('status')}
+              style={{ ...inp, cursor: 'pointer' }}
+            >
+              {(['진행중','대기','검토중','완료'] as Status[]).map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+        )
+      default:
+        return <div key={col.key} style={base} />
+    }
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        display: 'flex', minWidth: '100%',
+        background: 'rgba(35,131,226,.04)',
+        borderBottom: '2px solid var(--ac)',
+        borderLeft: '3px solid var(--ac)',
+      }}
+    >
+      {cols.map((col, idx) => renderCell(col, idx === cols.length - 1))}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 8px', gap: 4, flexShrink: 0 }}>
+        <button
+          onMouseDown={e => { e.preventDefault(); doSave(true) }}
+          title="저장 후 새 행 (Enter)"
+          style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid var(--ac)', background: 'rgba(35,131,226,.1)', color: 'var(--ac)', cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}
+        >↵ 추가</button>
+        <button
+          onMouseDown={e => { e.preventDefault(); doSave(false) }}
+          title="저장 후 닫기 (Shift+Enter)"
+          style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}
+        >✓ 완료</button>
+        <button
+          onMouseDown={e => { e.preventDefault(); onCancel() }}
+          title="취소 (Esc)"
+          style={{ padding: '3px 6px', fontSize: 13, borderRadius: 'var(--r1)', border: 'none', background: 'transparent', color: 'var(--t3)', cursor: 'pointer', fontFamily: 'var(--font)', lineHeight: 1 }}
+        >✕</button>
+      </div>
     </div>
   )
 }
