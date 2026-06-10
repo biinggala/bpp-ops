@@ -70,11 +70,13 @@ export function ViewBar() {
       <>
         <nav style={{
           position: 'fixed',
-          bottom: 'env(safe-area-inset-bottom, 0px)',
+          bottom: 0,
           left: 0, right: 0, zIndex: 100,
-          height: 'var(--bottom-nav-h)',
+          height: 'calc(var(--bottom-nav-h) + var(--safe-b))',
+          paddingBottom: 'var(--safe-b)',
           background: 'var(--bg)', borderTop: '1px solid var(--bd)',
           display: 'flex',
+          boxSizing: 'border-box',
         }}>
           {VIEWS.map(v => (
             <button
@@ -96,11 +98,6 @@ export function ViewBar() {
             </button>
           ))}
         </nav>
-        <div style={{
-          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 99,
-          height: 'env(safe-area-inset-bottom, 0px)',
-          background: 'var(--bg)',
-        }} />
       </>
     )
   }

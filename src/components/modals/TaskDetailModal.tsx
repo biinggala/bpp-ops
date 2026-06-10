@@ -392,7 +392,7 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
         </div>
 
         {/* Scrollable body */}
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingBottom: 'calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px))' }}>
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}>
 
           {tab === 'details' && (
             <>

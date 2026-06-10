@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
+import { useMobile } from '../../../hooks/useMobile'
 import { useTaskStore } from '../../../store/taskStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
@@ -38,6 +39,10 @@ export function GanttView() {
     const accessibleIds = new Set(projects.filter(p => canAccessProject(p, email)).map(p => p.id))
     return allMilestones.filter(m => accessibleIds.has(m.projectId))
   }, [allMilestones, projects, email])
+  const isMobile = useMobile()
+  // Narrow left column + tighter day cells on phones so the timeline gets room
+  const leftW = isMobile ? 132 : LEFT_W
+  const dayW = isMobile ? 22 : DAY_W
   const wrapRef = useRef<HTMLDivElement>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [hoveredMilestoneId, setHoveredMilestoneId] = useState<string | null>(null)
@@ -68,7 +73,7 @@ export function GanttView() {
     const onMove = (e: MouseEvent) => {
       const d = dragRef.current
       if (!d) return
-      const dayOffset = Math.round((e.clientX - d.startX) / DAY_W)
+      const dayOffset = Math.round((e.clientX - d.startX) / dayW)
       setDragVisual(prev =>
         prev?.dayOffset === dayOffset ? prev : { taskId: d.taskId, dayOffset }
       )
@@ -76,7 +81,7 @@ export function GanttView() {
     const onUp = (e: MouseEvent) => {
       const d = dragRef.current
       if (!d) return
-      const dayOffset = Math.round((e.clientX - d.startX) / DAY_W)
+      const dayOffset = Math.round((e.clientX - d.startX) / dayW)
       if (dayOffset !== 0) {
         const patch: Partial<Task> = {}
         if (d.origStart) patch.start = fmtYMD(addDays(toDate(d.origStart), dayOffset))
@@ -103,7 +108,7 @@ export function GanttView() {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
     }
-  }, [updateTask])
+  }, [updateTask, dayW])
 
   const startDrag = useCallback((data: DragData) => {
     dragRef.current = data
@@ -135,7 +140,7 @@ export function GanttView() {
   }, [filteredTasks, allTasks, today])
 
   const totalDays = dayDiff(rangeStart, rangeEnd) + 1
-  const timelineW = totalDays * DAY_W
+  const timelineW = totalDays * dayW
   const todayCol = dayDiff(rangeStart, today)
 
   const milestoneMarkers = useMemo(() => {
@@ -174,8 +179,8 @@ export function GanttView() {
 
   useEffect(() => {
     const el = wrapRef.current
-    if (el) el.scrollLeft = Math.max(0, todayCol * DAY_W - (el.clientWidth - LEFT_W) / 2)
-  }, [todayCol])
+    if (el) el.scrollLeft = Math.max(0, todayCol * dayW - (el.clientWidth - leftW) / 2)
+  }, [todayCol, dayW, leftW])
 
   const months = useMemo(() => {
     const res: { label: string; col: number; span: number }[] = []
@@ -235,11 +240,11 @@ export function GanttView() {
           onDelete={() => { if (confirm(`"${msCtxMenu.milestone.name}" 마일스톤을 삭제할까요?`)) { deleteMilestone(msCtxMenu.milestone.id); setMsCtxMenu(null) } }}
         />
       )}
-      <div style={{ minWidth: LEFT_W + timelineW }}>
+      <div style={{ minWidth: leftW + timelineW }}>
 
         {/* Month header */}
         <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 10, height: MONTH_H, background: 'var(--bg2)', borderBottom: '1px solid var(--bd)' }}>
-          <div style={{ width: LEFT_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 11, background: 'var(--bg2)', borderRight: '1px solid var(--bd)', display: 'flex', alignItems: 'center', paddingLeft: 16 }}>
+          <div style={{ width: leftW, flexShrink: 0, position: 'sticky', left: 0, zIndex: 11, background: 'var(--bg2)', borderRight: '1px solid var(--bd)', display: 'flex', alignItems: 'center', paddingLeft: isMobile ? 8 : 16 }}>
             <button
               onClick={() => openTaskModal()}
               style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--t3)', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'var(--font)', padding: '2px 6px', borderRadius: 'var(--r1)', transition: 'background .08s, color .08s' }}
@@ -251,7 +256,7 @@ export function GanttView() {
           </div>
           <div style={{ width: timelineW, flexShrink: 0, position: 'relative' }}>
             {months.map(m => (
-              <div key={m.label} style={{ position: 'absolute', left: m.col * DAY_W, width: m.span * DAY_W, top: 0, bottom: 0, display: 'flex', alignItems: 'center', paddingLeft: 10, fontSize: 11, fontWeight: 600, color: 'var(--t2)', borderRight: '1px solid var(--bd)', overflow: 'hidden' }}>
+              <div key={m.label} style={{ position: 'absolute', left: m.col * dayW, width: m.span * dayW, top: 0, bottom: 0, display: 'flex', alignItems: 'center', paddingLeft: 10, fontSize: 11, fontWeight: 600, color: 'var(--t2)', borderRight: '1px solid var(--bd)', overflow: 'hidden' }}>
                 {m.label}
               </div>
             ))}
@@ -260,20 +265,20 @@ export function GanttView() {
 
         {/* Day header */}
         <div style={{ display: 'flex', position: 'sticky', top: MONTH_H, zIndex: 10, height: DAY_H, background: 'var(--bg)', borderBottom: '2px solid var(--bd)' }}>
-          <div style={{ width: LEFT_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 11, background: 'var(--bg2)', borderRight: '1px solid var(--bd)' }} />
+          <div style={{ width: leftW, flexShrink: 0, position: 'sticky', left: 0, zIndex: 11, background: 'var(--bg2)', borderRight: '1px solid var(--bd)' }} />
           <div style={{ position: 'relative', flexShrink: 0, width: timelineW }}>
             {days.map((d, i) => {
               const isToday = i === todayCol
               const isWeekend = d.getDay() === 0 || d.getDay() === 6
               const isMonthEnd = d.getDate() === new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
               return (
-                <div key={i} style={{ position: 'absolute', left: i * DAY_W, width: DAY_W, height: DAY_H, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: isToday ? 'var(--ac)' : 'var(--t3)', fontWeight: isToday ? 700 : 400, background: isToday ? 'var(--ac-l)' : isWeekend ? 'var(--bg2)' : 'transparent', borderRight: isMonthEnd ? '1px solid var(--bd)' : 'none' }}>
+                <div key={i} style={{ position: 'absolute', left: i * dayW, width: dayW, height: DAY_H, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: isToday ? 'var(--ac)' : 'var(--t3)', fontWeight: isToday ? 700 : 400, background: isToday ? 'var(--ac-l)' : isWeekend ? 'var(--bg2)' : 'transparent', borderRight: isMonthEnd ? '1px solid var(--bd)' : 'none' }}>
                   {d.getDate()}
                 </div>
               )
             })}
             {milestoneMarkers.map(m => (
-              <MilestonePin key={m.id} marker={m} dayW={DAY_W} forceShow={hoveredMilestoneId === m.id} />
+              <MilestonePin key={m.id} marker={m} dayW={dayW} forceShow={hoveredMilestoneId === m.id} />
             ))}
           </div>
         </div>
@@ -300,6 +305,8 @@ export function GanttView() {
                   totalDays={totalDays}
                   todayCol={todayCol}
                   milestoneMarkers={milestoneMarkers}
+                  leftW={leftW}
+                  dayW={dayW}
                   onHoverChange={id => setHoveredMilestoneId(id)}
                   onContextMenu={milestone ? (x, y) => setMsCtxMenu({ x, y, milestone }) : undefined}
                 />
@@ -333,6 +340,9 @@ export function GanttView() {
                       isCascading={isInCascade}
                       milestoneMarkers={milestoneMarkers}
                       inGroup={hasMilestones}
+                      leftW={leftW}
+                      dayW={dayW}
+                      compact={isMobile}
                       onOpen={() => openTaskDetail(task.id)}
                       onToggle={() => toggle(task.id)}
                       onAddSubtask={() => openTaskModal(undefined, task.id)}
@@ -358,6 +368,9 @@ export function GanttView() {
                           isCascading={childInCascade}
                           milestoneMarkers={milestoneMarkers}
                           inGroup={hasMilestones}
+                          leftW={leftW}
+                          dayW={dayW}
+                          compact={isMobile}
                           onOpen={() => openTaskDetail(child.id)}
                           onBarMouseDown={(startX) => startDrag({ taskId: child.id, origStart: child.start, origDue: child.due, startX })}
                         />
@@ -376,7 +389,7 @@ export function GanttView() {
 
 // ── MilestoneHeaderRow ────────────────────────────────────────────────────────
 
-function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStart, timelineW, totalDays, todayCol, milestoneMarkers, onHoverChange, onContextMenu }: {
+function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStart, timelineW, totalDays, todayCol, milestoneMarkers, leftW, dayW, onHoverChange, onContextMenu }: {
   milestone: Milestone | null
   isExpanded: boolean
   onToggle: () => void
@@ -386,6 +399,8 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
   totalDays: number
   todayCol: number
   milestoneMarkers: { id: string; col: number; name: string }[]
+  leftW: number
+  dayW: number
   onHoverChange?: (id: string | null) => void
   onContextMenu?: (x: number, y: number) => void
 }) {
@@ -437,7 +452,7 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
       {/* Left */}
       <div
         onClick={() => { if (!lpActive.current) onToggle() }}
-        style={{ width: LEFT_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 2, background: hovered ? (isNull ? 'var(--bg2)' : `${accentBg}.07)`) : (isNull ? 'transparent' : `${accentBg}.03)`), borderRight: '1px solid var(--bd)', display: 'flex', alignItems: 'center', paddingLeft: 4, paddingRight: 8, gap: 5, overflow: 'hidden', cursor: 'pointer', transition: 'background .08s' }}
+        style={{ width: leftW, flexShrink: 0, position: 'sticky', left: 0, zIndex: 2, background: hovered ? (isNull ? 'var(--bg2)' : `${accentBg}.07)`) : (isNull ? 'transparent' : `${accentBg}.03)`), borderRight: '1px solid var(--bd)', display: 'flex', alignItems: 'center', paddingLeft: 4, paddingRight: 8, gap: 5, overflow: 'hidden', cursor: 'pointer', transition: 'background .08s' }}
       >
         <button
           onClick={e => { e.stopPropagation(); onToggle() }}
@@ -459,13 +474,13 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
       {/* Timeline */}
       <div style={{ width: timelineW, flexShrink: 0, position: 'relative', height: ROW_H + 2 }}>
         {todayCol >= 0 && todayCol < totalDays && (
-          <div style={{ position: 'absolute', left: todayCol * DAY_W + Math.floor(DAY_W / 2), top: 0, bottom: 0, width: 1, background: 'var(--ac)', opacity: .35, pointerEvents: 'none' }} />
+          <div style={{ position: 'absolute', left: todayCol * dayW + Math.floor(dayW / 2), top: 0, bottom: 0, width: 1, background: 'var(--ac)', opacity: .35, pointerEvents: 'none' }} />
         )}
         {milestoneMarkers.map(m => (
-          <MilestoneLine key={m.id} marker={m} dayW={DAY_W} />
+          <MilestoneLine key={m.id} marker={m} dayW={dayW} />
         ))}
         {rollup && (
-          <div style={{ position: 'absolute', left: rollup.col * DAY_W + 2, width: rollup.span * DAY_W - 4, top: '50%', transform: 'translateY(-50%)', height: 8, borderRadius: 4, background: isNull ? 'rgba(100,100,100,.1)' : `${accentBg}.18)`, border: `1.5px solid ${isNull ? 'rgba(100,100,100,.3)' : `${accentBg}.45)`}`, pointerEvents: 'none', opacity: isDone ? .5 : 1 }} />
+          <div style={{ position: 'absolute', left: rollup.col * dayW + 2, width: rollup.span * dayW - 4, top: '50%', transform: 'translateY(-50%)', height: 8, borderRadius: 4, background: isNull ? 'rgba(100,100,100,.1)' : `${accentBg}.18)`, border: `1.5px solid ${isNull ? 'rgba(100,100,100,.3)' : `${accentBg}.45)`}`, pointerEvents: 'none', opacity: isDone ? .5 : 1 }} />
         )}
       </div>
     </div>
@@ -479,6 +494,7 @@ function GanttRow({
   isChild = false, hasChildren = false, isExpanded = true,
   rollup = null, dragOffset = 0, isDragging = false, isCascading = false,
   milestoneMarkers = [], inGroup = false,
+  leftW, dayW, compact = false,
   onOpen, onToggle, onAddSubtask, onBarMouseDown,
 }: {
   task: Task
@@ -496,6 +512,9 @@ function GanttRow({
   isCascading?: boolean
   milestoneMarkers?: { id: string; col: number; name: string }[]
   inGroup?: boolean
+  leftW: number
+  dayW: number
+  compact?: boolean
   onOpen: () => void
   onToggle?: () => void
   onAddSubtask?: () => void
@@ -513,13 +532,13 @@ function GanttRow({
   if (hasOwnBar) {
     barLeft = startCol ?? endCol ?? 0
     const barRight = endCol ?? startCol ?? 0
-    barWidth = Math.max((barRight - barLeft + 1) * DAY_W - 4, DAY_W - 4)
+    barWidth = Math.max((barRight - barLeft + 1) * dayW - 4, dayW - 4)
   }
 
-  // indent: milestone header (0) → root task (+14) → subtask (+14 more)
+  // indent: milestone header (0) → root task → subtask; tighter steps on compact
   const paddingLeft = isChild
-    ? (inGroup ? 42 : 28)
-    : (inGroup ? 18 : 4)
+    ? (compact ? (inGroup ? 26 : 18) : (inGroup ? 42 : 28))
+    : (compact ? (inGroup ? 8 : 4) : (inGroup ? 18 : 4))
 
   const rowH = isChild ? ROW_H - 2 : ROW_H
   const rowBg = hovered ? 'var(--bg2)' : isChild ? 'rgba(55,53,47,.015)' : 'var(--bg)'
@@ -534,26 +553,26 @@ function GanttRow({
       {/* Left */}
       <div
         onClick={onOpen}
-        style={{ width: LEFT_W, flexShrink: 0, position: 'sticky', left: 0, zIndex: 2, background: rowBg, borderRight: '1px solid var(--bd)', display: 'flex', alignItems: 'center', paddingLeft, paddingRight: 8, gap: 4, overflow: 'hidden', cursor: 'pointer', transition: 'background .08s' }}
+        style={{ width: leftW, flexShrink: 0, position: 'sticky', left: 0, zIndex: 2, background: rowBg, borderRight: '1px solid var(--bd)', display: 'flex', alignItems: 'center', paddingLeft, paddingRight: 8, gap: 4, overflow: 'hidden', cursor: 'pointer', transition: 'background .08s' }}
       >
         {isChild ? (
           <span style={{ fontSize: 10, color: 'var(--t3)', flexShrink: 0 }}>└</span>
         ) : (
           <button
             onClick={e => { e.stopPropagation(); onToggle?.() }}
-            style={{ width: 18, height: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: hasChildren ? 'pointer' : 'default', color: 'var(--t3)', fontSize: 9, borderRadius: 3, visibility: hasChildren ? 'visible' : 'hidden' }}
+            style={{ width: compact ? 14 : 18, height: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: hasChildren ? 'pointer' : 'default', color: 'var(--t3)', fontSize: 9, borderRadius: 3, visibility: hasChildren ? 'visible' : 'hidden' }}
           >
             {isExpanded ? '▼' : '▶'}
           </button>
         )}
 
-        {task.cat && <CategoryBadge cat={task.cat} />}
+        {task.cat && !compact && <CategoryBadge cat={task.cat} />}
 
         <span style={{ fontSize: 12, flex: 1, color: isChild ? 'var(--t2)' : 'var(--t1)', fontWeight: !isChild && hasChildren ? 500 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {task.name}
         </span>
 
-        {hovered && !isChild && onAddSubtask && (
+        {hovered && !compact && !isChild && onAddSubtask && (
           <button onClick={e => { e.stopPropagation(); onAddSubtask() }} style={{ flexShrink: 0, fontSize: 10, color: 'var(--ac)', background: 'var(--ac-l)', border: '1px solid var(--ac)', borderRadius: 3, padding: '2px 6px', cursor: 'pointer', fontFamily: 'var(--font)' }}>
             + 하위
           </button>
@@ -563,13 +582,13 @@ function GanttRow({
       {/* Timeline */}
       <div style={{ width: timelineW, flexShrink: 0, position: 'relative', height: rowH, background: hovered ? 'rgba(55,53,47,.013)' : 'transparent' }}>
         {todayCol >= 0 && todayCol < totalDays && (
-          <div style={{ position: 'absolute', left: todayCol * DAY_W + Math.floor(DAY_W / 2), top: 0, bottom: 0, width: 1, background: 'var(--ac)', opacity: .35, pointerEvents: 'none' }} />
+          <div style={{ position: 'absolute', left: todayCol * dayW + Math.floor(dayW / 2), top: 0, bottom: 0, width: 1, background: 'var(--ac)', opacity: .35, pointerEvents: 'none' }} />
         )}
         {milestoneMarkers.map(m => (
-          <MilestoneLine key={m.id} marker={m} dayW={DAY_W} />
+          <MilestoneLine key={m.id} marker={m} dayW={dayW} />
         ))}
         {!hasOwnBar && rollup && (
-          <div style={{ position: 'absolute', left: rollup.col * DAY_W + 2, width: rollup.span * DAY_W - 4, top: '50%', transform: 'translateY(-50%)', height: 6, borderRadius: 3, background: 'var(--bd2)', opacity: .6, pointerEvents: 'none' }} />
+          <div style={{ position: 'absolute', left: rollup.col * dayW + 2, width: rollup.span * dayW - 4, top: '50%', transform: 'translateY(-50%)', height: 6, borderRadius: 3, background: 'var(--bd2)', opacity: .6, pointerEvents: 'none' }} />
         )}
         {hasOwnBar && (
           <div
@@ -577,7 +596,7 @@ function GanttRow({
             onClick={onOpen}
             style={{
               position: 'absolute',
-              left: barLeft * DAY_W + dragOffset * DAY_W + 2,
+              left: barLeft * dayW + dragOffset * dayW + 2,
               width: barWidth,
               top: '50%', transform: 'translateY(-50%)',
               height: isChild ? 18 : 22,

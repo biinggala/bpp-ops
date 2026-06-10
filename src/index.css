@@ -200,7 +200,12 @@ input, select, textarea, button {
 @supports (padding: env(safe-area-inset-bottom)) {
   .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 }
-:root { --bottom-nav-h: 56px; }
+:root {
+  --bottom-nav-h: 52px;
+  /* Home-indicator clearance: trim 10px off the inset so the nav stays
+     compact — the bar may overlap the very top of the indicator zone. */
+  --safe-b: max(env(safe-area-inset-bottom, 0px) - 10px, 0px);
+}
 
 /* Prevent iOS text drag/selection during long-press on interactive rows.
    Applied to the row container — the * selector covers all child spans. */

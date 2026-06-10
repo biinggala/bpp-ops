@@ -146,7 +146,7 @@ export function AppPage() {
 
         <div
           className="flex-1 overflow-hidden flex flex-col min-h-0"
-          style={isMobile ? { paddingBottom: 'calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px))' } : undefined}
+          style={isMobile ? { paddingBottom: 'calc(var(--bottom-nav-h) + var(--safe-b))' } : undefined}
         >
           {isEmpty ? (
             <EmptyState />
