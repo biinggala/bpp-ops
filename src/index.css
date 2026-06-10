@@ -58,6 +58,19 @@ html, body, #root {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Lock document scroll — only inner containers may scroll.
+   Without this, iOS lets the whole page rubber-band/scroll, which drags
+   position:fixed elements (bottom nav) and leaves a phantom gap below them. */
+html, body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
