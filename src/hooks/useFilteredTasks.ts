@@ -8,7 +8,7 @@ import type { Task } from '../types'
 
 export function useFilteredTasks(): Task[] {
   const tasks = useTaskStore(s => s.tasks)
-  const { space, projectId, myTasksOnly, filters } = useUiStore()
+  const { space, projectId, myTasksOnly, hideCompleted, filters } = useUiStore()
   const memberKey = useAuthStore(s => s.memberKey)
   const email = useAuthStore(s => s.email)
   const projects = useProjectStore(s => s.projects)
@@ -52,6 +52,10 @@ export function useFilteredTasks(): Task[] {
     if (filters.tags.length) {
       result = result.filter(t => filters.tags.some(tag => t.tags?.includes(tag)))
     }
+    if (hideCompleted) {
+      result = result.filter(t => t.status !== '완료')
+    }
+
     if (filters.search.trim()) {
       const q = filters.search.trim().toLowerCase()
       result = result.filter(t =>
@@ -76,5 +80,5 @@ export function useFilteredTasks(): Task[] {
     }
 
     return result
-  }, [tasks, space, projectId, myTasksOnly, memberKey, email, projects, filters])
+  }, [tasks, space, projectId, myTasksOnly, hideCompleted, memberKey, email, projects, filters])
 }

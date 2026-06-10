@@ -15,6 +15,7 @@ interface UiState {
   space: string | null
   projectId: string | null      // sidebar project filter
   myTasksOnly: boolean          // quick filter: my tasks
+  hideCompleted: boolean        // hide tasks with status === '완료'
   filters: Filters
   detailTaskId: string | null
   editTaskId: string | null
@@ -34,6 +35,7 @@ interface UiState {
   setSpace: (s: string | null) => void
   setProject: (id: string | null) => void
   setMyTasksOnly: (v: boolean) => void
+  setHideCompleted: (v: boolean) => void
   setFilters: (f: Partial<Filters>) => void
   resetFilters: () => void
   setDetailTaskId: (id: string | null) => void
@@ -67,6 +69,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   space: null,
   projectId: null,
   myTasksOnly: false,
+  hideCompleted: false,
   filters: { ...defaultFilters },
   detailTaskId: null,
   editTaskId: null,
@@ -86,6 +89,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   setSpace: (space) => set({ space, projectId: null }),
   setProject: (projectId) => set({ projectId, space: null }),
   setMyTasksOnly: (myTasksOnly) => set({ myTasksOnly }),
+  setHideCompleted: (hideCompleted) => set({ hideCompleted }),
   setFilters: (f) => set(s => ({ filters: { ...s.filters, ...f } })),
   resetFilters: () => set({ filters: { ...defaultFilters } }),
   setDetailTaskId: (id) => set({ detailTaskId: id }),

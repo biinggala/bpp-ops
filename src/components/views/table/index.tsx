@@ -78,13 +78,13 @@ function MobileTableView() {
   const filteredTasks = useFilteredTasks()
   const allTasks = useTaskStore(s => s.tasks)
   const { addTask, updateTask, deleteTask } = useTaskStore()
-  const { openTaskModal: _openTaskModal, openTaskDetail, projectId } = useUiStore()
+  const { openTaskModal: _openTaskModal, openTaskDetail, projectId, hideCompleted } = useUiStore()
   const { milestones, updateMilestone } = useMilestoneStore()
   const projects = useProjectStore(s => s.projects)
   const userEmail = useAuthStore(s => s.email)
 
   const rootTasks = filteredTasks.filter(t => !t.parentId)
-  const getChildren = (id: string) => allTasks.filter(t => t.parentId === id)
+  const getChildren = (id: string) => allTasks.filter(t => t.parentId === id && (!hideCompleted || t.status !== '완료'))
   const sortDoneLast = (arr: Task[]) =>
     [...arr].sort((a, b) => (a.status === '완료' ? 1 : 0) - (b.status === '완료' ? 1 : 0))
 
@@ -341,7 +341,7 @@ export function TableView() {
   const allTasks = useTaskStore(s => s.tasks)          // raw — only for task-tree traversal
   const accessibleTasks = useAccessibleTasks()          // for option lists (tags etc.)
   const { addTask, deleteTask, updateTask } = useTaskStore()
-  const { openTaskModal, openTaskDetail, projectId, space } = useUiStore()
+  const { openTaskModal, openTaskDetail, projectId, space, hideCompleted } = useUiStore()
   const { milestones, updateMilestone, deleteMilestone } = useMilestoneStore()
   const allProjects = useProjectStore(s => s.projects)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
@@ -431,7 +431,7 @@ export function TableView() {
 
   // ── Navigation helpers ──────────────────────────────────────────────────────
   const rootTasks = filteredTasks.filter(t => !t.parentId)
-  const getChildren = (id: string) => allTasks.filter(t => t.parentId === id)
+  const getChildren = (id: string) => allTasks.filter(t => t.parentId === id && (!hideCompleted || t.status !== '완료'))
   const toggle = (id: string) => setCollapsed(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   const toggleMs = (id: string) => setCollapsedMs(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   const togglePj = (id: string) => setCollapsedPj(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })

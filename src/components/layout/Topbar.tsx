@@ -5,7 +5,7 @@ import { useProjectStore } from '../../store/projectStore'
 import { useMobile } from '../../hooks/useMobile'
 
 export function Topbar() {
-  const { space, projectId, myTasksOnly, openTaskModal, toggleSidebar } = useUiStore()
+  const { space, projectId, myTasksOnly, openTaskModal, toggleSidebar, hideCompleted, setHideCompleted } = useUiStore()
   const { memberKey } = useAuthStore()
   const projects = useProjectStore(s => s.projects)
   const isMobile = useMobile()
@@ -56,6 +56,23 @@ export function Topbar() {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        {isMobile && (
+          <button
+            onClick={() => setHideCompleted(!hideCompleted)}
+            aria-label="완료 숨기기"
+            title={hideCompleted ? '완료 표시' : '완료 숨기기'}
+            style={{
+              width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: hideCompleted ? 'var(--ac-l)' : 'transparent',
+              border: hideCompleted ? '1px solid var(--ac)' : '1px solid var(--bd)',
+              borderRadius: 'var(--r2)', cursor: 'pointer', flexShrink: 0,
+              color: hideCompleted ? 'var(--ac)' : 'var(--t3)',
+              fontSize: 15, transition: 'background .1s, color .1s',
+            }}
+          >
+            ✓
+          </button>
+        )}
         {isMobile ? (
           <button
             onClick={() => openTaskModal()}

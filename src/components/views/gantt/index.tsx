@@ -30,7 +30,7 @@ export function GanttView() {
   const filteredTasks = useFilteredTasks()
   const allTasks = useTaskStore(s => s.tasks)
   const { updateTask } = useTaskStore()
-  const { openTaskModal, openTaskDetail, projectId } = useUiStore()
+  const { openTaskModal, openTaskDetail, projectId, hideCompleted } = useUiStore()
   const allMilestones = useMilestoneStore(s => s.milestones)
   const { deleteMilestone } = useMilestoneStore()
   const projects = useProjectStore(s => s.projects)
@@ -60,7 +60,7 @@ export function GanttView() {
   }, [])
 
   const rootTasks = filteredTasks.filter(t => !t.parentId)
-  const getChildren = (id: string) => allTasks.filter(t => t.parentId === id)
+  const getChildren = (id: string) => allTasks.filter(t => t.parentId === id && (!hideCompleted || t.status !== '완료'))
 
   const toggle = (id: string) =>
     setCollapsed(prev => {

@@ -25,7 +25,7 @@ const SORT_OPTIONS = [
 ]
 
 export function ViewBar() {
-  const { view, setView, filters, setFilters, resetFilters, showGCal, setShowGCal } = useUiStore()
+  const { view, setView, filters, setFilters, resetFilters, showGCal, setShowGCal, hideCompleted, setHideCompleted } = useUiStore()
   const isMobile = useMobile()
   const accessibleTasks = useAccessibleTasks()
   const projects = useProjectStore(s => s.projects)
@@ -61,7 +61,7 @@ export function ViewBar() {
     accessibleProjects.map(p => ({ value: p.id, label: p.name }))
   , [accessibleProjects])
 
-  const hasFilters = filters.assignees.length > 0 || filters.statuses.length > 0 || filters.tags.length > 0 || filters.projects.length > 0
+  const hasFilters = filters.assignees.length > 0 || filters.statuses.length > 0 || filters.tags.length > 0 || filters.projects.length > 0 || hideCompleted
   const showFilters = view !== 's'
 
   // Mobile: in-flow bottom tab bar (rendered as the last flex child in AppPage).
@@ -168,9 +168,23 @@ export function ViewBar() {
               📅 일정
             </button>
           )}
+          <button
+            onClick={() => setHideCompleted(!hideCompleted)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '4px 10px', borderRadius: 'var(--r1)',
+              border: hideCompleted ? '1px solid var(--ac)' : '1px solid var(--bd)',
+              background: hideCompleted ? 'var(--ac-l)' : 'transparent',
+              color: hideCompleted ? 'var(--ac)' : 'var(--t2)',
+              fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap',
+            }}
+          >
+            완료 숨기기
+          </button>
+
           {hasFilters && (
             <button
-              onClick={resetFilters}
+              onClick={() => { resetFilters(); setHideCompleted(false) }}
               style={{ padding: '3px 9px', borderRadius: 'var(--r1)', border: '1px solid rgba(239,68,68,.25)', background: 'rgba(239,68,68,.05)', color: '#dc2626', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)' }}
             >
               ✕ 초기화
