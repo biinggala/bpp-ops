@@ -231,6 +231,9 @@ export function Sidebar() {
                 >
                   <span style={{ fontSize: 13 }}>↩</span> 로그아웃
                 </button>
+                <div style={{ fontSize: 10, color: 'var(--t3)', padding: '6px 8px 0', userSelect: 'text' }}>
+                  빌드 {__BUILD_ID__}
+                </div>
               </div>
             </div>
           )}
