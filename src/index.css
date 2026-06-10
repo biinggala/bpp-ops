@@ -65,10 +65,15 @@ html, body {
   overflow: hidden;
   overscroll-behavior: none;
 }
+/* Size the app to the measured visible height (--app-h, set in main.tsx from
+   visualViewport) — iOS standalone PWAs mis-report % / vh heights, which left
+   a gap below the bottom nav. */
 body {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
   width: 100%;
+  height: var(--app-h, 100%);
 }
 
 /* Scrollbar */

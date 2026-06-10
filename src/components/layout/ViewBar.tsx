@@ -64,20 +64,19 @@ export function ViewBar() {
   const hasFilters = filters.assignees.length > 0 || filters.statuses.length > 0 || filters.tags.length > 0 || filters.projects.length > 0
   const showFilters = view !== 's'
 
-  // Mobile: render only as bottom nav (the actual bar is rendered there)
+  // Mobile: in-flow bottom tab bar (rendered as the last flex child in AppPage).
+  // Deliberately NOT position:fixed — iOS standalone PWAs mis-anchor fixed
+  // bottom elements, leaving a gap below; in-flow is always at the true bottom.
   if (isMobile) {
     return (
-      <>
-        <nav style={{
-          position: 'fixed',
-          bottom: 0,
-          left: 0, right: 0, zIndex: 100,
-          height: 'calc(var(--bottom-nav-h) + var(--safe-b))',
-          paddingBottom: 'var(--safe-b)',
-          background: 'var(--bg)', borderTop: '1px solid var(--bd)',
-          display: 'flex',
-          boxSizing: 'border-box',
-        }}>
+      <nav style={{
+        flexShrink: 0,
+        height: 'calc(var(--bottom-nav-h) + var(--safe-b))',
+        paddingBottom: 'var(--safe-b)',
+        background: 'var(--bg)', borderTop: '1px solid var(--bd)',
+        display: 'flex',
+        boxSizing: 'border-box',
+      }}>
           {VIEWS.map(v => (
             <button
               key={v.id}
@@ -97,8 +96,7 @@ export function ViewBar() {
               {v.label}
             </button>
           ))}
-        </nav>
-      </>
+      </nav>
     )
   }
 

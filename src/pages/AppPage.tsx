@@ -144,10 +144,7 @@ export function AppPage() {
         <Topbar />
         {!isMobile && <ViewBar />}
 
-        <div
-          className="flex-1 overflow-hidden flex flex-col min-h-0"
-          style={isMobile ? { paddingBottom: 'calc(var(--bottom-nav-h) + var(--safe-b))' } : undefined}
-        >
+        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
           {isEmpty ? (
             <EmptyState />
           ) : (
@@ -160,10 +157,10 @@ export function AppPage() {
             </>
           )}
         </div>
-      </div>
 
-      {/* Bottom tab nav — rendered outside scroll area to stay fixed */}
-      {isMobile && <ViewBar />}
+        {/* Bottom tab nav — in normal flow so iOS PWA viewport quirks can't float it */}
+        {isMobile && <ViewBar />}
+      </div>
 
       <TaskModal />
       <TaskDetailErrorBoundary key={detailTaskId ?? 'none'}>
