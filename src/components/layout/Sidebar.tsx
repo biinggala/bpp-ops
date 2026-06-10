@@ -156,7 +156,7 @@ export function Sidebar() {
       }}>
 
         {/* Workspace header */}
-        <div style={{ padding: '14px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(255,255,255,.06)', position: 'relative' }} ref={profileRef}>
+        <div style={{ padding: '14px 12px 10px', paddingTop: isMobile ? 'calc(env(safe-area-inset-top, 0px) + 14px)' : '14px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(255,255,255,.06)', position: 'relative' }} ref={profileRef}>
           {/* Profile avatar — clickable */}
           <div
             onClick={() => setProfileOpen(o => !o)}

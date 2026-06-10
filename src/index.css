@@ -215,9 +215,7 @@ input, select, textarea, button {
 }
 :root {
   --bottom-nav-h: 52px;
-  /* Home-indicator clearance: trim 10px off the inset so the nav stays
-     compact — the bar may overlap the very top of the indicator zone. */
-  --safe-b: max(env(safe-area-inset-bottom, 0px) - 10px, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
 }
 
 /* Prevent iOS text drag/selection during long-press on interactive rows.
