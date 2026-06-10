@@ -613,8 +613,8 @@ function GanttRow({
               transition: isDragging || isCascading ? 'none' : 'box-shadow .1s',
             }}
           >
-            {barWidth > 54 && (
-              <span style={{ fontSize: 10, fontWeight: 500, color: isOverdue ? '#ef4444' : color.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>
+            {barWidth > 54 && !compact && (
+              <span style={{ fontSize: 10, fontWeight: 500, color: isOverdue ? '#ef4444' : color.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none', minWidth: 0, display: 'block', maxWidth: '100%' }}>
                 {task.name}
               </span>
             )}
