@@ -441,7 +441,7 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
   return (
     <div
       className="lp-row"
-      style={{ display: 'flex', height: ROW_H + 2, borderBottom: '1px solid var(--bd)', background: hovered ? (isNull ? 'var(--bg2)' : `${accentBg}.07)`) : (isNull ? 'transparent' : `${accentBg}.03)`) }}
+      style={{ display: 'flex', height: ROW_H + 2, borderBottom: '1px solid var(--bd)', background: hovered ? (isNull ? 'var(--bg2)' : `${accentBg}.1)`) : 'var(--bg)' }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onContextMenu={onContextMenu ? e => { e.preventDefault(); onContextMenu(e.clientX, e.clientY) } : undefined}
@@ -449,10 +449,10 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
-      {/* Left */}
+      {/* Left — solid background required for sticky to cover the scrolling timeline */}
       <div
         onClick={() => { if (!lpActive.current) onToggle() }}
-        style={{ width: leftW, flexShrink: 0, position: 'sticky', left: 0, zIndex: 2, background: hovered ? (isNull ? 'var(--bg2)' : `${accentBg}.07)`) : (isNull ? 'transparent' : `${accentBg}.03)`), borderRight: '1px solid var(--bd)', display: 'flex', alignItems: 'center', paddingLeft: 4, paddingRight: 8, gap: 5, overflow: 'hidden', cursor: 'pointer', transition: 'background .08s' }}
+        style={{ width: leftW, flexShrink: 0, position: 'sticky', left: 0, zIndex: 2, background: hovered ? (isNull ? 'var(--bg2)' : `${accentBg}.18)`) : (isNull ? 'var(--bg)' : `var(--bg)`), borderRight: '1px solid var(--bd)', display: 'flex', alignItems: 'center', paddingLeft: 4, paddingRight: 8, gap: 5, overflow: 'hidden', cursor: 'pointer', transition: 'background .08s' }}
       >
         <button
           onClick={e => { e.stopPropagation(); onToggle() }}
@@ -541,7 +541,9 @@ function GanttRow({
     : (compact ? (inGroup ? 8 : 4) : (inGroup ? 18 : 4))
 
   const rowH = isChild ? ROW_H - 2 : ROW_H
-  const rowBg = hovered ? 'var(--bg2)' : isChild ? 'rgba(55,53,47,.015)' : 'var(--bg)'
+  // Sticky left column MUST be opaque — transparent bg lets the scrolling
+  // timeline bleed through the pinned column.
+  const rowBg = hovered ? 'var(--bg2)' : 'var(--bg)'
 
   return (
     <div
