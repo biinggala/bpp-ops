@@ -10,34 +10,6 @@ import { useMobile } from '../../hooks/useMobile'
 import { MEMBERS } from '../../types'
 import type { MemberKey, Project } from '../../types'
 
-// Temporary diagnostic: shows what the device reports for each viewport metric
-// so PWA height bugs can be diagnosed from a screenshot.
-function ViewportDebug() {
-  const [, force] = useState(0)
-  useEffect(() => {
-    const h = () => force(n => n + 1)
-    window.addEventListener('resize', h)
-    window.visualViewport?.addEventListener('resize', h)
-    const t = setInterval(h, 1000)
-    return () => { window.removeEventListener('resize', h); window.visualViewport?.removeEventListener('resize', h); clearInterval(t) }
-  }, [])
-  const appH = getComputedStyle(document.documentElement).getPropertyValue('--app-h').trim() || '-'
-  const safeB = (() => {
-    const el = document.createElement('div')
-    el.style.cssText = 'position:fixed;padding-bottom:env(safe-area-inset-bottom,0px);visibility:hidden'
-    document.body.appendChild(el)
-    const v = getComputedStyle(el).paddingBottom
-    el.remove()
-    return v
-  })()
-  return (
-    <div style={{ fontSize: 9, color: 'var(--t3)', padding: '4px 8px 0', userSelect: 'text', lineHeight: 1.5, fontFamily: 'monospace' }}>
-      vv:{Math.round(window.visualViewport?.height ?? 0)} ih:{window.innerHeight} ch:{document.documentElement.clientHeight}<br />
-      sc:{screen.height} app:{appH} sb:{safeB} bd:{Math.round(document.body.getBoundingClientRect().height)}
-    </div>
-  )
-}
-
 export function Sidebar() {
   const { filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly, sidebarOpen, setSidebarOpen } = useUiStore()
   const isMobile = useMobile()
@@ -262,7 +234,6 @@ export function Sidebar() {
                 <div style={{ fontSize: 10, color: 'var(--t3)', padding: '6px 8px 0', userSelect: 'text' }}>
                   빌드 {__BUILD_ID__}
                 </div>
-                <ViewportDebug />
               </div>
             </div>
           )}
