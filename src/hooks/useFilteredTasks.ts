@@ -3,7 +3,7 @@ import { useTaskStore } from '../store/taskStore'
 import { useUiStore } from '../store/uiStore'
 import { useAuthStore } from '../store/authStore'
 import { useProjectStore } from '../store/projectStore'
-import { canAccessProject } from '../lib/utils'
+import { canAccessProject, assigneeAliases, parseAssignees } from '../lib/utils'
 import type { Task } from '../types'
 
 export function useFilteredTasks(): Task[] {
@@ -44,7 +44,10 @@ export function useFilteredTasks(): Task[] {
       result = result.filter(t => t.projectId ? filters.projects.includes(t.projectId) : false)
     }
     if (filters.assignees.length) {
-      result = result.filter(t => filters.assignees.some(a => t.assignee.includes(a)))
+      // Match by alias: a selected assignee (canonical email) also matches tasks
+      // assigned via that person's legacy MemberKey, and vice versa.
+      const wanted = new Set(filters.assignees.flatMap(assigneeAliases))
+      result = result.filter(t => parseAssignees(t.assignee).some(tok => wanted.has(tok)))
     }
     if (filters.statuses.length) {
       result = result.filter(t => filters.statuses.includes(t.status as never))

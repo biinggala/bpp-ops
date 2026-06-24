@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { canAccessProject } from '../../../lib/utils'
+import { canAccessProject, authorizedEmails, isAuthorizedAssignee, assigneeKeyToEmail, parseAssignees } from '../../../lib/utils'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useSpaceStore } from '../../../store/spaceStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
@@ -28,7 +28,6 @@ function gradForKey(key: string) {
 export function StatsView() {
   const tasks = useFilteredTasks()
   const spaces = useSpaceStore(s => s.spaces)
-  const profiles = useUserProfileStore(s => s.profiles)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const projects = useProjectStore(s => s.projects)
   const email = useAuthStore(s => s.email)
@@ -49,25 +48,36 @@ export function StatsView() {
     { label: '평균 진행률', val: `${avgProgress}%`,  color: '#8b5cf6' },
   ]
 
-  // Resolve display name for any assignee key (legacy MemberKey or email)
-  const resolveName = useMemo(() => (key: string): string => {
-    const legacy = MEMBERS[key as MemberKey]
-    if (legacy) return legacy.n
-    return getNameByEmail(key)
-  }, [profiles, getNameByEmail])
+  const memberByEmail = useMemo(() => {
+    const m = new Map<string, (typeof MEMBERS)[MemberKey]>()
+    Object.values(MEMBERS).forEach(mem => m.set(mem.email.toLowerCase(), mem))
+    return m
+  }, [])
 
-  // Build assignee list: project members first, then anyone who appears in task.assignee
-  const assigneeKeys = useMemo(() => {
+  // Build participant list — STRICTLY limited to people with project access.
+  // Anyone not a member/creator of an accessible project is never surfaced, even
+  // if they appear as an assignee on a visible task (privacy/security). Keyed by
+  // canonical email so a person assigned via a legacy MemberKey and via their
+  // email is shown once, matching tasks through all of their aliases.
+  const participants = useMemo(() => {
     const accessibleProjects = projects.filter(p => canAccessProject(p, email))
-    const keys = new Set<string>()
-    // Add all active project members
-    accessibleProjects.forEach(p => p.memberEmails?.forEach(e => keys.add(e)))
-    // Also add any assignee key found in tasks (legacy MemberKeys etc.)
+    const authorized = authorizedEmails(accessibleProjects, email)
+    const emails = new Set<string>()
+    // Project members (authorized by definition)
+    accessibleProjects.forEach(p => p.memberEmails?.forEach(e => emails.add(e.toLowerCase())))
+    // Task assignees — only if they resolve to an authorized participant
     tasks.forEach(t => {
-      if (t.assignee) t.assignee.split(',').map(s => s.trim()).filter(Boolean).forEach(k => keys.add(k))
+      parseAssignees(t.assignee).forEach(k => {
+        if (isAuthorizedAssignee(k, authorized)) emails.add(assigneeKeyToEmail(k))
+      })
     })
-    return Array.from(keys).sort()
-  }, [tasks, projects, email])
+    return Array.from(emails).sort().map(em => {
+      const aliases = [em]
+      const mem = memberByEmail.get(em)
+      if (mem) aliases.push(mem.key)
+      return { email: em, aliases, member: mem }
+    })
+  }, [tasks, projects, email, memberByEmail])
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -108,24 +118,26 @@ export function StatsView() {
       </div>
 
       <Section title="담당자별">
-        {assigneeKeys.length === 0 ? (
+        {participants.length === 0 ? (
           <div style={{ fontSize: 12, color: 'var(--t3)', padding: '8px 0' }}>
             {total === 0 ? '업무가 없습니다' : '담당자가 지정된 업무가 없습니다'}
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
-            {assigneeKeys.map(key => {
-              const knownMember = MEMBERS[key as MemberKey]
-              const name = resolveName(key)
-              const grad = knownMember?.grad ?? gradForKey(key)
+            {participants.map(({ email: em, aliases, member }) => {
+              const name = member?.n ?? getNameByEmail(em)
+              const grad = member?.grad ?? gradForKey(em)
               const initial = name[0]?.toUpperCase() ?? '?'
-              const myTasks = tasks.filter(t => t.assignee.includes(key))
+              const myTasks = tasks.filter(t => {
+                const toks = parseAssignees(t.assignee)
+                return aliases.some(a => toks.includes(a))
+              })
               const myProgress = myTasks.length
                 ? Math.round(myTasks.reduce((s, t) => s + t.progress, 0) / myTasks.length)
                 : 0
 
               return (
-                <div key={key} style={{
+                <div key={em} style={{
                   padding: '14px 16px', borderRadius: 'var(--r3)',
                   border: '1px solid var(--bd)', background: 'var(--bg2)',
                 }}>

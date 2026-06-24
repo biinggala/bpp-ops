@@ -1,5 +1,5 @@
 import React from 'react'
-import { canAccessProject } from '../../lib/utils'
+import { canAccessProject, authorizedEmails, isAuthorizedAssignee, assigneeKeyToEmail, parseAssignees } from '../../lib/utils'
 import { useUiStore } from '../../store/uiStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
@@ -43,19 +43,26 @@ export function ViewBar() {
     return Array.from(s).sort()
   }, [accessibleTasks])
 
+  // Assignee filter options — restricted to participants with project access.
+  // Non-members are never listed even if assigned to a visible task. Keyed by
+  // canonical email so each person appears once; the legacy MemberKey alias is
+  // used as the filter value when present so legacy-assigned tasks still match.
   const allAssigneeOptions = React.useMemo(() => {
-    const keys = new Set<string>()
-    // From accessible project member lists
-    accessibleProjects.forEach(p => p.memberEmails?.forEach(e => keys.add(e)))
-    // Also scan accessible tasks for legacy MemberKey assignees
+    const authorized = authorizedEmails(accessibleProjects, email)
+    const emails = new Set<string>()
+    accessibleProjects.forEach(p => p.memberEmails?.forEach(e => emails.add(e.toLowerCase())))
     accessibleTasks.forEach(t => {
-      if (t.assignee) t.assignee.split(',').map(s => s.trim()).filter(Boolean).forEach(k => keys.add(k))
+      parseAssignees(t.assignee).forEach(k => {
+        if (isAuthorizedAssignee(k, authorized)) emails.add(assigneeKeyToEmail(k))
+      })
     })
-    return Array.from(keys).sort().map(key => {
-      const known = MEMBERS[key as MemberKey]
-      return { value: key, label: known?.n ?? getNameByEmail(key) }
+    const byEmail = new Map<string, MemberKey>()
+    ;(Object.keys(MEMBERS) as MemberKey[]).forEach(k => byEmail.set(MEMBERS[k].email.toLowerCase(), k))
+    return Array.from(emails).sort().map(em => {
+      const mk = byEmail.get(em)
+      return { value: em, label: mk ? MEMBERS[mk].n : getNameByEmail(em) }
     })
-  }, [accessibleTasks, accessibleProjects, getNameByEmail])
+  }, [accessibleTasks, accessibleProjects, email, getNameByEmail])
 
   const allProjectOptions = React.useMemo(() =>
     accessibleProjects.map(p => ({ value: p.id, label: p.name }))

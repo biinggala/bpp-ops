@@ -1,4 +1,6 @@
 import type { Project } from '../types'
+import { MEMBERS } from '../types'
+import type { MemberKey } from '../types'
 
 // Central project access-check used everywhere.
 // Access is granted ONLY if the user's email is explicitly listed as a member
@@ -10,6 +12,45 @@ export function canAccessProject(p: Project, userEmail: string | null | undefine
   if (p.memberEmails?.some(m => m.toLowerCase() === e)) return true
   if (p.creatorEmail && p.creatorEmail.toLowerCase() === e) return true
   return false
+}
+
+// Resolve an assignee token (a raw email, or a legacy MemberKey like 'HC') to
+// its canonical lowercased email, so authorization checks are alias-agnostic.
+export function assigneeKeyToEmail(key: string): string {
+  const legacy = MEMBERS[key as MemberKey]
+  return (legacy?.email ?? key).toLowerCase()
+}
+
+// The set of emails (lowercased) whose data may be surfaced to the current user:
+// members and creators of every project they can access, plus themselves.
+// Anyone outside this set must never appear in assignee/stats/filter views.
+export function authorizedEmails(projects: Project[], userEmail: string | null | undefined): Set<string> {
+  const out = new Set<string>()
+  const self = userEmail?.toLowerCase()
+  if (self) out.add(self)
+  for (const p of projects) {
+    if (!canAccessProject(p, userEmail)) continue
+    p.memberEmails?.forEach(m => out.add(m.toLowerCase()))
+    if (p.creatorEmail) out.add(p.creatorEmail.toLowerCase())
+  }
+  return out
+}
+
+// True if an assignee token belongs to an authorized participant.
+export function isAuthorizedAssignee(key: string, authorized: Set<string>): boolean {
+  return authorized.has(assigneeKeyToEmail(key))
+}
+
+// All tokens that refer to the same person as `key` — the canonical email plus
+// any legacy MemberKey mapping to it. Used so a single selected assignee filter
+// matches tasks whether they were assigned by email or by legacy key.
+export function assigneeAliases(key: string): string[] {
+  const email = assigneeKeyToEmail(key)
+  const out = new Set<string>([key, email])
+  for (const m of Object.values(MEMBERS)) {
+    if (m.email.toLowerCase() === email) { out.add(m.key); out.add(m.email.toLowerCase()) }
+  }
+  return Array.from(out)
 }
 
 export function stripHtml(html: string): string {
