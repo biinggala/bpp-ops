@@ -22,6 +22,20 @@ function persist(tasks: Task[]) {
 
 const MAX_HISTORY = 50
 
+// Recursively drop keys whose value is `undefined`; Firebase refuses to write
+// undefined and throws synchronously if any is present. Arrays are preserved.
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(stripUndefined) as unknown as T
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) {
+      if (v !== undefined) out[k] = stripUndefined(v)
+    }
+    return out as T
+  }
+  return value
+}
+
 function pushHistory(get: () => TaskState) {
   const prev = get().history
   const snapshot = get().tasks
@@ -71,8 +85,16 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   syncToFirebase: () => {
     const tasks = get().tasks
     const now = Date.now()
-    fbSet(ref(db, 'cringe/tasks'), tasks).catch((e: unknown) => console.warn('[sync]', e))
-    fbSet(ref(db, 'cringe/savedAt'), now).catch((e: unknown) => console.warn('[sync savedAt]', e))
+    // Firebase rejects `undefined` anywhere in the payload — and does so by
+    // throwing synchronously, which .catch() cannot intercept. Strip undefined
+    // fields (e.g. parentId/milestoneId/createdBy on newly added tasks) first.
+    const clean = stripUndefined(tasks)
+    try {
+      fbSet(ref(db, 'cringe/tasks'), clean).catch((e: unknown) => console.warn('[sync]', e))
+      fbSet(ref(db, 'cringe/savedAt'), now).catch((e: unknown) => console.warn('[sync savedAt]', e))
+    } catch (e) {
+      console.warn('[sync threw]', e)
+    }
   },
 
   subscribeFirebase: () => {
