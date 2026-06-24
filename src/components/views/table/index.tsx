@@ -1485,7 +1485,7 @@ function AddRowAssigneeSelect({ value, options, onChange }: {
       </div>
 
       {open && (
-        <div style={{
+        <div data-addrow-popup style={{
           position: 'fixed', top: pos.top, left: pos.left, zIndex: 9001,
           background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
           boxShadow: 'var(--sh-md)', minWidth: 160, maxHeight: 240, overflowY: 'auto', padding: '4px 0',
@@ -1559,7 +1559,7 @@ function AddRowStatusSelect({ value, onChange }: {
         <span style={{ fontSize: 9, opacity: .6 }}>▾</span>
       </div>
       {open && (
-        <div style={{
+        <div data-addrow-popup style={{
           position: 'fixed', top: pos.top, left: pos.left, zIndex: 9001,
           background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
           boxShadow: 'var(--sh-md)', minWidth: 120, padding: '4px 0',
@@ -1662,7 +1662,7 @@ function AddRowDatePicker({ value, onChange }: { value: string; onChange: (v: st
       </div>
 
       {open && (
-        <div style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9001, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', width: 234, padding: '10px', userSelect: 'none' as const }}>
+        <div data-addrow-popup style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9001, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', width: 234, padding: '10px', userSelect: 'none' as const }}>
           {/* Month nav */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
             <button onMouseDown={e => { e.preventDefault(); prevMonth() }} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--t2)', padding: '2px 6px', borderRadius: 3, lineHeight: 1 }}>‹</button>
@@ -1732,7 +1732,10 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, s
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) onCancel()
+      const t = e.target as HTMLElement
+      // Ignore clicks inside any fixed popup spawned by our child selects
+      if (t.closest('[data-addrow-popup]')) return
+      if (containerRef.current && !containerRef.current.contains(t)) onCancel()
     }
     document.addEventListener('mousedown', h)
     return () => document.removeEventListener('mousedown', h)
