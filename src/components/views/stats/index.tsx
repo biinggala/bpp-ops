@@ -5,6 +5,7 @@ import { useSpaceStore } from '../../../store/spaceStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
 import { useProjectStore } from '../../../store/projectStore'
 import { useAuthStore } from '../../../store/authStore'
+import { useUiStore } from '../../../store/uiStore'
 import { STATUS_COLORS, STATUS_LIST, MEMBERS, getCatColor } from '../../../types'
 import type { MemberKey } from '../../../types'
 
@@ -31,6 +32,7 @@ export function StatsView() {
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const projects = useProjectStore(s => s.projects)
   const email = useAuthStore(s => s.email)
+  const myTasksOnly = useUiStore(s => s.myTasksOnly)
 
   const total = tasks.length
   const done = tasks.filter(t => t.status === '완료').length
@@ -125,6 +127,9 @@ export function StatsView() {
         </Section>
       </div>
 
+      {/* '내 할 일' view is by definition all the current user's own tasks, so a
+          per-assignee breakdown would just be a single self card — hide it. */}
+      {!myTasksOnly && (
       <Section title="담당자별">
         {participants.length === 0 ? (
           <div style={{ fontSize: 12, color: 'var(--t3)', padding: '8px 0' }}>
@@ -186,6 +191,7 @@ export function StatsView() {
           </div>
         )}
       </Section>
+      )}
     </div>
   )
 }
