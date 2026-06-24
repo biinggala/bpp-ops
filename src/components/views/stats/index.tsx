@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { canAccessProject, authorizedEmails, isAuthorizedAssignee, assigneeKeyToEmail, parseAssignees } from '../../../lib/utils'
+import { canAccessProject, assigneeKeyToEmail, parseAssignees } from '../../../lib/utils'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useSpaceStore } from '../../../store/spaceStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
@@ -54,21 +54,29 @@ export function StatsView() {
     return m
   }, [])
 
-  // Build participant list — STRICTLY limited to people with project access.
-  // Anyone not a member/creator of an accessible project is never surfaced, even
-  // if they appear as an assignee on a visible task (privacy/security). Keyed by
-  // canonical email so a person assigned via a legacy MemberKey and via their
-  // email is shown once, matching tasks through all of their aliases.
+  const projectById = useMemo(() => {
+    const m = new Map<string, typeof projects[number]>()
+    projects.forEach(p => m.set(p.id, p))
+    return m
+  }, [projects])
+
+  // Build participant list — STRICTLY per-project. A person appears only if they
+  // are assigned to a task in the current view AND are a member/creator of THAT
+  // task's project. This means members of *other* accessible projects never leak
+  // into a project's stats, and assignees who aren't members of the task's own
+  // project are never surfaced. Personal tasks (no project) only ever show self.
+  const selfEmail = email?.toLowerCase() ?? null
   const participants = useMemo(() => {
-    const accessibleProjects = projects.filter(p => canAccessProject(p, email))
-    const authorized = authorizedEmails(accessibleProjects, email)
     const emails = new Set<string>()
-    // Project members (authorized by definition)
-    accessibleProjects.forEach(p => p.memberEmails?.forEach(e => emails.add(e.toLowerCase())))
-    // Task assignees — only if they resolve to an authorized participant
     tasks.forEach(t => {
+      const proj = t.projectId ? projectById.get(t.projectId) : null
       parseAssignees(t.assignee).forEach(k => {
-        if (isAuthorizedAssignee(k, authorized)) emails.add(assigneeKeyToEmail(k))
+        const em = assigneeKeyToEmail(k)
+        if (proj) {
+          if (canAccessProject(proj, em)) emails.add(em)
+        } else if (em === selfEmail) {
+          emails.add(em)
+        }
       })
     })
     return Array.from(emails).sort().map(em => {
@@ -77,7 +85,7 @@ export function StatsView() {
       if (mem) aliases.push(mem.key)
       return { email: em, aliases, member: mem }
     })
-  }, [tasks, projects, email, memberByEmail])
+  }, [tasks, projectById, selfEmail, memberByEmail])
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
