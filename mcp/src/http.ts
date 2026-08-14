@@ -8,7 +8,7 @@
 import express from 'express'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js'
+import { getOAuthProtectedResourceMetadataUrl, mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js'
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js'
 import { GoogleBackedProvider, googleCallbackPath } from './oauth/provider.js'
 import { registerTools } from './tools.js'
@@ -62,7 +62,12 @@ async function main() {
     }
   })
 
-  const bearer = requireBearerAuth({ verifier: provider })
+  // The 401 must advertise where the resource metadata lives; that pointer is
+  // how a connector discovers which authorization server to use.
+  const bearer = requireBearerAuth({
+    verifier: provider,
+    resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(issuer),
+  })
 
   // Stateless: a fresh server and transport per request keeps concurrent users
   // from sharing state, and lets the process scale to zero between calls.
