@@ -1,4 +1,4 @@
-import { cert, getApps, initializeApp, type ServiceAccount } from 'firebase-admin/app'
+import { applicationDefault, cert, getApps, initializeApp, type ServiceAccount } from 'firebase-admin/app'
 import { getDatabase, type Database } from 'firebase-admin/database'
 import type { Milestone, Project, Task } from './types.js'
 
@@ -7,20 +7,25 @@ const ROOT = 'cringe'
 let db: Database | null = null
 
 /**
- * Initialises the Admin SDK from FIREBASE_SERVICE_ACCOUNT (raw JSON or base64)
- * plus FIREBASE_DATABASE_URL.
+ * Initialises the Admin SDK against FIREBASE_DATABASE_URL.
+ *
+ * Credentials come from FIREBASE_SERVICE_ACCOUNT when set (raw JSON or base64),
+ * which is how the stdio server runs on a laptop. On Cloud Run the variable is
+ * left unset and the runtime's own service account is used instead, so there is
+ * no key file to hand around or rotate.
  */
 export function initDb(): Database {
   if (db) return db
   if (!getApps().length) {
-    const raw = process.env.FIREBASE_SERVICE_ACCOUNT
-    if (!raw) throw new Error('FIREBASE_SERVICE_ACCOUNT is not set')
-    const json = raw.trim().startsWith('{')
-      ? raw
-      : Buffer.from(raw, 'base64').toString('utf8')
     const databaseURL = process.env.FIREBASE_DATABASE_URL
     if (!databaseURL) throw new Error('FIREBASE_DATABASE_URL is not set')
-    initializeApp({ credential: cert(JSON.parse(json) as ServiceAccount), databaseURL })
+
+    const raw = process.env.FIREBASE_SERVICE_ACCOUNT
+    const credential = raw
+      ? cert(JSON.parse(raw.trim().startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf8')) as ServiceAccount)
+      : applicationDefault()
+
+    initializeApp({ credential, databaseURL })
   }
   db = getDatabase()
   return db

@@ -52,7 +52,7 @@ npm test
 | 변수 | 값 |
 |---|---|
 | `CRINGE_OPERATOR_EMAIL` | 이 서버가 대신 행동할 사람의 이메일. **필수** — 없으면 시작을 거부합니다 |
-| `FIREBASE_SERVICE_ACCOUNT` | 서비스 계정 JSON (원문 또는 base64) |
+|  `FIREBASE_SERVICE_ACCOUNT` (로컬 전용) | 서비스 계정 JSON (원문 또는 base64) |
 | `FIREBASE_DATABASE_URL` | `https://crng-task-manager-default-rtdb.firebaseio.com` |
 
 Claude Code에 등록:
@@ -117,7 +117,7 @@ OAuth 클라이언트·인가 코드·토큰은 `cringe/`가 아니라 **최상�
 |---|---|
 | `PUBLIC_URL` | 서버의 공개 주소 (OAuth 발급자 식별자로도 쓰임) |
 | `GOOGLE_OAUTH_CLIENT_ID` / `_SECRET` | 위에서 만든 **웹** 클라이언트 |
-| `FIREBASE_SERVICE_ACCOUNT` | 서비스 계정 JSON (원문 또는 base64) |
+|  `FIREBASE_SERVICE_ACCOUNT` (로컬 전용) | 서비스 계정 JSON (원문 또는 base64) |
 | `FIREBASE_DATABASE_URL` | RTDB URL |
 | `PORT` | 기본 8080 |
 
