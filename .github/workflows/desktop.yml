@@ -51,7 +51,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cringe-flow-macos
+          name: bpp-ops-macos
           path: |
             src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
           if-no-files-found: error
@@ -66,5 +66,5 @@ jobs:
 
             서명되지 않은 빌드라 첫 실행 시 경고가 뜹니다:
             1. `.dmg`를 열고 앱을 `응용 프로그램`으로 드래그
-            2. 터미널에서 `xattr -cr "/Applications/Cringe Flow.app"` 실행
+            2. 터미널에서 `xattr -cr "/Applications/bpp-ops.app"` 실행
             3. 앱 실행

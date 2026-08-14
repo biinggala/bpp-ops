@@ -1,12 +1,12 @@
 {
-  "name": "cringe-flow-mcp",
+  "name": "bpp-ops-mcp",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "MCP server exposing 크린지 플로우 tasks over the Model Context Protocol",
+  "description": "MCP server exposing bpp-ops tasks over the Model Context Protocol",
   "bin": {
-    "cringe-flow-mcp": "./dist/index.js",
-    "cringe-flow-mcp-http": "./dist/http.js"
+    "bpp-ops-mcp": "./dist/index.js",
+    "bpp-ops-mcp-http": "./dist/http.js"
   },
   "scripts": {
     "build": "tsc",

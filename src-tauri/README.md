@@ -1,4 +1,4 @@
-# 크린지 플로우 데스크톱 앱 (macOS)
+# bpp-ops 데스크톱 앱 (macOS)
 
 Tauri v2 기반의 얇은 셸입니다. 프론트엔드를 번들하지 않고 배포된 웹 앱
 (`https://crng-task-manager.web.app`)을 직접 로드하므로, Firebase에 배포하면
@@ -64,7 +64,7 @@ Intel + Apple Silicon 유니버설 `.dmg`가 나옵니다.
 1. `.dmg`를 열고 앱을 `응용 프로그램`으로 드래그
 2. 터미널에서 격리 속성 제거:
    ```bash
-   xattr -cr "/Applications/Cringe Flow.app"
+   xattr -cr "/Applications/bpp-ops.app"
    ```
 3. 앱 실행
 

@@ -1,6 +1,6 @@
 {
-  "name": "크린지 플로우",
-  "short_name": "크린지",
+  "name": "bpp-ops",
+  "short_name": "bpp-ops",
   "description": "팀 업무 관리 앱",
   "start_url": "/",
   "display": "standalone",

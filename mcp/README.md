@@ -1,4 +1,4 @@
-# 크린지 플로우 MCP 서버
+# bpp-ops MCP 서버
 
 태스크를 Model Context Protocol로 노출해, Claude에서 대화로 조회·생성·수정·삭제할 수 있게 합니다.
 
@@ -51,15 +51,15 @@ npm test
 
 | 변수 | 값 |
 |---|---|
-| `CRINGE_OPERATOR_EMAIL` | 이 서버가 대신 행동할 사람의 이메일. **필수** — 없으면 시작을 거부합니다 |
+| `BPP_OPS_OPERATOR_EMAIL` | 이 서버가 대신 행동할 사람의 이메일. **필수** — 없으면 시작을 거부합니다 |
 |  `FIREBASE_SERVICE_ACCOUNT` (로컬 전용) | 서비스 계정 JSON (원문 또는 base64) |
 | `FIREBASE_DATABASE_URL` | `https://crng-task-manager-default-rtdb.firebaseio.com` |
 
 Claude Code에 등록:
 
 ```bash
-claude mcp add cringe-flow \
-  --env CRINGE_OPERATOR_EMAIL=you@bpp.co.kr \
+claude mcp add bpp-ops \
+  --env BPP_OPS_OPERATOR_EMAIL=you@bpp.co.kr \
   --env FIREBASE_DATABASE_URL=https://crng-task-manager-default-rtdb.firebaseio.com \
   --env FIREBASE_SERVICE_ACCOUNT="$(cat serviceAccount.json)" \
   -- node /absolute/path/to/mcp/dist/index.js
@@ -97,7 +97,7 @@ OAuth 클라이언트·인가 코드·토큰은 `cringe/`가 아니라 **최상�
 
    ```bash
    cd mcp
-   gcloud run deploy cringe-flow-mcp --source . --region asia-northeast3 \
+   gcloud run deploy bpp-ops-mcp --source . --region asia-northeast3 \
      --allow-unauthenticated \
      --set-env-vars PUBLIC_URL=https://<배포주소> \
      --set-env-vars FIREBASE_DATABASE_URL=https://crng-task-manager-default-rtdb.firebaseio.com \
@@ -130,7 +130,7 @@ OAuth 클라이언트·인가 코드·토큰은 `cringe/`가 아니라 **최상�
 | `FIREBASE_DATABASE_URL` | RTDB URL |
 | `PORT` | 기본 8080 |
 
-`CRINGE_OPERATOR_EMAIL`은 HTTP 모드에서 쓰지 않습니다 — 신원이 토큰에서 나오기 때문이고, 그게 공용 서버가 안전한 이유입니다.
+`BPP_OPS_OPERATOR_EMAIL`은 HTTP 모드에서 쓰지 않습니다 — 신원이 토큰에서 나오기 때문이고, 그게 공용 서버가 안전한 이유입니다.
 
 ### 아직 실제로 붙여보지 않았습니다
 

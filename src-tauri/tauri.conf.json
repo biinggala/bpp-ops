@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Cringe Flow",
+  "productName": "bpp-ops",
   "version": "0.1.0",
-  "identifier": "com.crngfriends.cringeflow",
+  "identifier": "kr.co.bpp.ops",
   "build": {
     "frontendDist": "https://crng-task-manager.web.app"
   },
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "크린지 플로우",
+        "title": "bpp-ops",
         "width": 1280,
         "height": 840,
         "minWidth": 880,

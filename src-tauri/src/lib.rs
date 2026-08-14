@@ -1,4 +1,4 @@
-//! Desktop shell for 크린지 플로우.
+//! Desktop shell for bpp-ops.
 //!
 //! The window loads the deployed web app directly, so the desktop build stays in
 //! sync with every Firebase deploy and needs no updater. The only native surface
@@ -101,7 +101,7 @@ fn accept_code(listener: &TcpListener) -> Result<String, String> {
     };
     let body = format!(
         "<!doctype html><html lang=\"ko\"><meta charset=\"utf-8\">\
-         <title>크린지 플로우</title>\
+         <title>bpp-ops</title>\
          <body style=\"font-family:-apple-system,BlinkMacSystemFont,sans-serif;\
          display:flex;align-items:center;justify-content:center;height:100vh;\
          margin:0;background:#111;color:#eee;text-align:center;line-height:1.7\">\

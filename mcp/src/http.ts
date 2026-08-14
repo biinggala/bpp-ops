@@ -45,7 +45,7 @@ async function main() {
       provider,
       issuerUrl: issuer,
       baseUrl: issuer,
-      resourceName: '크린지 플로우',
+      resourceName: 'bpp-ops',
       scopesSupported: ['tasks'],
     })
   )
@@ -77,7 +77,7 @@ async function main() {
       return void res.status(401).json({ error: 'token carries no identity' })
     }
 
-    const server = new McpServer({ name: 'cringe-flow', version: '0.1.0' })
+    const server = new McpServer({ name: 'bpp-ops', version: '0.1.0' })
     registerTools(server, { email })
 
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
@@ -94,11 +94,11 @@ async function main() {
 
   const port = Number(process.env.PORT ?? 8080)
   app.listen(port, () => {
-    console.error(`[cringe-flow-mcp] listening on :${port} as ${publicUrl}`)
+    console.error(`[bpp-ops-mcp] listening on :${port} as ${publicUrl}`)
   })
 }
 
 main().catch(err => {
-  console.error('[cringe-flow-mcp]', err instanceof Error ? err.message : err)
+  console.error('[bpp-ops-mcp]', err instanceof Error ? err.message : err)
   process.exit(1)
 })
