@@ -16,7 +16,7 @@ import { useMobile } from '../../hooks/useMobile'
 import { AssigneeAvatar } from '../shared/Avatar'
 import { STATUS_LIST, PRIORITY_LIST } from '../../types'
 import type { Task, Status, Priority, TaskLink } from '../../types'
-import { gid, canAccessProject } from '../../lib/utils'
+import { gid, canAccessProject, isComposing } from '../../lib/utils'
 
 const SIDEBAR_KEY = 'cringe_detail_sidebar_w'
 const MIN_SIDEBAR = 200
@@ -129,7 +129,7 @@ function AssetsPanel({ links, onChange }: { links: TaskLink[]; onChange: (links:
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
           <input autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder="링크 제목 (선택)"
             onKeyDown={e => {
-              if (e.key === 'Enter') (e.currentTarget.nextElementSibling as HTMLInputElement | null)?.focus()
+              if (e.key === 'Enter' && !isComposing(e)) (e.currentTarget.nextElementSibling as HTMLInputElement | null)?.focus()
               if (e.key === 'Escape') { setAdding(false); setTitle(''); setUrl('') }
             }}
             style={{ border: '1px solid var(--bd)', borderRadius: 'var(--r1)', padding: '5px 8px', fontSize: 12, background: 'var(--bg)', color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)', width: '100%', boxSizing: 'border-box' }}
@@ -137,7 +137,7 @@ function AssetsPanel({ links, onChange }: { links: TaskLink[]; onChange: (links:
           <div style={{ display: 'flex', gap: 5 }}>
             <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://..."
               onKeyDown={e => {
-                if (e.key === 'Enter') submit()
+                if (e.key === 'Enter' && !isComposing(e)) submit()
                 if (e.key === 'Escape') { setAdding(false); setTitle(''); setUrl('') }
               }}
               style={{ flex: 1, border: '1px solid var(--bd)', borderRadius: 'var(--r1)', padding: '5px 8px', fontSize: 12, background: 'var(--bg)', color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)' }}
@@ -354,7 +354,7 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
               }}
               onBlur={() => { upd({ name: titleValue.trim() || task.name }); setEditingTitle(false) }}
               onKeyDown={e => {
-                if (e.key === 'Enter') { e.preventDefault(); upd({ name: titleValue.trim() || task.name }); setEditingTitle(false) }
+                if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); upd({ name: titleValue.trim() || task.name }); setEditingTitle(false) }
                 if (e.key === 'Escape') setEditingTitle(false)
               }}
               style={{
@@ -692,7 +692,7 @@ export function TaskDetailModal() {
                 onChange={e => setTitleValue(e.target.value)}
                 onBlur={() => { upd({ name: titleValue.trim() || task.name }); setEditingTitle(false) }}
                 onKeyDown={e => {
-                  if (e.key === 'Enter') { upd({ name: titleValue.trim() || task.name }); setEditingTitle(false) }
+                  if (e.key === 'Enter' && !isComposing(e)) { upd({ name: titleValue.trim() || task.name }); setEditingTitle(false) }
                   if (e.key === 'Escape') setEditingTitle(false)
                 }}
                 style={{ width: '100%', fontSize: 20, fontWeight: 700, border: 'none', outline: '2px solid var(--ac)', borderRadius: 4, padding: '2px 8px', fontFamily: 'var(--font)', color: 'var(--t1)' }}

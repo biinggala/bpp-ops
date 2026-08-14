@@ -12,7 +12,7 @@ import { TagBadge } from '../../shared/Badge'
 import { AssigneeAvatar } from '../../shared/Avatar'
 import { ProgressBar } from '../../shared/ProgressBar'
 import { ContextMenu } from '../../shared/ContextMenu'
-import { fmtDate, isOverdue, parseAssignees, stripHtml, gid, canAccessProject } from '../../../lib/utils'
+import { fmtDate, isOverdue, parseAssignees, stripHtml, gid, canAccessProject, isComposing } from '../../../lib/utils'
 import type { Task, Milestone, Status, Priority, TaskLink } from '../../../types'
 
 // ── Column config ─────────────────────────────────────────────────────────────
@@ -1293,7 +1293,7 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
         <input
           autoFocus value={tempName} onChange={e => setTempName(e.target.value)}
           onBlur={saveName}
-          onKeyDown={e => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') { setTempName(milestone.name); setEditingName(false) } }}
+          onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) saveName(); if (e.key === 'Escape') { setTempName(milestone.name); setEditingName(false) } }}
           onClick={e => e.stopPropagation()}
           style={{ ...inlineInput, fontSize: 13, fontWeight: 600, width: 160 }}
         />
@@ -1313,7 +1313,7 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
         <input
           autoFocus type="date" value={tempDate} onChange={e => setTempDate(e.target.value)}
           onBlur={saveDate}
-          onKeyDown={e => { if (e.key === 'Enter') saveDate(); if (e.key === 'Escape') { setTempDate(milestone.dueDate); setEditingDate(false) } }}
+          onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) saveDate(); if (e.key === 'Escape') { setTempDate(milestone.dueDate); setEditingDate(false) } }}
           onClick={e => e.stopPropagation()}
           style={{ ...inlineInput, colorScheme: 'dark' }}
         />
@@ -1417,12 +1417,12 @@ function AddMilestoneInline({ projectId, onDone }: { projectId: string; onDone: 
       <span style={{ fontSize: 9, color: '#8b5cf6', flexShrink: 0 }}>◆</span>
       <input
         autoFocus placeholder="마일스톤 이름..." value={name} onChange={e => setName(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onDone() }}
+        onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) submit(); if (e.key === 'Escape') onDone() }}
         style={{ flex: 1, border: '1px solid var(--ac)', borderRadius: 'var(--r1)', padding: '3px 8px', fontSize: 13, fontWeight: 600, background: 'var(--bg)', color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)' }}
       />
       <input
         type="date" value={date} onChange={e => setDate(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onDone() }}
+        onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) submit(); if (e.key === 'Escape') onDone() }}
         style={{ border: '1px solid var(--bd)', borderRadius: 'var(--r1)', padding: '3px 8px', fontSize: 11, background: 'var(--bg)', color: 'var(--t2)', outline: 'none', fontFamily: 'var(--font)' }}
       />
       <button
@@ -1756,7 +1756,7 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, s
 
   const handleContainerKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') { e.stopPropagation(); onCancel(); return }
-    if (e.key === 'Enter') { e.preventDefault(); doSave(!e.shiftKey) }
+    if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); doSave(!e.shiftKey) }
   }
 
   const inp: React.CSSProperties = {
@@ -1912,7 +1912,7 @@ function InlineTextEdit({ value, onCommit, onCancel, fontSize = 13, bold = false
       autoFocus value={v} onChange={e => setV(e.target.value)}
       onBlur={() => onCommit(v)}
       onKeyDown={e => {
-        if (e.key === 'Enter') { e.preventDefault(); onCommit(v) }
+        if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); onCommit(v) }
         if (e.key === 'Escape') { e.preventDefault(); onCancel() }
       }}
       onClick={e => e.stopPropagation()}
@@ -2009,7 +2009,7 @@ function LinksCell({ links, onChange }: {
               value={addTitle}
               onChange={e => setAddTitle(e.target.value)}
               placeholder="링크 제목 (선택)"
-              onKeyDown={e => { if (e.key === 'Enter') { const next = e.currentTarget.nextElementSibling as HTMLInputElement; next?.focus() } }}
+              onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) { const next = e.currentTarget.nextElementSibling as HTMLInputElement; next?.focus() } }}
               style={{ width: '100%', boxSizing: 'border-box', marginBottom: 5, border: '1px solid var(--bd)', borderRadius: 'var(--r1)', padding: '4px 8px', fontSize: 12, background: 'var(--bg2)', color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)' }}
             />
             <div style={{ display: 'flex', gap: 5 }}>
@@ -2017,7 +2017,7 @@ function LinksCell({ links, onChange }: {
                 value={addUrl}
                 onChange={e => setAddUrl(e.target.value)}
                 placeholder="https://..."
-                onKeyDown={e => { if (e.key === 'Enter') addLink() }}
+                onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) addLink() }}
                 style={{ flex: 1, border: '1px solid var(--bd)', borderRadius: 'var(--r1)', padding: '4px 8px', fontSize: 12, background: 'var(--bg2)', color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)' }}
               />
               <button
@@ -2106,7 +2106,7 @@ function TagMultiSelect({ tags, allTags, onChange }: {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => {
-                if (e.key === 'Enter') {
+                if (e.key === 'Enter' && !isComposing(e)) {
                   e.preventDefault()
                   if (filtered.length === 1) toggle(filtered[0])
                   else if (canAddNew) addNew(input)

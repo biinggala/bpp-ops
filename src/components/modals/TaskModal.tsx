@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { canAccessProject } from '../../lib/utils'
+import { canAccessProject, isComposing } from '../../lib/utils'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useProjectStore } from '../../store/projectStore'
@@ -117,7 +117,7 @@ export function TaskModal() {
               value={form.name}
               onChange={e => upd('name', e.target.value)}
               placeholder="업무명을 입력하세요"
-              onKeyDown={e => { if (e.key === 'Enter') submit() }}
+              onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) submit() }}
             />
           </Field>
 
@@ -351,7 +351,7 @@ function TagInput({ value, onChange }: { value: string[]; onChange: (tags: strin
           onChange={e => { setInput(e.target.value); setOpen(true) }}
           onFocus={() => setOpen(true)}
           onKeyDown={e => {
-            if (e.key === 'Enter') { e.preventDefault(); if (input.trim()) add(input) }
+            if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); if (input.trim()) add(input) }
             if (e.key === 'Backspace' && !input && value.length) remove(value[value.length - 1])
             if (e.key === 'Escape') setOpen(false)
           }}

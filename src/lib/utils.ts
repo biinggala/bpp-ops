@@ -131,3 +131,20 @@ export function getBlockingCascade(startId: string, allTasks: { id: string; bloc
   }
   return result
 }
+
+// True while an IME (Korean/Japanese/Chinese) is still composing a character.
+//
+// Pressing Enter to commit a composition fires a keydown with key === 'Enter'
+// *and* is followed by a second, real Enter keydown — so an unguarded handler
+// runs twice. In the inline add-task row that produced two tasks: the full text,
+// then the trailing syllable that the IME re-inserted into the cleared input.
+//
+// `keyCode === 229` is the legacy signal for the same state, kept for older
+// WebKit where `isComposing` is unreliable.
+// Accepts both React synthetic events and native ones without pulling React in.
+type ComposableKeyEvent = KeyboardEvent | { nativeEvent: KeyboardEvent }
+
+export function isComposing(e: ComposableKeyEvent): boolean {
+  const native = 'nativeEvent' in e ? e.nativeEvent : e
+  return native.isComposing || native.keyCode === 229
+}

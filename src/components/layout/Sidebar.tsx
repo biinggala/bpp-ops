@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { canAccessProject } from '../../lib/utils'
+import { canAccessProject, isComposing } from '../../lib/utils'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useAuthStore } from '../../store/authStore'
@@ -300,7 +300,7 @@ export function Sidebar() {
                     onChange={e => setEditProjectName(e.target.value)}
                     onBlur={() => handleRenameProject(p.id)}
                     onKeyDown={e => {
-                      if (e.key === 'Enter') handleRenameProject(p.id)
+                      if (e.key === 'Enter' && !isComposing(e)) handleRenameProject(p.id)
                       if (e.key === 'Escape') setEditingProjectId(null)
                     }}
                   />
@@ -335,7 +335,7 @@ export function Sidebar() {
                 onChange={e => setNewProjectName(e.target.value)}
                 onBlur={handleAddProject}
                 onKeyDown={e => {
-                  if (e.key === 'Enter') handleAddProject()
+                  if (e.key === 'Enter' && !isComposing(e)) handleAddProject()
                   if (e.key === 'Escape') handleCancelAddProject()
                 }}
               />
@@ -718,7 +718,7 @@ function DeleteConfirmModal({ name, onConfirm, onCancel }: {
           value={typed}
           onChange={e => setTyped(e.target.value)}
           onKeyDown={e => {
-            if (e.key === 'Enter' && typed === name) onConfirm()
+            if (e.key === 'Enter' && !isComposing(e) && typed === name) onConfirm()
             if (e.key === 'Escape') onCancel()
           }}
           placeholder={name}
@@ -858,7 +858,7 @@ function MemberManageModal({ project, currentEmail, onAddMember, onRemoveMember,
             ref={inputRef}
             value={newEmail}
             onChange={e => setNewEmail(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
+            onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) handleAdd() }}
             placeholder="이메일 주소 입력..."
             style={{ flex: 1, background: 'var(--bg3)', border: '1px solid var(--bd2)', borderRadius: 'var(--r2)', padding: '8px 10px', fontSize: 13, color: 'var(--t1)', outline: 'none' }}
           />

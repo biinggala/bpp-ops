@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { isComposing } from '../../lib/utils'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useSpaceStore } from '../../store/spaceStore'
@@ -114,7 +115,7 @@ export function CommandPalette() {
       if (!isCommandPaletteOpen) return
       if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIdx(i => Math.min(i + 1, items.length - 1)) }
       else if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedIdx(i => Math.max(i - 1, 0)) }
-      else if (e.key === 'Enter') { e.preventDefault(); execute() }
+      else if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); execute() }
       else if (e.key === 'Escape') closeCommandPalette()
     }
     document.addEventListener('keydown', h)

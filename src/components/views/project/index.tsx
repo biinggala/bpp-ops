@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react'
+import { isComposing } from '../../../lib/utils'
 import { useProjectStore } from '../../../store/projectStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useTaskStore } from '../../../store/taskStore'
@@ -171,14 +172,14 @@ function ProjectCard({
                 placeholder="마일스톤 이름"
                 value={msName}
                 onChange={e => setMsName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAddMs(); if (e.key === 'Escape') setAddingMs(false) }}
+                onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) handleAddMs(); if (e.key === 'Escape') setAddingMs(false) }}
                 style={{ padding: '3px 7px', fontSize: 11, border: '1px solid var(--bd)', borderRadius: 'var(--r1)', background: 'var(--bg)', color: 'var(--t1)', outline: 'none', width: 130, fontFamily: 'var(--font)' }}
               />
               <input
                 type="date"
                 value={msDue}
                 onChange={e => setMsDue(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAddMs(); if (e.key === 'Escape') setAddingMs(false) }}
+                onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) handleAddMs(); if (e.key === 'Escape') setAddingMs(false) }}
                 style={{ padding: '3px 7px', fontSize: 11, border: '1px solid var(--bd)', borderRadius: 'var(--r1)', background: 'var(--bg)', color: 'var(--t1)', outline: 'none', colorScheme: 'dark', fontFamily: 'var(--font)' }}
               />
               <button onClick={handleAddMs} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: 'none', background: 'var(--ac)', color: '#fff', cursor: 'pointer', fontFamily: 'var(--font)' }}>추가</button>
@@ -281,14 +282,14 @@ function EditableMilestoneChip({ milestone, now, onUpdate, onDelete }: {
           autoFocus
           value={tempName}
           onChange={e => setTempName(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
+          onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) save(); if (e.key === 'Escape') cancel() }}
           style={{ ...inp, width: 120 }}
         />
         <input
           type="date"
           value={tempDate}
           onChange={e => setTempDate(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
+          onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) save(); if (e.key === 'Escape') cancel() }}
           style={{ ...inp, colorScheme: 'dark' }}
         />
         <button onClick={save} style={{ padding: '2px 7px', fontSize: 11, borderRadius: 'var(--r1)', border: 'none', background: 'var(--ac)', color: '#fff', cursor: 'pointer', fontFamily: 'var(--font)' }}>✓</button>
