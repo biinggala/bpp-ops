@@ -30,6 +30,14 @@ export function useFilteredTasks(): Task[] {
       return false
     })
 
+    // Archived projects drop out of every aggregate view (전체 업무, 내 할 일,
+    // 통계). They remain fully visible when the archived project itself is the
+    // selected one, so the work is retrievable rather than deleted.
+    if (!projectId) {
+      const archivedIds = new Set(projects.filter(p => p.archived).map(p => p.id))
+      if (archivedIds.size) result = result.filter(t => !t.projectId || !archivedIds.has(t.projectId))
+    }
+
     if (space) result = result.filter(t => t.cat === space)
     if (projectId) result = result.filter(t => t.projectId === projectId)
     if (myTasksOnly) {

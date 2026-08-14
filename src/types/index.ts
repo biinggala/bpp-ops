@@ -23,6 +23,7 @@ export interface Project {
   memberEmails?: string[]  // fully joined members — only these emails can see the project
   pendingEmails?: string[] // invited but not yet accepted
   creatorEmail?: string    // email of the user who created this project
+  archived?: boolean       // completed/retired — hidden from active lists and aggregates
 }
 
 export interface Milestone {

@@ -32,9 +32,10 @@ export function ViewBar() {
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const email = useAuthStore(s => s.email)
 
-  // Only show projects the current user is a member of (same rule as Sidebar)
+  // Only show projects the current user is a member of (same rule as Sidebar);
+  // archived ones are filtered out since they're absent from the active views.
   const accessibleProjects = React.useMemo(() =>
-    projects.filter(p => canAccessProject(p, email))
+    projects.filter(p => canAccessProject(p, email) && !p.archived)
   , [projects, email])
 
   const allTagOptions = React.useMemo(() => {

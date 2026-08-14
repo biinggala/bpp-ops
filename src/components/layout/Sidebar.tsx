@@ -26,7 +26,8 @@ export function Sidebar() {
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
   const [editProjectName, setEditProjectName] = useState('')
   const projectEditRef = useRef<HTMLInputElement>(null)
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string; name: string; type: 'project' } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string; name: string; archived: boolean; type: 'project' } | null>(null)
+  const [archivedExpanded, setArchivedExpanded] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
   const [memberModal, setMemberModal] = useState<{ id: string; name: string } | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
@@ -58,9 +59,11 @@ export function Sidebar() {
     return () => window.removeEventListener('mousedown', close)
   }, [profileOpen])
 
+  // Archived projects are excluded so the 전체 업무 badge and Assets list match
+  // what that view actually shows.
   const accessibleProjectIds = new Set(
     projects
-      .filter(p => canAccessProject(p, email))
+      .filter(p => canAccessProject(p, email) && !p.archived)
       .map(p => p.id)
   )
   const hasAccess = accessibleProjectIds.size > 0
@@ -109,10 +112,19 @@ export function Sidebar() {
     setDeleteConfirm(null)
   }
 
-  const handleContextMenu = (e: React.MouseEvent, id: string, name: string) => {
+  const handleContextMenu = (e: React.MouseEvent, id: string, name: string, archived: boolean) => {
     e.preventDefault()
     e.stopPropagation()
-    setContextMenu({ x: e.clientX, y: e.clientY, id, name, type: 'project' })
+    setContextMenu({ x: e.clientX, y: e.clientY, id, name, archived, type: 'project' })
+  }
+
+  const handleArchiveProject = (id: string, archived: boolean) => {
+    // Leaving an archived project selected would strand the user on a view that
+    // is hidden everywhere else, so drop back to 전체 업무.
+    if (archived && projectId === id) setProject(null)
+    updateProject(id, { archived })
+    if (archived) setArchivedExpanded(true)
+    setContextMenu(null)
   }
 
   const getDaysRemaining = (dueDate: string): { days: number; overdue: boolean } => {
@@ -128,9 +140,9 @@ export function Sidebar() {
   const userName = member?.n ?? displayName ?? null
   const presences = usePresenceStore(s => s.presences)
 
-  const visibleProjects = projects.filter(p =>
-    canAccessProject(p, email)
-  )
+  const accessibleProjects = projects.filter(p => canAccessProject(p, email))
+  const visibleProjects = accessibleProjects.filter(p => !p.archived)
+  const archivedProjects = accessibleProjects.filter(p => p.archived)
   const onlineUsers = Object.values(presences).filter(p => p.online)
 
   const closeSidebar = () => { if (isMobile) setSidebarOpen(false) }
@@ -305,7 +317,7 @@ export function Sidebar() {
                 daysInfo={daysInfo}
                 inviteCode={p.inviteCode}
                 onClick={() => { setProject(p.id); setMyTasksOnly(false); closeSidebar() }}
-                onContextMenu={e => handleContextMenu(e, p.id, p.name)}
+                onContextMenu={e => handleContextMenu(e, p.id, p.name, false)}
               >
                 {p.name}
               </ProjectItem>
@@ -330,6 +342,40 @@ export function Sidebar() {
             </div>
           ) : (
             <AddBtn onClick={() => setAddingProject(true)}>프로젝트 추가</AddBtn>
+          )}
+
+          {/* Archived projects — collapsed by default, out of the way */}
+          {archivedProjects.length > 0 && (
+            <>
+              <div
+                onClick={() => setArchivedExpanded(v => !v)}
+                style={{ padding: '10px 8px 3px', fontSize: 11, fontWeight: 600, color: 'var(--sb-t3)', letterSpacing: '.06em', textTransform: 'uppercase', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, userSelect: 'none' }}
+                onMouseEnter={e => (e.currentTarget.style.color = 'var(--sb-t2)')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'var(--sb-t3)')}
+              >
+                <span style={{ fontSize: 8, display: 'inline-block', transform: archivedExpanded ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }}>▶</span>
+                Archived
+                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: .8, letterSpacing: 0 }}>{archivedProjects.length}</span>
+              </div>
+
+              {archivedExpanded && archivedProjects.map(p => {
+                const taskCount = tasks.filter(t => t.projectId === p.id).length
+                return (
+                  <ProjectItem
+                    key={p.id}
+                    active={projectId === p.id}
+                    dot={p.color}
+                    count={taskCount}
+                    daysInfo={null}
+                    dimmed
+                    onClick={() => { setProject(p.id); setMyTasksOnly(false); closeSidebar() }}
+                    onContextMenu={e => handleContextMenu(e, p.id, p.name, true)}
+                  >
+                    {p.name}
+                  </ProjectItem>
+                )
+              })}
+            </>
           )}
 
           {/* ASSETS section */}
@@ -423,6 +469,9 @@ export function Sidebar() {
               <ContextMenuItem onClick={() => { setMemberModal({ id: contextMenu.id, name: contextMenu.name }); setContextMenu(null) }}>
                 👥&nbsp;&nbsp;멤버 관리
               </ContextMenuItem>
+              <ContextMenuItem onClick={() => handleArchiveProject(contextMenu.id, !contextMenu.archived)}>
+                {contextMenu.archived ? '↩  아카이브 해제' : '📦  아카이브'}
+              </ContextMenuItem>
               <div style={{ height: 1, background: 'var(--bd)', margin: '4px 0' }} />
               <ContextMenuItem danger onClick={() => { setDeleteConfirm({ id: contextMenu.id, name: contextMenu.name }); setContextMenu(null) }}>
                 ×&nbsp;&nbsp;삭제
@@ -498,10 +547,11 @@ function NavItem({ children, active, onClick, count, icon }: {
   )
 }
 
-function ProjectItem({ children, active, dot, count, daysInfo, inviteCode, onClick, onContextMenu }: {
+function ProjectItem({ children, active, dot, count, daysInfo, inviteCode, dimmed, onClick, onContextMenu }: {
   children: React.ReactNode; active: boolean; dot: string; count: number
   daysInfo: { days: number; overdue: boolean } | null
   inviteCode?: string
+  dimmed?: boolean
   onClick: () => void
   onContextMenu: (e: React.MouseEvent) => void
 }) {
@@ -528,12 +578,12 @@ function ProjectItem({ children, active, dot, count, daysInfo, inviteCode, onCli
         display: 'flex', alignItems: 'center', gap: 6,
         padding: '5px 8px 5px 14px', borderRadius: 'var(--r2)', cursor: 'pointer',
         fontSize: 13, fontWeight: active ? 500 : 400, margin: '1px 0',
-        color: active ? 'var(--sb-t1)' : 'var(--sb-t2)',
+        color: active ? 'var(--sb-t1)' : dimmed ? 'var(--sb-t3)' : 'var(--sb-t2)',
         background: active ? 'var(--sb-active)' : hovered ? 'var(--sb-hover)' : 'transparent',
         transition: 'background .1s',
       }}
     >
-      <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flexShrink: 0 }} />
+      <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flexShrink: 0, opacity: dimmed ? .5 : 1 }} />
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
 
       {hovered && inviteCode ? (
