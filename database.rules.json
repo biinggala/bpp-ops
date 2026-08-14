@@ -9,6 +9,10 @@
         ".read": "auth != null",
         ".write": "auth != null && auth.uid == $uid"
       }
+    },
+    "mcpAuth": {
+      ".read": false,
+      ".write": false
     }
   }
 }

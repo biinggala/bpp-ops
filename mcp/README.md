@@ -65,13 +65,64 @@ claude mcp add cringe-flow \
   -- node /absolute/path/to/mcp/dist/index.js
 ```
 
-## 팀 공용 원격 서버 — 남은 작업
+## 팀 공용 원격 서버 (claude.ai / Claude Desktop)
 
-지금은 stdio 전송만 구현돼 있습니다. 도구 로직과 접근 제어(`tools.ts`, `access.ts`)는 전송 방식과 무관하므로 그대로 재사용되고, 다음 두 가지만 추가하면 됩니다:
+claude.ai와 Claude Desktop 커넥터는 **OAuth 2.1 + 동적 클라이언트 등록(DCR)** 으로만 원격 MCP 서버에 붙습니다. 헤더에 토큰을 넣는 방식은 지원하지 않아서, 서버가 실제 인증 서버 역할을 해야 합니다.
 
-1. **HTTP 전송** — SDK의 `StreamableHTTPServerTransport`로 `registerTools()`를 감싸기
-2. **사용자별 인증** — 공용 서버에서는 **누가 호출했는지 식별하는 것이 필수**입니다. 서비스 계정 하나로 전원이 붙으면 `Ctx.email`을 정할 수 없고, 그러면 위의 접근 제어가 전부 무의미해집니다
+MCP SDK가 엔드포인트(`/authorize`, `/token`, `/register`, `/revoke`, 메타데이터)를 전부 제공하므로, 이 저장소는 그 뒤의 로직만 구현합니다:
 
-   가벼운 방식: 사용자별 토큰을 `cringe/mcpKeys/<해시>` → 이메일로 저장하고, 요청 헤더의 토큰을 이메일로 해석해 `Ctx`에 넣기. MCP 표준 OAuth보다 훨씬 간단하고, Claude Code는 커스텀 헤더를 지원합니다. claude.ai 커넥터로 붙이려면 OAuth가 필요합니다.
+```
+Claude → /register            (DCR, SDK)
+       → /authorize           (SDK → 우리 provider)
+           → Google 로그인     (팀이 이미 쓰는 그 계정)
+           → /oauth/google/callback
+           → Claude로 인가 코드 반환
+       → /token               (SDK → 우리 provider)
+       → POST /mcp            (Bearer 토큰 → 이메일 → Ctx)
+```
 
-호스팅은 Cloud Run이 무난합니다 (이미 GCP에 프로젝트와 서비스 계정이 있음).
+**신원은 Google에 위임합니다.** Google이 검증한 이메일이 곧 `Ctx.email`이 되고, 그래서 `access.ts`의 접근 제어가 공용 서버에서도 의미를 갖습니다. 어떤 프로젝트에도 속하지 않은 사람은 로그인 단계에서 거부됩니다.
+
+### 토큰 저장 위치
+
+OAuth 클라이언트·인가 코드·토큰은 `cringe/`가 아니라 **최상위 `mcpAuth/`** 에 저장합니다. `cringe`는 로그인한 모든 사용자가 읽을 수 있어서 거기 두면 앱 사용자 누구나 남의 토큰을 가져갈 수 있습니다. `database.rules.json`에서 `mcpAuth`는 모든 클라이언트에 대해 차단되고, Admin SDK만 규칙을 우회해 접근합니다. 토큰은 SHA-256 해시를 키로 저장해서, 이 노드가 통째로 유출돼도 재사용할 수 없습니다.
+
+### 필요한 준비
+
+1. **Google OAuth 웹 클라이언트** — 데스크톱 앱용과 **별개**입니다.
+   Cloud Console → 사용자 인증 정보 → OAuth 클라이언트 ID → 유형 **웹 애플리케이션**.
+   승인된 리디렉션 URI에 `https://<배포주소>/oauth/google/callback` 등록
+
+2. **배포** (Cloud Run 예시):
+
+   ```bash
+   cd mcp
+   gcloud run deploy cringe-flow-mcp --source . --region asia-northeast3 \
+     --allow-unauthenticated \
+     --set-env-vars PUBLIC_URL=https://<배포주소> \
+     --set-env-vars FIREBASE_DATABASE_URL=https://crng-task-manager-default-rtdb.firebaseio.com \
+     --set-secrets GOOGLE_OAUTH_CLIENT_ID=...,GOOGLE_OAUTH_CLIENT_SECRET=...,FIREBASE_SERVICE_ACCOUNT=...
+   ```
+
+   `--allow-unauthenticated`는 Cloud Run 계층의 이야기입니다. 실제 접근 통제는 위의 OAuth가 담당합니다.
+
+3. **DB 규칙 배포** — `mcpAuth` 차단 규칙이 반영돼야 합니다. 웹 배포 워크플로가 `database.rules.json`을 함께 올립니다.
+
+4. **팀원 연결** — claude.ai → 설정 → 커넥터 → 사용자 지정 커넥터 추가 → `https://<배포주소>/mcp`.
+   각자 Google 로그인 화면이 뜨고, 로그인한 계정 기준으로 자기 프로젝트만 보입니다.
+
+### 환경 변수 (HTTP 모드)
+
+| 변수 | 값 |
+|---|---|
+| `PUBLIC_URL` | 서버의 공개 주소 (OAuth 발급자 식별자로도 쓰임) |
+| `GOOGLE_OAUTH_CLIENT_ID` / `_SECRET` | 위에서 만든 **웹** 클라이언트 |
+| `FIREBASE_SERVICE_ACCOUNT` | 서비스 계정 JSON (원문 또는 base64) |
+| `FIREBASE_DATABASE_URL` | RTDB URL |
+| `PORT` | 기본 8080 |
+
+`CRINGE_OPERATOR_EMAIL`은 HTTP 모드에서 쓰지 않습니다 — 신원이 토큰에서 나오기 때문이고, 그게 공용 서버가 안전한 이유입니다.
+
+### 아직 실제로 붙여보지 않았습니다
+
+타입체크·빌드·접근 제어 테스트는 통과했지만, **OAuth 왕복은 배포된 URL이 있어야 검증됩니다.** 첫 연결에서 막히면 로그를 보고 잡겠습니다.
