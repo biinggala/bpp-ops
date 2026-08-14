@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth'
 import { ref, set as fbSet } from 'firebase/database'
 import { auth, db } from '../lib/firebase'
+import { isDesktopShell, signInWithSystemBrowser } from '../lib/desktopAuth'
 import { ALLOWED_EMAILS } from '../types'
 import type { MemberKey } from '../types'
 
@@ -31,6 +32,12 @@ export const useAuthStore = create<AuthState>((set) => ({
   signIn: async () => {
     set({ error: null })
     try {
+      // The desktop shell must route through the system browser — Google blocks
+      // its sign-in flow inside embedded webviews, so the popup never completes.
+      if (isDesktopShell()) {
+        await signInWithSystemBrowser()
+        return
+      }
       const provider = new GoogleAuthProvider()
       provider.setCustomParameters({ prompt: 'select_account' })
       await signInWithPopup(auth, provider)

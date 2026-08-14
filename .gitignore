@@ -3,3 +3,7 @@
 node_modules/
 dist/
 legacy/
+
+# Tauri build artifacts / generated schemas
+src-tauri/target/
+src-tauri/gen/

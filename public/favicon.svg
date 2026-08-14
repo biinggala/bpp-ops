@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Company mark: heavy geometric B with two offset "stacked" echoes behind it.
+       Each echo is the outer contour filled black with a white outline, drawn back
+       to front, so only the parts peeking out to the lower-left stay visible.
+       Counters are painted black on top rather than punched as holes — as holes
+       they would expose the echo outlines running behind the letter. -->
+  <defs>
+    <path id="b-outer" d="
+      M325,148
+      L688,148
+      C790,148 848,212 848,290
+      C848,366 790,424 688,424
+      L661,432
+      L688,440
+      C800,440 880,505 880,578
+      C880,655 800,717 688,717
+      L325,717
+      Z
+    "/>
+    <g id="b-counters">
+      <path d="M531,261 L594,261 C619,261 640,281 640,306 C640,331 619,352 594,352 L531,352 Z"/>
+      <path d="M531,475 L595,475 C624,475 648,499 648,528 C648,557 624,581 595,581 L531,581 Z"/>
+    </g>
+  </defs>
+
+  <rect width="1024" height="1024" fill="#000000"/>
+  <use href="#b-outer" transform="translate(-168,168)" fill="#000000" stroke="#ffffff" stroke-width="30"/>
+  <use href="#b-outer" transform="translate(-84,84)"   fill="#000000" stroke="#ffffff" stroke-width="30"/>
+  <use href="#b-outer" fill="#ffffff"/>
+  <use href="#b-counters" fill="#000000"/>
+</svg>

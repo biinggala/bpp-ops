@@ -1,0 +1,62 @@
+name: Build macOS Desktop App
+
+# Deliberately not on every push: the web app deploys on push and the desktop
+# shell loads that deployment at runtime, so a mac build is only needed when the
+# shell itself changes. Tag `desktop-v*` to cut a release, or run it manually.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'desktop-v*'
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build universal .app and .dmg
+        env:
+          # Google installed-app OAuth client, compiled into the binary so it
+          # never reaches the publicly served web bundle.
+          CRNG_OAUTH_CLIENT_ID: ${{ secrets.CRNG_OAUTH_CLIENT_ID }}
+          CRNG_OAUTH_CLIENT_SECRET: ${{ secrets.CRNG_OAUTH_CLIENT_SECRET }}
+        run: npx tauri build --target universal-apple-darwin
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cringe-flow-macos
+          path: |
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          body: |
+            macOS 데스크톱 앱 (Intel + Apple Silicon 유니버설).
+
+            서명되지 않은 빌드라 첫 실행 시 경고가 뜹니다:
+            1. `.dmg`를 열고 앱을 `응용 프로그램`으로 드래그
+            2. 터미널에서 `xattr -cr "/Applications/Cringe Flow.app"` 실행
+            3. 앱 실행

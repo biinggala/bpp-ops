@@ -1,0 +1,21 @@
+[package]
+name = "cringe-flow"
+version = "0.1.0"
+description = "크린지 플로우 데스크톱 앱"
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "cringe_flow_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Token exchange happens here rather than in the web bundle so the OAuth client
+# secret ships inside the desktop binary instead of publicly served JavaScript.
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
