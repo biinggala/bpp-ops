@@ -8,6 +8,14 @@ on:
   push:
     tags:
       - 'desktop-v*'
+    # Also build when the shell itself changes on the working branch, so the mac
+    # build can be exercised before this lands on main (workflow_dispatch only
+    # appears once the workflow is on the default branch).
+    branches:
+      - 'claude/wonderful-feynman-hE32E'
+    paths:
+      - 'src-tauri/**'
+      - '.github/workflows/desktop.yml'
 
 jobs:
   build:
