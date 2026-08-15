@@ -4,6 +4,11 @@
 
 크린지 플로우에서 **bpp-ops**로 이름을 바꾸고, 웹 앱 하나였던 것을 데스크톱 앱과 MCP 서버까지 갖춘 형태로 확장한 릴리즈입니다.
 
+**받는 곳**
+- 웹 — https://crng-task-manager.web.app (별도 설치 없이 바로)
+- macOS 앱 — 이 릴리즈 하단의 `.dmg`
+- Claude 커넥터 — `https://crng-task-manager-1050546278891.asia-northeast3.run.app/mcp`
+
 ### 새로 생긴 것
 
 **macOS 데스크톱 앱**
