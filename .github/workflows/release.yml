@@ -1,0 +1,92 @@
+name: Publish Release
+
+# Cutting a release has to be driven from the repository here: this environment's
+# git proxy refuses tag pushes, and the GitHub tools available to the agent can
+# only read releases. Editing CHANGELOG.md is therefore the release trigger — the
+# version and notes are parsed from its top section, so the published release and
+# the file in the repo cannot drift apart.
+#
+# The mac build lives here too rather than being delegated to desktop.yml: a
+# release created with GITHUB_TOKEN does not trigger other workflows, so the
+# binary has to be produced in the same run that publishes.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'claude/wonderful-feynman-hE32E'
+    paths:
+      - 'CHANGELOG.md'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version and notes from CHANGELOG.md
+        id: notes
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import os, re, pathlib
+
+          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          sections = re.split(r"^## +", text, flags=re.M)[1:]
+          if not sections:
+              raise SystemExit("CHANGELOG.md has no '## <version>' section")
+
+          head, _, body = sections[0].partition("\n")
+          version = head.strip()
+          if not re.fullmatch(r"v\d+\.\d+\.\d+", version):
+              raise SystemExit(f"top section heading is not a version: {version!r}")
+
+          print(f"version={version}")
+          delim = "EOF_NOTES"
+          print(f"body<<{delim}")
+          print(body.strip())
+          print(delim)
+          PY
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build universal .app and .dmg
+        env:
+          CRNG_OAUTH_CLIENT_ID: ${{ secrets.CRNG_OAUTH_CLIENT_ID }}
+          CRNG_OAUTH_CLIENT_SECRET: ${{ secrets.CRNG_OAUTH_CLIENT_SECRET }}
+        run: npx tauri build --target universal-apple-darwin
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.notes.outputs.version }}
+          name: ${{ steps.notes.outputs.version }} — bpp-ops
+          target_commitish: ${{ github.sha }}
+          files: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          body: |
+            ${{ steps.notes.outputs.body }}
+
+            ---
+
+            **macOS 데스크톱 앱** (Intel + Apple Silicon 유니버설)
+
+            서명되지 않은 빌드라 첫 실행 시 macOS가 막습니다:
+            1. `.dmg`를 열고 앱을 `응용 프로그램`으로 드래그
+            2. 터미널에서 `xattr -cr "/Applications/bpp-ops.app"` 실행
+            3. 앱 실행

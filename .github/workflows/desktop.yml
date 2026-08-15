@@ -2,19 +2,10 @@ name: Build macOS Desktop App
 
 # Deliberately not on every push: the web app deploys on push and the desktop
 # shell loads that deployment at runtime, so a mac build is only needed when the
-# shell itself changes. Tag `desktop-v*` to cut a release, or run it manually.
+# shell itself changes. Releases are cut by release.yml, not here.
 on:
   workflow_dispatch:
-  # Publishing a release from the GitHub UI is the supported way to cut one here:
-  # this environment's git proxy refuses tag pushes, and a paths filter would
-  # otherwise be evaluated against the tag. Keying off the release event sidesteps
-  # both, and the built .dmg is attached to the release that triggered it.
-  release:
-    types: [published]
   push:
-    tags:
-      - 'v*'
-      - 'desktop-v*'
     # Also build when the shell itself changes on the working branch, so the mac
     # build can be exercised before this lands on main (workflow_dispatch only
     # appears once the workflow is on the default branch).
@@ -62,22 +53,3 @@ jobs:
           path: |
             src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
           if-no-files-found: error
-
-      # Only the binary is uploaded; the release body is written by hand from
-      # CHANGELOG.md, so append_body keeps the install note without clobbering it.
-      - name: Attach to release
-        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
-          append_body: true
-          body: |
-
-            ---
-
-            **macOS 데스크톱 앱** (Intel + Apple Silicon 유니버설)
-
-            서명되지 않은 빌드라 첫 실행 시 macOS가 막습니다:
-            1. `.dmg`를 열고 앱을 `응용 프로그램`으로 드래그
-            2. 터미널에서 `xattr -cr "/Applications/bpp-ops.app"` 실행
-            3. 앱 실행
