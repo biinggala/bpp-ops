@@ -1784,10 +1784,10 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, s
     }
     switch (col.key) {
       case 'name':
+        // The tint is layered over an opaque base rather than used alone: a
+        // translucent background on a pinned cell lets the columns scrolling
+        // underneath show through it.
         return (
-          {/* The tint is layered over an opaque base rather than used alone: a
-              translucent background on a pinned cell lets the columns scrolling
-              underneath show through it. */}
           <div key="name" style={{ ...base, position: 'sticky', left: 0, zIndex: 2, background: 'linear-gradient(rgba(35,131,226,.04), rgba(35,131,226,.04)), var(--bg)', boxShadow: '2px 0 4px rgba(0,0,0,.06)', paddingLeft: isSubtask ? 88 : 14 }}>
             <input
               ref={nameRef}
