@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { canAccessProject, isComposing } from '../../lib/utils'
+import { canAccessProject, isComposing, authorizedEmails } from '../../lib/utils'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useAuthStore } from '../../store/authStore'
@@ -503,6 +503,10 @@ export function Sidebar() {
           <MemberManageModal
             project={proj}
             currentEmail={email ?? undefined}
+            // Only people already sharing a project with the inviter may be
+            // suggested — userProfiles holds every account that has ever signed
+            // in, which is not a team.
+            suggestable={authorizedEmails(projects, email)}
             onAddMember={e => addMember(proj.id, e)}
             onRemoveMember={e => removeMember(proj.id, e)}
             onClose={() => setMemberModal(null)}
@@ -761,9 +765,13 @@ function DeleteConfirmModal({ name, onConfirm, onCancel }: {
   )
 }
 
-function MemberManageModal({ project, currentEmail, onAddMember, onRemoveMember, onClose }: {
+function MemberManageModal({ project, currentEmail, suggestable, onAddMember, onRemoveMember, onClose }: {
   project: Project
   currentEmail?: string
+  /** Emails the inviter already shares a project with — the only ones that may
+   *  be suggested. userProfiles contains every account that has ever signed in,
+   *  so suggesting from it directly would disclose the whole user base. */
+  suggestable: Set<string>
   onAddMember: (email: string) => void
   onRemoveMember: (email: string) => void
   onClose: () => void
@@ -779,25 +787,24 @@ function MemberManageModal({ project, currentEmail, onAddMember, onRemoveMember,
   const members = project.memberEmails ?? []
   const pending = project.pendingEmails ?? []
 
-  // Anyone who has signed in is already recorded with their name, so the invite
-  // field can search people by name instead of demanding an exact address.
-  // Profiles are keyed by uid, so the same person can appear more than once.
+  // Suggestions are drawn only from people already sharing a project with the
+  // inviter, and only once something has been typed — profiles are keyed by uid
+  // and cover the entire user base, so neither restriction is cosmetic.
   const suggestions = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return []
     const taken = new Set([...members, ...pending].map(e => e.toLowerCase()))
     const seen = new Set<string>()
-    const candidates = Object.values(profiles).filter(p => {
+    return Object.values(profiles).filter(p => {
       if (!p?.email) return false
       const key = p.email.toLowerCase()
+      if (!suggestable.has(key)) return false
       if (taken.has(key) || seen.has(key)) return false
+      if (!(p.name?.toLowerCase().includes(q) || key.includes(q))) return false
       seen.add(key)
       return true
-    })
-    const q = query.trim().toLowerCase()
-    const matched = q
-      ? candidates.filter(p => p.name?.toLowerCase().includes(q) || p.email.toLowerCase().includes(q))
-      : candidates
-    return matched.slice(0, 6)
-  }, [profiles, query, members.join(','), pending.join(',')])
+    }).slice(0, 6)
+  }, [profiles, query, suggestable, members.join(','), pending.join(',')])
 
   useEffect(() => { setHighlight(0) }, [query])
 
@@ -941,7 +948,7 @@ function MemberManageModal({ project, currentEmail, onAddMember, onRemoveMember,
           <div style={{ marginTop: 8, fontSize: 11, color: 'var(--t3)' }}>
             {query.includes('@')
               ? 'Enter를 누르면 이 주소로 초대합니다.'
-              : '검색 결과가 없습니다. 한 번도 로그인한 적 없는 사람은 이메일 주소로 초대해 주세요.'}
+              : '같이 일하는 사람 중에는 없습니다. 이메일 주소 전체를 입력하면 초대할 수 있습니다.'}
           </div>
         )}
       </div>

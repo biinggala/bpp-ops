@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "desktop:dev": "tauri dev",
-    "desktop:build": "tauri build"
+    "desktop:build": "tauri build",
+    "test": "tsc -p tsconfig.test.json && sed -i.bak \"s|from .\\\\.\\\\./types.|from \\x27../types/index.js\\x27|\" .test-build/lib/utils.js && node --test test/access.test.js"
   },
   "dependencies": {
     "@tiptap/extension-highlight": "^3.23.6",

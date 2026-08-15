@@ -1,9 +1,10 @@
-.firebase/
-.netlify/
-node_modules/
-dist/
-legacy/
 
 # Tauri build artifacts / generated schemas
-src-tauri/target/
+.firebase/
+.netlify/
+.test-build/
+dist/
+legacy/
+node_modules/
 src-tauri/gen/
+src-tauri/target/
