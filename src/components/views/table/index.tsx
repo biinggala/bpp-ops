@@ -461,7 +461,7 @@ export function TableView() {
 
   // ── Column header row ───────────────────────────────────────────────────────
   const colHeader = (
-    <div style={{ display: 'flex', minWidth: '100%', background: 'var(--bg2)', borderBottom: '2px solid var(--bd)', borderLeft: '3px solid transparent', userSelect: 'none' }}>
+    <div style={{ display: 'flex', minWidth: 'max-content', background: 'var(--bg2)', borderBottom: '2px solid var(--bd)', borderLeft: '3px solid transparent', userSelect: 'none' }}>
       {cols.map((col, idx) => {
         const isLast = idx === cols.length - 1
         const isDragTarget = dropTarget === col.key && draggingCol !== col.key
@@ -1063,7 +1063,7 @@ function Row({
       onDrop={e => { e.preventDefault(); onDrop?.() }}
       style={{
         display: 'flex',
-        minWidth: '100%',
+        minWidth: 'max-content',
         opacity: isDragging ? 0.4 : 1,
         background: isDragTarget
           ? 'var(--ac-l)'
@@ -1825,7 +1825,7 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, s
       ref={containerRef}
       onKeyDown={handleContainerKey}
       style={{
-        display: 'flex', minWidth: '100%',
+        display: 'flex', minWidth: 'max-content',
         background: 'rgba(35,131,226,.04)',
         borderBottom: '2px solid var(--ac)',
         borderLeft: '3px solid var(--ac)',
