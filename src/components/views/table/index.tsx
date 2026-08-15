@@ -1269,6 +1269,12 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
       onContextMenu={onContextMenu}
       style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: `3px solid ${accent}`, position: 'sticky', left: 0, zIndex: 4, minWidth: minWidth ?? undefined, opacity: isDone ? 0.65 : 1, transition: 'opacity .2s' }}
     >
+      {/* Pinned to the viewport's left edge, like the name column on task rows.
+          Sticky on the row itself does nothing — the row already spans the full
+          table width, so there is no overflow for it to stick within. The offset
+          matches where these sit at rest (3px border + 12px padding), so nothing
+          shifts when the scroll starts. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'sticky', left: 15, zIndex: 1, flexShrink: 0 }}>
       <button
         onClick={onToggle}
         style={{ width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: 9, borderRadius: 3, flexShrink: 0, fontFamily: 'var(--font)' }}
@@ -1341,6 +1347,7 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
         </div>
         <span style={{ fontSize: 11, color: 'var(--t3)', whiteSpace: 'nowrap' }}>{completed}/{taskCount} 완료</span>
       </div>
+      </div>
 
       {!editingName && !editingDate && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, position: 'sticky', right: 12, marginLeft: 'auto', flexShrink: 0, opacity: hovered ? 1 : 0, pointerEvents: hovered ? 'auto' : 'none', transition: 'opacity .12s' }}>
@@ -1378,16 +1385,19 @@ function UnassignedHeader({ count, collapsed, minWidth, onToggle, onAddTask, onC
       onContextMenu={onContextMenu}
       style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: '3px solid var(--bd)', position: 'sticky', left: 0, zIndex: 4, minWidth: minWidth ?? undefined }}
     >
-      <button
-        onClick={onToggle}
-        style={{ width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: 9, borderRadius: 3, flexShrink: 0, fontFamily: 'var(--font)' }}
-        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg4)'}
-        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-      >
-        {collapsed ? '▶' : '▼'}
-      </button>
-      <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--t2)' }}>마일스톤 미배정</span>
-      <span style={{ fontSize: 11, color: 'var(--t3)', background: 'var(--bg3)', borderRadius: 10, padding: '1px 7px' }}>{count}</span>
+      {/* Pinned left, same reasoning as MilestoneHeader. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'sticky', left: 15, zIndex: 1, flexShrink: 0 }}>
+        <button
+          onClick={onToggle}
+          style={{ width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: 9, borderRadius: 3, flexShrink: 0, fontFamily: 'var(--font)' }}
+          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg4)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+        >
+          {collapsed ? '▶' : '▼'}
+        </button>
+        <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--t2)' }}>마일스톤 미배정</span>
+        <span style={{ fontSize: 11, color: 'var(--t3)', background: 'var(--bg3)', borderRadius: 10, padding: '1px 7px' }}>{count}</span>
+      </div>
       <button
         onClick={e => { e.stopPropagation(); onAddTask() }}
         style={{ position: 'sticky', right: 12, marginLeft: 'auto', padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'var(--bg2)', color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)', flexShrink: 0, opacity: hovered ? 1 : 0, pointerEvents: hovered ? 'auto' : 'none', transition: 'opacity .12s' }}
@@ -1775,7 +1785,10 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, s
     switch (col.key) {
       case 'name':
         return (
-          <div key="name" style={{ ...base, position: 'sticky', left: 0, zIndex: 2, background: 'rgba(35,131,226,.04)', boxShadow: '2px 0 4px rgba(0,0,0,.06)', paddingLeft: isSubtask ? 88 : 14 }}>
+          {/* The tint is layered over an opaque base rather than used alone: a
+              translucent background on a pinned cell lets the columns scrolling
+              underneath show through it. */}
+          <div key="name" style={{ ...base, position: 'sticky', left: 0, zIndex: 2, background: 'linear-gradient(rgba(35,131,226,.04), rgba(35,131,226,.04)), var(--bg)', boxShadow: '2px 0 4px rgba(0,0,0,.06)', paddingLeft: isSubtask ? 88 : 14 }}>
             <input
               ref={nameRef}
               value={name} onChange={e => setName(e.target.value)}
