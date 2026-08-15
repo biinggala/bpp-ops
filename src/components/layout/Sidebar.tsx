@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { canAccessProject, isComposing } from '../../lib/utils'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
@@ -6,6 +6,7 @@ import { useAuthStore } from '../../store/authStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { usePresenceStore } from '../../store/presenceStore'
+import { useUserProfileStore } from '../../store/userProfileStore'
 import { useMobile } from '../../hooks/useMobile'
 import { MEMBERS } from '../../types'
 import type { MemberKey, Project } from '../../types'
@@ -767,19 +768,52 @@ function MemberManageModal({ project, currentEmail, onAddMember, onRemoveMember,
   onRemoveMember: (email: string) => void
   onClose: () => void
 }) {
-  const [newEmail, setNewEmail] = useState('')
+  const [query, setQuery] = useState('')
+  const [highlight, setHighlight] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => { inputRef.current?.focus() }, [])
 
-  const handleAdd = () => {
-    const e = newEmail.trim().toLowerCase()
-    if (!e || !e.includes('@')) return
-    onAddMember(e)
-    setNewEmail('')
-  }
+  const profiles = useUserProfileStore(s => s.profiles)
+  const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
 
   const members = project.memberEmails ?? []
   const pending = project.pendingEmails ?? []
+
+  // Anyone who has signed in is already recorded with their name, so the invite
+  // field can search people by name instead of demanding an exact address.
+  // Profiles are keyed by uid, so the same person can appear more than once.
+  const suggestions = useMemo(() => {
+    const taken = new Set([...members, ...pending].map(e => e.toLowerCase()))
+    const seen = new Set<string>()
+    const candidates = Object.values(profiles).filter(p => {
+      if (!p?.email) return false
+      const key = p.email.toLowerCase()
+      if (taken.has(key) || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    const q = query.trim().toLowerCase()
+    const matched = q
+      ? candidates.filter(p => p.name?.toLowerCase().includes(q) || p.email.toLowerCase().includes(q))
+      : candidates
+    return matched.slice(0, 6)
+  }, [profiles, query, members.join(','), pending.join(',')])
+
+  useEffect(() => { setHighlight(0) }, [query])
+
+  const invite = (email: string) => {
+    onAddMember(email.trim().toLowerCase())
+    setQuery('')
+  }
+
+  // Falls back to the typed text so someone who has never signed in — and so has
+  // no profile to match against — can still be invited by address.
+  const handleAdd = () => {
+    const picked = suggestions[highlight]
+    if (picked) return invite(picked.email)
+    const typed = query.trim().toLowerCase()
+    if (typed.includes('@')) invite(typed)
+  }
 
   return (
     <div
@@ -813,7 +847,10 @@ function MemberManageModal({ project, currentEmail, onAddMember, onRemoveMember,
                     <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#667eea,#764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
                       {m[0]?.toUpperCase()}
                     </div>
-                    <span style={{ flex: 1, fontSize: 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getNameByEmail(m)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m}</div>
+                    </div>
                     {isSelf ? (
                       <span style={{ padding: '2px 8px', fontSize: 11, color: 'var(--t3)' }}>나</span>
                     ) : (
@@ -834,7 +871,10 @@ function MemberManageModal({ project, currentEmail, onAddMember, onRemoveMember,
                   <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#a3a3a3,#737373)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
                     {m[0]?.toUpperCase()}
                   </div>
-                  <span style={{ flex: 1, fontSize: 13, color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getNameByEmail(m)}</div>
+                    <div style={{ fontSize: 11, color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m}</div>
+                  </div>
                   <span style={{ padding: '2px 7px', borderRadius: 'var(--r1)', fontSize: 10, fontWeight: 600, color: '#d97706', background: 'rgba(217,119,6,.1)', border: '1px solid rgba(217,119,6,.25)', whiteSpace: 'nowrap' }}>
                     초대됨
                   </span>
@@ -856,10 +896,16 @@ function MemberManageModal({ project, currentEmail, onAddMember, onRemoveMember,
         <div style={{ display: 'flex', gap: 8 }}>
           <input
             ref={inputRef}
-            value={newEmail}
-            onChange={e => setNewEmail(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) handleAdd() }}
-            placeholder="이메일 주소 입력..."
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => {
+              if (isComposing(e)) return
+              if (e.key === 'Enter') { e.preventDefault(); handleAdd(); return }
+              if (!suggestions.length) return
+              if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight(h => (h + 1) % suggestions.length) }
+              if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(h => (h - 1 + suggestions.length) % suggestions.length) }
+            }}
+            placeholder="이름 또는 이메일로 검색..."
             style={{ flex: 1, background: 'var(--bg3)', border: '1px solid var(--bd2)', borderRadius: 'var(--r2)', padding: '8px 10px', fontSize: 13, color: 'var(--t1)', outline: 'none' }}
           />
           <button
@@ -869,6 +915,35 @@ function MemberManageModal({ project, currentEmail, onAddMember, onRemoveMember,
             초대
           </button>
         </div>
+
+        {suggestions.length > 0 && (
+          <div style={{ marginTop: 8, border: '1px solid var(--bd)', borderRadius: 'var(--r2)', overflow: 'hidden', maxHeight: 200, overflowY: 'auto' }}>
+            {suggestions.map((p, i) => (
+              <div
+                key={p.email}
+                onClick={() => invite(p.email)}
+                onMouseEnter={() => setHighlight(i)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', cursor: 'pointer', background: i === highlight ? 'var(--bg3)' : 'transparent' }}
+              >
+                <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(135deg,#667eea,#764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff', flexShrink: 0, overflow: 'hidden' }}>
+                  {p.photoURL
+                    ? <img src={p.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : (p.name?.[0]?.toUpperCase() ?? p.email[0]?.toUpperCase())}
+                </div>
+                <span style={{ fontSize: 13, color: 'var(--t1)', flexShrink: 0 }}>{p.name || p.email.split('@')[0]}</span>
+                <span style={{ fontSize: 11, color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.email}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {query.trim() && suggestions.length === 0 && (
+          <div style={{ marginTop: 8, fontSize: 11, color: 'var(--t3)' }}>
+            {query.includes('@')
+              ? 'Enter를 누르면 이 주소로 초대합니다.'
+              : '검색 결과가 없습니다. 한 번도 로그인한 적 없는 사람은 이메일 주소로 초대해 주세요.'}
+          </div>
+        )}
       </div>
     </div>
   )
