@@ -8,3 +8,7 @@ legacy/
 node_modules/
 src-tauri/gen/
 src-tauri/target/
+
+*-debug.log
+firebase-debug.log
+*.bak
