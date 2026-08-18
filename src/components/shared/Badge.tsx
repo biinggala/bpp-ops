@@ -27,10 +27,12 @@ export function StatusBadge({ status }: { status: Status }) {
 }
 
 export function PriorityBadge({ priority }: { priority: Priority }) {
+  // Same ranking as the table: 높음 carries weight, 중간 is quiet, 낮음 has no
+  // fill. Three equally weighted chips encode the value without ranking it.
   const map: Record<Priority, React.CSSProperties> = {
-    높음: { background: 'rgba(239,68,68,.1)',  color: '#dc2626' },
-    중간: { background: 'rgba(245,158,11,.1)', color: '#d97706' },
-    낮음: { background: 'var(--bg3)',          color: 'var(--t3)' },
+    높음: { background: 'rgba(239,68,68,.20)', color: '#b91c1c', fontWeight: 600 },
+    중간: { background: 'rgba(245,158,11,.12)', color: '#b45309' },
+    낮음: { background: 'transparent',          color: 'var(--t3)', padding: '2px 2px' },
   }
   return <Badge style={map[priority]}>{priority}</Badge>
 }

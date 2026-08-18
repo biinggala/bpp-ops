@@ -58,10 +58,32 @@ const STATUS_STYLE: Record<Status, { bg: string; color: string }> = {
   '검토중': { bg: '#fef3c7',              color: '#b45309' },
   '완료':   { bg: '#d1fae5',              color: '#047857' },
 }
+// Priority has to read as a ranking, not three equally loud labels. 높음 carries
+// weight, 중간 is quiet, 낮음 has no fill at all — the previous blue on 낮음 drew
+// more attention than the muted amber on 중간, which inverted the order.
 const PRIORITY_STYLE: Record<Priority, { bg: string; color: string }> = {
-  '높음': { bg: 'rgba(239,68,68,.13)',  color: '#dc2626' },
-  '중간': { bg: 'rgba(245,158,11,.14)', color: '#b45309' },
-  '낮음': { bg: 'rgba(59,130,246,.13)', color: '#1d4ed8' },
+  '높음': { bg: 'rgba(239,68,68,.20)', color: '#b91c1c' },
+  '중간': { bg: 'rgba(245,158,11,.12)', color: '#b45309' },
+  '낮음': { bg: 'transparent',          color: 'var(--t3)' },
+}
+
+// Only 높음 gets a mark next to the name. Marking every level would make the
+// column louder without making anything stand out.
+const PRIORITY_MARK: Partial<Record<Priority, string>> = {
+  '높음': '#dc2626',
+}
+
+/**
+ * The colour a milestone and everything under it share.
+ *
+ * Overdue and near-due milestones take warning colours so the group reads at a
+ * glance; done ones recede.
+ */
+function milestoneAccent(done: boolean, diff: number): string {
+  if (done) return 'var(--t3)'
+  if (diff < 0) return '#ef4444'
+  if (diff <= 7) return '#f59e0b'
+  return '#8b5cf6'
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -103,7 +125,7 @@ function MobileTableView() {
   const togglePj = (id: string) =>
     setCollapsedPj(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
 
-  const renderTask = (task: Task, isChild = false): React.ReactNode => {
+  const renderTask = (task: Task, isChild = false, groupAccent?: string): React.ReactNode => {
     const isDone = task.status === '완료'
     const overdue = isOverdue(task.due, task.status)
     const children = getChildren(task.id)
@@ -149,7 +171,11 @@ function MobileTableView() {
             paddingTop: 12, paddingBottom: 12,
             paddingLeft: isChild ? 44 : hasChildren ? 12 : 16, paddingRight: 16,
             borderBottom: '1px solid var(--bd)',
-            borderLeft: isChild ? '2px solid var(--bd2)' : '2px solid transparent',
+            // The milestone's colour continues down its rows; a child row keeps
+            // its own indent marker instead.
+            borderLeft: isChild
+              ? '2px solid var(--bd2)'
+              : groupAccent ? `2px solid ${groupAccent}` : '2px solid transparent',
             cursor: 'pointer', userSelect: 'none',
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             WebkitTouchCallout: 'none' as any,
@@ -182,7 +208,7 @@ function MobileTableView() {
           )}
           <span style={{ fontSize: 16, color: 'var(--t3)', marginLeft: isDone ? 4 : 0, flexShrink: 0 }}>›</span>
         </div>
-        {hasChildren && isExpanded && sortDoneLast(children).map(c => renderTask(c, true))}
+        {hasChildren && isExpanded && sortDoneLast(children).map(c => renderTask(c, true, groupAccent))}
       </React.Fragment>
     )
   }
@@ -207,14 +233,14 @@ function MobileTableView() {
           const overdue = !ms.done && diff < 0
           const dLabel = overdue ? `D+${Math.abs(diff)}` : diff === 0 ? 'D-Day' : `D-${diff}`
           const dColor = ms.done ? 'var(--t3)' : overdue ? '#ef4444' : diff <= 7 ? '#f59e0b' : 'var(--t3)'
-          const borderColor = ms.done ? 'var(--bd)' : '#8b5cf6'
+          const accent = milestoneAccent(!!ms.done, diff)
           const d = new Date(ms.dueDate + 'T00:00:00')
           const dateLabel = `${d.getMonth() + 1}/${d.getDate()}`
           return (
             <React.Fragment key={ms.id}>
               <div
                 onClick={() => toggleMs(ms.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: `2px solid ${borderColor}`, cursor: 'pointer', opacity: ms.done ? 0.6 : 1 }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: `2px solid ${accent}`, cursor: 'pointer', opacity: ms.done ? 0.6 : 1 }}
               >
                 <button
                   onClick={e => { e.stopPropagation(); updateMilestone(ms.id, { done: !ms.done }) }}
@@ -222,14 +248,14 @@ function MobileTableView() {
                 >
                   {ms.done ? '✓' : ''}
                 </button>
-                <span style={{ fontSize: 10, color: ms.done ? 'var(--t3)' : '#8b5cf6' }}>◆</span>
+                <span style={{ fontSize: 10, color: accent }}>◆</span>
                 <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--t1)', textDecoration: ms.done ? 'line-through' : 'none' }}>{ms.name}</span>
                 {!ms.done && <span style={{ fontSize: 11, color: 'var(--t3)', marginRight: 2 }}>{dateLabel}</span>}
                 {!ms.done && <span style={{ fontSize: 11, fontWeight: 600, color: dColor, background: overdue ? 'rgba(239,68,68,.08)' : diff <= 7 ? 'rgba(245,158,11,.1)' : 'var(--bg3)', borderRadius: 6, padding: '1px 6px', marginRight: 4 }}>{dLabel}</span>}
                 <span style={{ fontSize: 11, color: 'var(--t3)', marginRight: 6 }}>{doneTasks}/{msTasks.length}</span>
                 <span style={{ fontSize: 9, color: 'var(--t3)' }}>{isCollapsed ? '▶' : '▼'}</span>
               </div>
-              {!isCollapsed && sortDoneLast(msTasks).map(t => renderTask(t))}
+              {!isCollapsed && sortDoneLast(msTasks).map(t => renderTask(t, false, accent))}
             </React.Fragment>
           )
         })}
@@ -516,7 +542,7 @@ export function TableView() {
   const sortDoneLast = (arr: Task[]) =>
     [...arr].sort((a, b) => (a.status === '완료' ? 1 : 0) - (b.status === '완료' ? 1 : 0))
 
-  const renderRows = (tasks: Task[], pickerMilestones: Milestone[]) =>
+  const renderRows = (tasks: Task[], pickerMilestones: Milestone[], groupAccent?: string) =>
     sortDoneLast(tasks).map(task => {
       const children = sortDoneLast(getChildren(task.id))
       const hasChildren = children.length > 0
@@ -528,7 +554,7 @@ export function TableView() {
           <Row cols={cols} task={task} hasChildren={hasChildren} isExpanded={isExpanded}
             childCount={children.length} doneCount={children.filter(c => c.status === '완료').length}
             milestones={pickerMilestones} showMilestonePicker={pickerMilestones.length > 0}
-            assigneeOptions={aOpts} allTags={allTags}
+            assigneeOptions={aOpts} allTags={allTags} groupAccent={groupAccent}
             onToggle={() => toggle(task.id)} {...h}
             isDragging={draggingTaskId === task.id}
             isDragTarget={dropTargetId === task.id && !!draggingTaskId && canDropOnTask(draggingTaskId, task.id)}
@@ -551,7 +577,7 @@ export function TableView() {
               <React.Fragment key={child.id}>
                 <Row cols={cols} task={child} isChild
                   milestones={pickerMilestones} showMilestonePicker={pickerMilestones.length > 0}
-                  assigneeOptions={cOpts} allTags={allTags}
+                  assigneeOptions={cOpts} allTags={allTags} groupAccent={groupAccent}
                   {...ch}
                   isDragging={draggingTaskId === child.id}
                   isDragTarget={false}
@@ -613,7 +639,7 @@ export function TableView() {
                 onDelete={() => deleteMilestone(ms.id)}
                 onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMsCtxMenu({ x: e.clientX, y: e.clientY, onAdd: () => { if (collapsedMs.has(ms.id)) toggleMs(ms.id); setDraftMsId(ms.id) } }) }}
               />
-              {!isCollapsed && renderRows(msTasks, pjMilestones)}
+              {!isCollapsed && renderRows(msTasks, pjMilestones, milestoneAccent(!!ms.done, diff))}
               {!isCollapsed && draftMsId === ms.id && (
                 <AddTaskRow
                   cols={cols}
@@ -812,6 +838,7 @@ function Row({
   milestones = [], showMilestonePicker = false,
   assigneeOptions = [],
   allTags = [],
+  groupAccent,
   onToggle, onOpen, onUpdate, onMilestoneChange, onContextMenu,
   isDragging = false, isDragTarget = false,
   canDrag = false, canBeDropTarget = false,
@@ -823,6 +850,8 @@ function Row({
   milestones?: Milestone[]; showMilestonePicker?: boolean
   assigneeOptions?: { value: string; label: string }[]
   allTags?: string[]
+  /** Colour of the milestone this row sits under, drawn as a rail on the left. */
+  groupAccent?: string
   onToggle?: () => void; onOpen: () => void
   onUpdate: (patch: Partial<Task>) => void
   onMilestoneChange?: (id: string | undefined) => void
@@ -875,6 +904,17 @@ function Row({
               boxShadow: '2px 0 4px rgba(0,0,0,.06)',
             }}
           >
+            {/* The milestone's colour, carried down from its header so the group
+                stays visibly one thing past the first row. It lives inside the
+                sticky name cell rather than on the row so it survives horizontal
+                scrolling — the row's own left border is already spoken for by
+                the drag target and child indicators. */}
+            {groupAccent && (
+              <span aria-hidden style={{
+                position: 'absolute', left: 0, top: 0, bottom: 0, width: 3,
+                background: groupAccent, opacity: isDone ? 0.25 : 0.45,
+              }} />
+            )}
             {canDrag && (
               <span
                 draggable
@@ -905,6 +945,15 @@ function Row({
                 >
                   {isExpanded ? '▼' : '▶'}
                 </button>
+              )}
+              {PRIORITY_MARK[task.priority] && !isDone && (
+                <span
+                  title={`우선순위 ${task.priority}`}
+                  style={{
+                    width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                    background: PRIORITY_MARK[task.priority],
+                  }}
+                />
               )}
               {editing === 'name' ? (
                 <InlineTextEdit
@@ -1249,7 +1298,7 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
   const isDone = !!milestone.done
   const overdue = !isDone && diff < 0
   const close = !isDone && diff >= 0 && diff <= 7
-  const accent = isDone ? 'var(--t3)' : overdue ? '#ef4444' : close ? '#f59e0b' : '#8b5cf6'
+  const accent = milestoneAccent(isDone, diff)
   const progress = taskCount ? Math.round(completed / taskCount * 100) : 0
 
   const saveName = () => { if (tempName.trim()) onUpdate({ name: tempName.trim() }); setEditingName(false) }
