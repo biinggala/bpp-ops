@@ -13,13 +13,14 @@ import { TagBadge } from '../../shared/Badge'
 import { AssigneeAvatar } from '../../shared/Avatar'
 import { ProgressBar } from '../../shared/ProgressBar'
 import { ContextMenu } from '../../shared/ContextMenu'
-import { fmtDate, isOverdue, parseAssignees, stripHtml, gid, isComposing } from '../../../lib/utils'
-import { NOTION } from '../../../types'
+import { fmtDate, isOverdue, parseAssignees, assigneeKeyToEmail, stripHtml, gid, isComposing } from '../../../lib/utils'
+import { NOTION, STATUS_LIST, PRIORITY_LIST } from '../../../types'
 import type { Task, Milestone, Status, Priority, TaskLink } from '../../../types'
+import type { ListGroup } from '../../../store/uiStore'
 
 // ── Column config ─────────────────────────────────────────────────────────────
 
-type ColDef = { key: string; label: string; width: number }
+type ColDef = { key: string; label: string; width: number; hidden?: boolean }
 
 /**
  * Renders into document.body.
@@ -36,6 +37,8 @@ function FloatingMenu({ children }: { children: React.ReactNode }) {
 
 const MIN_COL_WIDTH = 60
 const COL_STORAGE_KEY = 'cringe_table_cols_v1'
+/** Always shown: it is the row's identity and the sticky anchor for the rest. */
+const LOCKED_COL = 'name'
 
 const DEFAULT_COLS: ColDef[] = [
   { key: 'name',     label: '업무',    width: 300 },
@@ -55,9 +58,9 @@ function loadCols(): ColDef[] {
     if (raw) {
       const saved: ColDef[] = JSON.parse(raw)
       const defMap = new Map(DEFAULT_COLS.map(d => [d.key, d]))
-      const merged = saved
+      const merged: ColDef[] = saved
         .filter(s => defMap.has(s.key))
-        .map(s => ({ ...defMap.get(s.key)!, width: Math.max(MIN_COL_WIDTH, s.width) }))
+        .map(s => ({ ...defMap.get(s.key)!, width: Math.max(MIN_COL_WIDTH, s.width), hidden: !!s.hidden }))
       DEFAULT_COLS.forEach(d => { if (!merged.find(m => m.key === d.key)) merged.push(d) })
       return merged
     }
@@ -107,6 +110,81 @@ function milestoneAccent(done: boolean, diff: number): string {
 function daysFrom(dateStr: string, base: Date) {
   return Math.round((new Date(dateStr).setHours(0, 0, 0, 0) - base.getTime()) / 86400000)
 }
+type Bucket = { key: string; label: string; accent?: string; tasks: Task[] }
+
+/**
+ * Splits tasks into the buckets a flat list mode shows.
+ *
+ * Buckets are emitted in a fixed, meaningful order (overdue before today, 높음
+ * before 낮음) rather than alphabetically, so the top of the list is always the
+ * part that needs attention. Empty buckets are dropped — an always-present but
+ * always-empty "검토중" header is just a line to scroll past.
+ */
+function bucketTasks(
+  tasks: Task[],
+  group: ListGroup,
+  today: Date,
+  nameOf: (email: string) => string,
+): Bucket[] {
+  if (group === 'none') return [{ key: '__all__', label: '', tasks }]
+
+  const order: Bucket[] = []
+  const byKey = new Map<string, Bucket>()
+  const bucket = (key: string, label: string, accent?: string) => {
+    let b = byKey.get(key)
+    if (!b) { b = { key, label, accent, tasks: [] }; byKey.set(key, b); order.push(b) }
+    return b
+  }
+
+  if (group === 'due') {
+    // Seeded up front so the buckets keep this order regardless of which one
+    // the first task happens to land in.
+    bucket('due:overdue', '지남', NOTION.red.text)
+    bucket('due:today', '오늘', NOTION.orange.text)
+    bucket('due:week', '이번 주', NOTION.blue.text)
+    bucket('due:later', '이후', NOTION.gray.text)
+    bucket('due:none', '마감일 없음', NOTION.gray.text)
+    bucket('due:done', '완료', NOTION.green.text)
+    for (const t of tasks) {
+      // A finished task is not overdue no matter what its due date says, so it
+      // gets its own bucket rather than reddening the top of the list.
+      if (t.status === '완료') { bucket('due:done', '').tasks.push(t); continue }
+      if (!t.due) { bucket('due:none', '').tasks.push(t); continue }
+      const d = daysFrom(t.due, today)
+      const key = d < 0 ? 'due:overdue'
+        : d === 0 ? 'due:today'
+        : d <= 7 ? 'due:week'
+        : 'due:later'
+      bucket(key, '').tasks.push(t)
+    }
+  } else if (group === 'priority') {
+    PRIORITY_LIST.forEach(pr => bucket(`pr:${pr}`, pr, PRIORITY_STYLE[pr].color))
+    for (const t of tasks) bucket(`pr:${t.priority}`, t.priority).tasks.push(t)
+  } else if (group === 'status') {
+    STATUS_LIST.forEach(st => bucket(`st:${st}`, st, STATUS_STYLE[st]?.color))
+    for (const t of tasks) bucket(`st:${t.status}`, t.status).tasks.push(t)
+  } else if (group === 'assignee') {
+    // A task with two assignees appears under both. Picking only the first
+    // would hide half of someone's workload, which defeats the point of the
+    // grouping; React keys stay unique because each bucket renders its own list.
+    for (const t of tasks) {
+      const people = parseAssignees(t.assignee)
+      if (!people.length) { bucket('as:__none__', '담당자 없음').tasks.push(t); continue }
+      // Legacy MemberKey and canonical email are the same person; keying by the
+      // resolved email keeps them in one bucket instead of two.
+      for (const person of people) {
+        const em = assigneeKeyToEmail(person)
+        bucket(`as:${em}`, nameOf(em)).tasks.push(t)
+      }
+    }
+    order.sort((a, b) =>
+      (a.key === 'as:__none__' ? 1 : 0) - (b.key === 'as:__none__' ? 1 : 0) ||
+      a.label.localeCompare(b.label, 'ko'))
+  }
+
+  return order.filter(b => b.tasks.length > 0)
+}
+
 type CtxState = { x: number; y: number; task: Task } | null
 type MsCtxState = { x: number; y: number; onAdd: () => void } | null
 
@@ -383,7 +461,7 @@ export function TableView() {
   const allTasks = useTaskStore(s => s.tasks)          // raw — only for task-tree traversal
   const accessibleTasks = useAccessibleTasks()          // for option lists (tags etc.)
   const { addTask, deleteTask, updateTask } = useTaskStore()
-  const { openTaskModal, openTaskDetail, projectId, space, hideCompleted } = useUiStore()
+  const { openTaskModal, openTaskDetail, projectId, space, hideCompleted, listGroup } = useUiStore()
   const { milestones, updateMilestone, deleteMilestone } = useMilestoneStore()
   const allProjects = useProjectStore(s => s.projects)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
@@ -469,7 +547,11 @@ export function TableView() {
     return Array.from(s).sort()
   }, [accessibleTasks])
 
-  const totalColWidth = React.useMemo(() => cols.reduce((sum, c) => sum + c.width, 0), [cols])
+  // Nine columns is 1350px, so something is always off-screen. Hiding the ones
+  // a given person never reads is the only way to get the table to fit; the
+  // choice is per-browser and persists with the widths.
+  const visibleCols = React.useMemo(() => cols.filter(c => !c.hidden), [cols])
+  const totalColWidth = React.useMemo(() => visibleCols.reduce((sum, c) => sum + c.width, 0), [visibleCols])
 
   // ── Navigation helpers ──────────────────────────────────────────────────────
   const rootTasks = filteredTasks.filter(t => !t.parentId)
@@ -504,8 +586,8 @@ export function TableView() {
   // ── Column header row ───────────────────────────────────────────────────────
   const colHeader = (
     <div style={{ display: 'flex', minWidth: 'max-content', background: 'var(--bg2)', borderBottom: '2px solid var(--bd)', borderLeft: '3px solid transparent', userSelect: 'none' }}>
-      {cols.map((col, idx) => {
-        const isLast = idx === cols.length - 1
+      {visibleCols.map((col, idx) => {
+        const isLast = idx === visibleCols.length - 1
         const isDragTarget = dropTarget === col.key && draggingCol !== col.key
         const isNameCol = col.key === 'name'
         return (
@@ -551,10 +633,25 @@ export function TableView() {
         )
       })}
       <div style={{ flex: 1 }} />
+      <ColumnPicker cols={cols} onChange={setCols} />
     </div>
   )
 
   // ── Row helpers ─────────────────────────────────────────────────────────────
+  const milestonesOf = useCallback((pjId?: string) =>
+    pjId ? milestones.filter(m => m.projectId === pjId) : []
+  , [milestones])
+
+  // The project half is dropped when a single project is already selected —
+  // repeating it on every row would say nothing the sidebar has not.
+  const crumbFor = useCallback((task: Task) => {
+    const proj = projectId ? undefined : projects.find(p => p.id === task.projectId)
+    const ms = task.milestoneId ? milestones.find(m => m.id === task.milestoneId) : undefined
+    const parent = task.parentId ? allTasks.find(t => t.id === task.parentId) : undefined
+    if (!proj && !ms && !parent) return undefined
+    return <TaskBreadcrumb project={proj} milestone={ms} parentName={parent?.name} />
+  }, [projectId, projects, milestones, allTasks])
+
   const sortDoneLast = (arr: Task[]) =>
     [...arr].sort((a, b) => (a.status === '완료' ? 1 : 0) - (b.status === '완료' ? 1 : 0))
 
@@ -567,7 +664,7 @@ export function TableView() {
       const aOpts = getAssigneeOptions(task.projectId)
       return (
         <React.Fragment key={task.id}>
-          <Row cols={cols} task={task} hasChildren={hasChildren} isExpanded={isExpanded}
+          <Row cols={visibleCols} task={task} hasChildren={hasChildren} isExpanded={isExpanded}
             childCount={children.length} doneCount={children.filter(c => c.status === '완료').length}
             milestones={pickerMilestones} showMilestonePicker={pickerMilestones.length > 0}
             assigneeOptions={aOpts} allTags={allTags} groupAccent={groupAccent}
@@ -591,7 +688,7 @@ export function TableView() {
             const cOpts = getAssigneeOptions(child.projectId)
             return (
               <React.Fragment key={child.id}>
-                <Row cols={cols} task={child} isChild
+                <Row cols={visibleCols} task={child} isChild
                   milestones={pickerMilestones} showMilestonePicker={pickerMilestones.length > 0}
                   assigneeOptions={cOpts} allTags={allTags} groupAccent={groupAccent}
                   {...ch}
@@ -603,7 +700,7 @@ export function TableView() {
                   onDragEnd={() => { setDraggingTaskId(null); setDropTargetId(null) }}
                 />
                 {draftSubtaskParentId === child.id && (
-                  <AddTaskRow cols={cols} isSubtask parentId={child.id}
+                  <AddTaskRow cols={visibleCols} isSubtask parentId={child.id}
                     assigneeOptions={cOpts} projectId={child.projectId} milestoneId={child.milestoneId}
                     space={space ?? ''} addTask={addTask} userEmail={userEmail}
                     onDone={another => { if (!another) setDraftSubtaskParentId(null) }}
@@ -614,7 +711,7 @@ export function TableView() {
             )
           })}
           {draftSubtaskParentId === task.id && (
-            <AddTaskRow cols={cols} isSubtask parentId={task.id}
+            <AddTaskRow cols={visibleCols} isSubtask parentId={task.id}
               assigneeOptions={aOpts} projectId={task.projectId} milestoneId={task.milestoneId}
               space={space ?? ''} addTask={addTask} userEmail={userEmail}
               onDone={another => { if (!another) setDraftSubtaskParentId(null) }}
@@ -622,6 +719,30 @@ export function TableView() {
             />
           )}
         </React.Fragment>
+      )
+    })
+
+  /**
+   * One row per task, no nesting — ClickUp's "subtasks as separate tasks".
+   *
+   * In a flat mode a subtask due today has to be visible on its own merit; if
+   * it only appeared nested under its parent it would be filed under the
+   * parent's due date and effectively hidden, which defeats the whole point of
+   * asking "what is urgent right now". Each row carries its own breadcrumb,
+   * parent task included, so nothing is lost by dropping the indentation.
+   */
+  const renderFlatRows = (tasks: Task[]) =>
+    sortDoneLast(tasks).map(task => {
+      const h = makeHandlers(task)
+      const ms = milestonesOf(task.projectId)
+      return (
+        <Row
+          key={task.id} cols={visibleCols} task={task}
+          milestones={ms} showMilestonePicker={ms.length > 0}
+          assigneeOptions={getAssigneeOptions(task.projectId)} allTags={allTags}
+          breadcrumb={crumbFor(task)}
+          {...h}
+        />
       )
     })
 
@@ -658,7 +779,7 @@ export function TableView() {
               {!isCollapsed && renderRows(msTasks, pjMilestones, milestoneAccent(!!ms.done, diff))}
               {!isCollapsed && draftMsId === ms.id && (
                 <AddTaskRow
-                  cols={cols}
+                  cols={visibleCols}
                   assigneeOptions={getAssigneeOptions(pjId)}
                   milestoneId={ms.id}
                   projectId={pjId}
@@ -683,7 +804,7 @@ export function TableView() {
             {!collapsedMs.has('__none__') && renderRows(unassigned, pjMilestones)}
             {!collapsedMs.has('__none__') && draftMsId === '__none__' && (
               <AddTaskRow
-                cols={cols}
+                cols={visibleCols}
                 assigneeOptions={getAssigneeOptions(pjId)}
                 milestoneId={undefined}
                 projectId={pjId}
@@ -750,6 +871,51 @@ export function TableView() {
   )
 
   if (isMobile) return <MobileTableView />
+
+  // ── Flat modes ──────────────────────────────────────────────────────────────
+  // Any grouping other than 'project' collapses to a single table: one column
+  // header, one horizontal scroll container, every row comparable with every
+  // other row. That is what makes "what is urgent right now" answerable across
+  // project boundaries — the per-project cards can only ever rank within a card.
+  if (listGroup !== 'project') {
+    // filteredTasks, not rootTasks — see renderFlatRows.
+    const buckets = bucketTasks(filteredTasks, listGroup, today, getNameByEmail)
+    const flatRows = renderFlatRows
+    return (
+      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+        <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'clip' }}>
+          <div style={{ overflowX: 'auto' }}>
+            {colHeader}
+            {buckets.length === 0 && (
+              <div style={{ padding: '32px 16px', textAlign: 'center', fontSize: 13, color: 'var(--t3)' }}>
+                조건에 맞는 업무가 없습니다
+              </div>
+            )}
+            {buckets.map(b => {
+              if (b.key === '__all__') return <React.Fragment key={b.key}>{flatRows(b.tasks)}</React.Fragment>
+              const isCollapsed = collapsedMs.has(b.key)
+              return (
+                <React.Fragment key={b.key}>
+                  <GroupHeader
+                    label={b.label} accent={b.accent}
+                    count={b.tasks.length}
+                    done={b.tasks.filter(t => t.status === '완료').length}
+                    collapsed={isCollapsed}
+                    minWidth={totalColWidth}
+                    onToggle={() => toggleMs(b.key)}
+                  />
+                  {!isCollapsed && flatRows(b.tasks)}
+                </React.Fragment>
+              )
+            })}
+          </div>
+          {addBtn()}
+        </div>
+        {ctx}
+        {msCtx}
+      </div>
+    )
+  }
 
   // ── Multi-project mode ──────────────────────────────────────────────────────
   if (!projectId) {
@@ -855,6 +1021,7 @@ function Row({
   assigneeOptions = [],
   allTags = [],
   groupAccent,
+  breadcrumb,
   onToggle, onOpen, onUpdate, onMilestoneChange, onContextMenu,
   isDragging = false, isDragTarget = false,
   canDrag = false, canBeDropTarget = false,
@@ -868,6 +1035,12 @@ function Row({
   allTags?: string[]
   /** Colour of the milestone this row sits under, drawn as a rail on the left. */
   groupAccent?: string
+  /**
+   * Where the task lives, for flat modes where no header above the row says so.
+   * Rendered as a second line under the name rather than inline, so it never
+   * competes with the name for the truncation budget.
+   */
+  breadcrumb?: React.ReactNode
   onToggle?: () => void; onOpen: () => void
   onUpdate: (patch: Partial<Task>) => void
   onMilestoneChange?: (id: string | undefined) => void
@@ -949,7 +1122,8 @@ function Row({
                 }}
               >⠿</span>
             )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1, minWidth: 0, opacity: isDone ? 0.55 : 1 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0, opacity: isDone ? 0.55 : 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
               {isChild ? (
                 <span style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1, flexShrink: 0 }}>└</span>
               ) : (
@@ -1005,6 +1179,8 @@ function Row({
               {showMilestonePicker && (hovered || task.milestoneId) && onMilestoneChange && (
                 <MilestonePicker milestoneId={task.milestoneId} milestones={milestones} onChange={onMilestoneChange} />
               )}
+            </div>
+            {breadcrumb}
             </div>
           </div>
         )
@@ -1473,6 +1649,163 @@ function UnassignedHeader({ count, collapsed, minWidth, onToggle, onAddTask, onC
       >
         + 업무
       </button>
+    </div>
+  )
+}
+
+// ── ColumnPicker ──────────────────────────────────────────────────────────────
+
+/**
+ * Pinned to the right edge of the column header so it stays reachable while the
+ * columns scroll under it. Resizing already existed but could not remove a
+ * column, so a nine-column table was permanently wider than the window.
+ */
+function ColumnPicker({ cols, onChange }: { cols: ColDef[]; onChange: (c: ColDef[]) => void }) {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const hiddenCount = cols.filter(c => c.hidden).length
+
+  useEffect(() => {
+    if (!open) return
+    const h = () => setOpen(false)
+    // A frame's delay, or the click that opened the menu closes it again.
+    const t = setTimeout(() => document.addEventListener('mousedown', h), 0)
+    return () => { clearTimeout(t); document.removeEventListener('mousedown', h) }
+  }, [open])
+
+  const toggle = (key: string) =>
+    onChange(cols.map(c => c.key === key ? { ...c, hidden: !c.hidden } : c))
+
+  return (
+    <div style={{ position: 'sticky', right: 0, display: 'flex', alignItems: 'center', paddingRight: 8, background: 'var(--bg2)', flexShrink: 0 }}>
+      <button
+        ref={btnRef}
+        title="표시할 열"
+        onClick={e => {
+          e.stopPropagation()
+          const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+          setPos({ top: r.bottom + 4, left: Math.max(8, r.right - 170) })
+          setOpen(o => !o)
+        }}
+        style={{
+          padding: '2px 7px', fontSize: 11, borderRadius: 'var(--r1)',
+          border: '1px solid var(--bd)', background: 'var(--bg)',
+          color: hiddenCount ? 'var(--ac)' : 'var(--t3)', cursor: 'pointer',
+          fontFamily: 'var(--font)', whiteSpace: 'nowrap',
+        }}
+      >
+        열{hiddenCount ? ` −${hiddenCount}` : ''}
+      </button>
+      {open && (
+        <FloatingMenu>
+          <div
+            onMouseDown={e => e.stopPropagation()}
+            style={{
+              position: 'fixed', top: pos.top, left: pos.left, width: 170,
+              background: 'var(--bg)', border: '1px solid var(--bd)',
+              borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)',
+              zIndex: 9000, padding: '4px 0',
+            }}
+          >
+            {cols.map(col => {
+              const locked = col.key === LOCKED_COL
+              return (
+                <label
+                  key={col.key}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px',
+                    fontSize: 13, color: locked ? 'var(--t3)' : 'var(--t1)',
+                    cursor: locked ? 'default' : 'pointer',
+                  }}
+                  onMouseEnter={e => { if (!locked) e.currentTarget.style.background = 'var(--bg3)' }}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <input
+                    type="checkbox" checked={!col.hidden} disabled={locked}
+                    onChange={() => !locked && toggle(col.key)}
+                    style={{ accentColor: 'var(--ac)', width: 13, height: 13, cursor: locked ? 'default' : 'pointer', flexShrink: 0 }}
+                  />
+                  {col.label}
+                </label>
+              )
+            })}
+          </div>
+        </FloatingMenu>
+      )}
+    </div>
+  )
+}
+
+// ── Flat-list pieces ──────────────────────────────────────────────────────────
+
+/**
+ * The header above one bucket in a flat list mode.
+ *
+ * Kept deliberately lighter than MilestoneHeader: a flat list can show a dozen
+ * of these at once, and they are a sort key made visible, not an entity you can
+ * rename or complete.
+ */
+function GroupHeader({ label, accent, count, done, collapsed, minWidth, onToggle }: {
+  label: string; accent?: string; count: number; done: number
+  collapsed: boolean; minWidth?: number; onToggle: () => void
+}) {
+  return (
+    <div
+      onClick={onToggle}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px',
+        background: 'var(--bg2)', borderBottom: '1px solid var(--bd)',
+        borderLeft: `3px solid ${accent ?? 'var(--bd)'}`,
+        position: 'sticky', left: 0, zIndex: 4, cursor: 'pointer',
+        minWidth: minWidth ?? undefined,
+      }}
+    >
+      {/* Pinned so the label stays readable while the columns scroll under it. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'sticky', left: 15, zIndex: 1, flexShrink: 0 }}>
+        <span style={{ fontSize: 9, color: 'var(--t3)', width: 10 }}>{collapsed ? '▶' : '▼'}</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: accent ?? 'var(--t1)' }}>{label}</span>
+        <span style={{ fontSize: 11, color: 'var(--t3)', background: 'var(--bg3)', borderRadius: 10, padding: '1px 7px' }}>
+          {done > 0 ? `${done}/${count}` : count}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Where a task lives, shown under its name.
+ *
+ * In flat modes no header above the row says which project or milestone it
+ * belongs to, so the row has to carry it. A second line rather than an inline
+ * suffix, so it never eats into the name's truncation budget.
+ */
+function TaskBreadcrumb({ project, milestone, parentName }: {
+  project?: { name: string; color: string }
+  milestone?: Milestone
+  parentName?: string
+}) {
+  if (!project && !milestone && !parentName) return null
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--t3)', minWidth: 0, lineHeight: 1.4 }}>
+      {project && (
+        <>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: project.color, flexShrink: 0 }} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.name}</span>
+        </>
+      )}
+      {project && milestone && <span style={{ opacity: .45, flexShrink: 0 }}>›</span>}
+      {milestone && (
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1 }}>
+          ◆ {milestone.name}
+        </span>
+      )}
+      {parentName && (project || milestone) && <span style={{ opacity: .45, flexShrink: 0 }}>›</span>}
+      {parentName && (
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1 }}>
+          └ {parentName}
+        </span>
+      )}
     </div>
   )
 }

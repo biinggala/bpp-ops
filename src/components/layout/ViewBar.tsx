@@ -21,11 +21,22 @@ const VIEWS: { id: ViewType; label: string; icon: string }[] = [
 const SORT_OPTIONS = [
   { value: 'due_asc' as const, label: '마감 가까운 순' },
   { value: 'due_desc' as const, label: '마감 먼 순' },
+  { value: 'priority_desc' as const, label: '우선순위 순' },
+  { value: 'name_asc' as const, label: '이름 순' },
   { value: 'default' as const, label: '기본 순서' },
 ]
 
+const GROUP_OPTIONS = [
+  { value: 'project' as const, label: '그룹: 프로젝트' },
+  { value: 'none' as const, label: '그룹 없음' },
+  { value: 'due' as const, label: '그룹: 마감일' },
+  { value: 'priority' as const, label: '그룹: 우선순위' },
+  { value: 'assignee' as const, label: '그룹: 담당자' },
+  { value: 'status' as const, label: '그룹: 상태' },
+]
+
 export function ViewBar() {
-  const { view, setView, filters, setFilters, resetFilters, showGCal, setShowGCal, hideCompleted, setHideCompleted } = useUiStore()
+  const { view, setView, filters, setFilters, resetFilters, showGCal, setShowGCal, hideCompleted, setHideCompleted, listGroup, setListGroup } = useUiStore()
   const isMobile = useMobile()
   const accessibleTasks = useAccessibleTasks()
   const projects = useProjectStore(s => s.projects)
@@ -75,6 +86,9 @@ export function ViewBar() {
   // only where calendar entries are drawn. Showing either everywhere just makes
   // the bar longer than the decisions it offers.
   const showSort = view === 't' || view === 'b'
+  // Grouping is a property of the list layout specifically — the board already
+  // groups by status, the calendar by date.
+  const showGroup = view === 't'
   const showGCalToggle = view === 'c'
 
   // Mobile: in-flow bottom tab bar (rendered as the last flex child in AppPage).
@@ -205,6 +219,13 @@ export function ViewBar() {
             >
               필터 해제
             </button>
+          )}
+          {showGroup && (
+            <SingleSelect
+              options={GROUP_OPTIONS}
+              value={listGroup}
+              onChange={setListGroup}
+            />
           )}
           {showSort && (
             <SingleSelect

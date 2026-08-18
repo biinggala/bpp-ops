@@ -73,6 +73,15 @@ export function useFilteredTasks(): Task[] {
       )
     }
 
+    // Tasks with no due date sort last in every date-driven order — an empty
+    // due date is "not scheduled", not "due at the beginning of time".
+    const byDue = (a: Task, b: Task) => {
+      if (!a.due && !b.due) return 0
+      if (!a.due) return 1
+      if (!b.due) return -1
+      return a.due.localeCompare(b.due)
+    }
+
     if (filters.sort === 'due_asc') {
       result.sort((a, b) => {
         if (!a.due && !b.due) return 0
@@ -87,6 +96,14 @@ export function useFilteredTasks(): Task[] {
         if (!b.due) return -1
         return b.due.localeCompare(a.due)
       })
+    } else if (filters.sort === 'priority_desc') {
+      // Same priority falls back to the nearer deadline, so the top of the list
+      // is "높음, and of those the one due soonest" rather than an arbitrary
+      // order within the 높음 block.
+      const rank: Record<string, number> = { '높음': 0, '중간': 1, '낮음': 2 }
+      result.sort((a, b) => (rank[a.priority] ?? 3) - (rank[b.priority] ?? 3) || byDue(a, b))
+    } else if (filters.sort === 'name_asc') {
+      result.sort((a, b) => a.name.localeCompare(b.name, 'ko'))
     }
 
     return result
