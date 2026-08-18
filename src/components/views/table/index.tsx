@@ -1061,15 +1061,30 @@ export function TableView() {
     )
   }
 
+  /**
+   * Adding a milestone sits below the card, not inside it.
+   *
+   * The card is the project's tasks; 업무 추가 continues the list directly above
+   * it and belongs against it. A milestone is not another row — it is a new
+   * container for rows — so it reads as an action on the card rather than an
+   * entry in it, and is drawn one step quieter and one step further out.
+   */
   const addMsBtn = (pjId: string) => (
     <button
       onClick={() => setAddingMs(pjId)}
-      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', fontSize: 12, color: '#9065B0', background: 'transparent', border: 'none', borderTop: '1px solid var(--bd)', cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left', transition: 'background .1s' }}
-      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139,92,246,.05)' }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+      style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 6, padding: '5px 12px', fontSize: 12, color: 'var(--t3)', background: 'transparent', border: '1px dashed var(--bd2)', borderRadius: 'var(--r2)', cursor: 'pointer', fontFamily: 'var(--font)', alignSelf: 'flex-start', transition: 'color .1s, border-color .1s, background .1s' }}
+      onMouseEnter={e => { e.currentTarget.style.color = NOTION.purple.text; e.currentTarget.style.borderColor = NOTION.purple.text; e.currentTarget.style.background = NOTION.purple.bg }}
+      onMouseLeave={e => { e.currentTarget.style.color = 'var(--t3)'; e.currentTarget.style.borderColor = 'var(--bd2)'; e.currentTarget.style.background = 'transparent' }}
     >
       <span style={{ fontSize: 9, lineHeight: 1 }}>◆</span> 마일스톤 추가
     </button>
+  )
+
+  /** The inline milestone form, standing on its own below the card. */
+  const msForm = (pjId: string) => (
+    <div style={{ marginTop: 6, border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'clip' }}>
+      <AddMilestoneInline projectId={pjId} onDone={() => setAddingMs(null)} />
+    </div>
   )
 
   /**
@@ -1176,7 +1191,8 @@ export function TableView() {
           const isCollapsed = collapsedPj.has(proj.id)
           const doneCount = pjTasks.filter(t => t.status === '완료').length
           return (
-            <div key={proj.id} style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'clip' }}>
+            <div key={proj.id} style={{ display: 'flex', flexDirection: 'column' }}>
+            <div style={{ background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r4)', overflow: 'clip' }}>
               {/* Project header – fixed, not scrollable */}
               <div
                 onClick={() => togglePj(proj.id)}
@@ -1209,12 +1225,11 @@ export function TableView() {
                     )}
                   </div>
                   {/* Add buttons – fixed, not scrollable */}
-                  {addingMs === proj.id
-                    ? <AddMilestoneInline projectId={proj.id} onDone={() => setAddingMs(null)} />
-                    : addMsBtn(proj.id)}
                   {addBtn(proj.id)}
                 </>
               )}
+            </div>
+            {!isCollapsed && (addingMs === proj.id ? msForm(proj.id) : addMsBtn(proj.id))}
             </div>
           )
         })}
@@ -1282,10 +1297,10 @@ export function TableView() {
           )}
         </div>
         {/* Add buttons – fixed, not scrollable */}
-        {addingMs === projectId
-          ? <AddMilestoneInline projectId={projectId!} onDone={() => setAddingMs(null)} />
-          : addMsBtn(projectId!)}
         {addBtn(projectId!)}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {addingMs === projectId ? msForm(projectId!) : addMsBtn(projectId!)}
       </div>
       {ctx}
       {msCtx}
@@ -2068,7 +2083,7 @@ function AddMilestoneInline({ projectId, onDone }: { projectId: string; onDone: 
         if (e.key === 'Escape') { e.stopPropagation(); onDone(); return }
         if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); submit(!e.shiftKey) }
       }}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: NOTION.purple.bg, borderBottom: '1px solid var(--bd)', borderLeft: `3px solid ${NOTION.purple.text}`, borderTop: '1px solid var(--bd)' }}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: NOTION.purple.bg, borderLeft: `3px solid ${NOTION.purple.text}` }}
     >
       <span style={{ fontSize: 9, color: NOTION.purple.text, flexShrink: 0 }}>◆</span>
       <input
