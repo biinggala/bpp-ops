@@ -143,6 +143,36 @@ export async function createCalendarEvent(token: string, event: NewEvent): Promi
   return { ...created, calendarId: event.calendarId, calendarColor: '' }
 }
 
+export interface EventPatch {
+  summary?: string
+  startDateTime?: string
+  endDateTime?: string
+  timeZone?: string
+}
+
+/** PATCH, so fields that are not being changed are left exactly as they were. */
+export async function updateCalendarEvent(
+  token: string, calendarId: string, eventId: string, patch: EventPatch,
+): Promise<void> {
+  const timeZone = patch.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+  const body: Record<string, unknown> = {}
+  if (patch.summary !== undefined) body.summary = patch.summary
+  if (patch.startDateTime) body.start = { dateTime: patch.startDateTime, timeZone }
+  if (patch.endDateTime) body.end = { dateTime: patch.endDateTime, timeZone }
+
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  )
+  if (res.status === 401) throw new Error(TOKEN_EXPIRED)
+  if (res.status === 403) throw new Error('이 일정을 수정할 권한이 없습니다')
+  if (!res.ok) throw new Error(`Calendar API ${res.status}`)
+}
+
 export async function deleteCalendarEvent(token: string, calendarId: string, eventId: string): Promise<void> {
   const res = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,

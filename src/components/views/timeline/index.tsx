@@ -44,7 +44,7 @@ interface Draft {
 
 export function TimelineView() {
   const { timelineDays, timelineAnchor, setTimelineAnchor } = useUiStore()
-  const { token, events, calendars, targetCalendarId, canWrite, createEvent, fetchEvents, setTargetCalendar } = useGCalStore()
+  const { token, events, calendars, targetCalendarId, canWrite, createEvent, updateEvent, removeEvent, fetchEvents, setTargetCalendar } = useGCalStore()
   const tasks = useFilteredTasks()
 
   const [now, setNow] = useState(() => new Date())
@@ -68,8 +68,59 @@ export function TimelineView() {
   const [naming, setNaming] = useState<Draft | null>(null)
   const [title, setTitle] = useState('')
   const [saving, setSaving] = useState(false)
+  const ghostRef = useRef<{ id: string; from: number; to: number } | null>(null)
   const dragging = useRef<{ date: string; anchorMinutes: number } | null>(null)
   const gridRef = useRef<HTMLDivElement>(null)
+  const [selected, setSelected] = useState<string | null>(null)
+
+  // Moving or stretching an existing event. Held here so the block can be drawn
+  // at the new position before Google has confirmed it.
+  const [ghost, setGhost] = useState<{ id: string; from: number; to: number } | null>(null)
+  const moving = useRef<{ id: string; date: string; grabAt: number; from: number; to: number; mode: 'move' | 'resize' } | null>(null)
+
+  // mouseup fires outside React's render, so the latest ghost is read from a ref.
+  useEffect(() => { ghostRef.current = ghost }, [ghost])
+
+  const beginMove = (
+    e: React.MouseEvent, event: GCalEvent, date: string, from: number, to: number, mode: 'move' | 'resize',
+  ) => {
+    e.stopPropagation()
+    e.preventDefault()
+    const column = (e.currentTarget as HTMLElement).closest('[data-day-column]') as HTMLElement | null
+    if (!column) return
+    const grabAt = minutesAt(e.clientY, column)
+    moving.current = { id: event.id, date, grabAt, from, to, mode }
+
+    const move = (ev: MouseEvent) => {
+      const held = moving.current
+      if (!held) return
+      const at = minutesAt(ev.clientY, column)
+      const delta = at - held.grabAt
+      if (held.mode === 'move') {
+        const length = held.to - held.from
+        const start = clampDay(Math.min(24 * 60 - length, Math.max(0, held.from + delta)))
+        setGhost({ id: held.id, from: start, to: start + length })
+      } else {
+        setGhost({ id: held.id, from: held.from, to: clampDay(Math.max(held.from + MIN_DURATION, held.to + delta)) })
+      }
+    }
+    const up = async () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      const held = moving.current
+      moving.current = null
+      const settled = ghostRef.current
+      setGhost(null)
+      if (!held || !settled) return
+      if (settled.from === held.from && settled.to === held.to) return
+      await updateEvent(held.id, {
+        startDateTime: localIso(held.date, settled.from),
+        endDateTime: localIso(held.date, settled.to),
+      })
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }
 
   const minutesAt = (clientY: number, column: HTMLElement): number => {
     const rect = column.getBoundingClientRect()
@@ -77,7 +128,7 @@ export function TimelineView() {
   }
 
   const beginDrag = (e: React.MouseEvent<HTMLDivElement>, date: string) => {
-    if (e.button !== 0 || naming) return
+    if (e.button !== 0 || naming || selected) return   // a popover is open; a stray drag would hide it
     const column = e.currentTarget
     const at = minutesAt(e.clientY, column)
     dragging.current = { date, anchorMinutes: at }
@@ -202,6 +253,7 @@ export function TimelineView() {
           {days.map(date => (
             <div
               key={date}
+              data-day-column
               onMouseDown={e => beginDrag(e, date)}
               style={{ flex: 1, position: 'relative', borderLeft: '1px solid var(--bd)', cursor: 'crosshair' }}
             >
@@ -209,7 +261,27 @@ export function TimelineView() {
                 <div key={h} style={{ position: 'absolute', top: h * SLOT_H, left: 0, right: 0, height: 1, background: 'var(--bd)', opacity: .6 }} />
               ))}
 
-              {place(eventsByDate.get(date) ?? []).map(p => <EventBlock key={p.event.id} placed={p} />)}
+              {place(eventsByDate.get(date) ?? []).map(p => (
+                <EventBlock
+                  key={p.event.id}
+                  placed={p}
+                  ghost={ghost?.id === p.event.id ? ghost : null}
+                  selected={selected === p.event.id}
+                  onSelect={() => setSelected(p.event.id)}
+                  onMove={(e, mode) => beginMove(e, p.event, date, p.from, p.to, mode)}
+                />
+              ))}
+              {selected && (eventsByDate.get(date) ?? []).some(e => e.id === selected) && (() => {
+                const chosen = place(eventsByDate.get(date) ?? []).find(p => p.event.id === selected)!
+                return (
+                  <EventPopover
+                    placed={chosen}
+                    onClose={() => setSelected(null)}
+                    onRename={async name => { await updateEvent(chosen.event.id, { summary: name }); setSelected(null) }}
+                    onDelete={async () => { await removeEvent(chosen.event.id); setSelected(null) }}
+                  />
+                )
+              })()}
 
               {draft?.date === date && <DraftBlock draft={draft} />}
               {naming?.date === date && (
@@ -295,16 +367,22 @@ function place(events: GCalEvent[]): Placed[] {
   return out
 }
 
-function EventBlock({ placed }: { placed: Placed }) {
-  const { event, from, to, lane, lanes } = placed
+function EventBlock({ placed, ghost, selected, onSelect, onMove }: {
+  placed: Placed
+  ghost: { from: number; to: number } | null
+  selected: boolean
+  onSelect: () => void
+  onMove: (e: React.MouseEvent, mode: 'move' | 'resize') => void
+}) {
+  const { event, lane, lanes } = placed
+  const from = ghost?.from ?? placed.from
+  const to = ghost?.to ?? placed.to
   const width = 100 / lanes
   const colour = event.calendarColor || '#4285f4'
   return (
-    <a
-      href={event.htmlLink || undefined}
-      target="_blank"
-      rel="noopener noreferrer"
-      onMouseDown={e => e.stopPropagation()}
+    <div
+      onMouseDown={e => onMove(e, 'move')}
+      onClick={e => { e.stopPropagation(); onSelect() }}
       title={`${hhmm(from)}–${hhmm(to)}  ${event.summary}`}
       style={{
         position: 'absolute',
@@ -312,14 +390,65 @@ function EventBlock({ placed }: { placed: Placed }) {
         height: Math.max(16, (to - from) * PX_PER_MIN - 2),
         left: `calc(${lane * width}% + 3px)`,
         width: `calc(${width}% - 6px)`,
-        background: colour, opacity: .92, color: '#fff',
+        background: colour, opacity: ghost ? .7 : .92, color: '#fff',
         borderRadius: 4, padding: '2px 5px', fontSize: 11, lineHeight: 1.25,
-        overflow: 'hidden', textDecoration: 'none', zIndex: 2,
+        overflow: 'hidden', zIndex: selected ? 5 : 2, cursor: 'grab',
+        outline: selected ? '2px solid var(--t1)' : 'none',
       }}
     >
       <span style={{ opacity: .85, marginRight: 4 }}>{hhmm(from)}</span>
       {event.summary}
-    </a>
+      {/* Bottom edge stretches the end time, as in Google Calendar. */}
+      <div
+        onMouseDown={e => onMove(e, 'resize')}
+        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 6, cursor: 'ns-resize' }}
+      />
+    </div>
+  )
+}
+
+function EventPopover({ placed, onClose, onRename, onDelete }: {
+  placed: Placed
+  onClose: () => void
+  onRename: (name: string) => void
+  onDelete: () => void
+}) {
+  const [name, setName] = useState(placed.event.summary)
+  const top = Math.min(placed.from * PX_PER_MIN, 24 * SLOT_H - 150)
+  return (
+    <>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 9 }} onMouseDown={e => { e.stopPropagation(); onClose() }} />
+      <div
+        onMouseDown={e => e.stopPropagation()}
+        style={{
+          position: 'absolute', top, left: 6, right: 6, zIndex: 10,
+          background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r2)',
+          boxShadow: 'var(--sh-md)', padding: 8, minWidth: 180,
+        }}
+      >
+        <input
+          value={name}
+          autoFocus
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !isComposing(e)) onRename(name.trim() || placed.event.summary)
+            if (e.key === 'Escape') onClose()
+          }}
+          style={{ width: '100%', border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 600, color: 'var(--t1)', fontFamily: 'var(--font)' }}
+        />
+        <div style={{ fontSize: 11, color: 'var(--t3)', margin: '3px 0 8px' }}>
+          {hhmm(placed.from)} – {hhmm(placed.to)}
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button onClick={() => onRename(name.trim() || placed.event.summary)} style={{ ...navStyle, borderColor: 'var(--ac)', color: 'var(--ac)' }}>저장</button>
+          <button onClick={onDelete} style={{ ...navStyle, borderColor: 'rgba(239,68,68,.4)', color: '#dc2626' }}>삭제</button>
+          {placed.event.htmlLink && (
+            <a href={placed.event.htmlLink} target="_blank" rel="noopener noreferrer"
+              style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--t3)' }}>구글에서 열기 ↗</a>
+          )}
+        </div>
+      </div>
+    </>
   )
 }
 

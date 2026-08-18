@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import { auth } from '../lib/firebase'
 import { requestCalendarToken, AuthzError, GIS_CONFIGURED } from '../lib/googleAuthz'
-import { fetchCalendarList, fetchEventsAcross, createCalendarEvent, deleteCalendarEvent, writableCalendars, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent } from '../lib/googleCalendar'
+import { fetchCalendarList, fetchEventsAcross, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, writableCalendars, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent } from '../lib/googleCalendar'
 
 export interface GCalEvent {
   id: string
@@ -53,6 +53,7 @@ interface GCalState {
   setTargetCalendar: (id: string) => void
   /** Creates an event, asking for write permission the first time. */
   createEvent: (input: { summary: string; startDateTime: string; endDateTime: string }) => Promise<boolean>
+  updateEvent: (eventId: string, patch: { summary?: string; startDateTime?: string; endDateTime?: string }) => Promise<boolean>
   removeEvent: (eventId: string) => Promise<void>
 }
 
@@ -122,6 +123,32 @@ function storeToken(token: string, expiresInSeconds = 3500) {
   localStorage.setItem('gcal_token', token)
   localStorage.setItem('gcal_expiry', String(expiry))
   return expiry
+}
+
+type Setter = (partial: Partial<GCalState>) => void
+
+/**
+ * Returns a token that may write, widening the grant the first time.
+ *
+ * Must be reached straight from a click: the consent screen is a window, and a
+ * window with no gesture behind it is blocked.
+ */
+async function ensureWriteToken(get: () => GCalState, set: Setter): Promise<string | null> {
+  if (get().canWrite && get().token) return get().token
+  try {
+    const granted = await requestCalendarToken({
+      scope: `${CALENDAR_SCOPE} ${CALENDAR_WRITE_SCOPE}`,
+      interactive: true,
+      hint: auth.currentUser?.email ?? undefined,
+    })
+    storeToken(granted.token, granted.expiresIn)
+    localStorage.setItem(WRITE_KEY, '1')
+    set({ token: granted.token, expiry: Date.now() + granted.expiresIn * 1000, canWrite: true, error: null })
+    return granted.token
+  } catch {
+    set({ error: '캘린더에 쓰려면 권한이 필요합니다' })
+    return null
+  }
 }
 
 export const useGCalStore = create<GCalState>((set, get) => ({
@@ -240,7 +267,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
    * this must be called straight from the interaction.
    */
   createEvent: async ({ summary, startDateTime, endDateTime }) => {
-    const { canWrite, calendars, targetCalendarId } = get()
+    const { calendars, targetCalendarId } = get()
     const target = targetCalendarId
       ?? calendars.find(c => c.primary)?.id
       ?? writableCalendars(calendars)[0]?.id
@@ -249,23 +276,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       return false
     }
 
-    let token = get().token
-    if (!canWrite) {
-      try {
-        const granted = await requestCalendarToken({
-          scope: `${CALENDAR_SCOPE} ${CALENDAR_WRITE_SCOPE}`,
-          interactive: true,
-          hint: auth.currentUser?.email ?? undefined,
-        })
-        token = granted.token
-        storeToken(granted.token, granted.expiresIn)
-        localStorage.setItem(WRITE_KEY, '1')
-        set({ token: granted.token, expiry: Date.now() + granted.expiresIn * 1000, canWrite: true, error: null })
-      } catch {
-        set({ error: '일정을 만들려면 캘린더 쓰기 권한이 필요합니다' })
-        return false
-      }
-    }
+    const token = await ensureWriteToken(get, set)
     if (!token) return false
 
     try {
@@ -286,12 +297,41 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     }
   },
 
+  updateEvent: async (eventId, patch) => {
+    const existing = get().events.find(e => e.id === eventId)
+    if (!existing) return false
+    const token = await ensureWriteToken(get, set)
+    if (!token) return false
+
+    const before = get().events
+    // Show the change immediately; a failure puts the old values back.
+    set({
+      events: before.map(e => e.id === eventId ? {
+        ...e,
+        summary: patch.summary ?? e.summary,
+        startIso: patch.startDateTime ?? e.startIso,
+        endIso: patch.endDateTime ?? e.endIso,
+        start: (patch.startDateTime ?? e.startIso ?? `${e.start}T00:00:00`).slice(0, 10),
+      } : e),
+    })
+
+    try {
+      await updateCalendarEvent(token, existing.calendarId, eventId.slice(existing.calendarId.length + 1), patch)
+      return true
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '일정 수정 실패'
+      set({ events: before, error: msg === TOKEN_EXPIRED ? '토큰이 만료됐습니다. 다시 연동해 주세요.' : msg })
+      return false
+    }
+  },
+
   removeEvent: async (eventId) => {
-    const { token, events } = get()
-    const target = events.find(e => e.id === eventId)
-    if (!token || !target) return
-    const previous = events
-    set({ events: events.filter(e => e.id !== eventId) })
+    const target = get().events.find(e => e.id === eventId)
+    if (!target) return
+    const token = await ensureWriteToken(get, set)
+    if (!token) return
+    const previous = get().events
+    set({ events: previous.filter(e => e.id !== eventId) })
     try {
       // The stored id is namespaced by calendar; Google wants the bare one.
       await deleteCalendarEvent(token, target.calendarId, eventId.slice(target.calendarId.length + 1))
