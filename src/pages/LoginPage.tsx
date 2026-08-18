@@ -92,7 +92,7 @@ export function LoginPage() {
         </button>
 
         {error && (
-          <div style={{ marginTop: 18, fontSize: 13, color: '#ef4444', textAlign: 'center', lineHeight: 1.5 }}>
+          <div style={{ marginTop: 18, fontSize: 13, color: '#D44C47', textAlign: 'center', lineHeight: 1.5 }}>
             {error}
           </div>
         )}

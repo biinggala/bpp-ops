@@ -93,53 +93,71 @@ export const ALLOWED_EMAILS: Record<string, MemberKey> = {
 export const STATUS_LIST: Status[] = ['진행중', '대기', '검토중', '완료']
 export const PRIORITY_LIST: Priority[] = ['높음', '중간', '낮음']
 
+/**
+ * Notion's light palette: a pale tinted background carrying a mid-tone text of
+ * the same hue. Verified directly against Notion for blue (bg #E7F3F8, text
+ * #487CA5), green (#DBEDDB) and brown (#EEE0DA); the rest are the same published
+ * set, which could not be fetched here.
+ */
+export const NOTION = {
+  gray:   { bg: '#EBECED', text: '#787774' },
+  brown:  { bg: '#EEE0DA', text: '#9F6B53' },
+  orange: { bg: '#FAEBDD', text: '#D9730D' },
+  yellow: { bg: '#FBF3DB', text: '#CB912F' },
+  green:  { bg: '#DBEDDB', text: '#448361' },
+  blue:   { bg: '#E7F3F8', text: '#487CA5' },
+  purple: { bg: '#EAE4F2', text: '#9065B0' },
+  pink:   { bg: '#F4DFEB', text: '#C14C8A' },
+  red:    { bg: '#FFE2DD', text: '#D44C47' },
+} as const
+
 export const STATUS_COLORS: Record<Status, { bg: string; text: string }> = {
-  진행중: { bg: 'rgba(35,131,226,.14)', text: '#1869c9' },
-  대기:   { bg: 'rgba(120,117,114,.12)', text: '#4b4947' },
-  검토중: { bg: '#fef3c7',              text: '#b45309' },
-  완료:   { bg: '#d1fae5',              text: '#047857' },
+  진행중: NOTION.blue,
+  대기:   NOTION.gray,
+  검토중: NOTION.yellow,
+  완료:   NOTION.green,
 }
 
-// Space용 색상 팔레트
+// Notion's icon-strength colours: saturated enough to identify a dot at 8px,
+// still from the same family as the badge tints so nothing clashes.
 export const SPACE_PALETTE = [
-  '#007aff','#ef4444','#10b981','#f59e0b','#8b5cf6',
-  '#06b6d4','#ec4899','#3730a3','#166534','#92400e',
+  '#337EA9','#D44C47','#448361','#CB912F','#9065B0',
+  '#9F6B53','#C14C8A','#787774','#D9730D','#2383E2',
 ]
 
-// Project용 색상 팔레트
 export const PROJECT_PALETTE = [
-  '#2383e2','#8b5cf6','#059669','#dc2626','#d97706',
-  '#0891b2','#7c3aed','#be185d','#047857','#b45309',
+  '#2383E2','#9065B0','#448361','#D44C47','#D9730D',
+  '#337EA9','#C14C8A','#CB912F','#9F6B53','#787774',
 ]
 
 // Space 이름으로 배지 색상 생성 (해시 기반)
 export function getCatColor(spaceName: string): { bg: string; text: string } {
   const presets: Record<string, { bg: string; text: string }> = {
-    Strategy:       { bg: '#fef3c7', text: '#92400e' },
-    Production:     { bg: '#fee2e2', text: '#b91c1c' },
-    'Internal Ops': { bg: '#d1fae5', text: '#065f46' },
-    'Biz Dev':      { bg: '#dbeafe', text: '#1e40af' },
-    Branding:       { bg: '#fce7f3', text: '#9d174d' },
-    Analytics:      { bg: '#e0e7ff', text: '#3730a3' },
-    Community:      { bg: '#dcfce7', text: '#166534' },
+    Strategy:       NOTION.yellow,
+    Production:     NOTION.red,
+    'Internal Ops': NOTION.green,
+    'Biz Dev':      NOTION.blue,
+    Branding:       NOTION.pink,
+    Analytics:      NOTION.purple,
+    Community:      NOTION.green,
   }
   if (presets[spaceName]) return presets[spaceName]
 
   // 해시로 팔레트에서 색 선택
   let h = 0
   for (let i = 0; i < spaceName.length; i++) h = spaceName.charCodeAt(i) + ((h << 5) - h)
-  const color = SPACE_PALETTE[Math.abs(h) % SPACE_PALETTE.length]
-  return { bg: color + '18', text: color }
+  const pairs = Object.values(NOTION)
+  return pairs[Math.abs(h) % pairs.length]
 }
 
 export const TAG_PALETTE = [
-  '#6366f1','#8b5cf6','#ec4899','#f43f5e','#f97316',
-  '#eab308','#22c55e','#06b6d4','#3b82f6','#14b8a6',
+  '#487CA5','#9065B0','#C14C8A','#D44C47','#D9730D',
+  '#CB912F','#448361','#337EA9','#9F6B53','#787774',
 ]
 
 export function getTagColor(tag: string): { bg: string; text: string } {
   let h = 0
   for (let i = 0; i < tag.length; i++) h = tag.charCodeAt(i) + ((h << 5) - h)
-  const color = TAG_PALETTE[Math.abs(h) % TAG_PALETTE.length]
-  return { bg: color + '18', text: color }
+  const pairs = Object.values(NOTION)
+  return pairs[Math.abs(h) % pairs.length]
 }

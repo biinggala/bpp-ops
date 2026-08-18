@@ -458,8 +458,8 @@ export function TimelineView() {
                 />
               ))}
               {date === todayStr && (
-                <div style={{ position: 'absolute', top: nowMinutes * PX_PER_MIN, left: 0, right: 0, height: 2, background: '#ef4444', zIndex: 3 }}>
-                  <div style={{ position: 'absolute', left: -4, top: -3, width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }} />
+                <div style={{ position: 'absolute', top: nowMinutes * PX_PER_MIN, left: 0, right: 0, height: 2, background: '#D44C47', zIndex: 3 }}>
+                  <div style={{ position: 'absolute', left: -4, top: -3, width: 8, height: 8, borderRadius: '50%', background: '#D44C47' }} />
                 </div>
               )}
             </div>
@@ -617,7 +617,7 @@ function DueTask({ task, overdue, onToggle, onOpen }: {
         display: 'flex', alignItems: 'center', gap: 4,
         fontSize: 10, lineHeight: 1.3, padding: '2px 4px', borderRadius: 3,
         border: '1px solid var(--bd)',
-        borderLeft: `3px solid ${late ? '#ef4444' : done ? 'var(--bd2)' : 'var(--ac)'}`,
+        borderLeft: `3px solid ${late ? '#D44C47' : done ? 'var(--bd2)' : 'var(--ac)'}`,
         background: 'var(--bg)', cursor: 'pointer', minWidth: 0,
         opacity: done ? .55 : 1,
       }}
@@ -627,18 +627,18 @@ function DueTask({ task, overdue, onToggle, onOpen }: {
         title={done ? '완료 취소' : '완료로 표시'}
         style={{
           width: 12, height: 12, flexShrink: 0, padding: 0, cursor: 'pointer',
-          borderRadius: '50%', border: `1.5px solid ${done ? '#22c55e' : 'var(--bd2)'}`,
-          background: done ? '#22c55e' : 'transparent', color: '#fff', fontSize: 8,
+          borderRadius: '50%', border: `1.5px solid ${done ? '#448361' : 'var(--bd2)'}`,
+          background: done ? '#448361' : 'transparent', color: '#fff', fontSize: 8,
           display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
         }}
       >{done ? '✓' : ''}</button>
       {task.priority === '높음' && !done && (
-        <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#dc2626', flexShrink: 0 }} />
+        <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#D44C47', flexShrink: 0 }} />
       )}
       <span style={{
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         textDecoration: done ? 'line-through' : 'none',
-        color: late ? '#dc2626' : 'var(--t1)',
+        color: late ? '#D44C47' : 'var(--t1)',
       }}>{task.name}</span>
     </div>
   )
@@ -770,7 +770,7 @@ function EventCard({
             {saving ? '저장 중…' : '저장'}
           </button>
           {onDelete && (
-            <button onClick={onDelete} style={{ ...navStyle, borderColor: 'rgba(239,68,68,.4)', color: '#dc2626' }}>삭제</button>
+            <button onClick={onDelete} style={{ ...navStyle, borderColor: 'rgba(212,76,71,.4)', color: '#D44C47' }}>삭제</button>
           )}
           {openLink && (
             <a href={openLink} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--t3)' }}>

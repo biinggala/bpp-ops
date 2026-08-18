@@ -59,11 +59,11 @@ export function StatsView() {
   const donePct = total ? Math.round((done / total) * 100) : 0
 
   const summary = [
-    { label: '전체 태스크', val: total,              color: '#8b5cf6' },
-    { label: '진행중',      val: inProgress,          color: '#2383e2' },
-    { label: '검토중',      val: review,              color: '#d97706' },
-    { label: `완료 (${donePct}%)`, val: done,         color: '#059669' },
-    { label: '마감 초과',   val: overdueTasks.length, color: '#ef4444' },
+    { label: '전체 태스크', val: total,              color: '#9065B0' },
+    { label: '진행중',      val: inProgress,          color: '#2383E2' },
+    { label: '검토중',      val: review,              color: '#D9730D' },
+    { label: `완료 (${donePct}%)`, val: done,         color: '#448361' },
+    { label: '마감 초과',   val: overdueTasks.length, color: '#D44C47' },
   ]
 
   // Category progress — distinct cat values, avg progress as the bar, count as
@@ -251,9 +251,9 @@ export function StatsView() {
                   </div>
 
                   <div style={{ marginTop: 11 }}>
-                    <MiniStat label="진행중" value={p.inProgress} color="#2383e2" />
-                    <MiniStat label="완료" value={p.done} color="#059669" />
-                    <MiniStat label="마감 초과" value={p.overdue} color="#ef4444" last />
+                    <MiniStat label="진행중" value={p.inProgress} color="#2383E2" />
+                    <MiniStat label="완료" value={p.done} color="#448361" />
+                    <MiniStat label="마감 초과" value={p.overdue} color="#D44C47" last />
                   </div>
                 </div>
               ))}
@@ -276,14 +276,14 @@ function DeadlineRow({ task, danger, nameOf, onClick }: {
       onClick={onClick}
       style={{
         display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px', borderRadius: 'var(--r2)',
-        background: danger ? 'rgba(239,68,68,.05)' : 'var(--bg2)',
-        border: `1px solid ${danger ? 'rgba(239,68,68,.13)' : 'var(--bd)'}`,
+        background: danger ? 'rgba(212,76,71,.05)' : 'var(--bg2)',
+        border: `1px solid ${danger ? 'rgba(212,76,71,.13)' : 'var(--bd)'}`,
         cursor: 'pointer',
       }}
-      onMouseEnter={e => e.currentTarget.style.background = danger ? 'rgba(239,68,68,.09)' : 'var(--bg3)'}
-      onMouseLeave={e => e.currentTarget.style.background = danger ? 'rgba(239,68,68,.05)' : 'var(--bg2)'}
+      onMouseEnter={e => e.currentTarget.style.background = danger ? 'rgba(212,76,71,.09)' : 'var(--bg3)'}
+      onMouseLeave={e => e.currentTarget.style.background = danger ? 'rgba(212,76,71,.05)' : 'var(--bg2)'}
     >
-      <span style={{ fontSize: 11, color: danger ? '#ef4444' : 'var(--t3)', flexShrink: 0 }}>{danger ? '⚠' : '◷'}</span>
+      <span style={{ fontSize: 11, color: danger ? '#D44C47' : 'var(--t3)', flexShrink: 0 }}>{danger ? '⚠' : '◷'}</span>
       <span style={{ flex: 1, fontSize: 12.5, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{task.name}</span>
       {task.cat && (
         <span style={{ fontSize: 10.5, fontWeight: 600, color: col.text, background: col.bg, padding: '2px 7px', borderRadius: 9, flexShrink: 0, whiteSpace: 'nowrap' }}>{task.cat}</span>
@@ -293,7 +293,7 @@ function DeadlineRow({ task, danger, nameOf, onClick }: {
           {nameOf(assignees[0])}{assignees.length > 1 ? ` +${assignees.length - 1}` : ''}
         </span>
       )}
-      <span style={{ fontSize: 11.5, fontWeight: 600, color: danger ? '#ef4444' : 'var(--t3)', flexShrink: 0, whiteSpace: 'nowrap' }}>{dueShort}</span>
+      <span style={{ fontSize: 11.5, fontWeight: 600, color: danger ? '#D44C47' : 'var(--t3)', flexShrink: 0, whiteSpace: 'nowrap' }}>{dueShort}</span>
     </div>
   )
 }
@@ -330,7 +330,7 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
 function CardTitle({ icon, children, danger }: { icon: string; children: React.ReactNode; danger?: boolean }) {
   return (
     <div style={{
-      fontSize: 13.5, fontWeight: 700, color: danger ? '#dc2626' : 'var(--t1)',
+      fontSize: 13.5, fontWeight: 700, color: danger ? '#D44C47' : 'var(--t1)',
       marginBottom: 13, display: 'flex', alignItems: 'center', gap: 6,
     }}>
       <span style={{ fontSize: 14 }}>{icon}</span>

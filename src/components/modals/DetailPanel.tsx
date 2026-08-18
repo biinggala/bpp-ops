@@ -64,7 +64,7 @@ export function DetailPanel() {
                 {task.blockedBy.map(id => {
                   const dep = tasks.find(t => t.id === id)
                   return dep ? (
-                    <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '2px 8px', borderRadius: 'var(--r2)', background: 'rgba(239,68,68,.08)', color: '#ef4444', border: '1px solid rgba(239,68,68,.2)' }}>
+                    <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '2px 8px', borderRadius: 'var(--r2)', background: 'rgba(212,76,71,.08)', color: '#D44C47', border: '1px solid rgba(212,76,71,.2)' }}>
                       ⛔ {dep.name}
                     </span>
                   ) : null
@@ -78,7 +78,7 @@ export function DetailPanel() {
                 {task.blocking.map(id => {
                   const dep = tasks.find(t => t.id === id)
                   return dep ? (
-                    <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '2px 8px', borderRadius: 'var(--r2)', background: 'rgba(245,158,11,.08)', color: '#f59e0b', border: '1px solid rgba(245,158,11,.2)' }}>
+                    <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '2px 8px', borderRadius: 'var(--r2)', background: 'rgba(217,115,13,.08)', color: '#D9730D', border: '1px solid rgba(217,115,13,.2)' }}>
                       ⚡ {dep.name}
                     </span>
                   ) : null
@@ -109,7 +109,7 @@ export function DetailPanel() {
               if (!confirm('삭제할까요?')) return
               deleteTask(task.id); setDetailTaskId(null)
             }}
-            style={{ padding: '7px 14px', borderRadius: 'var(--r2)', border: '1px solid rgba(239,68,68,.25)', background: 'transparent', color: '#ef4444', fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font)' }}
+            style={{ padding: '7px 14px', borderRadius: 'var(--r2)', border: '1px solid rgba(212,76,71,.25)', background: 'transparent', color: '#D44C47', fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font)' }}
           >
             삭제
           </button>

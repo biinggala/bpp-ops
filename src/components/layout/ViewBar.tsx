@@ -168,9 +168,9 @@ export function ViewBar() {
               style={{
                 display: 'flex', alignItems: 'center', gap: 4,
                 padding: '4px 10px', borderRadius: 'var(--r1)',
-                border: showGCal ? '1px solid rgba(52,168,83,.4)' : '1px solid var(--bd)',
-                background: showGCal ? 'rgba(52,168,83,.12)' : 'transparent',
-                color: showGCal ? '#1a7a33' : 'var(--t3)',
+                border: showGCal ? '1px solid rgba(68,131,97,.4)' : '1px solid var(--bd)',
+                background: showGCal ? 'rgba(68,131,97,.12)' : 'transparent',
+                color: showGCal ? '#448361' : 'var(--t3)',
                 fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap',
               }}
             >
@@ -194,7 +194,7 @@ export function ViewBar() {
           {hasFilters && (
             <button
               onClick={() => { resetFilters(); setHideCompleted(false) }}
-              style={{ padding: '3px 9px', borderRadius: 'var(--r1)', border: '1px solid rgba(239,68,68,.25)', background: 'rgba(239,68,68,.05)', color: '#dc2626', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)' }}
+              style={{ padding: '3px 9px', borderRadius: 'var(--r1)', border: '1px solid rgba(212,76,71,.25)', background: 'rgba(212,76,71,.05)', color: '#D44C47', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)' }}
             >
               ✕ 초기화
             </button>

@@ -23,14 +23,14 @@ const MIN_SIDEBAR = 200
 const MAX_SIDEBAR = 480
 
 const STATUS_STYLE: Record<Status, { bg: string; color: string }> = {
-  '진행중': { bg: 'rgba(35,131,226,.15)', color: '#1869c9' },
+  '진행중': { bg: 'rgba(35,131,226,.15)', color: '#487CA5' },
   '대기':   { bg: 'rgba(120,117,114,.14)', color: '#5a5857' },
-  '검토중': { bg: '#fef3c7',              color: '#b45309' },
-  '완료':   { bg: '#d1fae5',              color: '#047857' },
+  '검토중': { bg: '#fef3c7',              color: '#D9730D' },
+  '완료':   { bg: '#d1fae5',              color: '#448361' },
 }
 const PRIORITY_STYLE: Record<Priority, { bg: string; color: string }> = {
-  '높음': { bg: 'rgba(239,68,68,.13)',  color: '#dc2626' },
-  '중간': { bg: 'rgba(245,158,11,.14)', color: '#b45309' },
+  '높음': { bg: 'rgba(212,76,71,.13)',  color: '#D44C47' },
+  '중간': { bg: 'rgba(217,115,13,.14)', color: '#D9730D' },
   '낮음': { bg: 'rgba(59,130,246,.13)', color: '#1d4ed8' },
 }
 
@@ -118,7 +118,7 @@ function AssetsPanel({ links, onChange }: { links: TaskLink[]; onChange: (links:
             </a>
             <button onClick={() => remove(l.id)}
               style={{ flexShrink: 0, width: 18, height: 18, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--t3)', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 2 }}
-              onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'rgba(239,68,68,.08)' }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#D44C47'; e.currentTarget.style.background = 'rgba(212,76,71,.08)' }}
               onMouseLeave={e => { e.currentTarget.style.color = 'var(--t3)'; e.currentTarget.style.background = 'transparent' }}
             >×</button>
           </div>
@@ -226,7 +226,7 @@ const IcCalendar = () => (
 )
 const IcDiamond = () => (
   <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-    <path d="M10 3L17 10L10 17L3 10L10 3Z" stroke="#8b5cf6" strokeWidth="1.5"/>
+    <path d="M10 3L17 10L10 17L3 10L10 3Z" stroke="#9065B0" strokeWidth="1.5"/>
   </svg>
 )
 const IcProgress = () => (
@@ -339,7 +339,7 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
               <div style={{ width: 8, height: 8, borderRadius: 2, background: currentProject.color, flexShrink: 0 }} />
               <span>{currentProject.name}</span>
               {currentMilestone && (
-                <><span style={{ opacity: .4 }}>/</span><span style={{ color: '#8b5cf6' }}>◆ {currentMilestone.name}</span></>
+                <><span style={{ opacity: .4 }}>/</span><span style={{ color: '#9065B0' }}>◆ {currentMilestone.name}</span></>
               )}
             </div>
           )}
@@ -454,7 +454,7 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
               {currentProject && (
                 <MobilePropRow icon={<IcDiamond />} label="Milestone">
                   <select value={task.milestoneId || ''} onChange={e => upd({ milestoneId: e.target.value || undefined })}
-                    style={{ border: 'none', background: 'transparent', fontSize: 14, cursor: 'pointer', outline: 'none', color: task.milestoneId ? '#8b5cf6' : 'var(--t3)', fontFamily: 'var(--font)', padding: 0, appearance: 'none', WebkitAppearance: 'none' }}>
+                    style={{ border: 'none', background: 'transparent', fontSize: 14, cursor: 'pointer', outline: 'none', color: task.milestoneId ? '#9065B0' : 'var(--t3)', fontFamily: 'var(--font)', padding: 0, appearance: 'none', WebkitAppearance: 'none' }}>
                     <option value="">없음</option>
                     {taskMilestones.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                   </select>
@@ -791,7 +791,7 @@ export function TaskDetailModal() {
                 </div>
               )}
               {currentMilestone && (
-                <div style={{ fontSize: 11, color: '#8b5cf6' }}>◆ {currentMilestone.name}</div>
+                <div style={{ fontSize: 11, color: '#9065B0' }}>◆ {currentMilestone.name}</div>
               )}
             </div>
 

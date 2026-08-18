@@ -109,7 +109,7 @@ export function AppPage() {
     )
     if (!entry) return
     const [pid, invite] = entry
-    setInvitePending({ project: { id: pid, name: invite.name || '초대받은 프로젝트', color: '#2383e2', inviteCode: invite.code } })
+    setInvitePending({ project: { id: pid, name: invite.name || '초대받은 프로젝트', color: '#2383E2', inviteCode: invite.code } })
   }, [invites, projects, invitePending])
 
   useEffect(() => {

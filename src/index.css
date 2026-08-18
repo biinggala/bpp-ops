@@ -1,28 +1,34 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
-/* ── Design tokens ── */
+/* ── Design tokens ──
+   Aligned to Notion's light palette. Its ink, rgba(55,53,47,…), was already the
+   basis of the greys here and --ac was already Notion's blue; the text and
+   divider values now follow the same system instead of Tailwind's, so nothing
+   competes with it. Secondary and tertiary text are alpha on the ink rather
+   than separate greys, which keeps them consistent over any background. */
 :root {
   --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
   /* Text */
-  --t1: #1c1b18;
-  --t2: #57534e;
-  --t3: #a8a29e;
+  --t1: #37352f;                  /* Notion default ink */
+  --t2: rgba(55,53,47,.65);
+  --t3: rgba(55,53,47,.45);
 
   /* Background */
   --bg:   #ffffff;
-  --bg2:  #f5f5f3;
-  --bg3:  rgba(55,53,47,.06);
-  --bg4:  rgba(55,53,47,.10);
+  --bg2:  #f7f6f3;                /* Notion page grey */
+  --bg3:  rgba(55,53,47,.055);
+  --bg4:  rgba(55,53,47,.09);
 
-  /* Border */
-  --bd:   rgba(55,53,47,.13);
-  --bd2:  rgba(55,53,47,.24);
+  /* Border — Notion's dividers are lighter than they look; heavier rules read
+     as a table grid and fight everything drawn inside them. */
+  --bd:   rgba(55,53,47,.09);
+  --bd2:  rgba(55,53,47,.16);
 
   /* Accent */
-  --ac:   #2383e2;
-  --ac-l: rgba(35,131,226,.12);
+  --ac:   #2383e2;                /* Notion blue */
+  --ac-l: rgba(35,131,226,.10);
   --ac-d: #1a73d1;
 
   /* Sidebar */

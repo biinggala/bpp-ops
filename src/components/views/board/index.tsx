@@ -10,7 +10,7 @@ import { STATUS_LIST } from '../../../types'
 import type { Task, Status } from '../../../types'
 
 const STATUS_COLOR: Record<Status, string> = {
-  진행중: '#2383e2', 대기: '#9b9a97', 검토중: '#d97706', 완료: '#059669',
+  진행중: '#2383E2', 대기: '#9b9a97', 검토중: '#D9730D', 완료: '#448361',
 }
 
 export function BoardView() {
@@ -134,8 +134,8 @@ function CardBtn({ children, onClick, danger }: { children: React.ReactNode; onC
   return (
     <span
       onClick={onClick}
-      style={{ width: 20, height: 20, borderRadius: 3, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, cursor: 'pointer', color: danger ? '#ef4444' : 'var(--t3)', background: 'var(--bg2)', transition: 'background .08s' }}
-      onMouseEnter={e => { e.currentTarget.style.background = danger ? 'rgba(239,68,68,.1)' : 'var(--bg4)' }}
+      style={{ width: 20, height: 20, borderRadius: 3, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, cursor: 'pointer', color: danger ? '#D44C47' : 'var(--t3)', background: 'var(--bg2)', transition: 'background .08s' }}
+      onMouseEnter={e => { e.currentTarget.style.background = danger ? 'rgba(212,76,71,.1)' : 'var(--bg4)' }}
       onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg2)' }}
     >
       {children}

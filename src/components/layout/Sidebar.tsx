@@ -436,7 +436,7 @@ export function Sidebar() {
                       <div style={{ width: 22, height: 22, borderRadius: '50%', background: avatarGrad, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff' }}>
                         {name[0]?.toUpperCase() ?? '?'}
                       </div>
-                      <div style={{ position: 'absolute', bottom: 0, right: 0, width: 7, height: 7, borderRadius: '50%', background: '#22c55e', border: '1.5px solid var(--sb-bg)' }} />
+                      <div style={{ position: 'absolute', bottom: 0, right: 0, width: 7, height: 7, borderRadius: '50%', background: '#448361', border: '1.5px solid var(--sb-bg)' }} />
                     </div>
                     <span style={{ fontSize: 12, color: 'var(--sb-t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {name}
@@ -688,13 +688,13 @@ function DriveFolderModal({ name, value, onSave, onCancel }: {
           placeholder="https://drive.google.com/drive/folders/..."
           style={{
             width: '100%', padding: '9px 11px', borderRadius: 'var(--r1)',
-            border: `1px solid ${valid ? 'var(--bd)' : '#dc2626'}`,
+            border: `1px solid ${valid ? 'var(--bd)' : '#D44C47'}`,
             background: 'var(--bg)', fontSize: 13, color: 'var(--t1)',
             outline: 'none', fontFamily: 'var(--font)',
           }}
         />
         {!valid && (
-          <div style={{ fontSize: 12, color: '#dc2626', marginTop: 8 }}>
+          <div style={{ fontSize: 12, color: '#D44C47', marginTop: 8 }}>
             http:// 또는 https:// 로 시작하는 주소를 넣어주세요.
           </div>
         )}
@@ -703,7 +703,7 @@ function DriveFolderModal({ name, value, onSave, onCancel }: {
           {value && (
             <button
               onClick={() => onSave('')}
-              style={{ marginRight: 'auto', padding: '7px 12px', borderRadius: 'var(--r2)', border: '1px solid var(--bd)', background: 'transparent', color: '#dc2626', fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font)' }}
+              style={{ marginRight: 'auto', padding: '7px 12px', borderRadius: 'var(--r2)', border: '1px solid var(--bd)', background: 'transparent', color: '#D44C47', fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font)' }}
             >연결 해제</button>
           )}
           <button
@@ -857,7 +857,7 @@ function DeleteConfirmModal({ name, onConfirm, onCancel }: {
             disabled={typed !== name}
             style={{
               padding: '7px 16px', borderRadius: 'var(--r2)', border: 'none',
-              background: typed === name ? '#dc2626' : 'rgba(220,38,38,.3)',
+              background: typed === name ? '#D44C47' : 'rgba(212,76,71,.3)',
               color: typed === name ? '#fff' : 'rgba(255,255,255,.35)',
               fontSize: 13, fontWeight: 600,
               cursor: typed === name ? 'pointer' : 'not-allowed',
@@ -970,8 +970,8 @@ function MemberManageModal({ project, currentEmail, suggestable, onAddMember, on
                     ) : (
                       <button
                         onClick={() => onRemoveMember(m)}
-                        style={{ padding: '2px 8px', borderRadius: 'var(--r1)', border: '1px solid rgba(239,68,68,.3)', background: 'transparent', color: '#f87171', fontSize: 11, cursor: 'pointer' }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,.07)'}
+                        style={{ padding: '2px 8px', borderRadius: 'var(--r1)', border: '1px solid rgba(212,76,71,.3)', background: 'transparent', color: '#f87171', fontSize: 11, cursor: 'pointer' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(212,76,71,.07)'}
                         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                       >
                         제거
@@ -989,13 +989,13 @@ function MemberManageModal({ project, currentEmail, suggestable, onAddMember, on
                     <div style={{ fontSize: 13, color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getNameByEmail(m)}</div>
                     <div style={{ fontSize: 11, color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m}</div>
                   </div>
-                  <span style={{ padding: '2px 7px', borderRadius: 'var(--r1)', fontSize: 10, fontWeight: 600, color: '#d97706', background: 'rgba(217,119,6,.1)', border: '1px solid rgba(217,119,6,.25)', whiteSpace: 'nowrap' }}>
+                  <span style={{ padding: '2px 7px', borderRadius: 'var(--r1)', fontSize: 10, fontWeight: 600, color: '#D9730D', background: 'rgba(217,119,6,.1)', border: '1px solid rgba(217,119,6,.25)', whiteSpace: 'nowrap' }}>
                     초대됨
                   </span>
                   <button
                     onClick={() => onRemoveMember(m)}
-                    style={{ padding: '2px 8px', borderRadius: 'var(--r1)', border: '1px solid rgba(239,68,68,.3)', background: 'transparent', color: '#f87171', fontSize: 11, cursor: 'pointer' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,.07)'}
+                    style={{ padding: '2px 8px', borderRadius: 'var(--r1)', border: '1px solid rgba(212,76,71,.3)', background: 'transparent', color: '#f87171', fontSize: 11, cursor: 'pointer' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(212,76,71,.07)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
                     취소

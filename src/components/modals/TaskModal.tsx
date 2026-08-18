@@ -423,7 +423,7 @@ function DependencyPicker({ taskId, type, selected, onChange }: {
   const add = (id: string) => { onChange([...selected, id]); setQuery('') }
   const remove = (id: string) => onChange(selected.filter(s => s !== id))
 
-  const depColor = type === 'blockedBy' ? '#ef4444' : '#f59e0b'
+  const depColor = type === 'blockedBy' ? '#D44C47' : '#D9730D'
   const depIcon = type === 'blockedBy' ? '⛔' : '⚡'
 
   return (

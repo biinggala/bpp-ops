@@ -21,16 +21,16 @@ const fmt = fmtYMD
 const parseDate = toDate
 
 // Google Calendar event color
-const GCAL_BG   = 'rgba(52,168,83,.18)'
-const GCAL_TEXT = '#1a7a33'
+const GCAL_BG   = 'rgba(68,131,97,.18)'
+const GCAL_TEXT = '#448361'
 
 // ── Status badge (mobile) ─────────────────────────────────────────────────────
 
 const MOB_STATUS: Record<string, { bg: string; color: string }> = {
-  '진행중': { bg: 'rgba(35,131,226,.15)', color: '#1869c9' },
+  '진행중': { bg: 'rgba(35,131,226,.15)', color: '#487CA5' },
   '대기':   { bg: 'rgba(120,117,114,.14)', color: '#5a5857' },
-  '검토중': { bg: '#fef3c7',              color: '#b45309' },
-  '완료':   { bg: '#d1fae5',              color: '#047857' },
+  '검토중': { bg: '#fef3c7',              color: '#D9730D' },
+  '완료':   { bg: '#d1fae5',              color: '#448361' },
 }
 
 // ── GCal connect button ───────────────────────────────────────────────────────
@@ -56,7 +56,7 @@ function GCalButton() {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         {error ? (
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#dc2626', background: 'rgba(239,68,68,.08)', padding: '3px 8px', borderRadius: 20, fontWeight: 600, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={error}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#D44C47', background: 'rgba(212,76,71,.08)', padding: '3px 8px', borderRadius: 20, fontWeight: 600, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={error}>
             <GoogleDot /> 일정 로드 오류
           </span>
         ) : loading ? (
@@ -136,9 +136,9 @@ function GCalButton() {
         style={{
           display: 'flex', alignItems: 'center', gap: 5,
           padding: '3px 8px', borderRadius: 20,
-          border: '1px solid rgba(52,168,83,.35)',
-          background: 'rgba(52,168,83,.07)',
-          fontSize: 12, color: '#1a7a33',
+          border: '1px solid rgba(68,131,97,.35)',
+          background: 'rgba(68,131,97,.07)',
+          fontSize: 12, color: '#448361',
           cursor: loading ? 'default' : 'pointer',
           opacity: loading ? .6 : 1,
           fontFamily: 'var(--font)', whiteSpace: 'nowrap',
@@ -158,15 +158,15 @@ function GCalButton() {
         display: 'flex', alignItems: 'center', gap: 5,
         padding: '4px 10px', borderRadius: 'var(--r1)',
         border: `1px solid ${error ? '#fca5a5' : 'var(--bd)'}`,
-        background: error ? 'rgba(239,68,68,.07)' : 'transparent',
-        fontSize: 12, color: error ? '#dc2626' : 'var(--t2)',
+        background: error ? 'rgba(212,76,71,.07)' : 'transparent',
+        fontSize: 12, color: error ? '#D44C47' : 'var(--t2)',
         cursor: loading ? 'default' : 'pointer',
         opacity: loading ? .6 : 1,
         fontFamily: 'var(--font)',
         whiteSpace: 'nowrap',
       }}
       onMouseEnter={e => { if (!loading) e.currentTarget.style.background = 'var(--bg2)' }}
-      onMouseLeave={e => { e.currentTarget.style.background = error ? 'rgba(239,68,68,.07)' : 'transparent' }}
+      onMouseLeave={e => { e.currentTarget.style.background = error ? 'rgba(212,76,71,.07)' : 'transparent' }}
     >
       <GoogleDot />
       {loading ? '연동 중…' : error ? '다시 연동' : '구글 캘린더 연동'}
@@ -313,7 +313,7 @@ function MobileCalendar() {
                 const el = sectionRefs.current.get('__overdue__')
                 if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
               }}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(239,68,68,.12)', color: '#dc2626', borderRadius: 20, padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(212,76,71,.12)', color: '#D44C47', borderRadius: 20, padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
             >
               <span>⚠</span> 기한 초과 {overdueTasks.length}개
             </div>
@@ -351,12 +351,12 @@ function MobileCalendar() {
           )}
           <button
             onClick={() => setShowGCal(!showGCal)}
-            style={{ flexShrink: 0, padding: '4px 10px', borderRadius: 20, border: showGCal ? '1px solid rgba(52,168,83,.4)' : '1px solid var(--bd)', background: showGCal ? 'rgba(52,168,83,.12)' : 'transparent', color: showGCal ? '#1a7a33' : 'var(--t3)', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}
+            style={{ flexShrink: 0, padding: '4px 10px', borderRadius: 20, border: showGCal ? '1px solid rgba(68,131,97,.4)' : '1px solid var(--bd)', background: showGCal ? 'rgba(68,131,97,.12)' : 'transparent', color: showGCal ? '#448361' : 'var(--t3)', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}
           >
             📅 일정
           </button>
           {hasFilters && (
-            <button onClick={resetFilters} style={{ flexShrink: 0, padding: '4px 10px', borderRadius: 20, border: '1px solid rgba(239,68,68,.25)', background: 'rgba(239,68,68,.05)', color: '#dc2626', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}>
+            <button onClick={resetFilters} style={{ flexShrink: 0, padding: '4px 10px', borderRadius: 20, border: '1px solid rgba(212,76,71,.25)', background: 'rgba(212,76,71,.05)', color: '#D44C47', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}>
               ✕ 초기화
             </button>
           )}
@@ -381,7 +381,7 @@ function MobileCalendar() {
                 onClick={() => handleDateSelect(dateStr)}
                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 44, padding: '6px 4px', border: 'none', borderRadius: 10, background: isSelected ? 'var(--ac)' : 'transparent', cursor: 'pointer', flexShrink: 0 }}
               >
-                <span style={{ fontSize: 10, fontWeight: 500, color: isSelected ? 'rgba(255,255,255,.8)' : isSun ? '#ef4444' : isSat ? '#3b82f6' : 'var(--t3)' }}>
+                <span style={{ fontSize: 10, fontWeight: 500, color: isSelected ? 'rgba(255,255,255,.8)' : isSun ? '#D44C47' : isSat ? '#3b82f6' : 'var(--t3)' }}>
                   {isToday ? '오늘' : dow}
                 </span>
                 <span style={{ fontSize: 16, fontWeight: isToday || isSelected ? 700 : 400, color: isSelected ? '#fff' : isToday ? 'var(--ac)' : 'var(--t1)', lineHeight: 1 }}>
@@ -403,7 +403,7 @@ function MobileCalendar() {
         {/* Overdue */}
         {overdueTasks.length > 0 && (
           <div ref={el => { if (el) sectionRefs.current.set('__overdue__', el) }}>
-            <SectionHeader label="기한 초과" count={overdueTasks.length} color="#dc2626" />
+            <SectionHeader label="기한 초과" count={overdueTasks.length} color="#D44C47" />
             {overdueTasks.map(t => <MobCalTaskRow key={t.id} task={t} onOpen={() => openTaskDetail(t.id)} overdue />)}
           </div>
         )}
@@ -456,7 +456,7 @@ function MobCalTaskRow({ task, onOpen, overdue }: { task: Task; onOpen: () => vo
       onClick={onOpen}
       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--bd)', cursor: 'pointer', opacity: isDone ? 0.55 : 1 }}
     >
-      <span style={{ width: 7, height: 7, borderRadius: '50%', background: overdue ? '#ef4444' : 'var(--ac)', flexShrink: 0 }} />
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: overdue ? '#D44C47' : 'var(--ac)', flexShrink: 0 }} />
       <span style={{ flex: 1, fontSize: 14, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: isDone ? 'line-through' : 'none' }}>
         {task.name}
       </span>
@@ -564,7 +564,7 @@ class CalendarErrorBoundary extends Component<{ children: React.ReactNode }, { e
     if (this.state.error) {
       return (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24, color: 'var(--t2)' }}>
-          <div style={{ fontSize: 13, color: '#dc2626' }}>캘린더 로드 오류</div>
+          <div style={{ fontSize: 13, color: '#D44C47' }}>캘린더 로드 오류</div>
           <div style={{ fontSize: 12, color: 'var(--t3)', textAlign: 'center', maxWidth: 280 }}>{this.state.error}</div>
           <button
             onClick={() => this.setState({ error: null })}
@@ -616,7 +616,7 @@ function DesktopCalendar() {
     const filtered = projectId ? milestones.filter(m => m.projectId === projectId) : milestones
     filtered.forEach(m => {
       if (!map[m.dueDate]) map[m.dueDate] = []
-      map[m.dueDate].push({ name: m.name, color: '#8b5cf6' })
+      map[m.dueDate].push({ name: m.name, color: '#9065B0' })
     })
     return map
   }, [milestones, projectId])
@@ -746,7 +746,7 @@ function DesktopCalendar() {
                   {hasMilestone && (
                     <div style={{ display: 'flex', gap: 3, alignItems: 'center', flex: 1 }}>
                       {dayMilestones.map((ms, mi) => (
-                        <span key={mi} title={ms.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600, color: '#8b5cf6', background: 'rgba(139,92,246,.12)', borderRadius: 4, padding: '1px 5px', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span key={mi} title={ms.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600, color: '#9065B0', background: 'rgba(139,92,246,.12)', borderRadius: 4, padding: '1px 5px', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           ◆ {ms.name}
                         </span>
                       ))}

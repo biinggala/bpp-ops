@@ -13,6 +13,7 @@ import { AssigneeAvatar } from '../../shared/Avatar'
 import { ProgressBar } from '../../shared/ProgressBar'
 import { ContextMenu } from '../../shared/ContextMenu'
 import { fmtDate, isOverdue, parseAssignees, stripHtml, gid, isComposing } from '../../../lib/utils'
+import { NOTION } from '../../../types'
 import type { Task, Milestone, Status, Priority, TaskLink } from '../../../types'
 
 // ── Column config ─────────────────────────────────────────────────────────────
@@ -52,25 +53,26 @@ function loadCols(): ColDef[] {
 
 // ── Status / Priority styling ─────────────────────────────────────────────────
 
+// One source for these — see NOTION in types.
 const STATUS_STYLE: Record<Status, { bg: string; color: string }> = {
-  '진행중': { bg: 'rgba(35,131,226,.15)', color: '#1869c9' },
-  '대기':   { bg: 'rgba(120,117,114,.14)', color: '#5a5857' },
-  '검토중': { bg: '#fef3c7',              color: '#b45309' },
-  '완료':   { bg: '#d1fae5',              color: '#047857' },
+  '진행중': { bg: NOTION.blue.bg,   color: NOTION.blue.text },
+  '대기':   { bg: NOTION.gray.bg,   color: NOTION.gray.text },
+  '검토중': { bg: NOTION.yellow.bg, color: NOTION.yellow.text },
+  '완료':   { bg: NOTION.green.bg,  color: NOTION.green.text },
 }
 // Priority has to read as a ranking, not three equally loud labels. 높음 carries
 // weight, 중간 is quiet, 낮음 has no fill at all — the previous blue on 낮음 drew
 // more attention than the muted amber on 중간, which inverted the order.
 const PRIORITY_STYLE: Record<Priority, { bg: string; color: string }> = {
-  '높음': { bg: 'rgba(239,68,68,.20)', color: '#b91c1c' },
-  '중간': { bg: 'rgba(245,158,11,.12)', color: '#b45309' },
-  '낮음': { bg: 'transparent',          color: 'var(--t3)' },
+  '높음': { bg: NOTION.red.bg,    color: NOTION.red.text },
+  '중간': { bg: NOTION.orange.bg, color: NOTION.orange.text },
+  '낮음': { bg: 'transparent',    color: 'var(--t3)' },
 }
 
 // Only 높음 gets a mark next to the name. Marking every level would make the
 // column louder without making anything stand out.
 const PRIORITY_MARK: Partial<Record<Priority, string>> = {
-  '높음': '#dc2626',
+  '높음': NOTION.red.text,
 }
 
 /**
@@ -81,9 +83,9 @@ const PRIORITY_MARK: Partial<Record<Priority, string>> = {
  */
 function milestoneAccent(done: boolean, diff: number): string {
   if (done) return 'var(--t3)'
-  if (diff < 0) return '#ef4444'
-  if (diff <= 7) return '#f59e0b'
-  return '#8b5cf6'
+  if (diff < 0) return NOTION.red.text
+  if (diff <= 7) return NOTION.orange.text
+  return NOTION.purple.text
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -193,7 +195,7 @@ function MobileTableView() {
             {task.name}
           </span>
           {task.due && !isDone && (
-            <span style={{ fontSize: 11, color: overdue ? '#ef4444' : 'var(--t3)', flexShrink: 0, marginRight: 6 }}>
+            <span style={{ fontSize: 11, color: overdue ? '#D44C47' : 'var(--t3)', flexShrink: 0, marginRight: 6 }}>
               {overdue ? '⚠ ' : ''}{fmtDate(task.due)}
             </span>
           )}
@@ -232,7 +234,7 @@ function MobileTableView() {
           const diff = daysFrom(ms.dueDate, today)
           const overdue = !ms.done && diff < 0
           const dLabel = overdue ? `D+${Math.abs(diff)}` : diff === 0 ? 'D-Day' : `D-${diff}`
-          const dColor = ms.done ? 'var(--t3)' : overdue ? '#ef4444' : diff <= 7 ? '#f59e0b' : 'var(--t3)'
+          const dColor = ms.done ? 'var(--t3)' : overdue ? '#D44C47' : diff <= 7 ? '#D9730D' : 'var(--t3)'
           const accent = milestoneAccent(!!ms.done, diff)
           const d = new Date(ms.dueDate + 'T00:00:00')
           const dateLabel = `${d.getMonth() + 1}/${d.getDate()}`
@@ -244,14 +246,14 @@ function MobileTableView() {
               >
                 <button
                   onClick={e => { e.stopPropagation(); updateMilestone(ms.id, { done: !ms.done }) }}
-                  style={{ width: 18, height: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: ms.done ? '2px solid #22c55e' : '2px solid var(--bd2)', background: ms.done ? '#22c55e' : 'transparent', color: '#fff', fontSize: 10, cursor: 'pointer', padding: 0, transition: 'all .15s' }}
+                  style={{ width: 18, height: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: ms.done ? '2px solid #448361' : '2px solid var(--bd2)', background: ms.done ? '#448361' : 'transparent', color: '#fff', fontSize: 10, cursor: 'pointer', padding: 0, transition: 'all .15s' }}
                 >
                   {ms.done ? '✓' : ''}
                 </button>
                 <span style={{ fontSize: 10, color: accent }}>◆</span>
                 <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--t1)', textDecoration: ms.done ? 'line-through' : 'none' }}>{ms.name}</span>
                 {!ms.done && <span style={{ fontSize: 11, color: 'var(--t3)', marginRight: 2 }}>{dateLabel}</span>}
-                {!ms.done && <span style={{ fontSize: 11, fontWeight: 600, color: dColor, background: overdue ? 'rgba(239,68,68,.08)' : diff <= 7 ? 'rgba(245,158,11,.1)' : 'var(--bg3)', borderRadius: 6, padding: '1px 6px', marginRight: 4 }}>{dLabel}</span>}
+                {!ms.done && <span style={{ fontSize: 11, fontWeight: 600, color: dColor, background: overdue ? 'rgba(212,76,71,.08)' : diff <= 7 ? 'rgba(217,115,13,.1)' : 'var(--bg3)', borderRadius: 6, padding: '1px 6px', marginRight: 4 }}>{dLabel}</span>}
                 <span style={{ fontSize: 11, color: 'var(--t3)', marginRight: 6 }}>{doneTasks}/{msTasks.length}</span>
                 <span style={{ fontSize: 9, color: 'var(--t3)' }}>{isCollapsed ? '▶' : '▼'}</span>
               </div>
@@ -687,7 +689,7 @@ export function TableView() {
   const addMsBtn = (pjId: string) => (
     <button
       onClick={() => setAddingMs(pjId)}
-      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', fontSize: 12, color: '#8b5cf6', background: 'transparent', border: 'none', borderTop: '1px solid var(--bd)', cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left', transition: 'background .1s' }}
+      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', fontSize: 12, color: '#9065B0', background: 'transparent', border: 'none', borderTop: '1px solid var(--bd)', cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left', transition: 'background .1s' }}
       onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139,92,246,.05)' }}
       onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
     >
@@ -982,8 +984,8 @@ function Row({
               )}
               {(task.blockedBy?.length || task.blocking?.length) ? (
                 <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                  {!!task.blockedBy?.length && <span title={`선행 ${task.blockedBy.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(239,68,68,.1)', color: '#ef4444', lineHeight: 1.6 }}>⛔ {task.blockedBy.length}</span>}
-                  {!!task.blocking?.length && <span title={`후행 ${task.blocking.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(245,158,11,.1)', color: '#f59e0b', lineHeight: 1.6 }}>⚡ {task.blocking.length}</span>}
+                  {!!task.blockedBy?.length && <span title={`선행 ${task.blockedBy.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(212,76,71,.1)', color: '#D44C47', lineHeight: 1.6 }}>⛔ {task.blockedBy.length}</span>}
+                  {!!task.blocking?.length && <span title={`후행 ${task.blocking.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(217,115,13,.1)', color: '#D9730D', lineHeight: 1.6 }}>⚡ {task.blocking.length}</span>}
                 </div>
               ) : null}
               {showMilestonePicker && (hovered || task.milestoneId) && onMilestoneChange && (
@@ -1038,7 +1040,7 @@ function Row({
                 onEscape={stopEdit}
               />
             ) : (
-              <span style={{ fontSize: 13, color: overdue ? '#ef4444' : task.due ? 'var(--t2)' : 'var(--t3)', fontWeight: overdue ? 500 : 400, cursor: 'pointer' }}>
+              <span style={{ fontSize: 13, color: overdue ? '#D44C47' : task.due ? 'var(--t2)' : 'var(--t3)', fontWeight: overdue ? 500 : 400, cursor: 'pointer' }}>
                 {task.due ? (overdue ? '⚠ ' : '') + fmtDate(task.due) : '—'}
               </span>
             )}
@@ -1336,8 +1338,8 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
       <button
         onClick={e => { e.stopPropagation(); onToggleDone() }}
         title={isDone ? '완료 취소' : '마일스톤 완료'}
-        style={{ width: 16, height: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: isDone ? '2px solid #22c55e' : '2px solid var(--bd2)', background: isDone ? '#22c55e' : 'transparent', color: '#fff', fontSize: 9, cursor: 'pointer', padding: 0, transition: 'all .15s' }}
-        onMouseEnter={e => { if (!isDone) { e.currentTarget.style.borderColor = '#22c55e'; e.currentTarget.style.background = 'rgba(34,197,94,.15)' } }}
+        style={{ width: 16, height: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: isDone ? '2px solid #448361' : '2px solid var(--bd2)', background: isDone ? '#448361' : 'transparent', color: '#fff', fontSize: 9, cursor: 'pointer', padding: 0, transition: 'all .15s' }}
+        onMouseEnter={e => { if (!isDone) { e.currentTarget.style.borderColor = '#448361'; e.currentTarget.style.background = 'rgba(68,131,97,.15)' } }}
         onMouseLeave={e => { if (!isDone) { e.currentTarget.style.borderColor = 'var(--bd2)'; e.currentTarget.style.background = 'transparent' } }}
       >
         {isDone ? '✓' : ''}
@@ -1385,7 +1387,7 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
       )}
 
       {!editingDate && (
-        <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--r1)', flexShrink: 0, background: overdue ? 'rgba(239,68,68,.1)' : close ? 'rgba(245,158,11,.1)' : 'rgba(139,92,246,.1)', color: accent }}>
+        <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--r1)', flexShrink: 0, background: overdue ? 'rgba(212,76,71,.1)' : close ? 'rgba(217,115,13,.1)' : 'rgba(139,92,246,.1)', color: accent }}>
           {overdue ? `D+${Math.abs(diff)}` : `D-${diff}`}
         </span>
       )}
@@ -1403,14 +1405,14 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
           <button
             onClick={e => { e.stopPropagation(); onAddTask() }}
             style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: `1px solid ${accent}`, background: 'var(--bg2)', color: accent, cursor: 'pointer', fontFamily: 'var(--font)' }}
-            onMouseEnter={e => { e.currentTarget.style.background = overdue ? 'rgba(239,68,68,.07)' : close ? 'rgba(245,158,11,.07)' : 'rgba(139,92,246,.07)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = overdue ? 'rgba(212,76,71,.07)' : close ? 'rgba(217,115,13,.07)' : 'rgba(139,92,246,.07)' }}
             onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg2)' }}
           >+ 업무</button>
           {onDelete && (
             <button
               onClick={e => { e.stopPropagation(); if (confirm(`"${milestone.name}" 마일스톤을 삭제할까요?`)) onDelete() }}
-              style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid rgba(239,68,68,.4)', background: 'var(--bg2)', color: '#ef4444', cursor: 'pointer', fontFamily: 'var(--font)' }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,.07)' }}
+              style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid rgba(212,76,71,.4)', background: 'var(--bg2)', color: '#D44C47', cursor: 'pointer', fontFamily: 'var(--font)' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(212,76,71,.07)' }}
               onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg2)' }}
             >삭제</button>
           )}
@@ -1472,8 +1474,8 @@ function AddMilestoneInline({ projectId, onDone }: { projectId: string; onDone: 
   }
   const valid = name.trim() !== '' && date !== ''
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: '3px solid #8b5cf6', borderTop: '1px solid var(--bd)' }}>
-      <span style={{ fontSize: 9, color: '#8b5cf6', flexShrink: 0 }}>◆</span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: '3px solid #9065B0', borderTop: '1px solid var(--bd)' }}>
+      <span style={{ fontSize: 9, color: '#9065B0', flexShrink: 0 }}>◆</span>
       <input
         autoFocus placeholder="마일스톤 이름..." value={name} onChange={e => setName(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) submit(); if (e.key === 'Escape') onDone() }}
@@ -1486,7 +1488,7 @@ function AddMilestoneInline({ projectId, onDone }: { projectId: string; onDone: 
       />
       <button
         onClick={submit} disabled={!valid}
-        style={{ padding: '3px 10px', fontSize: 11, borderRadius: 'var(--r1)', border: `1px solid ${valid ? '#8b5cf6' : 'var(--bd)'}`, background: valid ? 'rgba(139,92,246,.1)' : 'transparent', color: valid ? '#8b5cf6' : 'var(--t3)', cursor: valid ? 'pointer' : 'default', fontFamily: 'var(--font)', transition: 'background .1s' }}
+        style={{ padding: '3px 10px', fontSize: 11, borderRadius: 'var(--r1)', border: `1px solid ${valid ? '#9065B0' : 'var(--bd)'}`, background: valid ? 'rgba(139,92,246,.1)' : 'transparent', color: valid ? '#9065B0' : 'var(--t3)', cursor: valid ? 'pointer' : 'default', fontFamily: 'var(--font)', transition: 'background .1s' }}
       >추가</button>
       <button
         onClick={onDone}
@@ -1731,7 +1733,7 @@ function AddRowDatePicker({ value, onChange }: { value: string; onChange: (v: st
           {/* Day headers */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 4 }}>
             {DAYS.map((d, i) => (
-              <div key={d} style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, padding: '2px 0', color: i === 0 ? '#ef4444' : i === 6 ? '#3b82f6' : 'var(--t3)' }}>{d}</div>
+              <div key={d} style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, padding: '2px 0', color: i === 0 ? '#D44C47' : i === 6 ? '#3b82f6' : 'var(--t3)' }}>{d}</div>
             ))}
           </div>
           {/* Day grid */}
@@ -1743,7 +1745,7 @@ function AddRowDatePicker({ value, onChange }: { value: string; onChange: (v: st
               const isToday = day === todayD
               return (
                 <div key={idx} onMouseDown={e => { e.preventDefault(); pick(day) }}
-                  style={{ textAlign: 'center', padding: '4px 0', borderRadius: 4, fontSize: 12, cursor: 'pointer', fontWeight: isSel || isToday ? 600 : 400, background: isSel ? 'var(--ac)' : isToday ? 'var(--ac-l)' : 'transparent', color: isSel ? '#fff' : dow === 0 ? '#ef4444' : dow === 6 ? '#3b82f6' : 'var(--t1)', outline: isToday && !isSel ? '1px solid var(--ac)' : 'none' }}
+                  style={{ textAlign: 'center', padding: '4px 0', borderRadius: 4, fontSize: 12, cursor: 'pointer', fontWeight: isSel || isToday ? 600 : 400, background: isSel ? 'var(--ac)' : isToday ? 'var(--ac-l)' : 'transparent', color: isSel ? '#fff' : dow === 0 ? '#D44C47' : dow === 6 ? '#3b82f6' : 'var(--t1)', outline: isToday && !isSel ? '1px solid var(--ac)' : 'none' }}
                   onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'var(--bg3)' }}
                   onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = isToday ? 'var(--ac-l)' : 'transparent' }}
                 >{day}</div>
@@ -1754,7 +1756,7 @@ function AddRowDatePicker({ value, onChange }: { value: string; onChange: (v: st
             <div style={{ borderTop: '1px solid var(--bd)', marginTop: 8, paddingTop: 6, textAlign: 'center' }}>
               <span onMouseDown={e => { e.preventDefault(); onChange(''); setOpen(false) }}
                 style={{ fontSize: 11, color: 'var(--t3)', cursor: 'pointer' }}
-                onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
+                onMouseEnter={e => (e.currentTarget.style.color = '#D44C47')}
                 onMouseLeave={e => (e.currentTarget.style.color = 'var(--t3)')}
               >날짜 지우기</span>
             </div>
@@ -1922,7 +1924,7 @@ function MilestonePicker({ milestoneId, milestones, onChange }: {
           fontSize: 11, cursor: 'pointer',
           border: current ? '1px solid rgba(139,92,246,.3)' : '1px solid transparent',
           background: current ? 'rgba(139,92,246,.08)' : 'var(--bg3)',
-          color: current ? '#8b5cf6' : 'var(--t3)',
+          color: current ? '#9065B0' : 'var(--t3)',
         }}
         onMouseEnter={e => { if (!current) { e.currentTarget.style.borderColor = 'var(--bd)'; e.currentTarget.style.color = 'var(--t2)' } }}
         onMouseLeave={e => { if (!current) { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.color = 'var(--t3)' } }}
@@ -1949,7 +1951,7 @@ function PickerRow({ onClick, active, label, sub, accent }: {
   return (
     <div
       onClick={onClick}
-      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 12px', fontSize: 12, cursor: 'pointer', color: active ? (accent ? '#8b5cf6' : 'var(--t1)') : 'var(--t2)', fontWeight: active ? 500 : 400, background: active && accent ? 'rgba(139,92,246,.06)' : 'transparent', transition: 'background .07s' }}
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 12px', fontSize: 12, cursor: 'pointer', color: active ? (accent ? '#9065B0' : 'var(--t1)') : 'var(--t2)', fontWeight: active ? 500 : 400, background: active && accent ? 'rgba(139,92,246,.06)' : 'transparent', transition: 'background .07s' }}
       onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg3)' }}
       onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
     >
@@ -2058,7 +2060,7 @@ function LinksCell({ links, onChange }: {
                   <span
                     onMouseDown={e => { e.preventDefault(); removeLink(l.id) }}
                     style={{ fontSize: 14, color: 'var(--t3)', cursor: 'pointer', flexShrink: 0, lineHeight: 1 }}
-                    onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
+                    onMouseEnter={e => (e.currentTarget.style.color = '#D44C47')}
                     onMouseLeave={e => (e.currentTarget.style.color = 'var(--t3)')}
                   >×</span>
                 </div>

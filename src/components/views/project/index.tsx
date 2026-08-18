@@ -126,8 +126,8 @@ function ProjectCard({
           {dueInfo && (
             <span style={{
               fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 'var(--r1)',
-              background: dueInfo.overdue ? 'rgba(239,68,68,.1)' : 'rgba(139,92,246,.1)',
-              color: dueInfo.overdue ? '#ef4444' : '#8b5cf6',
+              background: dueInfo.overdue ? 'rgba(212,76,71,.1)' : 'rgba(139,92,246,.1)',
+              color: dueInfo.overdue ? '#D44C47' : '#9065B0',
             }}>
               {dueInfo.overdue ? `D+${dueInfo.diff}` : `D-${dueInfo.diff}`}
             </span>
@@ -206,7 +206,7 @@ function ProjectCard({
             style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font)' }}
           >
             <span style={{ fontSize: 10 }}>⚠</span>
-            <span style={{ fontSize: 12, fontWeight: 500, color: '#ef4444' }}>병목 태스크 ({bottleneck.length})</span>
+            <span style={{ fontSize: 12, fontWeight: 500, color: '#D44C47' }}>병목 태스크 ({bottleneck.length})</span>
             <span style={{ fontSize: 9, color: 'var(--t3)', marginLeft: 'auto' }}>{showBottleneck ? '▾' : '▸'}</span>
           </button>
           {showBottleneck && (
@@ -216,16 +216,16 @@ function ProjectCard({
                 const ms = t.milestoneId ? milestones.find(m => m.id === t.milestoneId) : null
                 const assignees = t.assignee.split(',').filter(Boolean)
                 return (
-                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', borderRadius: 'var(--r2)', background: 'rgba(239,68,68,.05)', border: '1px solid rgba(239,68,68,.12)' }}>
-                    <span style={{ fontSize: 10, color: '#ef4444', flexShrink: 0 }}>⚠</span>
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', borderRadius: 'var(--r2)', background: 'rgba(212,76,71,.05)', border: '1px solid rgba(212,76,71,.12)' }}>
+                    <span style={{ fontSize: 10, color: '#D44C47', flexShrink: 0 }}>⚠</span>
                     <span style={{ flex: 1, fontSize: 12, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
                     {overdue && t.due && (
-                      <span style={{ fontSize: 10, color: '#ef4444', flexShrink: 0 }}>
+                      <span style={{ fontSize: 10, color: '#D44C47', flexShrink: 0 }}>
                         {Math.abs(daysFrom(t.due, now))}일 초과
                       </span>
                     )}
                     {ms && !overdue && (
-                      <span style={{ fontSize: 10, color: '#d97706', flexShrink: 0 }}>◆ {ms.name}</span>
+                      <span style={{ fontSize: 10, color: '#D9730D', flexShrink: 0 }}>◆ {ms.name}</span>
                     )}
                     {assignees.length > 0 && (
                       <span style={{ fontSize: 10, color: 'var(--t3)', flexShrink: 0 }}>
@@ -258,9 +258,9 @@ function EditableMilestoneChip({ milestone, now, onUpdate, onDelete }: {
   const diff = daysFrom(milestone.dueDate, now)
   const overdue = diff < 0
   const close = diff >= 0 && diff <= 7
-  const accent = overdue ? '#ef4444' : close ? '#d97706' : 'var(--t2)'
-  const bg = overdue ? 'rgba(239,68,68,.08)' : close ? 'rgba(245,158,11,.08)' : 'var(--bg3)'
-  const border = overdue ? 'rgba(239,68,68,.2)' : close ? 'rgba(245,158,11,.2)' : 'var(--bd)'
+  const accent = overdue ? '#D44C47' : close ? '#D9730D' : 'var(--t2)'
+  const bg = overdue ? 'rgba(212,76,71,.08)' : close ? 'rgba(217,115,13,.08)' : 'var(--bg3)'
+  const border = overdue ? 'rgba(212,76,71,.2)' : close ? 'rgba(217,115,13,.2)' : 'var(--bd)'
 
   const save = () => {
     if (tempName.trim()) onUpdate({ name: tempName.trim() })

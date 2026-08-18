@@ -84,7 +84,7 @@ function Item({ icon, label, onClick, active, danger }: {
       style={{
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '6px 12px', cursor: 'pointer', fontSize: 13,
-        color: danger ? '#ef4444' : active ? 'var(--ac)' : 'var(--t1)',
+        color: danger ? '#D44C47' : active ? 'var(--ac)' : 'var(--t1)',
         background: hovered ? 'var(--bg3)' : 'transparent',
         fontWeight: active ? 500 : 400,
         transition: 'background .06s',

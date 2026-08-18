@@ -407,7 +407,7 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
   const [hovered, setHovered] = useState(false)
   const isNull = milestone === null
   const isDone = milestone?.done === true
-  const accent = isDone ? '#6b7280' : '#8b5cf6'
+  const accent = isDone ? '#6b7280' : '#9065B0'
   const accentBg = isDone ? 'rgba(107,114,128,' : 'rgba(139,92,246,'
 
   const handleMouseEnter = () => { setHovered(true);  onHoverChange?.(milestone?.id ?? null) }
@@ -603,8 +603,8 @@ function GanttRow({
               top: '50%', transform: 'translateY(-50%)',
               height: isChild ? 18 : 22,
               borderRadius: isChild ? 3 : 5,
-              background: isOverdue ? 'rgba(239,68,68,.1)' : color.bg,
-              border: `${isChild ? 1 : 1.5}px solid ${isOverdue ? '#ef4444' : color.text}`,
+              background: isOverdue ? 'rgba(212,76,71,.1)' : color.bg,
+              border: `${isChild ? 1 : 1.5}px solid ${isOverdue ? '#D44C47' : color.text}`,
               display: 'flex', alignItems: 'center', paddingLeft: 6,
               overflow: 'hidden', zIndex: 1,
               cursor: isDragging ? 'grabbing' : 'grab',
@@ -616,12 +616,12 @@ function GanttRow({
             }}
           >
             {barWidth > 54 && !compact && (
-              <span style={{ fontSize: 10, fontWeight: 500, color: isOverdue ? '#ef4444' : color.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none', minWidth: 0, display: 'block', maxWidth: '100%' }}>
+              <span style={{ fontSize: 10, fontWeight: 500, color: isOverdue ? '#D44C47' : color.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none', minWidth: 0, display: 'block', maxWidth: '100%' }}>
                 {task.name}
               </span>
             )}
             {task.progress > 0 && (
-              <div style={{ position: 'absolute', bottom: 0, left: 0, height: 3, width: `${task.progress}%`, opacity: .5, background: isOverdue ? '#ef4444' : color.text, borderRadius: '0 0 0 5px', pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', bottom: 0, left: 0, height: 3, width: `${task.progress}%`, opacity: .5, background: isOverdue ? '#D44C47' : color.text, borderRadius: '0 0 0 5px', pointerEvents: 'none' }} />
             )}
           </div>
         )}
@@ -642,7 +642,7 @@ function MilestonePin({ marker, dayW, forceShow }: { marker: { id: string; name:
       onMouseLeave={() => setHovered(false)}
       style={{ position: 'absolute', left: left - 7, top: 2, zIndex: 3, cursor: 'default' }}
     >
-      <span style={{ fontSize: 12, color: '#8b5cf6', lineHeight: 1, display: 'block', filter: show ? 'drop-shadow(0 0 4px #8b5cf6aa)' : 'none', transition: 'filter .15s' }}>◆</span>
+      <span style={{ fontSize: 12, color: '#9065B0', lineHeight: 1, display: 'block', filter: show ? 'drop-shadow(0 0 4px #9065B0aa)' : 'none', transition: 'filter .15s' }}>◆</span>
       {show && (
         <div style={{ position: 'absolute', top: 18, left: '50%', transform: 'translateX(-50%)', background: '#1e1b4b', color: '#c4b5fd', fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 5, whiteSpace: 'nowrap', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,.3)', zIndex: 20 }}>
           ◆ {marker.name}
@@ -686,7 +686,7 @@ function CtxItem({ icon, label, onClick, danger }: { icon: string; label: string
   const [hovered, setHovered] = useState(false)
   return (
     <div onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', cursor: 'pointer', fontSize: 13, color: danger ? '#ef4444' : 'var(--t1)', background: hovered ? 'var(--bg3)' : 'transparent', transition: 'background .06s' }}>
+      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', cursor: 'pointer', fontSize: 13, color: danger ? '#D44C47' : 'var(--t1)', background: hovered ? 'var(--bg3)' : 'transparent', transition: 'background .06s' }}>
       <span style={{ fontSize: 12, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>
       {label}
     </div>
@@ -702,7 +702,7 @@ function MilestoneLine({ marker, dayW }: { marker: { id: string; name: string; c
       onMouseLeave={() => setHovered(false)}
       style={{ position: 'absolute', left: left - 6, top: 0, bottom: 0, width: 12, zIndex: 1, cursor: 'default' }}
     >
-      <div style={{ position: 'absolute', left: 5, top: 0, bottom: 0, width: hovered ? 2 : 1, background: hovered ? '#8b5cf6' : 'rgba(139,92,246,.4)', transition: 'width .1s, background .1s', borderRadius: 1 }} />
+      <div style={{ position: 'absolute', left: 5, top: 0, bottom: 0, width: hovered ? 2 : 1, background: hovered ? '#9065B0' : 'rgba(139,92,246,.4)', transition: 'width .1s, background .1s', borderRadius: 1 }} />
       {hovered && (
         <div style={{ position: 'absolute', top: '30%', left: 14, background: '#1e1b4b', color: '#c4b5fd', fontSize: 11, fontWeight: 600, padding: '3px 7px', borderRadius: 5, whiteSpace: 'nowrap', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,.25)', zIndex: 20 }}>
           ◆ {marker.name}
