@@ -2,12 +2,27 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import {
   accessibleProjectIds,
+  assigneeKeyToEmail,
   canAccessProject,
   isAssignedTo,
   isTaskVisible,
+  parseAssignees,
 } from './access.js'
-import { mutateTasks, newId, readMilestones, readProjects, readTasks } from './store.js'
-import { PRIORITIES, STATUSES, type Priority, type Status, type Task } from './types.js'
+import {
+  createProject, mutateMilestones, mutateTasks, newId,
+  readMilestones, readProjects, readTasks, readUserProfiles, writeProjectMeta,
+} from './store.js'
+import { PRIORITIES, STATUSES, type Milestone, type Priority, type Status, type Task } from './types.js'
+
+const YMD = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD')
+
+const today = () => new Date().toISOString().slice(0, 10)
+
+function shiftYmd(date: string, days: number): string {
+  const d = new Date(date + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
 
 /** Identity the tools act as. Every read and write is scoped to this email. */
 export interface Ctx {
@@ -84,11 +99,19 @@ export function registerTools(server: McpServer, ctx: Ctx) {
         project_id: z.string().optional(),
         milestone_id: z.string().optional(),
         status: z.enum(STATUSES as [Status, ...Status[]]).optional(),
+        priority: z.enum(PRIORITIES as [Priority, ...Priority[]]).optional(),
         assigned_to_me: z.boolean().optional(),
-        due_before: z.string().optional().describe('YYYY-MM-DD, inclusive'),
-        due_after: z.string().optional().describe('YYYY-MM-DD, inclusive'),
+        assignee: z.string().optional().describe('email or legacy key; matches any of the task\'s assignees'),
+        unassigned: z.boolean().optional().describe('only tasks with nobody on them'),
+        tag: z.string().optional(),
+        due_before: YMD.optional().describe('inclusive'),
+        due_after: YMD.optional().describe('inclusive'),
+        no_due: z.boolean().optional().describe('only tasks with no due date'),
         overdue: z.boolean().optional().describe('only incomplete tasks past their due date'),
+        include_done: z.boolean().optional().describe('default true; set false to hide 완료'),
+        top_level_only: z.boolean().optional().describe('exclude subtasks'),
         search: z.string().optional().describe('case-insensitive match on name or memo'),
+        sort: z.enum(['due', 'priority', 'name']).optional(),
         limit: z.number().int().min(1).max(500).optional(),
       },
       annotations: { readOnlyHint: true },
@@ -100,17 +123,33 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       if (args.project_id) tasks = tasks.filter(t => t.projectId === args.project_id)
       if (args.milestone_id) tasks = tasks.filter(t => t.milestoneId === args.milestone_id)
       if (args.status) tasks = tasks.filter(t => t.status === args.status)
+      if (args.priority) tasks = tasks.filter(t => t.priority === args.priority)
       if (args.assigned_to_me) tasks = tasks.filter(t => isAssignedTo(t, ctx.email))
+      if (args.assignee) tasks = tasks.filter(t => isAssignedTo(t, args.assignee!))
+      if (args.unassigned) tasks = tasks.filter(t => !t.assignee?.trim())
+      if (args.tag) tasks = tasks.filter(t => t.tags?.includes(args.tag!))
       if (args.due_before) tasks = tasks.filter(t => t.due && t.due <= args.due_before!)
       if (args.due_after) tasks = tasks.filter(t => t.due && t.due >= args.due_after!)
-      if (args.overdue) {
-        const today = new Date().toISOString().slice(0, 10)
-        tasks = tasks.filter(t => t.due && t.status !== '완료' && t.due < today)
-      }
+      if (args.no_due) tasks = tasks.filter(t => !t.due)
+      if (args.include_done === false) tasks = tasks.filter(t => t.status !== '완료')
+      if (args.top_level_only) tasks = tasks.filter(t => !t.parentId)
+      if (args.overdue) tasks = tasks.filter(t => t.due && t.status !== '완료' && t.due < today())
       if (args.search) {
         const q = args.search.toLowerCase()
         tasks = tasks.filter(t =>
           t.name.toLowerCase().includes(q) || (t.memo ?? '').toLowerCase().includes(q))
+      }
+
+      if (args.sort === 'due') {
+        // Undated last: no due date means "not scheduled", not "due long ago".
+        tasks = [...tasks].sort((a, b) => (a.due ? 0 : 1) - (b.due ? 0 : 1) || a.due.localeCompare(b.due))
+      } else if (args.sort === 'priority') {
+        const rank: Record<string, number> = { '높음': 0, '중간': 1, '낮음': 2 }
+        tasks = [...tasks].sort((a, b) =>
+          (rank[a.priority] ?? 3) - (rank[b.priority] ?? 3) ||
+          (a.due ? 0 : 1) - (b.due ? 0 : 1) || a.due.localeCompare(b.due))
+      } else if (args.sort === 'name') {
+        tasks = [...tasks].sort((a, b) => a.name.localeCompare(b.name, 'ko'))
       }
 
       const total = tasks.length
@@ -136,6 +175,141 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       }
       const subtasks = tasks.filter(t => t.parentId === task.id).map(summarise)
       return text({ ...task, subtasks })
+    }
+  )
+
+  server.registerTool(
+    'list_members',
+    {
+      title: '팀원 목록',
+      description:
+        "People on the caller's projects, with display names. Use this to turn a name in a request (\"민수한테 넘겨\") into the email the task fields actually store.",
+      inputSchema: { project_id: z.string().optional() },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ project_id }) => {
+      const projects = (await readProjects()).filter(p => canAccessProject(p, ctx.email))
+      const scoped = project_id ? projects.filter(p => p.id === project_id) : projects
+      if (project_id && !scoped.length) throw new Error('project not found or not accessible')
+
+      const profiles = await readUserProfiles()
+      const nameByEmail = new Map(
+        Object.values(profiles)
+          .filter(p => p.email)
+          .map(p => [p.email!.toLowerCase(), p.name ?? null]),
+      )
+
+      const byEmail = new Map<string, { email: string; name: string | null; projects: string[] }>()
+      for (const p of scoped) {
+        for (const raw of p.memberEmails ?? []) {
+          const email = raw.toLowerCase()
+          let e = byEmail.get(email)
+          if (!e) { e = { email, name: nameByEmail.get(email) ?? null, projects: [] }; byEmail.set(email, e) }
+          e.projects.push(p.name)
+        }
+      }
+      return text([...byEmail.values()].sort((a, b) => a.email.localeCompare(b.email)))
+    }
+  )
+
+  server.registerTool(
+    'get_summary',
+    {
+      title: '현황 요약',
+      description:
+        'One call for "how are we doing": what is overdue, what lands today and this week, what has no date or nobody on it, plus a per-person and per-project breakdown and the milestones coming up. Built for standups and check-ins, where the alternative is a dozen list_tasks calls.',
+      inputSchema: {
+        project_id: z.string().optional(),
+        mine_only: z.boolean().optional().describe('restrict every figure to the caller'),
+        days: z.number().int().min(1).max(90).optional().describe('window for "coming up", default 7'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (args) => {
+      const projects = await readProjects()
+      const ids = accessibleProjectIds(projects, ctx.email)
+      const nameById = new Map(projects.map(p => [p.id, p.name]))
+      const horizonDays = args.days ?? 7
+      const from = today()
+      const to = shiftYmd(from, horizonDays)
+
+      let tasks = (await readTasks()).filter(t => isTaskVisible(t, ctx.email, ids))
+      if (args.project_id) tasks = tasks.filter(t => t.projectId === args.project_id)
+      if (args.mine_only) tasks = tasks.filter(t => isAssignedTo(t, ctx.email))
+      const open = tasks.filter(t => t.status !== '완료')
+
+      const overdue = open.filter(t => t.due && t.due < from)
+      const dueToday = open.filter(t => t.due === from)
+      const dueSoon = open.filter(t => t.due && t.due > from && t.due <= to)
+      const noDue = open.filter(t => !t.due)
+      const unassigned = open.filter(t => !t.assignee?.trim())
+
+      const detail = (t: Task) => ({
+        id: t.id, name: t.name, due: t.due || null, priority: t.priority,
+        assignee: t.assignee || null, project: t.projectId ? nameById.get(t.projectId) ?? null : null,
+      })
+
+      // Per person, counted by each name on the task: a task owned by two people
+      // is work on both their plates, not half a task each.
+      const people = new Map<string, { email: string; open: number; overdue: number; dueSoon: number }>()
+      for (const t of open) {
+        for (const tok of parseAssignees(t.assignee)) {
+          const email = assigneeKeyToEmail(tok)
+          let e = people.get(email)
+          if (!e) { e = { email, open: 0, overdue: 0, dueSoon: 0 }; people.set(email, e) }
+          e.open++
+          if (t.due && t.due < from) e.overdue++
+          else if (t.due && t.due <= to) e.dueSoon++
+        }
+      }
+
+      const byProject = [...ids]
+        .filter(id => !args.project_id || id === args.project_id)
+        .map(id => {
+          const own = open.filter(t => t.projectId === id)
+          return {
+            id, name: nameById.get(id) ?? id,
+            open: own.length,
+            overdue: own.filter(t => t.due && t.due < from).length,
+            dueSoon: own.filter(t => t.due && t.due > from && t.due <= to).length,
+          }
+        })
+        .filter(p => p.open > 0)
+        .sort((a, b) => b.overdue - a.overdue || b.open - a.open)
+
+      const milestonesSoon = (await readMilestones())
+        .filter(m => ids.has(m.projectId))
+        .filter(m => !args.project_id || m.projectId === args.project_id)
+        .filter(m => !m.done && m.dueDate && m.dueDate <= to)
+        .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+        .map(m => ({
+          id: m.id, name: m.name, dueDate: m.dueDate,
+          project: nameById.get(m.projectId) ?? m.projectId,
+          daysLeft: Math.round((Date.parse(m.dueDate) - Date.parse(from)) / 86400000),
+        }))
+
+      return text({
+        asOf: from,
+        horizonDays,
+        scope: { projectId: args.project_id ?? null, mineOnly: !!args.mine_only },
+        totals: {
+          open: open.length,
+          overdue: overdue.length,
+          dueToday: dueToday.length,
+          dueSoon: dueSoon.length,
+          noDue: noDue.length,
+          unassigned: unassigned.length,
+        },
+        // Capped: a summary that runs to three hundred rows is a list, and there
+        // is already a tool for lists.
+        overdue: overdue.sort((a, b) => a.due.localeCompare(b.due)).slice(0, 20).map(detail),
+        dueToday: dueToday.map(detail),
+        dueSoon: dueSoon.sort((a, b) => a.due.localeCompare(b.due)).slice(0, 20).map(detail),
+        unassigned: unassigned.slice(0, 10).map(detail),
+        byPerson: [...people.values()].sort((a, b) => b.overdue - a.overdue || b.open - a.open),
+        byProject,
+        milestonesSoon,
+      })
     }
   )
 
@@ -217,8 +391,12 @@ export function registerTools(server: McpServer, ctx: Ctx) {
         progress: z.number().int().min(0).max(100).optional(),
         memo: z.string().optional(),
         tags: z.array(z.string()).optional(),
-        milestone_id: z.string().optional(),
+        milestone_id: z.string().nullable().optional().describe('null detaches from its milestone'),
         project_id: z.string().optional(),
+        parent_id: z.string().nullable().optional().describe('null promotes a subtask to top level'),
+        cat: z.string().optional().describe('space/category name'),
+        blocked_by: z.array(z.string()).optional().describe('task ids this one waits on'),
+        blocking: z.array(z.string()).optional().describe('task ids waiting on this one'),
       },
     },
     async (args) => {
@@ -242,8 +420,17 @@ export function registerTools(server: McpServer, ctx: Ctx) {
         if (args.progress !== undefined) patch.progress = args.progress
         if (args.memo !== undefined) patch.memo = args.memo
         if (args.tags !== undefined) patch.tags = args.tags
-        if (args.milestone_id !== undefined) patch.milestoneId = args.milestone_id
+        if (args.milestone_id !== undefined) patch.milestoneId = args.milestone_id ?? undefined
         if (args.project_id !== undefined) patch.projectId = args.project_id
+        if (args.cat !== undefined) patch.cat = args.cat
+        if (args.blocked_by !== undefined) patch.blockedBy = args.blocked_by
+        if (args.blocking !== undefined) patch.blocking = args.blocking
+        if (args.parent_id !== undefined) {
+          patch.parentId = args.parent_id ?? undefined
+          // type and parentId are two halves of one fact; letting them disagree
+          // is how a subtask ends up drawn as a top-level row.
+          patch.type = args.parent_id ? '세부' : '상위'
+        }
 
         const next = [...tasks]
         next[i] = { ...tasks[i], ...patch }
@@ -280,6 +467,293 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       })
 
       return text({ deleted: removed.name, tasksRemoved: removed.count })
+    }
+  )
+
+  // ── Milestones ────────────────────────────────────────────────────────────
+
+  server.registerTool(
+    'create_milestone',
+    {
+      title: '마일스톤 추가',
+      description: 'Creates a milestone in a project the caller belongs to.',
+      inputSchema: {
+        project_id: z.string(),
+        name: z.string().min(1),
+        due_date: YMD,
+      },
+    },
+    async (args) => {
+      const ids = accessibleProjectIds(await readProjects(), ctx.email)
+      if (!ids.has(args.project_id)) throw new Error('project not found or not accessible')
+
+      const created = await mutateMilestones(args.project_id, list => {
+        const milestone: Milestone = {
+          id: newId(),
+          projectId: args.project_id,
+          name: args.name.trim(),
+          dueDate: args.due_date,
+        }
+        return { milestones: [...list, milestone], result: milestone }
+      })
+      return text({ created })
+    }
+  )
+
+  server.registerTool(
+    'update_milestone',
+    {
+      title: '마일스톤 수정',
+      description: 'Renames a milestone, moves its date, or marks it done. Only the fields provided change.',
+      inputSchema: {
+        milestone_id: z.string(),
+        name: z.string().optional(),
+        due_date: YMD.optional(),
+        done: z.boolean().optional(),
+      },
+    },
+    async (args) => {
+      const ids = accessibleProjectIds(await readProjects(), ctx.email)
+      const target = (await readMilestones()).find(m => m.id === args.milestone_id)
+      if (!target || !ids.has(target.projectId)) throw new Error('milestone not found or not accessible')
+
+      const updated = await mutateMilestones(target.projectId, list => {
+        const i = list.findIndex(m => m.id === args.milestone_id)
+        if (i < 0) throw new Error('milestone not found')
+        const next = [...list]
+        next[i] = {
+          ...list[i],
+          ...(args.name !== undefined ? { name: args.name } : {}),
+          ...(args.due_date !== undefined ? { dueDate: args.due_date } : {}),
+          ...(args.done !== undefined ? { done: args.done } : {}),
+        }
+        return { milestones: next, result: next[i] }
+      })
+      return text({ updated })
+    }
+  )
+
+  server.registerTool(
+    'delete_milestone',
+    {
+      title: '마일스톤 삭제',
+      description:
+        'Deletes a milestone. Its tasks are kept and detached, landing in 마일스톤 미배정 — deleting a container is not a decision to delete what was in it.',
+      inputSchema: { milestone_id: z.string() },
+      annotations: { destructiveHint: true },
+    },
+    async ({ milestone_id }) => {
+      const ids = accessibleProjectIds(await readProjects(), ctx.email)
+      const target = (await readMilestones()).find(m => m.id === milestone_id)
+      if (!target || !ids.has(target.projectId)) throw new Error('milestone not found or not accessible')
+
+      await mutateMilestones(target.projectId, list => ({
+        milestones: list.filter(m => m.id !== milestone_id),
+        result: null,
+      }))
+      const detached = await mutateTasks(tasks => {
+        let n = 0
+        const next = tasks.map(t => {
+          if (t.milestoneId !== milestone_id) return t
+          n++
+          const { milestoneId: _m, ...rest } = t
+          return rest as Task
+        })
+        return { tasks: next, result: n }
+      })
+      return text({ deleted: target.name, tasksDetached: detached })
+    }
+  )
+
+  // ── Projects ──────────────────────────────────────────────────────────────
+
+  server.registerTool(
+    'create_project',
+    {
+      title: '프로젝트 추가',
+      description:
+        'Creates a project with the caller as its first member. Membership changes after that are left to the app: who can see a project is the one thing here worth a human deciding in person.',
+      inputSchema: {
+        name: z.string().min(1),
+        color: z.string().optional().describe('#RRGGBB'),
+        due_date: YMD.optional(),
+        client_name: z.string().optional(),
+      },
+    },
+    async (args) => {
+      const created = await createProject({
+        id: newId(),
+        name: args.name.trim(),
+        color: args.color ?? '#2383E2',
+        inviteCode: newId().slice(0, 8),
+        memberEmails: [ctx.email.toLowerCase()],
+        creatorEmail: ctx.email.toLowerCase(),
+        ...(args.due_date ? { dueDate: args.due_date } : {}),
+        ...(args.client_name ? { clientName: args.client_name } : {}),
+      }, ctx.email)
+      return text({ created: { id: created.id, name: created.name } })
+    }
+  )
+
+  server.registerTool(
+    'update_project',
+    {
+      title: '프로젝트 수정',
+      description: 'Renames a project, sets its colour or deadline, or archives it. Membership is not editable here.',
+      inputSchema: {
+        project_id: z.string(),
+        name: z.string().optional(),
+        color: z.string().optional(),
+        due_date: YMD.optional(),
+        client_name: z.string().optional(),
+        archived: z.boolean().optional(),
+      },
+    },
+    async (args) => {
+      const ids = accessibleProjectIds(await readProjects(), ctx.email)
+      if (!ids.has(args.project_id)) throw new Error('project not found or not accessible')
+      await writeProjectMeta(args.project_id, {
+        ...(args.name !== undefined ? { name: args.name } : {}),
+        ...(args.color !== undefined ? { color: args.color } : {}),
+        ...(args.due_date !== undefined ? { dueDate: args.due_date } : {}),
+        ...(args.client_name !== undefined ? { clientName: args.client_name } : {}),
+        ...(args.archived !== undefined ? { archived: args.archived } : {}),
+      })
+      return text({ updated: args.project_id })
+    }
+  )
+
+  // ── Bulk and attachments ──────────────────────────────────────────────────
+
+  server.registerTool(
+    'bulk_update_tasks',
+    {
+      title: '업무 일괄 수정',
+      description:
+        'Applies one change to many tasks in a single write. shift_days moves each task\'s own dates by that many days, which is what "push everything a week" means — unlike `due`, which would stack them all on one date.',
+      inputSchema: {
+        task_ids: z.array(z.string()).min(1).max(200),
+        status: z.enum(STATUSES as [Status, ...Status[]]).optional(),
+        priority: z.enum(PRIORITIES as [Priority, ...Priority[]]).optional(),
+        assignee: z.string().optional(),
+        due: YMD.optional(),
+        shift_days: z.number().int().min(-365).max(365).optional(),
+        milestone_id: z.string().nullable().optional(),
+        project_id: z.string().optional(),
+        add_tags: z.array(z.string()).optional(),
+        remove_tags: z.array(z.string()).optional(),
+      },
+    },
+    async (args) => {
+      const ids = accessibleProjectIds(await readProjects(), ctx.email)
+      if (args.project_id && !ids.has(args.project_id)) {
+        throw new Error('target project not found or not accessible')
+      }
+      const wanted = new Set(args.task_ids)
+
+      const report = await mutateTasks(tasks => {
+        const changed: string[] = []
+        const skipped: string[] = []
+        const next = tasks.map(t => {
+          if (!wanted.has(t.id)) return t
+          if (!isTaskVisible(t, ctx.email, ids)) { skipped.push(t.id); return t }
+
+          let out: Task = { ...t }
+          if (args.status !== undefined) out.status = args.status
+          if (args.priority !== undefined) out.priority = args.priority
+          if (args.assignee !== undefined) out.assignee = args.assignee
+          if (args.due !== undefined) out.due = args.due
+          if (args.shift_days) {
+            if (out.due) out.due = shiftYmd(out.due, args.shift_days)
+            if (out.start) out.start = shiftYmd(out.start, args.shift_days)
+          }
+          if (args.milestone_id !== undefined) {
+            if (args.milestone_id) out.milestoneId = args.milestone_id
+            else { const { milestoneId: _m, ...rest } = out; out = rest as Task }
+          }
+          if (args.project_id !== undefined) out.projectId = args.project_id
+          if (args.add_tags?.length || args.remove_tags?.length) {
+            const set = new Set(out.tags ?? [])
+            args.add_tags?.forEach(x => set.add(x))
+            args.remove_tags?.forEach(x => set.delete(x))
+            out.tags = [...set]
+          }
+          changed.push(t.id)
+          return out
+        })
+        const missing = args.task_ids.filter(id => !tasks.some(t => t.id === id))
+        return { tasks: next, result: { changed, skipped, missing } }
+      })
+
+      return text({
+        updated: report.changed.length,
+        notAccessible: report.skipped,
+        notFound: report.missing,
+      })
+    }
+  )
+
+  server.registerTool(
+    'add_task_link',
+    {
+      title: '자료 첨부',
+      description:
+        "Attaches a link to a task's 자료. A Google Drive URL is recognised as one, so the app shows the file's current name rather than whatever it was called when the link was made.",
+      inputSchema: {
+        task_id: z.string(),
+        url: z.string().min(1),
+        title: z.string().optional().describe('defaults to the host and path'),
+      },
+    },
+    async (args) => {
+      const ids = accessibleProjectIds(await readProjects(), ctx.email)
+      const href = /^https?:\/\//i.test(args.url) ? args.url : `https://${args.url}`
+      const driveId = href.match(
+        /(?:drive|docs)\.google\.com\/(?:(?:file|document|spreadsheets|presentation|forms|drawings)\/d\/|(?:drive\/)?folders\/)([A-Za-z0-9_-]+)/
+      )?.[1]
+
+      const link = await mutateTasks(tasks => {
+        const i = tasks.findIndex(t => t.id === args.task_id)
+        if (i < 0 || !isTaskVisible(tasks[i], ctx.email, ids)) {
+          throw new Error('task not found or not accessible')
+        }
+        const entry = {
+          id: newId(),
+          title: args.title?.trim() || href.replace(/^https?:\/\//i, '').slice(0, 40),
+          url: href,
+          ...(driveId ? { driveId } : {}),
+        }
+        const next = [...tasks]
+        next[i] = { ...tasks[i], links: [...(tasks[i].links ?? []), entry] }
+        return { tasks: next, result: entry }
+      })
+      return text({ added: link })
+    }
+  )
+
+  server.registerTool(
+    'remove_task_link',
+    {
+      title: '자료 첨부 해제',
+      description: 'Removes one link from a task. The file itself is untouched — this server never writes to Drive.',
+      inputSchema: { task_id: z.string(), link_id: z.string() },
+      annotations: { destructiveHint: true },
+    },
+    async (args) => {
+      const ids = accessibleProjectIds(await readProjects(), ctx.email)
+      const removed = await mutateTasks(tasks => {
+        const i = tasks.findIndex(t => t.id === args.task_id)
+        if (i < 0 || !isTaskVisible(tasks[i], ctx.email, ids)) {
+          throw new Error('task not found or not accessible')
+        }
+        const links = tasks[i].links ?? []
+        const gone = links.find(l => l.id === args.link_id)
+        if (!gone) throw new Error('link not found on this task')
+        const next = [...tasks]
+        next[i] = { ...tasks[i], links: links.filter(l => l.id !== args.link_id) }
+        return { tasks: next, result: gone }
+      })
+      return text({ removed })
     }
   )
 }

@@ -29,7 +29,7 @@ export interface Task {
   blockedBy?: string[]
   order?: number
   createdBy?: string
-  links?: { id: string; title: string; url: string }[]
+  links?: { id: string; title: string; url: string; driveId?: string; mimeType?: string }[]
 }
 
 export interface Project {

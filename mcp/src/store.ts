@@ -108,7 +108,12 @@ export async function readTasks(): Promise<Task[]> {
   return (await readTaskLocations()).map(l => l.task)
 }
 
-async function uidForEmail(email: string): Promise<string | null> {
+export async function readUserProfiles(): Promise<Record<string, { email?: string; name?: string; photoURL?: string }>> {
+  const snap = await initDb().ref('userProfiles').get()
+  return (snap.val() ?? {}) as Record<string, { email?: string; name?: string; photoURL?: string }>
+}
+
+export async function uidForEmail(email: string): Promise<string | null> {
   const snap = await initDb().ref('userProfiles').get()
   const profiles = (snap.val() ?? {}) as Record<string, { email?: string }>
   const target = email.toLowerCase()
@@ -185,4 +190,78 @@ export async function mutateTasks<T>(
 
 export function newId(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
+}
+
+// ── Milestones ────────────────────────────────────────────────────────────────
+
+/**
+ * Applies `mutate` to one project's milestones and writes back only what moved.
+ *
+ * Same shape as mutateTasks and for the same reason: a wholesale replacement
+ * would silently discard whatever somebody changed in the app while the tool
+ * was deciding what to do.
+ */
+export async function mutateMilestones<T>(
+  projectId: string,
+  mutate: (milestones: Milestone[]) => { milestones: Milestone[]; result: T }
+): Promise<T> {
+  const database = initDb()
+  const snap = await database.ref(`projects/${projectId}/milestones`).get()
+  const raw = (snap.val() ?? {}) as Record<string, Milestone>
+  const before = new Map(
+    Object.entries(raw).filter(([, v]) => !!v).map(([id, m]) => [id, { ...m, id, projectId }])
+  )
+
+  const { milestones: next, result } = mutate([...before.values()])
+  const after = new Map(next.map(m => [m.id, m]))
+
+  const updates: Record<string, unknown> = {}
+  for (const id of before.keys()) {
+    if (!after.has(id)) updates[`projects/${projectId}/milestones/${id}`] = null
+  }
+  for (const [id, m] of after) {
+    const prev = before.get(id)
+    if (prev && JSON.stringify(prev) === JSON.stringify(m)) continue
+    const { projectId: _p, ...rest } = m
+    updates[`projects/${projectId}/milestones/${id}`] = stripUndefined(rest)
+  }
+
+  if (Object.keys(updates).length) await database.ref().update(updates)
+  return result
+}
+
+// ── Projects ──────────────────────────────────────────────────────────────────
+
+export async function writeProjectMeta(projectId: string, patch: Partial<Project>): Promise<void> {
+  const clean = stripUndefined(patch) as Record<string, unknown>
+  if (!Object.keys(clean).length) return
+  const updates: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(clean)) updates[`projects/${projectId}/meta/${k}`] = v
+  await initDb().ref().update(updates)
+}
+
+/**
+ * Creates a project owned by `creatorEmail`.
+ *
+ * Three things have to land together or the project exists but nobody can see
+ * it: meta, the creator's uid under members (which is what the database rules
+ * actually check), and the userIndex entry the app follows to know which
+ * projects to subscribe to. Writing them in one update keeps that from being
+ * half-true.
+ */
+export async function createProject(
+  meta: Omit<Project, 'id'> & { id: string; inviteCode: string },
+  creatorEmail: string,
+): Promise<Project> {
+  const uid = await uidForEmail(creatorEmail)
+  if (!uid) throw new Error('no account matches the caller, so the project would be invisible to them')
+  const { id, ...rest } = meta
+  await initDb().ref().update({
+    [`projects/${id}`]: {
+      meta: stripUndefined({ id, ...rest, teamId: null }),
+      members: { [uid]: meta.inviteCode },
+    },
+    [`userIndex/${uid}/projects/${id}`]: true,
+  })
+  return { id, ...rest } as Project
 }
