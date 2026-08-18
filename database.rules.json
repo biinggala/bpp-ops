@@ -1,18 +1,76 @@
 {
   "rules": {
-    "cringe": {
+    ".read": false,
+    ".write": false,
+
+    "teams": {
+      "$tid": {
+        ".read": "auth != null && data.child('members').hasChild(auth.uid)",
+        ".write": "auth != null && ((!data.exists() && newData.child('members').hasChild(auth.uid)) || data.child('members').hasChild(auth.uid))"
+      }
+    },
+
+    "projects": {
+      "$pid": {
+        ".read": "auth != null && data.child('members').hasChild(auth.uid)",
+
+        ".write": "auth != null && ((!data.exists() && newData.child('members').hasChild(auth.uid) && newData.child('meta').child('inviteCode').isString()) || data.child('members').hasChild(auth.uid))",
+
+        "members": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && !data.exists() && newData.val() === root.child('projects').child($pid).child('meta').child('inviteCode').val()",
+            ".validate": "newData.isString()"
+          }
+        },
+
+        "meta": {
+          "inviteCode": { ".validate": "newData.isString() && newData.val().length >= 6" }
+        }
+      }
+    },
+
+    "userIndex": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "invitesByEmail": {
+      "$emailKey": {
+        ".read": "auth != null && auth.token.email != null && $emailKey === auth.token.email.replace('.', ',')",
+        "$pid": {
+          ".write": "auth != null && (root.child('projects').child($pid).child('members').hasChild(auth.uid) || (auth.token.email != null && $emailKey === auth.token.email.replace('.', ',')))"
+        }
+      }
+    },
+
+    "personalTasks": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "spaces": {
       ".read": "auth != null",
       ".write": "auth != null"
     },
+
+    "userProfiles": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
     "presence": {
       "$uid": {
         ".read": "auth != null",
-        ".write": "auth != null && auth.uid == $uid"
+        ".write": "auth != null && auth.uid === $uid"
       }
     },
-    "mcpAuth": {
-      ".read": false,
-      ".write": false
-    }
+
+    "mcpAuth": { ".read": false, ".write": false }
   }
 }

@@ -136,7 +136,7 @@ before(async () => {
     database: {
       host: '127.0.0.1',
       port: 9000,
-      rules: readFileSync('database.rules.next.json', 'utf8'),
+      rules: readFileSync('database.rules.json', 'utf8'),
     },
   })
 })

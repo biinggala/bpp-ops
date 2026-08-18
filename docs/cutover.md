@@ -69,8 +69,7 @@ firebase emulators:exec --only database --project demo-verify \
 ### 6. 규칙과 앱 배포
 
 ```
-git mv database.rules.next.json database.rules.json   # 새 규칙을 실제 파일로
-git commit && git push origin main
+git push origin main    # 규칙 교체는 이미 브랜치에 반영되어 있다
 ```
 
 `deploy.yml`이 규칙과 앱을 함께 배포합니다. **순서가 중요합니다** — 데이터가 아직 옛 자리에
@@ -98,4 +97,4 @@ MCP 서버(Cloud Run)도 같은 시점에 새 버전으로 올립니다.
 ## 이사 후 정리
 
 - 안정화가 확인되면 `cringe` 노드를 지웁니다. 그전까지는 두는 편이 낫습니다.
-- `test/rules.test.js`(옛 규칙의 실태를 기록해 둔 파일)는 그때 함께 지웁니다.
+- MCP 서버(4단계)를 새 경로로 올립니다. 그전까지 Claude 연동은 동작하지 않습니다.

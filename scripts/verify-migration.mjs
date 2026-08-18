@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Loads a migrated database into the emulator under database.rules.next.json
+// Loads a migrated database into the emulator under database.rules.json
 // and checks that every project opens for exactly the people it should.
 //
 //   firebase emulators:exec --only database --project demo-verify \
@@ -27,7 +27,7 @@ const testEnv = await initializeTestEnvironment({
   database: {
     host: '127.0.0.1',
     port: 9000,
-    rules: readFileSync('database.rules.next.json', 'utf8'),
+    rules: readFileSync('database.rules.json', 'utf8'),
   },
 })
 

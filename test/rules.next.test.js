@@ -1,4 +1,4 @@
-// Tests for database.rules.next.json — the rules that take effect at cutover.
+// Tests for database.rules.json — the rules that take effect at cutover.
 //
 // The pair to test/rules.test.js: the two "현재 실태" cases there (any signed-in
 // account reads the whole workspace, and can delete anyone's tasks) are the
@@ -28,7 +28,7 @@ before(async () => {
     database: {
       host: '127.0.0.1',
       port: 9000,
-      rules: readFileSync('database.rules.next.json', 'utf8'),
+      rules: readFileSync('database.rules.json', 'utf8'),
     },
   })
 })

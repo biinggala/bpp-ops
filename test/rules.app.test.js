@@ -18,7 +18,7 @@ let testEnv
 before(async () => {
   testEnv = await initializeTestEnvironment({
     projectId: 'demo-bpp-ops-app',
-    database: { host: '127.0.0.1', port: 9000, rules: readFileSync('database.rules.next.json', 'utf8') },
+    database: { host: '127.0.0.1', port: 9000, rules: readFileSync('database.rules.json', 'utf8') },
   })
 })
 after(async () => { await testEnv?.cleanup() })
