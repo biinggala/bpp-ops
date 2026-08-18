@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ViewType, Status } from '../types'
+import type { ViewType, Status, CalRange } from '../types'
 
 interface Filters {
   assignees: string[]
@@ -27,11 +27,9 @@ interface UiState {
   isColorSettingsOpen: boolean
   isCommandPaletteOpen: boolean
   sidebarOpen: boolean
-  calYear: number
-  calMonth: number
-  /** Timeline view: how many day columns, and the leftmost date. */
-  timelineDays: number
-  timelineAnchor: string
+  /** Calendar: how much is shown at once, and the date it starts from. */
+  calRange: CalRange
+  calAnchor: string
   showGCal: boolean
 
   setView: (v: ViewType) => void
@@ -52,10 +50,8 @@ interface UiState {
   setSidebarOpen: (v: boolean) => void
   toggleSidebar: () => void
   setShowGCal: (v: boolean) => void
-  calNav: (delta: number) => void
-  calToday: () => void
-  setTimelineDays: (n: number) => void
-  setTimelineAnchor: (date: string) => void
+  setCalRange: (r: CalRange) => void
+  setCalAnchor: (date: string) => void
 }
 
 const now = new Date()
@@ -86,10 +82,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   isColorSettingsOpen: false,
   isCommandPaletteOpen: false,
   sidebarOpen: false,
-  calYear: now.getFullYear(),
-  calMonth: now.getMonth(),
-  timelineDays: 3,
-  timelineAnchor: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
+  calRange: 7,
+  calAnchor: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
   showGCal: true,
 
   setView: (view) => set({ view }),
@@ -110,15 +104,6 @@ export const useUiStore = create<UiState>((set, get) => ({
   setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
   toggleSidebar: () => set(s => ({ sidebarOpen: !s.sidebarOpen })),
   setShowGCal: (showGCal) => set({ showGCal }),
-  calNav: (delta) => {
-    const { calYear, calMonth } = get()
-    const d = new Date(calYear, calMonth + delta, 1)
-    set({ calYear: d.getFullYear(), calMonth: d.getMonth() })
-  },
-  setTimelineDays: (timelineDays) => set({ timelineDays }),
-  setTimelineAnchor: (timelineAnchor) => set({ timelineAnchor }),
-  calToday: () => {
-    const n = new Date()
-    set({ calYear: n.getFullYear(), calMonth: n.getMonth() })
-  },
+  setCalRange: (calRange) => set({ calRange }),
+  setCalAnchor: (calAnchor) => set({ calAnchor }),
 }))

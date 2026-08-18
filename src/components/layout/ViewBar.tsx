@@ -14,7 +14,6 @@ const VIEWS: { id: ViewType; label: string; icon: string }[] = [
   { id: 't', label: '리스트', icon: '≡' },
   { id: 'b', label: '보드', icon: '⊞' },
   { id: 'c', label: '캘린더', icon: '◪' },
-  { id: 'l', label: '타임라인', icon: '◷' },
   { id: 'g', label: '간트', icon: '▤' },
   { id: 's', label: '통계', icon: '◑' },
 ]
@@ -76,7 +75,7 @@ export function ViewBar() {
   // only where calendar entries are drawn. Showing either everywhere just makes
   // the bar longer than the decisions it offers.
   const showSort = view === 't' || view === 'b'
-  const showGCalToggle = view === 'c' || view === 'l'
+  const showGCalToggle = view === 'c'
 
   // Mobile: in-flow bottom tab bar (rendered as the last flex child in AppPage).
   // Deliberately NOT position:fixed — iOS standalone PWAs mis-anchor fixed

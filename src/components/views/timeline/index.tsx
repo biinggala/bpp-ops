@@ -9,7 +9,6 @@ import { useUserProfileStore } from '../../../store/userProfileStore'
 import { authorizedEmails } from '../../../lib/utils'
 import type { Task } from '../../../types'
 import { addDays, toDate, fmtYMD, isComposing } from '../../../lib/utils'
-import { writableCalendars } from '../../../lib/googleCalendar'
 import type { GCalEvent } from '../../../store/gcalStore'
 
 /**
@@ -79,9 +78,16 @@ interface Draft {
   toMinutes: number
 }
 
-export function TimelineView() {
-  const { timelineDays, timelineAnchor, setTimelineAnchor } = useUiStore()
-  const { token, events, calendars, targetCalendarId, canWrite, createEvent, updateEvent, removeEvent, fetchEvents, setTargetCalendar } = useGCalStore()
+/**
+ * The hour grid, without a toolbar of its own.
+ *
+ * Navigation and the day/week choice live in the calendar view's header now:
+ * this and the month grid are two ranges of one screen, not two screens, so a
+ * second set of controls next to the first would only invite the confusion the
+ * merge was meant to remove.
+ */
+export function TimelineGrid({ days }: { days: string[] }) {
+  const { token, events, calendars, createEvent, updateEvent, removeEvent, fetchEvents } = useGCalStore()
   const tasks = useFilteredTasks()
   const updateTask = useTaskStore(s => s.updateTask)
   const openTaskDetail = useUiStore(s => s.openTaskDetail)
@@ -101,11 +107,6 @@ export function TimelineView() {
     const id = setInterval(() => setNow(new Date()), 60_000)
     return () => clearInterval(id)
   }, [])
-
-  const days = useMemo(() => {
-    const start = toDate(timelineAnchor)
-    return Array.from({ length: timelineDays }, (_, i) => fmtYMD(addDays(start, i)))
-  }, [timelineAnchor, timelineDays])
 
   useEffect(() => {
     if (!token) return
@@ -275,9 +276,6 @@ export function TimelineView() {
     if (gridRef.current) gridRef.current.scrollTop = Math.max(0, (8 * 60) * PX_PER_MIN - 40)
   }, [])
 
-  const writable = writableCalendars(calendars)
-  const target = targetCalendarId ?? calendars.find(c => c.primary)?.id ?? writable[0]?.id ?? ''
-
   if (!token) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--t3)' }}>
@@ -290,17 +288,6 @@ export function TimelineView() {
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <TimelineBar
-        days={days}
-        count={timelineDays}
-        onShift={n => setTimelineAnchor(fmtYMD(addDays(toDate(timelineAnchor), n)))}
-        onToday={() => setTimelineAnchor(todayStr)}
-        calendars={writable}
-        target={target}
-        onTarget={setTargetCalendar}
-        canWrite={canWrite}
-      />
-
       {/* Day headers stay put while the hours scroll. */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--bd)', paddingLeft: GUTTER, flexShrink: 0 }}>
         {days.map(d => {
@@ -815,55 +802,6 @@ function DraftBlock({ draft }: { draft: Draft }) {
           {draft.toMinutes - draft.fromMinutes}분
         </span>
       )}
-    </div>
-  )
-}
-
-function TimelineBar({ days, count, onShift, onToday, calendars, target, onTarget, canWrite }: {
-  days: string[]
-  count: number
-  onShift: (n: number) => void
-  onToday: () => void
-  calendars: { id: string; summary: string }[]
-  target: string
-  onTarget: (id: string) => void
-  canWrite: boolean
-}) {
-  const setDays = useUiStore(s => s.setTimelineDays)
-  const first = toDate(days[0])
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderBottom: '1px solid var(--bd)', flexShrink: 0, flexWrap: 'wrap' }}>
-      <button onClick={() => onShift(-count)} style={navStyle}>‹</button>
-      <button onClick={onToday} style={navStyle}>오늘</button>
-      <button onClick={() => onShift(count)} style={navStyle}>›</button>
-      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--t1)', marginLeft: 4 }}>
-        {first.getFullYear()}. {first.getMonth() + 1}
-      </span>
-
-      <div style={{ display: 'flex', gap: 2, marginLeft: 8 }}>
-        {[1, 3, 7].map(n => (
-          <button key={n} onClick={() => setDays(n)} style={{ ...navStyle, borderColor: n === count ? 'var(--ac)' : 'var(--bd)', color: n === count ? 'var(--ac)' : 'var(--t2)' }}>
-            {n === 1 ? '일간' : n === 3 ? '3일' : '주간'}
-          </button>
-        ))}
-      </div>
-
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontSize: 11, color: 'var(--t3)' }}>새 일정을 넣을 캘린더</span>
-        <select
-          value={target}
-          onChange={e => onTarget(e.target.value)}
-          style={{ padding: '3px 6px', borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', fontSize: 12, color: 'var(--t2)', fontFamily: 'var(--font)', maxWidth: 200 }}
-        >
-          {calendars.length === 0 && <option value="">쓸 수 있는 캘린더 없음</option>}
-          {calendars.map(c => <option key={c.id} value={c.id}>{c.summary}</option>)}
-        </select>
-        {!canWrite && (
-          <span style={{ fontSize: 11, color: 'var(--t3)' }} title="처음 일정을 만들 때 구글 권한을 한 번 더 요청합니다">
-            첫 생성 시 권한 요청
-          </span>
-        )}
-      </div>
     </div>
   )
 }

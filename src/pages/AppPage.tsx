@@ -17,7 +17,6 @@ import { ViewBar } from '../components/layout/ViewBar'
 import { TableView } from '../components/views/table'
 import { BoardView } from '../components/views/board'
 import { CalendarView } from '../components/views/calendar'
-import { TimelineView } from '../components/views/timeline'
 import { StatsView } from '../components/views/stats'
 import { GanttView } from '../components/views/gantt'
 import { TaskModal } from '../components/modals/TaskModal'
@@ -149,7 +148,6 @@ export function AppPage() {
               {view === 't' && <TableView />}
               {view === 'b' && <BoardView />}
               {view === 'c' && <CalendarView />}
-              {view === 'l' && <TimelineView />}
               {view === 'g' && <GanttView />}
               {view === 's' && <StatsView />}
             </>

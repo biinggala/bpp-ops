@@ -6,6 +6,9 @@ import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useProjectStore } from '../../../store/projectStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
 import { useGCalStore } from '../../../store/gcalStore'
+import { TimelineGrid } from '../timeline'
+import { writableCalendars } from '../../../lib/googleCalendar'
+import type { CalRange } from '../../../types'
 import type { GCalEvent } from '../../../store/gcalStore'
 import { useAuthStore } from '../../../store/authStore'
 import { useMobile } from '../../../hooks/useMobile'
@@ -596,8 +599,122 @@ export function CalendarView() {
   )
 }
 
+/**
+ * One calendar with a range switch, rather than a calendar view and a timeline
+ * view sitting side by side in the tab bar.
+ *
+ * A team that lives in Google Calendar reads 일/3일/주/월 as one screen showing
+ * more or less time; two separate tabs read as two different features, and
+ * choosing between them is a question nobody should have to answer.
+ */
 function DesktopCalendar() {
-  const { calYear, calMonth, calNav, calToday, openTaskDetail, projectId, showGCal } = useUiStore()
+  const { calRange, calAnchor, setCalRange, setCalAnchor } = useUiStore()
+  const { calendars, targetCalendarId, canWrite, setTargetCalendar } = useGCalStore()
+
+  const anchor = toDate(calAnchor)
+  const isMonth = calRange === 'month'
+  const days = useMemo(() => {
+    if (calRange === 'month') return []
+    // A week starts on Sunday, as the month grid does; a day or three-day range
+    // starts where you are.
+    const start = calRange === 7 ? addDays(anchor, -anchor.getDay()) : anchor
+    return Array.from({ length: calRange }, (_, i) => fmt(addDays(start, i)))
+  }, [calAnchor, calRange])
+
+  const shift = (direction: number) => {
+    if (calRange === 'month') {
+      const next = new Date(anchor.getFullYear(), anchor.getMonth() + direction, 1)
+      setCalAnchor(fmt(next))
+    } else {
+      setCalAnchor(fmt(addDays(anchor, direction * calRange)))
+    }
+  }
+
+  const label = isMonth
+    ? `${anchor.getFullYear()}년 ${MONTHS[anchor.getMonth()]}`
+    : days.length === 1
+      ? `${anchor.getFullYear()}년 ${MONTHS[anchor.getMonth()]} ${anchor.getDate()}일`
+      : (() => {
+          const first = toDate(days[0]); const last = toDate(days[days.length - 1])
+          const sameMonth = first.getMonth() === last.getMonth()
+          return sameMonth
+            ? `${first.getFullYear()}년 ${MONTHS[first.getMonth()]} ${first.getDate()} – ${last.getDate()}`
+            : `${MONTHS[first.getMonth()]} ${first.getDate()} – ${MONTHS[last.getMonth()]} ${last.getDate()}`
+        })()
+
+  const writable = writableCalendars(calendars)
+  const target = targetCalendarId ?? calendars.find(c => c.primary)?.id ?? writable[0]?.id ?? ''
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+      <div style={{ background: 'var(--bg)', borderBottom: '1px solid var(--bd)', padding: '0 16px', minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+        <NavBtn onClick={() => setCalAnchor(fmt(new Date()))}>오늘</NavBtn>
+        <NavBtn onClick={() => shift(-1)}>‹</NavBtn>
+        <NavBtn onClick={() => shift(1)}>›</NavBtn>
+        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--t1)', minWidth: 130 }}>{label}</span>
+
+        <RangeSwitch value={calRange} onChange={setCalRange} />
+
+        <div style={{ flex: 1 }} />
+
+        {!isMonth && writable.length > 0 && (
+          <select
+            value={target}
+            onChange={e => setTargetCalendar(e.target.value)}
+            title={canWrite ? '새 일정을 넣을 캘린더' : '첫 생성 시 구글 권한을 요청합니다'}
+            style={{ padding: '3px 6px', borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', fontSize: 12, color: 'var(--t2)', fontFamily: 'var(--font)', maxWidth: 170 }}
+          >
+            {writable.map(c => <option key={c.id} value={c.id}>{c.summary}에 추가</option>)}
+          </select>
+        )}
+        <GCalButton />
+      </div>
+
+      {isMonth
+        ? <MonthGrid calYear={anchor.getFullYear()} calMonth={anchor.getMonth()} />
+        : <TimelineGrid days={days} />}
+    </div>
+  )
+}
+
+/** 일 / 3일 / 주 / 월, as one segmented control. */
+function RangeSwitch({ value, onChange }: { value: CalRange; onChange: (r: CalRange) => void }) {
+  const options: { key: CalRange; label: string }[] = [
+    { key: 1, label: '일' },
+    { key: 3, label: '3일' },
+    { key: 7, label: '주' },
+    { key: 'month', label: '월' },
+  ]
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 2, padding: 2,
+      background: 'var(--bg3)', borderRadius: 999, flexShrink: 0,
+    }}>
+      {options.map(o => {
+        const on = o.key === value
+        return (
+          <button
+            key={String(o.key)}
+            onClick={() => onChange(o.key)}
+            style={{
+              padding: '3px 12px', borderRadius: 999, border: 'none', cursor: 'pointer',
+              background: on ? 'var(--bg)' : 'transparent',
+              color: on ? 'var(--t1)' : 'var(--t2)',
+              fontWeight: on ? 600 : 400, fontSize: 12,
+              boxShadow: on ? '0 1px 2px rgba(0,0,0,.08)' : 'none',
+              fontFamily: 'var(--font)', whiteSpace: 'nowrap',
+            }}
+          >
+            {o.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function MonthGrid({ calYear, calMonth }: { calYear: number; calMonth: number }) {
+  const { openTaskDetail, projectId, showGCal } = useUiStore()
   const tasks = useFilteredTasks()
   const { updateTask, tasks: allTasks } = useTaskStore()
   const allMilestones = useMilestoneStore(s => s.milestones)
@@ -685,18 +802,6 @@ function DesktopCalendar() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-      {/* Toolbar */}
-      <div style={{ background: 'var(--bg)', borderBottom: '1px solid var(--bd)', padding: '0 16px', height: 44, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        <NavBtn onClick={calToday}>오늘</NavBtn>
-        <NavBtn onClick={() => calNav(-1)}>‹</NavBtn>
-        <NavBtn onClick={() => calNav(1)}>›</NavBtn>
-        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--t1)', minWidth: 110 }}>
-          {calYear}년 {MONTHS[calMonth]}
-        </span>
-        <div style={{ flex: 1 }} />
-        <GCalButton />
-      </div>
-
       {/* Day-of-week labels */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', borderBottom: '1px solid var(--bd)', background: 'var(--bg2)', flexShrink: 0 }}>
         {DAY_LABELS.map((d, i) => (
