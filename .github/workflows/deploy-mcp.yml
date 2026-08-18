@@ -1,14 +1,13 @@
 name: Deploy MCP server to Cloud Run
 
-# Only when the server itself changes. The web app and the MCP server share a
-# repository but not a lifecycle, and rebuilding a container for a CSS tweak
-# costs build minutes and hands out a new revision nobody asked for.
+# Manual only.
+#
+# Deploying from here needs a service account key and three more repository
+# secrets, which is more setup than `gcloud run deploy --source .` from a
+# laptop. Left in place for whenever that trade stops being worth it — flip the
+# push trigger back on and fill in the secrets listed in mcp/README.md. Until
+# then it stays off rather than failing red on every push to mcp/.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'mcp/**'
-      - '.github/workflows/deploy-mcp.yml'
   workflow_dispatch:
 
 env:
