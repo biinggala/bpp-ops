@@ -307,7 +307,7 @@ export function TimelineView() {
           const dt = toDate(d)
           const isToday = d === todayStr
           return (
-            <div key={d} style={{ flex: 1, padding: '7px 8px 8px', textAlign: 'center', borderLeft: '1px solid var(--bd)' }}>
+            <div key={d} style={{ flex: 1, minWidth: 0, padding: '7px 8px 8px', textAlign: 'center', borderLeft: '1px solid var(--bd)' }}>
               <div style={{ fontSize: 11, color: isToday ? 'var(--ac)' : 'var(--t3)' }}>
                 {['일','월','화','수','목','금','토'][dt.getDay()]}
               </div>
@@ -427,7 +427,7 @@ export function TimelineView() {
               data-day-column
               onMouseDown={e => beginDrag(e, date)}
               style={{
-                flex: 1, position: 'relative', cursor: 'crosshair',
+                flex: 1, minWidth: 0, position: 'relative', cursor: 'crosshair',
                 borderLeft: '1px solid var(--bd)',
                 background: date === todayStr ? 'rgba(35,131,226,.025)' : 'transparent',
               }}

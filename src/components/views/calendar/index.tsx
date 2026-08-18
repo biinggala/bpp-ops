@@ -9,7 +9,7 @@ import { useGCalStore } from '../../../store/gcalStore'
 import type { GCalEvent } from '../../../store/gcalStore'
 import { useAuthStore } from '../../../store/authStore'
 import { useMobile } from '../../../hooks/useMobile'
-import { getCatColor, MEMBERS, STATUS_LIST } from '../../../types'
+import { getCatColor, MEMBERS, STATUS_LIST, NOTION } from '../../../types'
 import type { MemberKey, Status } from '../../../types'
 import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade } from '../../../lib/utils'
 import type { Task } from '../../../types'
@@ -698,7 +698,7 @@ function DesktopCalendar() {
       </div>
 
       {/* Day-of-week labels */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--bd)', background: 'var(--bg2)', flexShrink: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', borderBottom: '1px solid var(--bd)', background: 'var(--bg2)', flexShrink: 0 }}>
         {DAY_LABELS.map((d, i) => (
           <div key={d} style={{ padding: '7px 10px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: i === 0 || i === 6 ? 'rgba(55,53,47,.35)' : 'var(--t3)' }}>
             {d}
@@ -708,7 +708,11 @@ function DesktopCalendar() {
 
       {/* Grid */}
       <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridTemplateRows: 'repeat(6, 1fr)', height: '100%' }}>
+        {/* minmax(0, 1fr) rather than 1fr: a track sized 1fr still refuses to go
+            below its content's own width, so one long entry used to widen its
+            column and squeeze the rest. Paired with minWidth: 0 down the tree,
+            the seven columns stay identical at any window size. */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gridTemplateRows: 'repeat(6, 1fr)', height: '100%' }}>
           {cells.map(({ date, isCurrentMonth }, i) => {
             const dateStr      = fmt(date)
             const isToday      = dateStr === fmt(today)
@@ -740,9 +744,9 @@ function DesktopCalendar() {
                   borderRight: (i + 1) % 7 === 0 ? 'none' : '1px solid var(--bd)',
                   borderBottom: '1px solid var(--bd)',
                   display: 'flex', flexDirection: 'column',
-                  minHeight: 90,
-                  background: isDragTarget ? 'var(--ac-l)' : hasMilestone ? 'rgba(139,92,246,.04)' : !isCurrentMonth ? 'var(--bg2)' : isToday ? 'rgba(35,131,226,.03)' : isWeekend ? 'var(--bg2)' : 'transparent',
-                  outline: isDragTarget ? '2px solid var(--ac)' : hasMilestone ? '2px solid rgba(139,92,246,.35)' : 'none',
+                  minHeight: 90, minWidth: 0, overflow: 'hidden',
+                  background: isDragTarget ? 'var(--ac-l)' : hasMilestone ? 'rgba(144,101,176,.05)' : !isCurrentMonth ? 'var(--bg2)' : isToday ? 'rgba(35,131,226,.03)' : isWeekend ? 'var(--bg2)' : 'transparent',
+                  outline: isDragTarget ? '2px solid var(--ac)' : hasMilestone ? '2px solid rgba(144,101,176,.30)' : 'none',
                   outlineOffset: '-2px',
                   transition: 'background .08s',
                 }}
@@ -750,9 +754,9 @@ function DesktopCalendar() {
                 {/* Date number + milestone diamonds */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 8px 3px', gap: 4 }}>
                   {hasMilestone && (
-                    <div style={{ display: 'flex', gap: 3, alignItems: 'center', flex: 1 }}>
+                    <div style={{ display: 'flex', gap: 3, alignItems: 'center', flex: 1, minWidth: 0, overflow: 'hidden' }}>
                       {dayMilestones.map((ms, mi) => (
-                        <span key={mi} title={ms.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600, color: '#9065B0', background: 'rgba(139,92,246,.12)', borderRadius: 4, padding: '1px 5px', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span key={mi} title={ms.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600, color: NOTION.purple.text, background: NOTION.purple.bg, borderRadius: 4, padding: '1px 5px', minWidth: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           ◆ {ms.name}
                         </span>
                       ))}
@@ -764,7 +768,7 @@ function DesktopCalendar() {
                 </div>
 
                 {/* Events */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 3px 4px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 3px 4px', minWidth: 0 }}>
                   {visibleChips.map((chip, ci) => {
                     if (chip.kind === 'gcal') {
                       const ev = chip.ev
@@ -775,7 +779,7 @@ function DesktopCalendar() {
                           target="_blank"
                           rel="noopener noreferrer"
                           title={ev.summary}
-                          style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3, background: GCAL_BG, color: GCAL_TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none', display: 'block', cursor: 'pointer' }}
+                          style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3, background: GCAL_BG, color: GCAL_TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none', display: 'block', cursor: 'pointer', minWidth: 0 }}
                           onMouseEnter={e => e.currentTarget.style.opacity = '.75'}
                           onMouseLeave={e => e.currentTarget.style.opacity = '1'}
                         >
@@ -793,7 +797,7 @@ function DesktopCalendar() {
                         onDragStart={e => { e.dataTransfer.setData('taskId', t.id); e.dataTransfer.setData('fromDate', dateStr); e.dataTransfer.effectAllowed = 'move'; setDraggingId(t.id) }}
                         onDragEnd={() => { setDraggingId(null); setDragOver(null) }}
                         onClick={() => openTaskDetail(t.id)}
-                        style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3, background: color.bg, color: color.text, cursor: 'grab', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: isBeingDragged ? .35 : 1, transition: 'opacity .1s', userSelect: 'none' }}
+                        style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3, background: color.bg, color: color.text, cursor: 'grab', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: isBeingDragged ? .35 : 1, transition: 'opacity .1s', userSelect: 'none', minWidth: 0 }}
                         onMouseEnter={e => { if (!isBeingDragged) e.currentTarget.style.opacity = '.75' }}
                         onMouseLeave={e => { if (!isBeingDragged) e.currentTarget.style.opacity = '1' }}
                       >
