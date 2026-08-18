@@ -53,6 +53,21 @@ export function assigneeAliases(key: string): string[] {
   return Array.from(out)
 }
 
+/**
+ * A link is only opened if it is plainly http(s).
+ *
+ * Any project member can set the folder address, and the app opens it in a new
+ * tab — without this check a `javascript:` address would run in the app's own
+ * origin the moment someone clicked the folder icon.
+ */
+export function safeExternalUrl(raw: string | undefined | null): string | null {
+  if (!raw) return null
+  try {
+    const url = new URL(raw.trim())
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null
+  } catch { return null }
+}
+
 export function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 }

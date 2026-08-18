@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { isComposing, authorizedEmails } from '../../lib/utils'
+import { isComposing, authorizedEmails, safeExternalUrl } from '../../lib/utils'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useAuthStore } from '../../store/authStore'
@@ -26,6 +26,7 @@ export function Sidebar() {
   const [newProjectName, setNewProjectName] = useState('')
   const projectNameRef = useRef<HTMLInputElement>(null)
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
+  const [driveModal, setDriveModal] = useState<{ id: string; name: string; url: string } | null>(null)
   const [editProjectName, setEditProjectName] = useState('')
   const projectEditRef = useRef<HTMLInputElement>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string; name: string; archived: boolean; type: 'project' } | null>(null)
@@ -319,6 +320,7 @@ export function Sidebar() {
                 daysInfo={daysInfo}
                 projectId={p.id}
                 inviteCode={p.inviteCode}
+                driveFolderUrl={p.driveFolderUrl}
                 onClick={() => { setProject(p.id); setMyTasksOnly(false); closeSidebar() }}
                 onContextMenu={e => handleContextMenu(e, p.id, p.name, false)}
               >
@@ -473,6 +475,13 @@ export function Sidebar() {
               <ContextMenuItem onClick={() => { setMemberModal({ id: contextMenu.id, name: contextMenu.name }); setContextMenu(null) }}>
                 👥&nbsp;&nbsp;멤버 관리
               </ContextMenuItem>
+              <ContextMenuItem onClick={() => {
+                const project = projects.find(p => p.id === contextMenu.id)
+                setDriveModal({ id: contextMenu.id, name: contextMenu.name, url: project?.driveFolderUrl ?? '' })
+                setContextMenu(null)
+              }}>
+                📁&nbsp;&nbsp;드라이브 폴더
+              </ContextMenuItem>
               <ContextMenuItem onClick={() => handleArchiveProject(contextMenu.id, !contextMenu.archived)}>
                 {contextMenu.archived ? '↩  아카이브 해제' : '📦  아카이브'}
               </ContextMenuItem>
@@ -495,6 +504,16 @@ export function Sidebar() {
           name={deleteConfirm.name}
           onConfirm={() => handleDeleteProject(deleteConfirm.id)}
           onCancel={() => setDeleteConfirm(null)}
+        />
+      )}
+
+      {/* Drive folder */}
+      {driveModal && (
+        <DriveFolderModal
+          name={driveModal.name}
+          value={driveModal.url}
+          onSave={url => { updateProject(driveModal.id, { driveFolderUrl: url || undefined }); setDriveModal(null) }}
+          onCancel={() => setDriveModal(null)}
         />
       )}
 
@@ -555,17 +574,24 @@ function NavItem({ children, active, onClick, count, icon }: {
   )
 }
 
-function ProjectItem({ children, active, dot, count, daysInfo, projectId, inviteCode, dimmed, onClick, onContextMenu }: {
+function ProjectItem({ children, active, dot, count, daysInfo, projectId, inviteCode, driveFolderUrl, dimmed, onClick, onContextMenu }: {
   children: React.ReactNode; active: boolean; dot: string; count: number
   daysInfo: { days: number; overdue: boolean } | null
   projectId: string
   inviteCode?: string
+  driveFolderUrl?: string
   dimmed?: boolean
   onClick: () => void
   onContextMenu: (e: React.MouseEvent) => void
 }) {
   const [hovered, setHovered] = useState(false)
   const [copied, setCopied] = useState(false)
+  const folderUrl = safeExternalUrl(driveFolderUrl)
+
+  const openFolder = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (folderUrl) window.open(folderUrl, '_blank', 'noopener,noreferrer')
+  }
 
   const copyLink = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -597,14 +623,22 @@ function ProjectItem({ children, active, dot, count, daysInfo, projectId, invite
       <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flexShrink: 0, opacity: dimmed ? .5 : 1 }} />
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
 
-      {hovered && inviteCode ? (
+      {hovered && (inviteCode || folderUrl) ? (
         <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
-          <ActionIcon onClick={copyLink} title={copied ? '복사됨!' : '초대 링크 복사'}>
-            {copied ? '✓' : '↗'}
-          </ActionIcon>
+          {folderUrl && (
+            <ActionIcon onClick={openFolder} title="드라이브 폴더 열기">📁</ActionIcon>
+          )}
+          {inviteCode && (
+            <ActionIcon onClick={copyLink} title={copied ? '복사됨!' : '초대 링크 복사'}>
+              {copied ? '✓' : '↗'}
+            </ActionIcon>
+          )}
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto', flexShrink: 0 }}>
+          {folderUrl && !hovered && (
+            <span title="드라이브 폴더 연결됨" style={{ fontSize: 10, opacity: .5, flexShrink: 0 }}>📁</span>
+          )}
           {daysInfo && (
             <span style={{
               fontSize: 10, fontWeight: 600, flexShrink: 0,
@@ -616,6 +650,73 @@ function ProjectItem({ children, active, dot, count, daysInfo, projectId, invite
           <span style={{ fontSize: 11, color: 'var(--sb-t3)', flexShrink: 0 }}>{count}</span>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * One folder address per project, so the files for a job are a click from the
+ * job itself rather than a search away.
+ *
+ * Only the address is stored — nothing is read from Drive, so no additional
+ * Google permission is involved and whatever the folder is shared with stays
+ * exactly as Drive has it.
+ */
+function DriveFolderModal({ name, value, onSave, onCancel }: {
+  name: string
+  value: string
+  onSave: (url: string) => void
+  onCancel: () => void
+}) {
+  const [url, setUrl] = useState(value)
+  const trimmed = url.trim()
+  const valid = !trimmed || !!safeExternalUrl(trimmed)
+
+  return (
+    <div onClick={onCancel} style={{ position: 'fixed', inset: 0, background: 'rgba(15,15,15,.45)', zIndex: 9500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-lg)', width: '100%', maxWidth: 460, padding: '22px 24px' }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--t1)' }}>드라이브 폴더</div>
+        <div style={{ fontSize: 12, color: 'var(--t3)', marginTop: 4, marginBottom: 16 }}>
+          {name} 의 파일이 있는 폴더 주소를 넣으면, 사이드바에서 바로 열 수 있습니다.
+        </div>
+
+        <input
+          autoFocus
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && valid && !isComposing(e)) onSave(trimmed); if (e.key === 'Escape') onCancel() }}
+          placeholder="https://drive.google.com/drive/folders/..."
+          style={{
+            width: '100%', padding: '9px 11px', borderRadius: 'var(--r1)',
+            border: `1px solid ${valid ? 'var(--bd)' : '#dc2626'}`,
+            background: 'var(--bg)', fontSize: 13, color: 'var(--t1)',
+            outline: 'none', fontFamily: 'var(--font)',
+          }}
+        />
+        {!valid && (
+          <div style={{ fontSize: 12, color: '#dc2626', marginTop: 8 }}>
+            http:// 또는 https:// 로 시작하는 주소를 넣어주세요.
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 18 }}>
+          {value && (
+            <button
+              onClick={() => onSave('')}
+              style={{ marginRight: 'auto', padding: '7px 12px', borderRadius: 'var(--r2)', border: '1px solid var(--bd)', background: 'transparent', color: '#dc2626', fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font)' }}
+            >연결 해제</button>
+          )}
+          <button
+            onClick={onCancel}
+            style={{ padding: '7px 14px', borderRadius: 'var(--r2)', border: '1px solid var(--bd)', background: 'transparent', color: 'var(--t2)', fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font)' }}
+          >취소</button>
+          <button
+            onClick={() => valid && onSave(trimmed)}
+            disabled={!valid}
+            style={{ padding: '7px 16px', borderRadius: 'var(--r2)', border: 'none', background: valid ? 'var(--ac)' : 'var(--bd2)', color: '#fff', fontSize: 13, fontWeight: 500, cursor: valid ? 'pointer' : 'default', fontFamily: 'var(--font)' }}
+          >저장</button>
+        </div>
+      </div>
     </div>
   )
 }

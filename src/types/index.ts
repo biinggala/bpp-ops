@@ -24,6 +24,7 @@ export interface Project {
   pendingEmails?: string[] // invited but not yet accepted
   creatorEmail?: string    // email of the user who created this project
   archived?: boolean       // completed/retired — hidden from active lists and aggregates
+  driveFolderUrl?: string  // the project's folder, opened straight from the sidebar
 }
 
 export interface Milestone {
