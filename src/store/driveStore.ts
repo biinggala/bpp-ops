@@ -24,6 +24,14 @@ interface DriveState {
   meta: Record<string, DriveFile | null>
   /** Matched passages, keyed by `id::term`. `null` means "asked, none found". */
   snippets: Record<string, Snippet | null>
+  /**
+   * Keys currently being read, so a row can hold the space and say so.
+   *
+   * The UI cannot infer this: "no snippet yet" and "this file will never have
+   * one" — a PDF, or past the per-search cap — look identical from the outside,
+   * and showing a spinner for the second forever would be worse than nothing.
+   */
+  snippetLoading: Record<string, true>
 
   connect: () => Promise<boolean>
   disconnect: () => void
@@ -71,6 +79,7 @@ export const useDriveStore = create<DriveState>((set, get) => ({
   error: null,
   meta: {},
   snippets: {},
+  snippetLoading: {},
 
   connect: async () => {
     if (!GIS_CONFIGURED) {
@@ -101,7 +110,7 @@ export const useDriveStore = create<DriveState>((set, get) => ({
       localStorage.removeItem(EXPIRY_KEY)
       localStorage.removeItem(CONNECTED_KEY)
     } catch { /* ignore */ }
-    set({ token: null, expiry: null, wasConnected: false, needsReconnect: false, meta: {}, snippets: {}, error: null })
+    set({ token: null, expiry: null, wasConnected: false, needsReconnect: false, meta: {}, snippets: {}, snippetLoading: {}, error: null })
   },
 
   /**
@@ -184,30 +193,41 @@ export const useDriveStore = create<DriveState>((set, get) => ({
       .filter(f => !(snippetKey(f.id, needle) in snippets) && !inFlight.has(snippetKey(f.id, needle)))
       .slice(0, SNIPPET_LIMIT)
     if (!todo.length) return
-    todo.forEach(f => inFlight.add(snippetKey(f.id, needle)))
+    const keys = todo.map(f => snippetKey(f.id, needle))
+    keys.forEach(k => inFlight.add(k))
+    // Marked before the first request so every row that is going to get a quote
+    // can reserve its space immediately, rather than jumping when one arrives.
+    set(s => ({ snippetLoading: { ...s.snippetLoading, ...Object.fromEntries(keys.map(k => [k, true as const])) } }))
+
+    const done = (ks: string[]) => {
+      ks.forEach(k => inFlight.delete(k))
+      set(s => {
+        const next = { ...s.snippetLoading }
+        ks.forEach(k => delete next[k])
+        return { snippetLoading: next }
+      })
+    }
 
     void (async () => {
       const token = await get().ensureToken()
-      if (!token) {
-        todo.forEach(f => inFlight.delete(snippetKey(f.id, needle)))
-        return
-      }
+      if (!token) { done(keys); return }
       // Serial, not parallel: each of these can be a few hundred kilobytes, and
       // they are a nicety — they must not crowd out the search itself.
-      for (const f of todo) {
-        const key = snippetKey(f.id, needle)
+      for (let i = 0; i < todo.length; i++) {
+        const f = todo[i]
+        const key = keys[i]
         try {
           const snip = await fetchSnippet(token, { id: f.id, mimeType: f.mimeType }, needle)
           set(s => ({ snippets: { ...s.snippets, [key]: snip } }))
+          done([key])
         } catch (e) {
           set(s => ({ snippets: { ...s.snippets, [key]: null } }))
           if (e instanceof Error && e.message === TOKEN_EXPIRED) {
             set({ token: null, expiry: null })
-            todo.forEach(x => inFlight.delete(snippetKey(x.id, needle)))
+            done(keys.slice(i))
             return
           }
-        } finally {
-          inFlight.delete(key)
+          done([key])
         }
       }
     })()

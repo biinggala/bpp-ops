@@ -141,6 +141,20 @@ export function FileRow({ link, file, onRemove, compact = false }: {
   )
 }
 
+/**
+ * Shared by the quote and by its placeholder.
+ *
+ * Same padding, same line height, same two-line clamp — so when the text
+ * arrives it fills a box that was already the right size instead of shoving the
+ * rest of the list down.
+ */
+const SNIPPET_BOX: React.CSSProperties = {
+  fontSize: 11, color: 'var(--t2)', marginTop: 3,
+  lineHeight: 1.45, background: 'var(--bg2)', borderRadius: 4,
+  padding: '3px 6px', overflow: 'hidden',
+  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+} as React.CSSProperties
+
 function hostOf(url: string) {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
 }
@@ -155,6 +169,7 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
 }) {
   const { wasConnected, token, needsReconnect, connect, connecting, search, error } = useDriveStore()
   const snippets = useDriveStore(s => s.snippets)
+  const snippetLoading = useDriveStore(s => s.snippetLoading)
   const loadSnippets = useDriveStore(s => s.loadSnippets)
   const [q, setQ] = useState('')
   const [results, setResults] = useState<DriveSearchResult[]>([])
@@ -243,13 +258,17 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
           const already = attachedIds.has(f.id)
           const kind = fileKind(f.mimeType)
           const inFolder = !!folderId && !!f.parents?.includes(folderId)
-          const snip = f.contentMatch ? snippets[snippetKey(f.id, q)] : null
+          const sKey = snippetKey(f.id, q)
+          const snip = f.contentMatch ? snippets[sKey] : null
+          const snipLoading = !!f.contentMatch && !!snippetLoading[sKey]
+          // The box is there either way, so nothing shifts when the text lands.
+          const hasBox = !!snip || snipLoading
           return (
             <div
               key={f.id}
               onMouseDown={e => { e.preventDefault(); if (!already) onPick(f) }}
               style={{
-                display: 'flex', alignItems: snip ? 'flex-start' : 'center', gap: 8,
+                display: 'flex', alignItems: hasBox ? 'flex-start' : 'center', gap: 8,
                 padding: '6px 8px', borderRadius: 'var(--r1)',
                 cursor: already ? 'default' : 'pointer',
                 opacity: already ? .45 : 1,
@@ -258,7 +277,7 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
               onMouseEnter={e => { if (!already) e.currentTarget.style.background = 'var(--bg3)' }}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
-              <span style={{ fontSize: 14, flexShrink: 0, lineHeight: snip ? 1.4 : 1 }}>{kind.icon}</span>
+              <span style={{ fontSize: 14, flexShrink: 0, lineHeight: hasBox ? 1.4 : 1 }}>{kind.icon}</span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: 'block', fontSize: 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {f.name}
@@ -266,22 +285,21 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
                 <span style={{ display: 'block', fontSize: 10, color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
                   {[
                     inFolder ? '이 프로젝트 폴더' : null,
-                    f.contentMatch && !snip ? '내용 일치' : null,
+                    f.contentMatch && !hasBox ? '내용 일치' : null,
                     f.modifiedTime ? `${relativeTime(f.modifiedTime)} 수정` : null,
                   ].filter(Boolean).join(' · ')}
                 </span>
-                {snip && (
-                  <span style={{
-                    fontSize: 11, color: 'var(--t2)', marginTop: 3,
-                    lineHeight: 1.45, background: 'var(--bg2)', borderRadius: 4,
-                    padding: '3px 6px', overflow: 'hidden',
-                    // Two lines of context. One is often half a sentence; three
-                    // turns a result list into a wall of prose.
-                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-                  } as React.CSSProperties}>
-                    {snip.before}
-                    <mark style={{ background: NOTION.yellow.bg, color: NOTION.yellow.text, fontWeight: 600, padding: '0 1px', borderRadius: 2 }}>{snip.match}</mark>
-                    {snip.after}
+                {hasBox && (
+                  <span style={{ ...SNIPPET_BOX, ...(snip ? {} : { color: 'var(--t3)' }) }}
+                    className={snip ? 'bpp-snippet' : 'bpp-snippet-loading'}
+                  >
+                    {snip ? (
+                      <>
+                        {snip.before}
+                        <mark style={{ background: NOTION.yellow.bg, color: NOTION.yellow.text, fontWeight: 600, padding: '0 1px', borderRadius: 2 }}>{snip.match}</mark>
+                        {snip.after}
+                      </>
+                    ) : '내용 불러오는 중…'}
                   </span>
                 )}
               </span>
