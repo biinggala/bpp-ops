@@ -16,7 +16,14 @@ const STATUS_COLOR: Record<Status, string> = {
 export function BoardView() {
   const tasks = useFilteredTasks()
   const { updateTask, deleteTask } = useTaskStore()
-  const { openTaskDetail, openTaskModal } = useUiStore()
+  const { openTaskDetail, openTaskModal, filters } = useUiStore()
+
+  // The board groups by status, so a status filter is a choice of columns.
+  // Rendering the unselected ones as empty shells made the filter look broken —
+  // you asked to see 진행중 and got three empty boxes next to it.
+  const columns = filters.statuses.length
+    ? STATUS_LIST.filter(s => filters.statuses.includes(s))
+    : STATUS_LIST
   const [dragging, setDragging] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<Status | null>(null)
 
@@ -27,7 +34,7 @@ export function BoardView() {
   return (
     <div style={{ flex: 1, overflowX: 'auto', padding: '20px 24px' }}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', minWidth: 'max-content', paddingBottom: 20 }}>
-        {STATUS_LIST.map(status => {
+        {columns.map(status => {
           const col = tasks.filter(t => t.status === status)
           return (
             <div

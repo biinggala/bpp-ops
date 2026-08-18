@@ -117,11 +117,29 @@ export const useUiStore = create<UiState>((set, get) => ({
     set({ listGroup })
   },
   setSpace: (space) => set({ space, projectId: null }),
-  setProject: (projectId) => set({ projectId, space: null }),
-  setMyTasksOnly: (myTasksOnly) => set({ myTasksOnly }),
-  setHideCompleted: (hideCompleted) => set({ hideCompleted }),
+  // Entering a project makes the project filter meaningless at best and
+  // self-contradicting at worst — filtering to project B while inside project A
+  // can only ever return nothing. Same for 내 할 일 and the assignee filter.
+  // Dropping the conflicting selection here means no caller can produce the
+  // contradiction, and the bar has nothing incoherent left to render.
+  setProject: (projectId) => set(st => ({
+    projectId, space: null,
+    filters: projectId ? { ...st.filters, projects: [] } : st.filters,
+  })),
+  setMyTasksOnly: (myTasksOnly) => set(st => ({
+    myTasksOnly,
+    filters: myTasksOnly ? { ...st.filters, assignees: [] } : st.filters,
+  })),
+  // 완료 숨기기 and a 완료 status filter are a guaranteed empty list. The
+  // toggle the user just pressed wins.
+  setHideCompleted: (hideCompleted) => set(st => ({
+    hideCompleted,
+    filters: hideCompleted
+      ? { ...st.filters, statuses: st.filters.statuses.filter(s => s !== '완료') }
+      : st.filters,
+  })),
   setFilters: (f) => set(s => ({ filters: { ...s.filters, ...f } })),
-  resetFilters: () => set({ filters: { ...defaultFilters } }),
+  resetFilters: () => set(st => ({ filters: { ...defaultFilters, sort: st.filters.sort } })),
   setDetailTaskId: (id) => set({ detailTaskId: id }),
   openTaskDetail: (id: string) => set({ detailTaskId: id }),
   closeTaskDetail: () => set({ detailTaskId: null }),
