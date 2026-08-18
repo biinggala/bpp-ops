@@ -279,6 +279,9 @@ function CellTrigger({ open, onOpen, children, style, tabbable = false }: {
   )
 }
 
+/** The flat list's own add row, which belongs to no project card. */
+const FLAT_DRAFT = '__flat__'
+
 const MIN_COL_WIDTH = 60
 const COL_STORAGE_KEY = 'cringe_table_cols_v1'
 /** Always shown: it is the row's identity and the sticky anchor for the rest. */
@@ -795,6 +798,10 @@ export function TableView() {
   // choice is per-browser and persists with the widths.
   const visibleCols = React.useMemo(() => cols.filter(c => !c.hidden), [cols])
   const totalColWidth = React.useMemo(() => visibleCols.reduce((sum, c) => sum + c.width, 0), [visibleCols])
+  const projectPickerOptions = React.useMemo(
+    () => projects.filter(p => !p.archived).map(p => ({ id: p.id, name: p.name, color: p.color })),
+    [projects],
+  )
 
   // ── Navigation helpers ──────────────────────────────────────────────────────
   const rootTasks = filteredTasks.filter(t => !t.parentId)
@@ -1194,7 +1201,30 @@ export function TableView() {
                 </React.Fragment>
               )
             })}
+            {/*
+              One add row for the whole flat list, not one per group.
+
+              The groups here are properties — a due window, a priority, a
+              person — not containers. Hanging "add into 높음" off one would
+              claim a priority owns tasks the way a milestone does, which is
+              exactly the confusion the flat modes exist to avoid. So the row
+              belongs to the list, and asks for the project it cannot inherit.
+            */}
+            {draftEndPjId === FLAT_DRAFT && (
+              <AddTaskRow
+                cols={visibleCols}
+                assigneeOptions={getAssigneeOptions(projectId ?? undefined)}
+                projectId={projectId ?? undefined}
+                projectOptions={projectId ? undefined : projectPickerOptions}
+                space={space ?? ''}
+                addTask={addTask}
+                userEmail={userEmail}
+                onDone={another => { if (!another) setDraftEndPjId(null) }}
+                onCancel={() => setDraftEndPjId(null)}
+              />
+            )}
           </div>
+          {draftEndPjId !== FLAT_DRAFT && addBtn(FLAT_DRAFT)}
         </div>
         {ctx}
       </div>
@@ -2199,6 +2229,66 @@ function AddRowAssigneeSelect({ value, options, onChange }: {
   )
 }
 
+// ── AddRowProjectSelect ───────────────────────────────────────────────────────
+
+/**
+ * A dot the width of a colour, not a column.
+ *
+ * The name cell is the narrowest thing on the row and the one people type in;
+ * a full project dropdown in front of it would eat the field. The dot carries
+ * the answer — every project already has a colour people know — and the name
+ * only appears in the menu.
+ */
+function AddRowProjectSelect({ value, options, onChange }: {
+  value: string | undefined
+  options: { id: string; name: string; color: string }[]
+  onChange: (v: string | undefined) => void
+}) {
+  const m = useMenu()
+  const current = options.find(p => p.id === value)
+
+  return (
+    <div ref={m.rootRef} style={{ position: 'relative', flexShrink: 0 }}>
+      <div
+        data-addrow-popup
+        tabIndex={0}
+        title={current ? current.name : '프로젝트 미배정'}
+        onClick={e => { e.stopPropagation(); m.toggleAt(e.currentTarget, 200) }}
+        onKeyDown={e => {
+          if (e.key === ' ' || e.key === 'ArrowDown') {
+            if (!m.open) { e.preventDefault(); e.stopPropagation(); m.openAt(e.currentTarget, 200) }
+          } else if (e.key === 'Enter' && m.open) {
+            e.preventDefault(); e.stopPropagation(); m.setOpen(false)
+          }
+        }}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer',
+          padding: '3px 5px', borderRadius: 'var(--r1)', outline: '1px solid var(--ac)',
+          background: 'var(--bg)',
+        }}
+      >
+        <Dot color={current?.color ?? 'var(--bd2)'} size={8} />
+        <span style={{ fontSize: 8, color: 'var(--t3)' }}>▾</span>
+      </div>
+      {m.open && (
+        <Menu pos={m.pos} panelRef={m.panelRef} width={200}>
+          <MenuList>
+            <MenuItem selected={!value} onSelect={() => { onChange(undefined); m.setOpen(false) }}>
+              프로젝트 미배정
+            </MenuItem>
+            {options.map(p => (
+              <MenuItem key={p.id} selected={p.id === value} onSelect={() => { onChange(p.id); m.setOpen(false) }}>
+                <Dot color={p.color} />
+                {p.name}
+              </MenuItem>
+            ))}
+          </MenuList>
+        </Menu>
+      )}
+    </div>
+  )
+}
+
 // ── AddRowStatusSelect ────────────────────────────────────────────────────────
 
 // The add row's status cell is the row's status cell — the only difference used
@@ -2276,12 +2366,20 @@ function AddRowDatePicker({ value, context, onChange }: {
 
 // ── AddTaskRow ────────────────────────────────────────────────────────────────
 
-function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, space, addTask, userEmail, isSubtask = false, onDone, onCancel }: {
+function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, projectOptions, space, addTask, userEmail, isSubtask = false, onDone, onCancel }: {
   cols: ColDef[]
   assigneeOptions: { value: string; label: string }[]
   milestoneId?: string
   parentId?: string
   projectId?: string
+  /**
+   * Offered when the row does not already sit inside a project.
+   *
+   * The flat list modes span every project, so a row added there has no
+   * container to inherit — the row has to ask rather than quietly filing the
+   * task under nothing.
+   */
+  projectOptions?: { id: string; name: string; color: string }[]
   space: string
   addTask: (t: Omit<Task, 'id'>) => Task
   userEmail: string | null
@@ -2289,6 +2387,7 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, s
   onDone: (addAnother: boolean) => void
   onCancel: () => void
 }) {
+  const [pickedProject, setPickedProject] = useState<string | undefined>(projectId)
   const [name, setName] = useState('')
   const [assignee, setAssignee] = useState('')
   const [due, setDue] = useState('')
@@ -2315,7 +2414,7 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, s
     addTask({
       type: parentId ? '세부' : '상위', cat: space, name: name.trim(), assignee,
       start: '', due, priority, status,
-      progress: 0, memo: '', parentId, projectId, milestoneId,
+      progress: 0, memo: '', parentId, projectId: pickedProject, milestoneId,
       createdBy: userEmail ?? undefined,
     })
     setName(''); setAssignee(''); setDue(''); setStatus('대기'); setPriority('중간')
@@ -2347,7 +2446,14 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, s
         // translucent background on a pinned cell lets the columns scrolling
         // underneath show through it.
         return (
-          <div key="name" style={{ ...base, position: 'sticky', left: 0, zIndex: 2, background: 'linear-gradient(rgba(35,131,226,.04), rgba(35,131,226,.04)), var(--bg)', boxShadow: '2px 0 4px rgba(0,0,0,.06)', paddingLeft: isSubtask ? 88 : 14 }}>
+          <div key="name" style={{ ...base, gap: 6, position: 'sticky', left: 0, zIndex: 2, background: 'linear-gradient(rgba(35,131,226,.04), rgba(35,131,226,.04)), var(--bg)', boxShadow: '2px 0 4px rgba(0,0,0,.06)', paddingLeft: isSubtask ? 88 : 14 }}>
+            {projectOptions && (
+              <AddRowProjectSelect
+                value={pickedProject}
+                options={projectOptions}
+                onChange={setPickedProject}
+              />
+            )}
             <input
               ref={nameRef}
               value={name} onChange={e => setName(e.target.value)}
