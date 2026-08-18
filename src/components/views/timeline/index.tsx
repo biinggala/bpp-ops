@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useGCalStore } from '../../../store/gcalStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
+import { DayPlanner } from '../calendar/DayPlanner'
 import { useTaskStore } from '../../../store/taskStore'
 import { useProjectStore } from '../../../store/projectStore'
 import { useAuthStore } from '../../../store/authStore'
@@ -124,6 +125,8 @@ export function TimelineGrid({ days }: { days: string[] }) {
   const dragging = useRef<{ date: string; anchorMinutes: number } | null>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const [selected, setSelected] = useState<string | null>(null)
+  /** Placing a task on a whole day, opened from that day's header. */
+  const [planning, setPlanning] = useState<{ date: string; anchor: HTMLElement } | null>(null)
   // A floating card, like Google Calendar's quick-create. Day columns are far
   // too narrow to hold a guest list, and the grid clips anything wider.
   const [cardAt, setCardAt] = useState<{ x: number; y: number } | null>(null)
@@ -297,7 +300,18 @@ export function TimelineGrid({ days }: { days: string[] }) {
           const dt = toDate(d)
           const isToday = d === todayStr
           return (
-            <div key={d} style={{ flex: 1, minWidth: 0, padding: '7px 8px 8px', textAlign: 'center', borderLeft: '1px solid var(--bd)' }}>
+            // The header is the one place in this view that means "the day
+            // itself" rather than an hour in it, so it is where placing a task
+            // on the day belongs. Dragging the grid below still makes a
+            // calendar event, which is a different thing.
+            <div
+              key={d}
+              onClick={e => setPlanning({ date: d, anchor: e.currentTarget })}
+              title="이 날에 업무 배치"
+              style={{ flex: 1, minWidth: 0, padding: '7px 8px 8px', textAlign: 'center', borderLeft: '1px solid var(--bd)', cursor: 'pointer' }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
               <div style={{ fontSize: 11, color: isToday ? 'var(--ac)' : 'var(--t3)' }}>
                 {['일','월','화','수','목','금','토'][dt.getDay()]}
               </div>
@@ -456,6 +470,13 @@ export function TimelineGrid({ days }: { days: string[] }) {
           ))}
         </div>
       </div>
+      {planning && (
+        <DayPlanner
+          date={planning.date}
+          anchor={planning.anchor}
+          onClose={() => setPlanning(null)}
+        />
+      )}
     </div>
   )
 }

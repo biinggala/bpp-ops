@@ -3,6 +3,7 @@ import { useUiStore } from '../../../store/uiStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
+import { DayPlanner } from './DayPlanner'
 import { useProjectStore } from '../../../store/projectStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
 import { useGCalStore } from '../../../store/gcalStore'
@@ -737,6 +738,9 @@ function RangeSwitch({ value, onChange }: { value: CalRange; onChange: (r: CalRa
 }
 
 function MonthGrid({ calYear, calMonth }: { calYear: number; calMonth: number }) {
+  // Clicking a day opens the planner there; see DayPlanner for why both
+  // "make a new one" and "place an existing one" live in the same popover.
+  const [planning, setPlanning] = useState<{ date: string; anchor: HTMLElement } | null>(null)
   const { openTaskDetail, projectId, showGCal } = useUiStore()
   const tasks = useFilteredTasks()
   const { updateTask, tasks: allTasks } = useTaskStore()
@@ -868,7 +872,9 @@ function MonthGrid({ calYear, calMonth }: { calYear: number; calMonth: number })
                 onDragOver={e => { e.preventDefault(); setDragOver(dateStr) }}
                 onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null) }}
                 onDrop={e => handleDrop(e, date)}
+                onClick={e => setPlanning({ date: dateStr, anchor: e.currentTarget })}
                 style={{
+                  cursor: 'pointer',
                   borderRight: (i + 1) % 7 === 0 ? 'none' : '1px solid var(--bd)',
                   borderBottom: '1px solid var(--bd)',
                   display: 'flex', flexDirection: 'column',
@@ -908,6 +914,7 @@ function MonthGrid({ calYear, calMonth }: { calYear: number; calMonth: number })
                           rel="noopener noreferrer"
                           title={ev.summary}
                           style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3, background: GCAL_BG, color: GCAL_TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none', display: 'block', cursor: 'pointer', minWidth: 0 }}
+                          onClick={e => e.stopPropagation()}
                           onMouseEnter={e => e.currentTarget.style.opacity = '.75'}
                           onMouseLeave={e => e.currentTarget.style.opacity = '1'}
                         >
@@ -924,7 +931,7 @@ function MonthGrid({ calYear, calMonth }: { calYear: number; calMonth: number })
                         draggable
                         onDragStart={e => { e.dataTransfer.setData('taskId', t.id); e.dataTransfer.setData('fromDate', dateStr); e.dataTransfer.effectAllowed = 'move'; setDraggingId(t.id) }}
                         onDragEnd={() => { setDraggingId(null); setDragOver(null) }}
-                        onClick={() => openTaskDetail(t.id)}
+                        onClick={e => { e.stopPropagation(); openTaskDetail(t.id) }}
                         style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3, background: color.bg, color: color.text, cursor: 'grab', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: isBeingDragged ? .35 : 1, transition: 'opacity .1s', userSelect: 'none', minWidth: 0 }}
                         onMouseEnter={e => { if (!isBeingDragged) e.currentTarget.style.opacity = '.75' }}
                         onMouseLeave={e => { if (!isBeingDragged) e.currentTarget.style.opacity = '1' }}
@@ -942,6 +949,13 @@ function MonthGrid({ calYear, calMonth }: { calYear: number; calMonth: number })
           })}
         </div>
       </div>
+      {planning && (
+        <DayPlanner
+          date={planning.date}
+          anchor={planning.anchor}
+          onClose={() => setPlanning(null)}
+        />
+      )}
     </div>
   )
 }
