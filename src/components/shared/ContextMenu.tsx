@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react'
-import { STATUS_LIST } from '../../types'
+import { STATUS_LIST, STATUS_COLORS, NOTION } from '../../types'
 import type { Task, Status } from '../../types'
 
 interface ContextMenuProps {
@@ -11,10 +11,6 @@ interface ContextMenuProps {
   onAddSubtask: () => void
   onStatusChange: (s: Status) => void
   onDelete: () => void
-}
-
-const STATUS_ICONS: Record<Status, string> = {
-  진행중: '🔵', 대기: '⚪', 검토중: '🟡', 완료: '🟢',
 }
 
 export function ContextMenu({ x, y, task, onClose, onEdit, onAddSubtask, onStatusChange, onDelete }: ContextMenuProps) {
@@ -47,19 +43,19 @@ export function ContextMenu({ x, y, task, onClose, onEdit, onAddSubtask, onStatu
         position: 'fixed', left: clampedX, top: clampedY,
         width: menuW, background: 'var(--bg)',
         border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
-        boxShadow: '0 8px 28px rgba(0,0,0,.18), 0 2px 8px rgba(0,0,0,.1)',
-        zIndex: 500, padding: '4px 0', userSelect: 'none',
+        boxShadow: 'var(--sh-md)',
+        zIndex: 500, padding: 4, userSelect: 'none', boxSizing: 'border-box',
       }}
     >
       <Item icon="✎" label="수정" onClick={() => { onEdit(); onClose() }} />
       <Item icon="+" label="하위 업무 추가" onClick={() => { onAddSubtask(); onClose() }} />
 
       <Divider />
-      <div style={{ padding: '4px 12px 2px', fontSize: 10, fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em' }}>상태 변경</div>
+      <div style={{ padding: '4px 8px 2px', fontSize: 10, fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em' }}>상태 변경</div>
       {STATUS_LIST.map(s => (
         <Item
           key={s}
-          icon={STATUS_ICONS[s]}
+          dot={STATUS_COLORS[s].text}
           label={s}
           active={task.status === s}
           onClick={() => { onStatusChange(s); onClose() }}
@@ -72,8 +68,8 @@ export function ContextMenu({ x, y, task, onClose, onEdit, onAddSubtask, onStatu
   )
 }
 
-function Item({ icon, label, onClick, active, danger }: {
-  icon: string; label: string; onClick: () => void; active?: boolean; danger?: boolean
+function Item({ icon, dot, label, onClick, active, danger }: {
+  icon?: string; dot?: string; label: string; onClick: () => void; active?: boolean; danger?: boolean
 }) {
   const [hovered, setHovered] = React.useState(false)
   return (
@@ -83,20 +79,24 @@ function Item({ icon, label, onClick, active, danger }: {
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'center', gap: 8,
-        padding: '6px 12px', cursor: 'pointer', fontSize: 13,
-        color: danger ? '#D44C47' : active ? 'var(--ac)' : 'var(--t1)',
-        background: hovered ? 'var(--bg3)' : 'transparent',
+        padding: '6px 8px', borderRadius: 'var(--r1)', cursor: 'pointer', fontSize: 13,
+        color: danger ? NOTION.red.text : 'var(--t1)',
+        background: hovered ? (danger ? NOTION.red.bg : 'var(--bg3)') : 'transparent',
         fontWeight: active ? 500 : 400,
         transition: 'background .06s',
       }}
     >
-      <span style={{ fontSize: 12, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>
+      {dot
+        ? <span style={{ width: 14, display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: dot }} />
+          </span>
+        : <span style={{ fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0, color: 'var(--t3)' }}>{icon}</span>}
       {label}
-      {active && <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--ac)' }}>✓</span>}
+      {active && <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--ac)' }}>✓</span>}
     </div>
   )
 }
 
 function Divider() {
-  return <div style={{ height: 1, background: 'var(--bd)', margin: '3px 0' }} />
+  return <div style={{ height: 1, background: 'var(--bd)', margin: '4px -4px' }} />
 }

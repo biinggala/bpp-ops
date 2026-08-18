@@ -35,6 +35,204 @@ function FloatingMenu({ children }: { children: React.ReactNode }) {
   return createPortal(children, document.body)
 }
 
+/**
+ * ── Menu primitives ──────────────────────────────────────────────────────────
+ *
+ * One shell, one row, one way of drawing "this is selected", for every dropdown
+ * in the list. These grew as nine hand-rolled menus: five widths, four row
+ * paddings, two z-indexes, and four different selection marks — and the two
+ * most-clicked cells (상태, 우선순위) were a native <select>, so they rendered
+ * as the operating system's menu rather than the app's.
+ *
+ * The rule the primitives encode: a leading checkbox means you may pick several,
+ * a trailing ✓ means exactly one.
+ */
+const MENU_W = 200
+const MENU_GAP = 4
+
+/**
+ * Open/close, placement, and outside-click for a dropdown.
+ *
+ * Two refs, not one: the panel is portalled to document.body, so a click inside
+ * it is outside the cell that owns it. Checking only the cell would close a
+ * multi-select on the first tick — you could never select two people.
+ */
+function useMenu() {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const rootRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const h = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (rootRef.current?.contains(t) || panelRef.current?.contains(t)) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+
+  /** Clamped to the viewport — the right-hand columns used to push menus off-screen. */
+  const openAt = (el: HTMLElement | null, width = MENU_W) => {
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    setPos({
+      top: r.bottom + MENU_GAP,
+      left: Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - width - 8)),
+    })
+    setOpen(true)
+  }
+  const toggleAt = (el: HTMLElement | null, width = MENU_W) =>
+    open ? setOpen(false) : openAt(el, width)
+
+  return { open, setOpen, pos, rootRef, panelRef, openAt, toggleAt }
+}
+
+function Menu({ pos, panelRef, width = MENU_W, children }: {
+  pos: { top: number; left: number }
+  panelRef: React.RefObject<HTMLDivElement | null>
+  width?: number
+  children: React.ReactNode
+}) {
+  return (
+    <FloatingMenu>
+      <div
+        ref={panelRef}
+        data-addrow-popup
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: 'fixed', top: pos.top, left: pos.left, width, zIndex: 9000,
+          background: 'var(--bg)', border: '1px solid var(--bd)',
+          borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)',
+          padding: 4, maxHeight: 320, boxSizing: 'border-box',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        }}
+      >
+        {children}
+      </div>
+    </FloatingMenu>
+  )
+}
+
+/** The scrolling middle of a menu, so headers and footers stay put. */
+function MenuList({ children }: { children: React.ReactNode }) {
+  return <div style={{ overflowY: 'auto', minHeight: 0, margin: '0 -4px', padding: '0 4px' }}>{children}</div>
+}
+
+function MenuItem({ selected = false, multi = false, onSelect, children, trailing }: {
+  selected?: boolean
+  /** Draws the leading checkbox — the signal that more than one may be chosen. */
+  multi?: boolean
+  onSelect: () => void
+  children: React.ReactNode
+  trailing?: React.ReactNode
+}) {
+  return (
+    <div
+      onMouseDown={e => { e.preventDefault(); onSelect() }}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '6px 8px', borderRadius: 'var(--r1)',
+        fontSize: 13, cursor: 'pointer', color: 'var(--t1)',
+        fontWeight: selected ? 500 : 400,
+        transition: 'background .07s', flexShrink: 0,
+      }}
+      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+    >
+      {multi && <MenuCheck on={selected} />}
+      <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {children}
+      </span>
+      {trailing}
+      {!multi && selected && <span style={{ fontSize: 10, color: 'var(--ac)', flexShrink: 0 }}>✓</span>}
+    </div>
+  )
+}
+
+function MenuCheck({ on }: { on: boolean }) {
+  return (
+    <span style={{
+      width: 14, height: 14, flexShrink: 0, borderRadius: 3,
+      border: `1.5px solid ${on ? 'var(--ac)' : 'var(--bd2)'}`,
+      background: on ? 'var(--ac)' : 'transparent',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      transition: 'all .1s',
+    }}>
+      {on && <span style={{ color: '#fff', fontSize: 9, lineHeight: 1, fontWeight: 700 }}>✓</span>}
+    </span>
+  )
+}
+
+/** A coloured dot — how status, priority and project identity read everywhere else. */
+function Dot({ color, size = 7 }: { color: string; size?: number }) {
+  return <span style={{ width: size, height: size, borderRadius: '50%', background: color, flexShrink: 0 }} />
+}
+
+function MenuNote({ children }: { children: React.ReactNode }) {
+  return <div style={{ padding: '8px 8px', fontSize: 12, color: 'var(--t3)' }}>{children}</div>
+}
+
+function MenuDivider() {
+  return <div style={{ height: 1, background: 'var(--bd)', margin: '4px -4px' }} />
+}
+
+/** The one way to say "clear this field", worded the same as the filter bar. */
+function MenuFooter({ label, onSelect }: { label: string; onSelect: () => void }) {
+  return (
+    <>
+      <MenuDivider />
+      <div
+        onMouseDown={e => { e.preventDefault(); onSelect() }}
+        style={{ padding: '6px 8px', borderRadius: 'var(--r1)', fontSize: 12, color: 'var(--t3)', cursor: 'pointer', flexShrink: 0, transition: 'background .07s' }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; e.currentTarget.style.color = 'var(--t2)' }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
+      >
+        {label}
+      </div>
+    </>
+  )
+}
+
+const MENU_INPUT: React.CSSProperties = {
+  width: '100%', boxSizing: 'border-box',
+  border: '1px solid var(--bd)', borderRadius: 'var(--r1)',
+  padding: '5px 8px', fontSize: 12,
+  background: 'var(--bg2)', color: 'var(--t1)',
+  outline: 'none', fontFamily: 'var(--font)',
+}
+
+/**
+ * Value plus a caret that only appears on hover.
+ *
+ * Nine columns each showing a permanent ▾ made every row read as a form. The
+ * value is the affordance; the caret confirms it when the pointer is there.
+ */
+function CellTrigger({ open, onOpen, children, style }: {
+  open: boolean
+  onOpen: (el: HTMLElement) => void
+  children: React.ReactNode
+  style?: React.CSSProperties
+}) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <div
+      onClick={e => { e.stopPropagation(); onOpen(e.currentTarget) }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', flex: 1, minWidth: 0, ...style }}
+    >
+      {children}
+      <span style={{
+        fontSize: 9, color: 'var(--t3)', flexShrink: 0, marginLeft: 'auto',
+        opacity: hovered || open ? .6 : 0, transition: 'opacity .1s',
+      }}>▾</span>
+    </div>
+  )
+}
+
 const MIN_COL_WIDTH = 60
 const COL_STORAGE_KEY = 'cringe_table_cols_v1'
 /** Always shown: it is the row's identity and the sticky anchor for the rest. */
@@ -1324,38 +1522,48 @@ function Row({
   )
 }
 
-// ── ColoredSelect — colored badge with overlaid native select ─────────────────
+// ── ColoredSelect — the 상태 / 우선순위 cell ──────────────────────────────────
 
+/**
+ * Was a native <select> hidden under a styled badge, which meant the two most
+ * clicked cells in the table opened the operating system's menu while every
+ * other cell opened the app's. Same badge, app's menu.
+ */
 function ColoredSelect<T extends string>({ value, options, styleMap, onChange }: {
   value: T
   options: T[]
   styleMap: Record<T, { bg: string; color: string }>
   onChange: (v: string) => void
 }) {
+  const m = useMenu()
   const s = styleMap[value] ?? { bg: 'var(--bg3)', color: 'var(--t2)' }
+  const badge = (v: T, st: { bg: string; color: string }) => (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      padding: '3px 10px', borderRadius: 12,
+      background: st.bg, color: st.color,
+      fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap', lineHeight: 1.6,
+    }}>
+      <Dot color={st.color} size={6} />
+      {v}
+    </span>
+  )
+
   return (
-    <div style={{ position: 'relative', display: 'inline-flex' }} onClick={e => e.stopPropagation()}>
-      <span style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5,
-        padding: '3px 10px', borderRadius: 12,
-        background: s.bg, color: s.color,
-        fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap', lineHeight: 1.6,
-        pointerEvents: 'none',
-      }}>
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-        {value}
-        <span style={{ fontSize: 9, opacity: .6 }}>▾</span>
-      </span>
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        style={{
-          position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%',
-          fontFamily: 'var(--font)',
-        }}
-      >
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
+    <div ref={m.rootRef} style={{ position: 'relative', display: 'inline-flex', minWidth: 0 }} onClick={e => e.stopPropagation()}>
+      <CellTrigger open={m.open} onOpen={el => m.toggleAt(el, 150)} style={{ flex: 'none' }}>
+        {badge(value, s)}
+      </CellTrigger>
+      {m.open && (
+        <Menu pos={m.pos} panelRef={m.panelRef} width={150}>
+          {options.map(o => (
+            <MenuItem key={o} selected={o === value} onSelect={() => { onChange(o); m.setOpen(false) }}>
+              <Dot color={(styleMap[o] ?? s).color} />
+              {o}
+            </MenuItem>
+          ))}
+        </Menu>
+      )}
     </div>
   )
 }
@@ -1367,30 +1575,8 @@ function AssigneeMultiSelect({ assignee, options, onChange }: {
   options: { value: string; label: string }[]
   onChange: (v: string) => void
 }) {
-  const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState({ top: 0, left: 0 })
-  const ref = useRef<HTMLDivElement>(null)
-  const btnRef = useRef<HTMLDivElement>(null)
+  const m = useMenu()
   const selected = parseAssignees(assignee)
-
-  useEffect(() => {
-    if (!open) return
-    const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [open])
-
-  const handleOpen = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (open) { setOpen(false); return }
-    if (btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect()
-      setPos({ top: r.bottom + 4, left: r.left })
-    }
-    setOpen(true)
-  }
 
   const toggle = (value: string) => {
     const next = selected.includes(value)
@@ -1400,76 +1586,39 @@ function AssigneeMultiSelect({ assignee, options, onChange }: {
   }
 
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
-      <div
-        ref={btnRef}
-        onClick={handleOpen}
-        style={{ display: 'flex', alignItems: 'center', gap: 2, cursor: 'pointer', minWidth: 0 }}
-      >
+    <div ref={m.rootRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
+      <CellTrigger open={m.open} onOpen={el => m.toggleAt(el)}>
         {selected.length === 0 ? (
-          <span style={{ fontSize: 12, color: 'var(--t3)' }}>—</span>
+          <Dash />
         ) : (
-          selected.map((k, i) => (
-            <span key={k} style={{ marginLeft: i > 0 ? -6 : 0, position: 'relative', zIndex: 1 - i }}>
-              <AssigneeAvatar assigneeKey={k} size={22} />
-            </span>
-          ))
+          <span style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+            {selected.map((k, i) => (
+              <span key={k} style={{ marginLeft: i > 0 ? -6 : 0, position: 'relative', zIndex: 1 - i }}>
+                <AssigneeAvatar assigneeKey={k} size={22} />
+              </span>
+            ))}
+          </span>
         )}
-        {options.length > 0 && (
-          <span style={{ fontSize: 9, color: 'var(--t3)', marginLeft: 4, opacity: .7 }}>▾</span>
-        )}
-      </div>
+      </CellTrigger>
 
-      {open && (
-        <FloatingMenu>
-        <div style={{
-          position: 'fixed', top: pos.top, left: pos.left, zIndex: 9000,
-          background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
-          boxShadow: 'var(--sh-md)', padding: '4px 0', minWidth: 180, maxHeight: 280, overflowY: 'auto',
-        }}>
+      {m.open && (
+        <Menu pos={m.pos} panelRef={m.panelRef}>
           {options.length === 0 ? (
-            <div style={{ padding: '8px 14px', fontSize: 12, color: 'var(--t3)' }}>멤버가 없습니다</div>
+            <MenuNote>멤버가 없습니다</MenuNote>
           ) : (
             <>
-              {selected.length > 0 && (
-                <div
-                  onMouseDown={e => { e.preventDefault(); onChange('') }}
-                  style={{ padding: '6px 12px', fontSize: 12, color: 'var(--t3)', cursor: 'pointer', borderBottom: '1px solid var(--bd)', transition: 'background .07s' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  미배정으로 초기화
-                </div>
-              )}
-              {options.map(opt => {
-                const isOn = selected.includes(opt.value)
-                return (
-                  <div
-                    key={opt.value}
-                    onMouseDown={e => { e.preventDefault(); toggle(opt.value) }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '7px 12px', cursor: 'pointer', fontSize: 13,
-                      background: isOn ? 'rgba(35,131,226,.07)' : 'transparent',
-                      transition: 'background .07s',
-                    }}
-                    onMouseEnter={e => { if (!isOn) e.currentTarget.style.background = 'var(--bg3)' }}
-                    onMouseLeave={e => { if (!isOn) e.currentTarget.style.background = 'transparent' }}
-                  >
-                    <span style={{ width: 14, height: 14, border: `2px solid ${isOn ? 'var(--ac)' : 'var(--bd2)'}`, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: isOn ? 'var(--ac)' : 'transparent', transition: 'all .1s' }}>
-                      {isOn && <span style={{ color: '#fff', fontSize: 9, lineHeight: 1, fontWeight: 700 }}>✓</span>}
-                    </span>
+              <MenuList>
+                {options.map(opt => (
+                  <MenuItem key={opt.value} multi selected={selected.includes(opt.value)} onSelect={() => toggle(opt.value)}>
                     <AssigneeAvatar assigneeKey={opt.value} size={20} />
-                    <span style={{ color: isOn ? 'var(--t1)' : 'var(--t2)', fontWeight: isOn ? 500 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {opt.label}
-                    </span>
-                  </div>
-                )
-              })}
+                    {opt.label}
+                  </MenuItem>
+                ))}
+              </MenuList>
+              {selected.length > 0 && <MenuFooter label="담당자 해제" onSelect={() => onChange('')} />}
             </>
           )}
-        </div>
-        </FloatingMenu>
+        </Menu>
       )}
     </div>
   )
@@ -1661,33 +1810,17 @@ function UnassignedHeader({ count, collapsed, minWidth, onToggle, onAddTask, onC
  * column, so a nine-column table was permanently wider than the window.
  */
 function ColumnPicker({ cols, onChange }: { cols: ColDef[]; onChange: (c: ColDef[]) => void }) {
-  const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState({ top: 0, left: 0 })
-  const btnRef = useRef<HTMLButtonElement>(null)
+  const m = useMenu()
   const hiddenCount = cols.filter(c => c.hidden).length
-
-  useEffect(() => {
-    if (!open) return
-    const h = () => setOpen(false)
-    // A frame's delay, or the click that opened the menu closes it again.
-    const t = setTimeout(() => document.addEventListener('mousedown', h), 0)
-    return () => { clearTimeout(t); document.removeEventListener('mousedown', h) }
-  }, [open])
 
   const toggle = (key: string) =>
     onChange(cols.map(c => c.key === key ? { ...c, hidden: !c.hidden } : c))
 
   return (
-    <div style={{ position: 'sticky', right: 0, display: 'flex', alignItems: 'center', paddingRight: 8, background: 'var(--bg2)', flexShrink: 0 }}>
+    <div ref={m.rootRef} style={{ position: 'sticky', right: 0, display: 'flex', alignItems: 'center', paddingRight: 8, background: 'var(--bg2)', flexShrink: 0 }}>
       <button
-        ref={btnRef}
         title="표시할 열"
-        onClick={e => {
-          e.stopPropagation()
-          const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-          setPos({ top: r.bottom + 4, left: Math.max(8, r.right - 170) })
-          setOpen(o => !o)
-        }}
+        onClick={e => { e.stopPropagation(); m.toggleAt(e.currentTarget, 180) }}
         style={{
           padding: '2px 7px', fontSize: 11, borderRadius: 'var(--r1)',
           border: '1px solid var(--bd)', background: 'var(--bg)',
@@ -1697,41 +1830,22 @@ function ColumnPicker({ cols, onChange }: { cols: ColDef[]; onChange: (c: ColDef
       >
         열{hiddenCount ? ` −${hiddenCount}` : ''}
       </button>
-      {open && (
-        <FloatingMenu>
-          <div
-            onMouseDown={e => e.stopPropagation()}
-            style={{
-              position: 'fixed', top: pos.top, left: pos.left, width: 170,
-              background: 'var(--bg)', border: '1px solid var(--bd)',
-              borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)',
-              zIndex: 9000, padding: '4px 0',
-            }}
-          >
-            {cols.map(col => {
-              const locked = col.key === LOCKED_COL
-              return (
-                <label
-                  key={col.key}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px',
-                    fontSize: 13, color: locked ? 'var(--t3)' : 'var(--t1)',
-                    cursor: locked ? 'default' : 'pointer',
-                  }}
-                  onMouseEnter={e => { if (!locked) e.currentTarget.style.background = 'var(--bg3)' }}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <input
-                    type="checkbox" checked={!col.hidden} disabled={locked}
-                    onChange={() => !locked && toggle(col.key)}
-                    style={{ accentColor: 'var(--ac)', width: 13, height: 13, cursor: locked ? 'default' : 'pointer', flexShrink: 0 }}
-                  />
-                  {col.label}
-                </label>
-              )
-            })}
-          </div>
-        </FloatingMenu>
+      {m.open && (
+        <Menu pos={m.pos} panelRef={m.panelRef} width={180}>
+          <MenuList>
+            {cols.map(col => col.key === LOCKED_COL ? (
+              // Always shown: it is the row's identity and the sticky anchor.
+              <div key={col.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', fontSize: 13, color: 'var(--t3)' }}>
+                <MenuCheck on />
+                {col.label}
+              </div>
+            ) : (
+              <MenuItem key={col.key} multi selected={!col.hidden} onSelect={() => toggle(col.key)}>
+                {col.label}
+              </MenuItem>
+            ))}
+          </MenuList>
+        </Menu>
       )}
     </div>
   )
@@ -1847,80 +1961,47 @@ function AddMilestoneInline({ projectId, onDone }: { projectId: string; onDone: 
   )
 }
 
-// ── AddRowAssigneeSelect — simple single-select for the add row ───────────────
+// ── AddRowAssigneeSelect — single-select for the add row ──────────────────────
 
 function AddRowAssigneeSelect({ value, options, onChange }: {
   value: string
   options: { value: string; label: string }[]
   onChange: (v: string) => void
 }) {
-  const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState({ top: 0, left: 0 })
-  const wrapRef = useRef<HTMLDivElement>(null)
-  const triggerRef = useRef<HTMLDivElement>(null)
+  const m = useMenu()
   const current = options.find(o => o.value === value)
 
-  useEffect(() => {
-    if (!open) return
-    const h = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [open])
-
-  const toggle = () => {
-    if (!open && triggerRef.current) {
-      const r = triggerRef.current.getBoundingClientRect()
-      setPos({ top: r.bottom + 2, left: r.left })
-    }
-    setOpen(o => !o)
-  }
-
-  const pick = (v: string) => { onChange(v); setOpen(false) }
-
   return (
-    <div ref={wrapRef} style={{ position: 'relative', width: '100%' }}
-      onKeyDown={e => { if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false) } }}
+    <div
+      ref={m.rootRef}
+      style={{ position: 'relative', width: '100%' }}
+      onKeyDown={e => { if (e.key === 'Escape' && m.open) { e.stopPropagation(); m.setOpen(false) } }}
     >
       <div
-        ref={triggerRef}
-        onClick={toggle}
-        style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', padding: '3px 6px', borderRadius: 3, outline: '1px solid var(--ac)', background: 'var(--bg)', width: '100%', boxSizing: 'border-box' }}
+        data-addrow-popup
+        onClick={e => { e.stopPropagation(); m.toggleAt(e.currentTarget) }}
+        style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', padding: '3px 6px', borderRadius: 'var(--r1)', outline: '1px solid var(--ac)', background: 'var(--bg)', width: '100%', boxSizing: 'border-box' }}
       >
+        {current ? <AssigneeAvatar assigneeKey={current.value} size={18} /> : null}
         <span style={{ flex: 1, fontSize: 13, color: current ? 'var(--t1)' : 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {current ? current.label : '— 미배정'}
+          {current ? current.label : '미배정'}
         </span>
-        <span style={{ fontSize: 9, color: 'var(--t3)', flexShrink: 0 }}>▾</span>
+        <span style={{ fontSize: 9, color: 'var(--t3)', flexShrink: 0, opacity: .6 }}>▾</span>
       </div>
 
-      {open && (
-        <FloatingMenu>
-        <div data-addrow-popup style={{
-          position: 'fixed', top: pos.top, left: pos.left, zIndex: 9001,
-          background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
-          boxShadow: 'var(--sh-md)', minWidth: 160, maxHeight: 240, overflowY: 'auto', padding: '4px 0',
-        }}>
-          <div
-            onMouseDown={e => { e.preventDefault(); pick('') }}
-            style={{ padding: '6px 12px', fontSize: 13, cursor: 'pointer', color: !value ? 'var(--ac)' : 'var(--t2)', fontWeight: !value ? 500 : 400 }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-          >— 미배정</div>
-          {options.map(opt => (
-            <div
-              key={opt.value}
-              onMouseDown={e => { e.preventDefault(); pick(opt.value) }}
-              style={{ padding: '6px 12px', fontSize: 13, cursor: 'pointer', color: opt.value === value ? 'var(--ac)' : 'var(--t2)', fontWeight: opt.value === value ? 500 : 400 }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-            >{opt.label}</div>
-          ))}
-          {options.length === 0 && (
-            <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--t3)' }}>멤버가 없습니다</div>
-          )}
-        </div>
-        </FloatingMenu>
+      {m.open && (
+        <Menu pos={m.pos} panelRef={m.panelRef}>
+          <MenuList>
+            <MenuItem selected={!value} onSelect={() => { onChange(''); m.setOpen(false) }}>미배정</MenuItem>
+            {options.map(opt => (
+              <MenuItem key={opt.value} selected={opt.value === value} onSelect={() => { onChange(opt.value); m.setOpen(false) }}>
+                <AssigneeAvatar assigneeKey={opt.value} size={20} />
+                {opt.label}
+              </MenuItem>
+            ))}
+          </MenuList>
+          {options.length === 0 && <MenuNote>멤버가 없습니다</MenuNote>}
+        </Menu>
       )}
     </div>
   )
@@ -1928,74 +2009,17 @@ function AddRowAssigneeSelect({ value, options, onChange }: {
 
 // ── AddRowStatusSelect ────────────────────────────────────────────────────────
 
-function AddRowStatusSelect({ value, onChange }: {
-  value: Status
-  onChange: (v: Status) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState({ top: 0, left: 0 })
-  const wrapRef = useRef<HTMLDivElement>(null)
-  const triggerRef = useRef<HTMLDivElement>(null)
-  const s = STATUS_STYLE[value]
-
-  useEffect(() => {
-    if (!open) return
-    const h = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [open])
-
-  const toggle = () => {
-    if (!open && triggerRef.current) {
-      const r = triggerRef.current.getBoundingClientRect()
-      setPos({ top: r.bottom + 2, left: r.left })
-    }
-    setOpen(o => !o)
-  }
-
-  const pick = (v: Status) => { onChange(v); setOpen(false) }
-
+// The add row's status cell is the row's status cell — the only difference used
+// to be that this one drew its own menu.
+function AddRowStatusSelect({ value, onChange }: { value: Status; onChange: (v: Status) => void }) {
   return (
-    <div ref={wrapRef} style={{ position: 'relative' }}
-      onKeyDown={e => { if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false) } }}
-    >
-      <div
-        ref={triggerRef}
-        onClick={toggle}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 12, background: s.bg, color: s.color, fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap', cursor: 'pointer' }}
-      >
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-        {value}
-        <span style={{ fontSize: 9, opacity: .6 }}>▾</span>
-      </div>
-      {open && (
-        <FloatingMenu>
-        <div data-addrow-popup style={{
-          position: 'fixed', top: pos.top, left: pos.left, zIndex: 9001,
-          background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
-          boxShadow: 'var(--sh-md)', minWidth: 120, padding: '4px 0',
-        }}>
-          {(['진행중','대기','검토중','완료'] as Status[]).map(st => {
-            const ss = STATUS_STYLE[st]
-            return (
-              <div
-                key={st}
-                onMouseDown={e => { e.preventDefault(); pick(st) }}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', cursor: 'pointer', background: 'transparent' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: ss.color, flexShrink: 0 }} />
-                <span style={{ fontSize: 13, color: st === value ? ss.color : 'var(--t2)', fontWeight: st === value ? 600 : 400 }}>{st}</span>
-                {st === value && <span style={{ marginLeft: 'auto', fontSize: 10, color: ss.color }}>✓</span>}
-              </div>
-            )
-          })}
-        </div>
-        </FloatingMenu>
-      )}
+    <div>
+      <ColoredSelect
+        value={value}
+        options={STATUS_LIST}
+        styleMap={STATUS_STYLE}
+        onChange={v => onChange(v as Status)}
+      />
     </div>
   )
 }
@@ -2003,31 +2027,16 @@ function AddRowStatusSelect({ value, onChange }: {
 // ── AddRowDatePicker ──────────────────────────────────────────────────────────
 
 function AddRowDatePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [open, setOpen] = useState(false)
+  const m = useMenu()
+  const { open, setOpen } = m
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
   const [viewMonth, setViewMonth] = useState(new Date().getMonth())
-  const [pos, setPos] = useState({ top: 0, left: 0 })
-  const wrapRef = useRef<HTMLDivElement>(null)
-  const triggerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!open) return
     const d = value ? new Date(value + 'T00:00:00') : new Date()
     setViewYear(d.getFullYear()); setViewMonth(d.getMonth())
-    const h = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
   }, [open, value])
-
-  const toggle = () => {
-    if (!open && triggerRef.current) {
-      const r = triggerRef.current.getBoundingClientRect()
-      setPos({ top: r.bottom + 2, left: r.left })
-    }
-    setOpen(o => !o)
-  }
 
   const prevMonth = () => setViewMonth(m => { if (m === 0) { setViewYear(y => y - 1); return 11 } return m - 1 })
   const nextMonth = () => setViewMonth(m => { if (m === 11) { setViewYear(y => y + 1); return 0 } return m + 1 })
@@ -2062,22 +2071,23 @@ function AddRowDatePicker({ value, onChange }: { value: string; onChange: (v: st
   const DAYS = ['일','월','화','수','목','금','토']
 
   return (
-    <div ref={wrapRef} style={{ position: 'relative', width: '100%' }}
+    <div ref={m.rootRef} style={{ position: 'relative', width: '100%' }}
       onKeyDown={e => { if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false) } }}
     >
       <div
-        ref={triggerRef} onClick={toggle}
-        style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', padding: '3px 6px', borderRadius: 3, outline: '1px solid var(--ac)', background: 'var(--bg)', width: '100%', boxSizing: 'border-box' as const }}
+        data-addrow-popup
+        onClick={e => { e.stopPropagation(); m.toggleAt(e.currentTarget, 240) }}
+        style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', padding: '3px 6px', borderRadius: 'var(--r1)', outline: '1px solid var(--ac)', background: 'var(--bg)', width: '100%', boxSizing: 'border-box' as const }}
       >
         <span style={{ flex: 1, fontSize: 13, color: displayStr ? 'var(--t1)' : 'var(--t3)' }}>
-          {displayStr || '— 마감일'}
+          {displayStr || '마감일'}
         </span>
-        <span style={{ fontSize: 12, color: 'var(--t3)', flexShrink: 0 }}>▾</span>
+        <span style={{ fontSize: 9, color: 'var(--t3)', flexShrink: 0, opacity: .6 }}>▾</span>
       </div>
 
       {open && (
-        <FloatingMenu>
-        <div data-addrow-popup style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9001, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', width: 234, padding: '10px', userSelect: 'none' as const }}>
+        <Menu pos={m.pos} panelRef={m.panelRef} width={240}>
+        <div style={{ padding: 6, userSelect: 'none' as const }}>
           {/* Month nav */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
             <button onMouseDown={e => { e.preventDefault(); prevMonth() }} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--t2)', padding: '2px 6px', borderRadius: 3, lineHeight: 1 }}>‹</button>
@@ -2116,7 +2126,7 @@ function AddRowDatePicker({ value, onChange }: { value: string; onChange: (v: st
             </div>
           )}
         </div>
-        </FloatingMenu>
+        </Menu>
       )}
     </div>
   )
@@ -2248,72 +2258,46 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, s
 function MilestonePicker({ milestoneId, milestones, onChange }: {
   milestoneId: string | undefined; milestones: Milestone[]; onChange: (id: string | undefined) => void
 }) {
-  const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState({ top: 0, left: 0 })
-  const ref = useRef<HTMLDivElement>(null)
-  const btnRef = useRef<HTMLButtonElement>(null)
-  const current = milestones.find(m => m.id === milestoneId)
-
-  useEffect(() => {
-    if (!open) return
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [open])
-
-  const handleOpen = () => {
-    if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect()
-      setPos({ top: r.bottom + 3, left: r.left })
-    }
-    setOpen(o => !o)
-  }
+  const m = useMenu()
+  const current = milestones.find(ms => ms.id === milestoneId)
+  const accent = NOTION.purple.text
 
   return (
-    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+    <div ref={m.rootRef} style={{ position: 'relative', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
       <button
-        ref={btnRef} onClick={handleOpen}
+        onClick={e => { e.stopPropagation(); m.toggleAt(e.currentTarget, 220) }}
         style={{
-          display: 'flex', alignItems: 'center', gap: 3,
-          padding: '2px 6px', borderRadius: 'var(--r2)', fontFamily: 'var(--font)',
-          fontSize: 11, cursor: 'pointer',
-          border: current ? '1px solid rgba(139,92,246,.3)' : '1px solid transparent',
-          background: current ? 'rgba(139,92,246,.08)' : 'var(--bg3)',
-          color: current ? '#9065B0' : 'var(--t3)',
+          display: 'flex', alignItems: 'center', gap: 4,
+          padding: '2px 7px', borderRadius: 12, fontFamily: 'var(--font)',
+          fontSize: 11, cursor: 'pointer', border: 'none',
+          background: current ? NOTION.purple.bg : 'var(--bg3)',
+          color: current ? accent : 'var(--t3)',
+          maxWidth: 140, whiteSpace: 'nowrap',
         }}
-        onMouseEnter={e => { if (!current) { e.currentTarget.style.borderColor = 'var(--bd)'; e.currentTarget.style.color = 'var(--t2)' } }}
-        onMouseLeave={e => { if (!current) { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.color = 'var(--t3)' } }}
       >
-        <span style={{ fontSize: 8 }}>◆</span>
-        <span>{current ? current.name : '미배정'}</span>
-        <span style={{ fontSize: 7, opacity: .5 }}>▾</span>
+        <Dot color={current ? accent : 'var(--t3)'} size={5} />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{current ? current.name : '마일스톤'}</span>
       </button>
-      {open && (
-        <FloatingMenu>
-        <div style={{ position: 'fixed', top: pos.top, left: pos.left, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', zIndex: 9000, minWidth: 200, padding: '4px 0' }}>
-          <PickerRow onClick={() => { onChange(undefined); setOpen(false) }} active={!milestoneId} label="— 없음 (미배정)" accent={false} />
-          {milestones.map(m => (
-            <PickerRow key={m.id} onClick={() => { onChange(m.id); setOpen(false) }} active={m.id === milestoneId} label={`◆ ${m.name}`} sub={m.dueDate} accent />
-          ))}
-        </div>
-        </FloatingMenu>
-      )}
-    </div>
-  )
-}
 
-function PickerRow({ onClick, active, label, sub, accent }: {
-  onClick: () => void; active: boolean; label: string; sub?: string; accent?: boolean
-}) {
-  return (
-    <div
-      onClick={onClick}
-      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 12px', fontSize: 12, cursor: 'pointer', color: active ? (accent ? '#9065B0' : 'var(--t1)') : 'var(--t2)', fontWeight: active ? 500 : 400, background: active && accent ? 'rgba(139,92,246,.06)' : 'transparent', transition: 'background .07s' }}
-      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg3)' }}
-      onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
-    >
-      <span>{label}</span>
-      {sub && <span style={{ fontSize: 10, color: 'var(--t3)' }}>{sub}</span>}
+      {m.open && (
+        <Menu pos={m.pos} panelRef={m.panelRef} width={220}>
+          <MenuList>
+            <MenuItem selected={!milestoneId} onSelect={() => { onChange(undefined); m.setOpen(false) }}>미배정</MenuItem>
+            {milestones.map(ms => (
+              <MenuItem
+                key={ms.id}
+                selected={ms.id === milestoneId}
+                onSelect={() => { onChange(ms.id); m.setOpen(false) }}
+                trailing={<span style={{ fontSize: 10, color: 'var(--t3)', flexShrink: 0 }}>{ms.dueDate}</span>}
+              >
+                <Dot color={accent} size={5} />
+                {ms.name}
+              </MenuItem>
+            ))}
+          </MenuList>
+          {milestones.length === 0 && <MenuNote>마일스톤이 없습니다</MenuNote>}
+        </Menu>
+      )}
     </div>
   )
 }
@@ -2348,91 +2332,61 @@ function LinksCell({ links, onChange }: {
   links: TaskLink[]
   onChange: (links: TaskLink[]) => void
 }) {
-  const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const m = useMenu()
   const [addTitle, setAddTitle] = useState('')
   const [addUrl, setAddUrl] = useState('')
-  const ref = useRef<HTMLDivElement>(null)
-  const btnRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false); setAddTitle(''); setAddUrl('')
-      }
-    }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [open])
-
-  const handleOpen = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (open) { setOpen(false); return }
-    if (btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect()
-      setPos({ top: r.bottom + 4, left: r.left })
-    }
-    setOpen(true)
-  }
 
   const addLink = () => {
     const url = addUrl.trim()
     if (!url) return
-    onChange([...links, { id: gid(), title: addTitle.trim() || url, url }])
+    const href = /^https?:\/\//i.test(url) ? url : `https://${url}`
+    onChange([...links, { id: gid(), title: addTitle.trim() || href.replace(/^https?:\/\//i, '').slice(0, 30), url: href }])
     setAddTitle(''); setAddUrl('')
   }
-
   const removeLink = (id: string) => onChange(links.filter(l => l.id !== id))
 
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
-      <div ref={btnRef} onClick={handleOpen}
-        style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', flex: 1, minWidth: 0 }}>
+    <div ref={m.rootRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
+      <CellTrigger open={m.open} onOpen={el => m.toggleAt(el, 280)}>
         {links.length === 0
-          ? <span style={{ fontSize: 12, color: 'var(--t3)' }}>—</span>
-          : <span style={{ fontSize: 12, color: 'var(--ac)', fontWeight: 500 }}>↗ {links.length}개</span>
-        }
-        <span style={{ fontSize: 9, color: 'var(--t3)', opacity: .6, marginLeft: 2 }}>▾</span>
-      </div>
+          ? <Dash />
+          : <span style={{ fontSize: 12, color: 'var(--ac)', fontWeight: 500 }}>↗ {links.length}개</span>}
+      </CellTrigger>
 
-      {open && (
-        <FloatingMenu>
-        <div style={{
-          position: 'fixed', top: pos.top, left: pos.left, zIndex: 9000,
-          background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
-          boxShadow: 'var(--sh-md)', minWidth: 260, maxHeight: 320, display: 'flex', flexDirection: 'column',
-        }}>
+      {m.open && (
+        <Menu pos={m.pos} panelRef={m.panelRef} width={280}>
           {links.length > 0 && (
-            <div style={{ overflowY: 'auto', maxHeight: 200, padding: '4px 0' }}>
+            <MenuList>
               {links.map(l => (
-                <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px' }}
+                <div key={l.id}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: 'var(--r1)', transition: 'background .07s' }}
                   onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
                   <a href={l.url} target="_blank" rel="noopener noreferrer"
                     onClick={e => e.stopPropagation()}
-                    style={{ flex: 1, fontSize: 12, color: 'var(--ac)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    style={{ flex: 1, fontSize: 13, color: 'var(--ac)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                     title={l.url}
                   >↗ {l.title}</a>
                   <span
                     onMouseDown={e => { e.preventDefault(); removeLink(l.id) }}
-                    style={{ fontSize: 14, color: 'var(--t3)', cursor: 'pointer', flexShrink: 0, lineHeight: 1 }}
-                    onMouseEnter={e => (e.currentTarget.style.color = '#D44C47')}
+                    style={{ fontSize: 13, color: 'var(--t3)', cursor: 'pointer', flexShrink: 0, lineHeight: 1 }}
+                    onMouseEnter={e => (e.currentTarget.style.color = NOTION.red.text)}
                     onMouseLeave={e => (e.currentTarget.style.color = 'var(--t3)')}
-                  >×</span>
+                  >✕</span>
                 </div>
               ))}
-            </div>
+            </MenuList>
           )}
-          <div style={{ borderTop: links.length > 0 ? '1px solid var(--bd)' : 'none', padding: '8px' }}>
+          {links.length > 0 && <MenuDivider />}
+          <div style={{ padding: '4px 4px 0', flexShrink: 0 }}>
             <input
               autoFocus={links.length === 0}
               value={addTitle}
               onChange={e => setAddTitle(e.target.value)}
               placeholder="링크 제목 (선택)"
-              onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) { const next = e.currentTarget.nextElementSibling as HTMLInputElement; next?.focus() } }}
-              style={{ width: '100%', boxSizing: 'border-box', marginBottom: 5, border: '1px solid var(--bd)', borderRadius: 'var(--r1)', padding: '4px 8px', fontSize: 12, background: 'var(--bg2)', color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)' }}
+              onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) { const next = e.currentTarget.nextElementSibling?.firstElementChild as HTMLInputElement; next?.focus() } }}
+              style={{ ...MENU_INPUT, marginBottom: 5 }}
             />
             <div style={{ display: 'flex', gap: 5 }}>
               <input
@@ -2440,7 +2394,7 @@ function LinksCell({ links, onChange }: {
                 onChange={e => setAddUrl(e.target.value)}
                 placeholder="https://..."
                 onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) addLink() }}
-                style={{ flex: 1, border: '1px solid var(--bd)', borderRadius: 'var(--r1)', padding: '4px 8px', fontSize: 12, background: 'var(--bg2)', color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)' }}
+                style={{ ...MENU_INPUT, flex: 1, width: 'auto' }}
               />
               <button
                 onMouseDown={e => { e.preventDefault(); addLink() }}
@@ -2449,8 +2403,7 @@ function LinksCell({ links, onChange }: {
               >추가</button>
             </div>
           </div>
-        </div>
-        </FloatingMenu>
+        </Menu>
       )}
     </div>
   )
@@ -2463,35 +2416,11 @@ function TagMultiSelect({ tags, allTags, onChange }: {
   allTags: string[]
   onChange: (tags: string[]) => void
 }) {
-  const [open, setOpen] = useState(false)
+  const m = useMenu()
   const [input, setInput] = useState('')
-  const [pos, setPos] = useState({ top: 0, left: 0 })
-  const ref = useRef<HTMLDivElement>(null)
-  const btnRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (!open) return
-    const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setInput('') }
-    }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [open])
-
-  const handleOpen = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (open) { setOpen(false); setInput(''); return }
-    if (btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect()
-      setPos({ top: r.bottom + 4, left: r.left })
-    }
-    setOpen(true)
-  }
-
-  const toggle = (tag: string) => {
-    const next = tags.includes(tag) ? tags.filter(t => t !== tag) : [...tags, tag]
-    onChange(next)
-  }
+  const toggle = (tag: string) =>
+    onChange(tags.includes(tag) ? tags.filter(t => t !== tag) : [...tags, tag])
 
   const addNew = (raw: string) => {
     const trimmed = raw.trim()
@@ -2500,31 +2429,25 @@ function TagMultiSelect({ tags, allTags, onChange }: {
     setInput('')
   }
 
-  const filtered = input.trim()
+  const inputTrimmed = input.trim()
+  const filtered = inputTrimmed
     ? allTags.filter(t => t.toLowerCase().includes(input.toLowerCase()))
     : allTags
-  const inputTrimmed = input.trim()
-  const canAddNew = inputTrimmed && !allTags.includes(inputTrimmed)
+  const canAddNew = !!inputTrimmed && !allTags.includes(inputTrimmed)
 
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
-      <div ref={btnRef} onClick={handleOpen}
-        style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 3, cursor: 'pointer', flex: 1, minWidth: 0 }}>
+    <div ref={m.rootRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
+      <CellTrigger open={m.open} onOpen={el => m.toggleAt(el)}>
         {tags.length === 0
-          ? <span style={{ fontSize: 12, color: 'var(--t3)' }}>—</span>
-          : tags.map(tag => <TagBadge key={tag} tag={tag} />)
-        }
-        <span style={{ fontSize: 9, color: 'var(--t3)', opacity: .6, marginLeft: 2 }}>▾</span>
-      </div>
+          ? <Dash />
+          : <span style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 3, minWidth: 0 }}>
+              {tags.map(tag => <TagBadge key={tag} tag={tag} />)}
+            </span>}
+      </CellTrigger>
 
-      {open && (
-        <FloatingMenu>
-        <div style={{
-          position: 'fixed', top: pos.top, left: pos.left, zIndex: 9000,
-          background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
-          boxShadow: 'var(--sh-md)', minWidth: 190, maxHeight: 280, display: 'flex', flexDirection: 'column',
-        }}>
-          <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--bd)', flexShrink: 0 }}>
+      {m.open && (
+        <Menu pos={m.pos} panelRef={m.panelRef}>
+          <div style={{ paddingBottom: 4, flexShrink: 0 }}>
             <input
               autoFocus
               value={input}
@@ -2536,57 +2459,29 @@ function TagMultiSelect({ tags, allTags, onChange }: {
                   else if (canAddNew) addNew(input)
                   else if (inputTrimmed && tags.includes(inputTrimmed)) toggle(inputTrimmed)
                 }
-                if (e.key === 'Escape') { setOpen(false); setInput('') }
+                if (e.key === 'Escape') { m.setOpen(false); setInput('') }
               }}
               placeholder="태그 검색 또는 추가..."
-              style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--bd)', borderRadius: 'var(--r1)', padding: '4px 8px', fontSize: 12, background: 'var(--bg2)', color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)' }}
+              style={MENU_INPUT}
             />
           </div>
-          <div style={{ overflowY: 'auto', padding: '4px 0' }}>
+          <MenuList>
             {canAddNew && (
-              <div
-                onMouseDown={e => { e.preventDefault(); addNew(input) }}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 12, color: 'var(--ac)', cursor: 'pointer', transition: 'background .07s' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-              >
-                <span style={{ fontWeight: 700 }}>+</span> "{inputTrimmed}" 추가
-              </div>
+              <MenuItem onSelect={() => addNew(input)}>
+                <span style={{ color: 'var(--ac)' }}>+ "{inputTrimmed}" 추가</span>
+              </MenuItem>
             )}
-            {filtered.map(tag => {
-              const isOn = tags.includes(tag)
-              return (
-                <div key={tag}
-                  onMouseDown={e => { e.preventDefault(); toggle(tag) }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', cursor: 'pointer', background: isOn ? 'rgba(35,131,226,.07)' : 'transparent', transition: 'background .07s' }}
-                  onMouseEnter={e => { if (!isOn) e.currentTarget.style.background = 'var(--bg3)' }}
-                  onMouseLeave={e => { if (!isOn) e.currentTarget.style.background = 'transparent' }}
-                >
-                  <span style={{ width: 14, height: 14, border: `2px solid ${isOn ? 'var(--ac)' : 'var(--bd2)'}`, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: isOn ? 'var(--ac)' : 'transparent', transition: 'all .1s' }}>
-                    {isOn && <span style={{ color: '#fff', fontSize: 9, fontWeight: 700 }}>✓</span>}
-                  </span>
-                  <TagBadge tag={tag} />
-                </div>
-              )
-            })}
-            {filtered.length === 0 && !canAddNew && (
-              <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--t3)' }}>태그가 없습니다</div>
-            )}
-          </div>
+            {filtered.map(tag => (
+              <MenuItem key={tag} multi selected={tags.includes(tag)} onSelect={() => toggle(tag)}>
+                <TagBadge tag={tag} />
+              </MenuItem>
+            ))}
+            {filtered.length === 0 && !canAddNew && <MenuNote>태그가 없습니다</MenuNote>}
+          </MenuList>
           {tags.length > 0 && (
-            <div style={{ borderTop: '1px solid var(--bd)', flexShrink: 0 }}>
-              <div
-                onMouseDown={e => { e.preventDefault(); onChange([]); setOpen(false) }}
-                style={{ padding: '6px 12px', fontSize: 12, color: 'var(--t3)', cursor: 'pointer', transition: 'background .07s' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-              >
-                전체 해제
-              </div>
-            </div>
+            <MenuFooter label="태그 해제" onSelect={() => { onChange([]); m.setOpen(false) }} />
           )}
-        </div>
-        </FloatingMenu>
+        </Menu>
       )}
     </div>
   )
@@ -2621,19 +2516,11 @@ function MsContextMenu({ x, y, onAdd, onClose }: {
   const cx = Math.min(x, window.innerWidth - 190)
   const cy = Math.min(y, window.innerHeight - 60)
   return (
-    <div ref={ref} style={{ position: 'fixed', left: cx, top: cy, width: 180, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: '0 8px 28px rgba(0,0,0,.18)', zIndex: 9000, padding: '4px 0', userSelect: 'none' }}>
-      <MsCtxItem icon="+" label="새 업무 추가" onClick={() => { onAdd(); onClose() }} />
-    </div>
-  )
-}
-
-function MsCtxItem({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) {
-  const [hov, setHov] = useState(false)
-  return (
-    <div onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', cursor: 'pointer', fontSize: 13, color: 'var(--t1)', background: hov ? 'var(--bg3)' : 'transparent', transition: 'background .06s' }}>
-      <span style={{ fontSize: 14, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>
-      {label}
+    <div ref={ref} style={{ position: 'fixed', left: cx, top: cy, width: 180, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', zIndex: 9000, padding: 4, userSelect: 'none', boxSizing: 'border-box' }}>
+      <MenuItem onSelect={() => { onAdd(); onClose() }}>
+        <span style={{ width: 14, textAlign: 'center', color: 'var(--t3)' }}>+</span>
+        새 업무 추가
+      </MenuItem>
     </div>
   )
 }
