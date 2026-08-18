@@ -66,49 +66,69 @@ function quote(s: string) {
   return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
 }
 
+export interface DriveSearchResult extends DriveFile {
+  /** Matched on contents rather than on the name — worth saying, see below. */
+  contentMatch?: boolean
+}
+
 /**
- * Files matching `query`, the project's own folder first.
+ * Files matching `query`: the project's own folder first, then names, then
+ * anything whose contents mention it.
  *
- * Two passes rather than one: Drive cannot express "these first, then the rest"
- * in a single query, and the ordering is the useful part — inside a project, the
- * file you mean is almost always the one already filed under it.
+ * Three passes rather than one because the ordering is most of the value.
+ * Drive cannot express "these first, then those" in a single query, and inside
+ * a project the file you mean is nearly always the one already filed under it;
+ * failing that, the one actually called that; and only failing that, the one
+ * that mentions it somewhere on page four.
+ *
+ * `fullText` covers the indexed contents of Docs, Sheets, Slides, PDFs and
+ * plain text — so "출연자 김민수" finds the 대본 that names him even when the
+ * file is called "3화 초고". It matches whole words from the start, not
+ * arbitrary substrings, which is why the name passes are still run separately:
+ * they catch "잼카" → "잼카세".
  */
 export async function searchFiles(
   token: string,
   query: string,
   folderId?: string | null,
   limit = 20,
-): Promise<DriveFile[]> {
+): Promise<DriveSearchResult[]> {
   const term = query.trim()
-  const base = term ? `name contains '${quote(term)}' and trashed = false` : 'trashed = false'
+  const escaped = quote(term)
+  const nameQ = term ? `name contains '${escaped}' and trashed = false` : 'trashed = false'
+  const textQ = `fullText contains '${escaped}' and trashed = false`
   const common = {
     fields: `files(${FIELDS})`,
     pageSize: String(limit),
-    // With no search term this is a "recently opened" list, which is the most
-    // useful thing to show before anybody has typed.
-    orderBy: term ? 'folder,name' : 'viewedByMeTime desc',
   }
+  // With a term, Drive's own relevance ordering beats anything alphabetical.
+  // With none, this is a "recently opened" list, which is the most useful thing
+  // to show before anybody has typed.
+  const ordered = { ...common, ...(term ? {} : { orderBy: 'viewedByMeTime desc' }) }
 
-  const out: DriveFile[] = []
+  const out: DriveSearchResult[] = []
   const seen = new Set<string>()
-  const push = (files: DriveFile[] = []) => {
+  const push = (files: DriveFile[] = [], contentMatch = false) => {
     for (const f of files) {
       if (seen.has(f.id)) continue
       seen.add(f.id)
-      out.push(f)
+      out.push(contentMatch ? { ...f, contentMatch: true } : f)
     }
   }
 
-  // Both passes always run. Gating the second on the first coming up short
-  // meant a project with a busy folder could never find anything outside it.
-  const [scoped, all] = await Promise.all([
+  const none = Promise.resolve({ files: [] as DriveFile[] })
+  const [scoped, byName, byText] = await Promise.all([
     folderId
-      ? call<{ files?: DriveFile[] }>(token, '/files', { ...common, q: `'${quote(folderId)}' in parents and ${base}` })
-      : Promise.resolve({ files: [] as DriveFile[] }),
-    call<{ files?: DriveFile[] }>(token, '/files', { ...common, q: base }),
+      ? call<{ files?: DriveFile[] }>(token, '/files', { ...ordered, q: `'${quote(folderId)}' in parents and ${nameQ}` })
+      : none,
+    call<{ files?: DriveFile[] }>(token, '/files', { ...ordered, q: nameQ }),
+    term
+      ? call<{ files?: DriveFile[] }>(token, '/files', { ...common, q: textQ })
+      : none,
   ])
   push(scoped.files)
-  push(all.files)
+  push(byName.files)
+  push(byText.files, true)
   return out.slice(0, limit)
 }
 

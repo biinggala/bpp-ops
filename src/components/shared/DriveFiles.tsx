@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useDriveStore } from '../../store/driveStore'
 import { useProjectStore } from '../../store/projectStore'
 import { isComposing, gid, safeExternalUrl } from '../../lib/utils'
-import { fileKind, relativeTime, driveIdFromUrl, driveUrl, type DriveFile } from '../../lib/googleDrive'
+import { fileKind, relativeTime, driveIdFromUrl, driveUrl, type DriveFile, type DriveSearchResult } from '../../lib/googleDrive'
 import type { TaskLink } from '../../types'
 
 /**
@@ -154,7 +154,7 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
 }) {
   const { wasConnected, token, needsReconnect, connect, connecting, search, error } = useDriveStore()
   const [q, setQ] = useState('')
-  const [results, setResults] = useState<DriveFile[]>([])
+  const [results, setResults] = useState<DriveSearchResult[]>([])
   const [loading, setLoading] = useState(false)
   const connected = (wasConnected || !!token) && !needsReconnect
   const seq = useRef(0)
@@ -202,7 +202,7 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
           onKeyDown={e => {
             if (e.key === 'Escape' && !isComposing(e)) { e.stopPropagation(); onClose?.() }
           }}
-          placeholder="드라이브에서 파일 검색..."
+          placeholder="파일 이름 또는 내용 검색..."
           style={{
             width: '100%', boxSizing: 'border-box',
             border: '1px solid var(--bd)', borderRadius: 'var(--r1)',
@@ -255,8 +255,11 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
                   {f.name}
                 </span>
                 <span style={{ display: 'block', fontSize: 10, color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
-                  {[inFolder ? '이 프로젝트 폴더' : null, f.modifiedTime ? `${relativeTime(f.modifiedTime)} 수정` : null]
-                    .filter(Boolean).join(' · ')}
+                  {[
+                    inFolder ? '이 프로젝트 폴더' : null,
+                    f.contentMatch ? '내용 일치' : null,
+                    f.modifiedTime ? `${relativeTime(f.modifiedTime)} 수정` : null,
+                  ].filter(Boolean).join(' · ')}
                 </span>
               </span>
               {already && <span style={{ fontSize: 10, color: 'var(--t3)', flexShrink: 0 }}>첨부됨</span>}

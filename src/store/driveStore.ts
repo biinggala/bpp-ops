@@ -3,7 +3,7 @@ import { auth } from '../lib/firebase'
 import { requestGoogleToken, GIS_CONFIGURED } from '../lib/googleAuthz'
 import {
   DRIVE_SCOPE, TOKEN_EXPIRED, searchFiles, getFile, driveIdFromUrl,
-  type DriveFile,
+  type DriveFile, type DriveSearchResult,
 } from '../lib/googleDrive'
 
 const TOKEN_KEY = 'drive_token'
@@ -25,7 +25,7 @@ interface DriveState {
   connect: () => Promise<boolean>
   disconnect: () => void
   ensureToken: () => Promise<string | null>
-  search: (query: string, folderId?: string | null) => Promise<DriveFile[]>
+  search: (query: string, folderId?: string | null) => Promise<DriveSearchResult[]>
   /** Fills `meta` for ids not already known. Safe to call on every render. */
   resolve: (ids: string[]) => void
 }
@@ -141,7 +141,14 @@ export const useDriveStore = create<DriveState>((set, get) => ({
       const files = await searchFiles(token, query, folderId)
       // Search results are metadata too — caching them here means attaching a
       // file draws it immediately instead of re-fetching what we just had.
-      set(s => ({ meta: { ...s.meta, ...Object.fromEntries(files.map(f => [f.id, f])) } }))
+      // contentMatch is about this search, not about the file, so it is dropped
+      // rather than cached onto it.
+      set(s => ({
+        meta: {
+          ...s.meta,
+          ...Object.fromEntries(files.map(({ contentMatch: _drop, ...f }) => [f.id, f])),
+        },
+      }))
       set({ error: null })
       return files
     } catch (e) {
