@@ -254,8 +254,13 @@ function CellTrigger({ open, onOpen, children, style, tabbable = false }: {
       tabIndex={tabbable ? 0 : undefined}
       onClick={e => { e.stopPropagation(); onOpen(e.currentTarget) }}
       onKeyDown={tabbable ? e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          // Stops here so the enclosing add row does not read it as "save".
+        // Space and ArrowDown open the menu; Enter is left alone while it is
+        // closed so it reaches the row and saves. A trigger that answered Enter
+        // in both states could be opened and closed forever without the row
+        // this sits in ever hearing one.
+        if (e.key === ' ' || e.key === 'ArrowDown') {
+          if (!open) { e.preventDefault(); e.stopPropagation(); onOpen(e.currentTarget) }
+        } else if (e.key === 'Enter' && open) {
           e.preventDefault(); e.stopPropagation()
           onOpen(e.currentTarget)
         }
@@ -2080,7 +2085,23 @@ function AddMilestoneInline({ projectId, onDone }: { projectId: string; onDone: 
   const [name, setName] = useState('')
   const [date, setDate] = useState('')
   const nameRef = useRef<HTMLInputElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const valid = name.trim() !== '' && date !== ''
+
+  // Clicking away abandons the row, the same as the task add row — the calendar
+  // it opens is portalled to the body, so it has to be exempted by name or
+  // picking a date would count as clicking outside.
+  const onDoneRef = useRef(onDone)
+  onDoneRef.current = onDone
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      const t = e.target as HTMLElement
+      if (t.closest('[data-addrow-popup]')) return
+      if (containerRef.current && !containerRef.current.contains(t)) onDoneRef.current()
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
 
   const submit = (another: boolean) => {
     if (!valid) return
@@ -2092,11 +2113,13 @@ function AddMilestoneInline({ projectId, onDone }: { projectId: string; onDone: 
 
   return (
     <div
+      ref={containerRef}
+      tabIndex={-1}
       onKeyDown={e => {
         if (e.key === 'Escape') { e.stopPropagation(); onDone(); return }
         if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); submit(!e.shiftKey) }
       }}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: NOTION.purple.bg, borderLeft: `3px solid ${NOTION.purple.text}` }}
+      style={{ outline: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: NOTION.purple.bg, borderLeft: `3px solid ${NOTION.purple.text}` }}
     >
       <span style={{ fontSize: 9, color: NOTION.purple.text, flexShrink: 0 }}>◆</span>
       <input
@@ -2105,7 +2128,11 @@ function AddMilestoneInline({ projectId, onDone }: { projectId: string; onDone: 
         style={{ flex: 1, border: 'none', outline: '1px solid var(--ac)', borderRadius: 'var(--r1)', padding: '3px 8px', fontSize: 13, fontWeight: 600, background: 'var(--bg)', color: 'var(--t1)', fontFamily: 'var(--font)' }}
       />
       <div style={{ width: 130, flexShrink: 0 }}>
-        <AddRowDatePicker value={date} context={{ projectId }} onChange={setDate} />
+        <AddRowDatePicker
+          value={date}
+          context={{ projectId }}
+          onChange={setDate}
+        />
       </div>
       <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0, whiteSpace: 'nowrap' }}>
         {valid ? 'Enter로 추가' : '이름과 날짜'}
@@ -2139,7 +2166,11 @@ function AddRowAssigneeSelect({ value, options, onChange }: {
         tabIndex={0}
         onClick={e => { e.stopPropagation(); m.toggleAt(e.currentTarget) }}
         onKeyDown={e => {
-          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); m.toggleAt(e.currentTarget) }
+          if (e.key === ' ' || e.key === 'ArrowDown') {
+            if (!m.open) { e.preventDefault(); e.stopPropagation(); m.openAt(e.currentTarget) }
+          } else if (e.key === 'Enter' && m.open) {
+            e.preventDefault(); e.stopPropagation(); m.setOpen(false)
+          }
         }}
         style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', padding: '3px 6px', borderRadius: 'var(--r1)', outline: '1px solid var(--ac)', background: 'var(--bg)', width: '100%', boxSizing: 'border-box' }}
       >
@@ -2195,6 +2226,7 @@ function AddRowDatePicker({ value, context, onChange }: {
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLDivElement>(null)
 
   const display = value ? (() => {
     const d = new Date(value + 'T00:00:00')
@@ -2204,11 +2236,17 @@ function AddRowDatePicker({ value, context, onChange }: {
   return (
     <div ref={ref} style={{ position: 'relative', width: '100%' }}>
       <div
+        ref={triggerRef}
         data-addrow-popup
         tabIndex={0}
         onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
         onKeyDown={e => {
-          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setOpen(o => !o) }
+          // Same rule as CellTrigger: Space opens, Enter is the row's.
+          if (e.key === ' ' || e.key === 'ArrowDown') {
+            if (!open) { e.preventDefault(); e.stopPropagation(); setOpen(true) }
+          } else if (e.key === 'Enter' && open) {
+            e.preventDefault(); e.stopPropagation(); setOpen(false)
+          }
         }}
         style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', padding: '3px 6px', borderRadius: 'var(--r1)', outline: '1px solid var(--ac)', background: 'var(--bg)', width: '100%', boxSizing: 'border-box' }}
       >
@@ -2223,7 +2261,13 @@ function AddRowDatePicker({ value, context, onChange }: {
           anchor={ref.current}
           context={context}
           onChange={onChange}
-          onClose={() => setOpen(false)}
+          onClose={() => {
+            setOpen(false)
+            // Focus goes with the panel that just closed; putting it back on the
+            // trigger keeps Tab where the person left it and lets the next Enter
+            // reach the row.
+            triggerRef.current?.focus()
+          }}
         />
       )}
     </div>
@@ -2354,8 +2398,10 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, s
   return (
     <div
       ref={containerRef}
+      tabIndex={-1}
       onKeyDown={handleContainerKey}
       style={{
+        outline: 'none',
         display: 'flex', minWidth: 'max-content',
         background: 'rgba(35,131,226,.04)',
         borderBottom: '2px solid var(--ac)',
