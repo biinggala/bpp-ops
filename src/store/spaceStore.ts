@@ -1,59 +1,46 @@
 import { create } from 'zustand'
-import { ref, set as fbSet, onValue, off } from 'firebase/database'
+import { ref, set as fbSet, update as fbUpdate, remove as fbRemove } from 'firebase/database'
 import { db } from '../lib/firebase'
-import { gid, loadFromStorage, saveToStorage } from '../lib/utils'
+import { gid } from '../lib/utils'
+import { P } from '../lib/paths'
 import { SPACE_PALETTE } from '../types'
 import type { Space } from '../types'
 
-const SPACE_KEY = 'cringe_spaces_v1'
+// Spaces are workspace-wide labels — no project owns them, and every signed-in
+// person shares the same set. See the note in docs/data-model.md.
 
 interface SpaceState {
   spaces: Space[]
   addSpace: (name: string) => Space
   updateSpace: (id: string, patch: Partial<Omit<Space, 'id'>>) => void
   deleteSpace: (id: string) => void
-  subscribeFirebase: () => () => void
-}
-
-function persist(spaces: Space[]) {
-  saveToStorage(spaces, SPACE_KEY)
-}
-
-function syncFb(spaces: Space[]) {
-  fbSet(ref(db, 'cringe/spaces'), spaces).catch(() => {})
+  applyRemote: (spaces: Space[]) => void
 }
 
 export const useSpaceStore = create<SpaceState>((set, get) => ({
-  spaces: loadFromStorage<Space[]>(SPACE_KEY) ?? [],
+  spaces: [],
 
   addSpace: (name) => {
     const existing = get().spaces
-    const color = SPACE_PALETTE[existing.length % SPACE_PALETTE.length]
-    const space: Space = { id: gid(), name: name.trim(), color }
-    const spaces = [...existing, space]
-    set({ spaces }); persist(spaces); syncFb(spaces)
+    const space: Space = {
+      id: gid(),
+      name: name.trim(),
+      color: SPACE_PALETTE[existing.length % SPACE_PALETTE.length],
+    }
+    set({ spaces: [...existing, space] })
+    fbSet(ref(db, P.space(space.id)), space).catch(e => console.warn('[space add]', e))
     return space
   },
 
   updateSpace: (id, patch) => {
-    const spaces = get().spaces.map(s => s.id === id ? { ...s, ...patch } : s)
-    set({ spaces }); persist(spaces); syncFb(spaces)
+    set({ spaces: get().spaces.map(s => s.id === id ? { ...s, ...patch } : s) })
+    fbUpdate(ref(db, P.space(id)), patch).catch(e => console.warn('[space update]', e))
   },
 
   deleteSpace: (id) => {
-    const spaces = get().spaces.filter(s => s.id !== id)
-    set({ spaces }); persist(spaces); syncFb(spaces)
+    set({ spaces: get().spaces.filter(s => s.id !== id) })
+    fbRemove(ref(db, P.space(id))).catch(e => console.warn('[space delete]', e))
   },
 
-  subscribeFirebase: () => {
-    const dbRef = ref(db, 'cringe/spaces')
-    const handler = onValue(dbRef, (snap) => {
-      const data = snap.val()
-      if (!data) return
-      const incoming: Space[] = Array.isArray(data) ? data : Object.values(data)
-      set({ spaces: incoming })
-      persist(incoming)
-    })
-    return () => off(dbRef, 'value', handler)
-  },
+  applyRemote: (spaces) => set({ spaces }),
 }))

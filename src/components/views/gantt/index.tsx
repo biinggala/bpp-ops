@@ -8,7 +8,7 @@ import { useProjectStore } from '../../../store/projectStore'
 import { useAuthStore } from '../../../store/authStore'
 import { getCatColor } from '../../../types'
 import { CategoryBadge } from '../../shared/Badge'
-import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade, canAccessProject } from '../../../lib/utils'
+import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade } from '../../../lib/utils'
 import type { Task, Milestone } from '../../../types'
 
 const DAY_W = 26
@@ -36,7 +36,7 @@ export function GanttView() {
   const projects = useProjectStore(s => s.projects)
   const email = useAuthStore(s => s.email)
   const milestones = useMemo(() => {
-    const accessibleIds = new Set(projects.filter(p => canAccessProject(p, email)).map(p => p.id))
+    const accessibleIds = new Set(projects.map(p => p.id))
     return allMilestones.filter(m => accessibleIds.has(m.projectId))
   }, [allMilestones, projects, email])
   const isMobile = useMobile()

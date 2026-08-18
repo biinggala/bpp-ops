@@ -1,5 +1,5 @@
 import React from 'react'
-import { canAccessProject, authorizedEmails, isAuthorizedAssignee, assigneeKeyToEmail, parseAssignees } from '../../lib/utils'
+import { authorizedEmails, isAuthorizedAssignee, assigneeKeyToEmail, parseAssignees } from '../../lib/utils'
 import { useUiStore } from '../../store/uiStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
@@ -35,7 +35,7 @@ export function ViewBar() {
   // Only show projects the current user is a member of (same rule as Sidebar);
   // archived ones are filtered out since they're absent from the active views.
   const accessibleProjects = React.useMemo(() =>
-    projects.filter(p => canAccessProject(p, email) && !p.archived)
+    projects.filter(p => !p.archived)
   , [projects, email])
 
   const allTagOptions = React.useMemo(() => {

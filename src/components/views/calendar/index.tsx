@@ -11,7 +11,7 @@ import { useAuthStore } from '../../../store/authStore'
 import { useMobile } from '../../../hooks/useMobile'
 import { getCatColor, MEMBERS, STATUS_LIST } from '../../../types'
 import type { MemberKey, Status } from '../../../types'
-import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade, canAccessProject } from '../../../lib/utils'
+import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade } from '../../../lib/utils'
 import type { Task } from '../../../types'
 
 const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토']
@@ -151,7 +151,7 @@ function MobileCalendar() {
   const email = useAuthStore(s => s.email)
 
   const accessibleProjects = useMemo(() =>
-    allProjects.filter(p => canAccessProject(p, email))
+    allProjects
   , [allProjects, email])
 
   const allAssigneeOptions = useMemo(() => {

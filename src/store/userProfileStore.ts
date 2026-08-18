@@ -1,6 +1,7 @@
 import { create } from 'zustand'
-import { ref, set as fbSet, onValue, off } from 'firebase/database'
+import { ref, set as fbSet } from 'firebase/database'
 import { db } from '../lib/firebase'
+import { P } from '../lib/paths'
 
 export interface UserProfile {
   email: string
@@ -10,7 +11,7 @@ export interface UserProfile {
 
 interface UserProfileState {
   profiles: Record<string, UserProfile>  // keyed by uid
-  subscribe: () => () => void
+  applyRemote: (uid: string, profile: UserProfile) => void
   setMyProfile: (uid: string, profile: UserProfile) => void
   getNameByEmail: (email: string) => string
   getProfileByEmail: (email: string) => UserProfile | null
@@ -19,17 +20,14 @@ interface UserProfileState {
 export const useUserProfileStore = create<UserProfileState>((set, get) => ({
   profiles: {},
 
-  subscribe: () => {
-    const dbRef = ref(db, 'cringe/userProfiles')
-    const handler = onValue(dbRef, (snap) => {
-      const data = snap.val()
-      if (data && typeof data === 'object') set({ profiles: data })
-    })
-    return () => off(dbRef, 'value', handler)
+  // Profiles arrive one uid at a time from syncStore. The whole userProfiles
+  // node is closed, so there is no directory to read in one go.
+  applyRemote: (uid, profile) => {
+    set(s => ({ profiles: { ...s.profiles, [uid]: profile } }))
   },
 
   setMyProfile: (uid, profile) => {
-    fbSet(ref(db, `cringe/userProfiles/${uid}`), profile).catch(() => {})
+    fbSet(ref(db, P.userProfile(uid)), profile).catch(() => {})
     set(s => ({ profiles: { ...s.profiles, [uid]: profile } }))
   },
 

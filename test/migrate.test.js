@@ -67,6 +67,12 @@ test('업무가 프로젝트별 서랍으로 들어간다', () => {
   assert.deepEqual(Object.keys(data.projects.p1.milestones), ['m1'])
 })
 
+test('표시용 멤버 목록은 meta에 그대로 남는다', () => {
+  // 화면은 이메일 목록을 그리고, 규칙은 members/$uid를 본다. 둘 다 있어야 한다.
+  const { data } = migrate(sourceExport())
+  assert.deepEqual(data.projects.p1.meta.memberEmails, [ALICE.email, BOB.email, NEWBIE_EMAIL])
+})
+
 test('로그인한 적 있는 사람은 계정 id로 멤버가 된다', () => {
   const { data } = migrate(sourceExport())
   assert.deepEqual(Object.keys(data.projects.p1.members).sort(), [ALICE.uid, BOB.uid])
@@ -77,7 +83,7 @@ test('로그인한 적 있는 사람은 계정 id로 멤버가 된다', () => {
 
 test('로그인한 적 없는 사람은 대기 중인 초대로 남는다', () => {
   const { data, report } = migrate(sourceExport())
-  assert.equal(data.invitesByEmail[emailKey(NEWBIE_EMAIL)].p1, 'invite-p1')
+  assert.deepEqual(data.invitesByEmail[emailKey(NEWBIE_EMAIL)].p1, { code: 'invite-p1', name: '고객사 A 리뉴얼' })
   assert.equal(report.pendingInvites.length, 1)
   assert.equal(report.pendingInvites[0].email, NEWBIE_EMAIL)
   // 멤버로 들어가서는 안 된다 — 계정이 없으므로 열어줄 대상 자체가 없다.
@@ -181,7 +187,7 @@ test('리허설: 초대만 받은 사람은 로그인하면 초대장을 찾아 
 
   await assertFails(get(ref(db, 'projects/p1')))                       // 아직은 못 본다
   const inbox = await assertSucceeds(get(ref(db, `invitesByEmail/${emailKey(NEWBIE_EMAIL)}`)))
-  const code = inbox.val().p1
+  const code = inbox.val().p1.code
 
   await assertSucceeds(set(ref(db, `projects/p1/members/${NEWBIE.uid}`), code))
   await assertSucceeds(set(ref(db, `userIndex/${NEWBIE.uid}/projects/p1`), true))

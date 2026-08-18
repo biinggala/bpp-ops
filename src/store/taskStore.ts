@@ -1,130 +1,189 @@
 import { create } from 'zustand'
-import { ref, set as fbSet, onValue, off } from 'firebase/database'
+import { ref, update as fbUpdate, remove as fbRemove, set as fbSet } from 'firebase/database'
 import { db } from '../lib/firebase'
-import { gid, loadFromStorage, saveToStorage, getLocalTs } from '../lib/utils'
+import { gid } from '../lib/utils'
+import { P } from '../lib/paths'
+import { useAuthStore } from './authStore'
 import type { Task, Status } from '../types'
 
-interface TaskState {
-  tasks: Task[]
-  history: Task[][]
-  addTask: (t: Omit<Task, 'id'>) => Task
-  updateTask: (id: string, patch: Partial<Task>) => void
-  deleteTask: (id: string) => void
-  reorderTasks: (tasks: Task[]) => void
-  undo: () => void
-  syncToFirebase: () => void
-  subscribeFirebase: () => () => void
-}
+/**
+ * Every task is its own record now, at projects/$pid/tasks/$id or
+ * personalTasks/$uid/$id. The previous version rewrote the entire task array on
+ * each change, so two people saving at once lost one of the two edits outright.
+ * Writing a single task touches only that task.
+ *
+ * Remote data arrives through syncStore, which owns the subscriptions.
+ */
 
-function persist(tasks: Task[]) {
-  saveToStorage(tasks)
-}
-
-const MAX_HISTORY = 50
-
-// Recursively drop keys whose value is `undefined`; Firebase refuses to write
-// undefined and throws synchronously if any is present. Arrays are preserved.
+/** Firebase throws synchronously on `undefined`, and .catch() cannot see it. */
 function stripUndefined<T>(value: T): T {
   if (Array.isArray(value)) return value.map(stripUndefined) as unknown as T
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(value)) {
-      if (v !== undefined) out[k] = stripUndefined(v)
-    }
+    for (const [k, v] of Object.entries(value)) if (v !== undefined) out[k] = stripUndefined(v)
     return out as T
   }
   return value
 }
 
-function pushHistory(get: () => TaskState) {
-  const prev = get().history
-  const snapshot = get().tasks
-  return prev.length >= MAX_HISTORY
-    ? [...prev.slice(1), snapshot]
-    : [...prev, snapshot]
+/** A patch clearing a field arrives as undefined; the database spells that null. */
+function toUpdatePayload(patch: Partial<Task>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(patch)) out[k] = v === undefined ? null : stripUndefined(v)
+  return out
 }
 
-export const useTaskStore = create<TaskState>((set, get) => ({
-  tasks: loadFromStorage<Task[]>() ?? [],
-  history: [],
+// Undo used to restore a snapshot of the whole task list. With per-task writes
+// that would push one person's view of every task over everyone else's work, so
+// each action now records how to reverse just itself.
+type UndoOp =
+  | { kind: 'add'; task: Task }
+  | { kind: 'update'; id: string; before: Partial<Task> }
+  | { kind: 'delete'; task: Task }
+  | { kind: 'batch'; ops: UndoOp[] }
 
-  addTask: (t) => {
-    const task: Task = { ...t, id: gid() }
-    const tasks = [...get().tasks, task]
-    set({ tasks, history: pushHistory(get) }); persist(tasks)
-    get().syncToFirebase()
-    return task
-  },
+const MAX_HISTORY = 50
 
-  updateTask: (id, patch) => {
-    const tasks = get().tasks.map(t => t.id === id ? { ...t, ...patch } : t)
-    set({ tasks, history: pushHistory(get) }); persist(tasks)
-    get().syncToFirebase()
-  },
+interface TaskState {
+  tasks: Task[]
+  history: UndoOp[]
+  addTask: (t: Omit<Task, 'id'>) => Task
+  updateTask: (id: string, patch: Partial<Task>) => void
+  deleteTask: (id: string) => void
+  reorderTasks: (tasks: Task[]) => void
+  undo: () => void
+  applyRemote: (tasks: Task[]) => void
+}
 
-  deleteTask: (id) => {
-    const tasks = get().tasks.filter(t => t.id !== id)
-    set({ tasks, history: pushHistory(get) }); persist(tasks)
-    get().syncToFirebase()
-  },
+function myUid(): string | null {
+  return useAuthStore.getState().uid
+}
 
-  reorderTasks: (tasks) => {
-    set({ tasks, history: pushHistory(get) }); persist(tasks)
-    get().syncToFirebase()
-  },
+function pathFor(task: Pick<Task, 'id' | 'projectId'>): string | null {
+  if (task.projectId) return P.projectTask(task.projectId, task.id)
+  const uid = myUid()
+  return uid ? P.personalTask(uid, task.id) : null
+}
 
-  undo: () => {
-    const { history } = get()
-    if (!history.length) return
-    const tasks = history[history.length - 1]
-    set({ tasks, history: history.slice(0, -1) })
-    persist(tasks)
-    get().syncToFirebase()
-  },
+function writeTask(task: Task) {
+  const path = pathFor(task)
+  if (!path) return
+  const { projectId: _pid, ...rest } = task
+  // The location already says which project this is; storing it again invites
+  // the two to disagree after a move.
+  fbSet(ref(db, path), stripUndefined(rest)).catch(e => console.warn('[task write]', e))
+}
 
-  syncToFirebase: () => {
-    const tasks = get().tasks
-    const now = Date.now()
-    // Firebase rejects `undefined` anywhere in the payload — and does so by
-    // throwing synchronously, which .catch() cannot intercept. Strip undefined
-    // fields (e.g. parentId/milestoneId/createdBy on newly added tasks) first.
-    const clean = stripUndefined(tasks)
-    try {
-      fbSet(ref(db, 'cringe/tasks'), clean).catch((e: unknown) => console.warn('[sync]', e))
-      fbSet(ref(db, 'cringe/savedAt'), now).catch((e: unknown) => console.warn('[sync savedAt]', e))
-    } catch (e) {
-      console.warn('[sync threw]', e)
-    }
-  },
+function removeTask(task: Pick<Task, 'id' | 'projectId'>) {
+  const path = pathFor(task)
+  if (!path) return
+  fbRemove(ref(db, path)).catch(e => console.warn('[task remove]', e))
+}
 
-  subscribeFirebase: () => {
-    const dbRef = ref(db, 'cringe')
-    const handler = onValue(dbRef, (snapshot) => {
-      const root = snapshot.val()
-      const localTs = getLocalTs()
+export const useTaskStore = create<TaskState>((set, get) => {
+  const pushHistory = (op: UndoOp) => {
+    const history = [...get().history, op]
+    return history.length > MAX_HISTORY ? history.slice(history.length - MAX_HISTORY) : history
+  }
 
-      if (!root?.tasks) {
-        const tasks = get().tasks
-        if (tasks.length && localTs > 0) {
-          fbSet(ref(db, 'cringe/tasks'), tasks).catch(() => {})
-          fbSet(ref(db, 'cringe/savedAt'), Date.now()).catch(() => {})
+  const applyOp = (op: UndoOp) => {
+    switch (op.kind) {
+      case 'add':
+        set({ tasks: get().tasks.filter(t => t.id !== op.task.id) })
+        removeTask(op.task)
+        break
+      case 'delete':
+        set({ tasks: [...get().tasks, op.task] })
+        writeTask(op.task)
+        break
+      case 'update': {
+        const current = get().tasks.find(t => t.id === op.id)
+        if (!current) break
+        const restored = { ...current, ...op.before }
+        set({ tasks: get().tasks.map(t => t.id === op.id ? restored : t) })
+        if (op.before.projectId !== undefined && op.before.projectId !== current.projectId) {
+          removeTask(current)
+          writeTask(restored)
+        } else {
+          const path = pathFor(restored)
+          if (path) fbUpdate(ref(db, path), toUpdatePayload(op.before)).catch(e => console.warn('[task undo]', e))
         }
+        break
+      }
+      case 'batch':
+        for (const inner of [...op.ops].reverse()) applyOp(inner)
+        break
+    }
+  }
+
+  return {
+    tasks: [],
+    history: [],
+
+    addTask: (input) => {
+      const task: Task = { ...input, id: gid() } as Task
+      set({ tasks: [...get().tasks, task], history: pushHistory({ kind: 'add', task }) })
+      writeTask(task)
+      return task
+    },
+
+    updateTask: (id, patch) => {
+      const current = get().tasks.find(t => t.id === id)
+      if (!current) return
+
+      const before: Partial<Task> = {}
+      for (const key of Object.keys(patch) as (keyof Task)[]) {
+        before[key] = current[key] as never
+      }
+
+      const next = { ...current, ...patch }
+      set({ tasks: get().tasks.map(t => t.id === id ? next : t), history: pushHistory({ kind: 'update', id, before }) })
+
+      // Moving between projects changes where the record lives, so the old copy
+      // has to go rather than being patched in place.
+      if ('projectId' in patch && patch.projectId !== current.projectId) {
+        removeTask(current)
+        writeTask(next)
         return
       }
+      const path = pathFor(next)
+      if (path) fbUpdate(ref(db, path), toUpdatePayload(patch)).catch(e => console.warn('[task update]', e))
+    },
 
-      const fbTs: number = root.savedAt || 0
-      if (fbTs > localTs || localTs === 0) {
-        const incoming: Task[] = Array.isArray(root.tasks)
-          ? root.tasks
-          : Object.values(root.tasks)
-        set({ tasks: incoming })
-        saveToStorage(incoming)
+    deleteTask: (id) => {
+      const task = get().tasks.find(t => t.id === id)
+      if (!task) return
+      set({ tasks: get().tasks.filter(t => t.id !== id), history: pushHistory({ kind: 'delete', task }) })
+      removeTask(task)
+    },
+
+    reorderTasks: (tasks) => {
+      // Only the rows whose order actually moved are written, so a drag does not
+      // rewrite the list and clobber edits made elsewhere in it.
+      const previous = new Map(get().tasks.map(t => [t.id, t]))
+      const ops: UndoOp[] = []
+      set({ tasks })
+      for (const task of tasks) {
+        const old = previous.get(task.id)
+        if (!old || old.order === task.order) continue
+        ops.push({ kind: 'update', id: task.id, before: { order: old.order } })
+        const path = pathFor(task)
+        if (path) fbUpdate(ref(db, path), { order: task.order ?? null }).catch(e => console.warn('[task reorder]', e))
       }
-    })
+      if (ops.length) set({ history: pushHistory({ kind: 'batch', ops }) })
+    },
 
-    return () => off(dbRef, 'value', handler)
-  },
-}))
+    undo: () => {
+      const history = get().history
+      if (!history.length) return
+      const op = history[history.length - 1]
+      set({ history: history.slice(0, -1) })
+      applyOp(op)
+    },
+
+    applyRemote: (tasks) => set({ tasks }),
+  }
+})
 
 export function useStatusCounts() {
   const tasks = useTaskStore(s => s.tasks)

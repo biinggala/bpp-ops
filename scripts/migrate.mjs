@@ -129,7 +129,10 @@ export function migrate(source, options = {}) {
       report.generatedInviteCodes.push({ pid, name: project.name, inviteCode })
     }
 
-    const { id: _id, inviteCode: _code, memberEmails, pendingEmails, ...rest } = project
+    // memberEmails/pendingEmails stay on meta as the list the UI renders, while
+    // members/$uid is what the rules actually check. Two representations of one
+    // fact, so joins and removals must write both together.
+    const { id: _id, inviteCode: _code, ...rest } = project
     const meta = { id: pid, ...rest, inviteCode }
     // The team layer is only reserved for now — see docs/data-model.md.
     if (meta.teamId === undefined) meta.teamId = null
@@ -137,8 +140,8 @@ export function migrate(source, options = {}) {
     const members = {}
     const invited = new Set()
     const addresses = new Set([
-      ...toList(memberEmails).map(lower),
-      ...toList(pendingEmails).map(lower),
+      ...toList(project.memberEmails).map(lower),
+      ...toList(project.pendingEmails).map(lower),
       ...(project.creatorEmail ? [lower(project.creatorEmail)] : []),
     ].filter(Boolean))
 
@@ -153,7 +156,10 @@ export function migrate(source, options = {}) {
         // waiting for them; the app claims it on their first login.
         invited.add(email)
         out.invitesByEmail[emailKey(email)] ??= {}
-        out.invitesByEmail[emailKey(email)][pid] = inviteCode
+        // The name travels with the invitation because the project itself stays
+        // unreadable until it is accepted — otherwise the prompt has nothing to
+        // show but an id.
+        out.invitesByEmail[emailKey(email)][pid] = { code: inviteCode, name: project.name ?? '' }
         report.pendingInvites.push({ pid, name: project.name, email })
       }
     }

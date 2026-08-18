@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { canAccessProject, isComposing, authorizedEmails } from '../../lib/utils'
+import { isComposing, authorizedEmails } from '../../lib/utils'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useAuthStore } from '../../store/authStore'
@@ -9,6 +9,7 @@ import { usePresenceStore } from '../../store/presenceStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { useMobile } from '../../hooks/useMobile'
 import { MEMBERS } from '../../types'
+import { buildInviteToken } from '../../lib/paths'
 import type { MemberKey, Project } from '../../types'
 
 export function Sidebar() {
@@ -64,7 +65,7 @@ export function Sidebar() {
   // what that view actually shows.
   const accessibleProjectIds = new Set(
     projects
-      .filter(p => canAccessProject(p, email) && !p.archived)
+      .filter(p => !p.archived)
       .map(p => p.id)
   )
   const hasAccess = accessibleProjectIds.size > 0
@@ -141,7 +142,7 @@ export function Sidebar() {
   const userName = member?.n ?? displayName ?? null
   const presences = usePresenceStore(s => s.presences)
 
-  const accessibleProjects = projects.filter(p => canAccessProject(p, email))
+  const accessibleProjects = projects
   const visibleProjects = accessibleProjects.filter(p => !p.archived)
   const archivedProjects = accessibleProjects.filter(p => p.archived)
   const onlineUsers = Object.values(presences).filter(p => p.online)
@@ -316,6 +317,7 @@ export function Sidebar() {
                 dot={p.color}
                 count={taskCount}
                 daysInfo={daysInfo}
+                projectId={p.id}
                 inviteCode={p.inviteCode}
                 onClick={() => { setProject(p.id); setMyTasksOnly(false); closeSidebar() }}
                 onContextMenu={e => handleContextMenu(e, p.id, p.name, false)}
@@ -368,6 +370,7 @@ export function Sidebar() {
                     dot={p.color}
                     count={taskCount}
                     daysInfo={null}
+                    projectId={p.id}
                     dimmed
                     onClick={() => { setProject(p.id); setMyTasksOnly(false); closeSidebar() }}
                     onContextMenu={e => handleContextMenu(e, p.id, p.name, true)}
@@ -552,9 +555,10 @@ function NavItem({ children, active, onClick, count, icon }: {
   )
 }
 
-function ProjectItem({ children, active, dot, count, daysInfo, inviteCode, dimmed, onClick, onContextMenu }: {
+function ProjectItem({ children, active, dot, count, daysInfo, projectId, inviteCode, dimmed, onClick, onContextMenu }: {
   children: React.ReactNode; active: boolean; dot: string; count: number
   daysInfo: { days: number; overdue: boolean } | null
+  projectId: string
   inviteCode?: string
   dimmed?: boolean
   onClick: () => void
@@ -566,7 +570,9 @@ function ProjectItem({ children, active, dot, count, daysInfo, inviteCode, dimme
   const copyLink = (e: React.MouseEvent) => {
     e.stopPropagation()
     if (!inviteCode) return
-    const link = `${window.location.origin}${window.location.pathname}?invite=${inviteCode}`
+    // The token names the project as well as the code — whoever opens the link
+    // is not a member yet and cannot look the project up by code alone.
+    const link = `${window.location.origin}${window.location.pathname}?invite=${buildInviteToken(projectId, inviteCode)}`
     navigator.clipboard.writeText(link).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1800)

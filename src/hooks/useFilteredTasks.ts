@@ -3,7 +3,7 @@ import { useTaskStore } from '../store/taskStore'
 import { useUiStore } from '../store/uiStore'
 import { useAuthStore } from '../store/authStore'
 import { useProjectStore } from '../store/projectStore'
-import { canAccessProject, assigneeAliases, parseAssignees } from '../lib/utils'
+import { assigneeAliases, parseAssignees } from '../lib/utils'
 import type { Task } from '../types'
 
 export function useFilteredTasks(): Task[] {
@@ -14,9 +14,8 @@ export function useFilteredTasks(): Task[] {
   const projects = useProjectStore(s => s.projects)
 
   return useMemo(() => {
-    const accessibleIds = new Set(
-      projects.filter(p => canAccessProject(p, email)).map(p => p.id)
-    )
+    // 구독 자체가 내가 멤버인 프로젝트로 한정되므로, 스토어에 있는 것은 전부 접근 가능하다.
+    const accessibleIds = new Set(projects.map(p => p.id))
     // Tasks without a projectId are shown only if the user is the creator or assignee,
     // never to unrelated users just because they happen to have any project access.
     const hasAccess = accessibleIds.size > 0

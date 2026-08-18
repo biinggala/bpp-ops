@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { canAccessProject, assigneeKeyToEmail, parseAssignees } from '../../../lib/utils'
+import { assigneeKeyToEmail, parseAssignees } from '../../../lib/utils'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useUserProfileStore } from '../../../store/userProfileStore'
 import { useProjectStore } from '../../../store/projectStore'
@@ -110,7 +110,7 @@ export function StatsView() {
       parseAssignees(t.assignee).forEach(k => {
         const em = assigneeKeyToEmail(k)
         if (proj) {
-          if (canAccessProject(proj, em)) emails.add(em)
+          emails.add(em)
         } else if (em === selfEmail) {
           emails.add(em)
         }

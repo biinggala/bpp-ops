@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { canAccessProject, isComposing } from '../../lib/utils'
+import { isComposing } from '../../lib/utils'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useProjectStore } from '../../store/projectStore'
@@ -26,7 +26,7 @@ export function TaskModal() {
   const isMobile = useMobile()
 
   const projects = allProjects.filter(p =>
-    canAccessProject(p, email)
+    true
   )
   const [form, setForm] = useState<Omit<Task, 'id'>>(EMPTY)
 

@@ -1,10 +1,12 @@
 import { create } from 'zustand'
-import { ref, set as fbSet, onValue, off } from 'firebase/database'
+import { ref, set as fbSet, update as fbUpdate, remove as fbRemove } from 'firebase/database'
 import { db } from '../lib/firebase'
-import { gid, loadFromStorage, saveToStorage, getLocalTs } from '../lib/utils'
+import { gid } from '../lib/utils'
+import { P } from '../lib/paths'
 import type { Milestone } from '../types'
 
-const MILESTONE_KEY = 'cringe_milestones_v1'
+// Milestones live under their project, so a milestone without one has nowhere
+// to go — every writer here needs a project id.
 
 interface MilestoneState {
   milestones: Milestone[]
@@ -13,76 +15,49 @@ interface MilestoneState {
   deleteMilestone: (id: string) => void
   deleteMilestonesForProject: (projectId: string) => void
   getMilestonesForProject: (projectId: string) => Milestone[]
-  subscribeFirebase: () => () => void
-}
-
-function persist(milestones: Milestone[]) {
-  saveToStorage(milestones, MILESTONE_KEY)
-}
-
-function syncFb(milestones: Milestone[]) {
-  const now = Date.now()
-  // set() on the milestones path guarantees full replacement (no stale indices)
-  fbSet(ref(db, 'cringe/milestones'), milestones.length ? milestones : null).catch(() => {})
-  fbSet(ref(db, 'cringe/milestonesSavedAt'), now).catch(() => {})
+  applyRemote: (milestones: Milestone[]) => void
 }
 
 export const useMilestoneStore = create<MilestoneState>((set, get) => ({
-  milestones: loadFromStorage<Milestone[]>(MILESTONE_KEY) ?? [],
+  milestones: [],
 
   addMilestone: (projectId, name, dueDate) => {
     const milestone: Milestone = { id: gid(), projectId, name: name.trim(), dueDate }
-    const milestones = [...get().milestones, milestone]
-    set({ milestones }); persist(milestones); syncFb(milestones)
+    set({ milestones: [...get().milestones, milestone] })
+    const { projectId: _pid, ...rest } = milestone
+    fbSet(ref(db, P.projectMilestone(projectId, milestone.id)), rest)
+      .catch(e => console.warn('[milestone add]', e))
     return milestone
   },
 
   updateMilestone: (id, patch) => {
-    const milestones = get().milestones.map(m => m.id === id ? { ...m, ...patch } : m)
-    set({ milestones }); persist(milestones); syncFb(milestones)
+    const current = get().milestones.find(m => m.id === id)
+    if (!current) return
+    set({ milestones: get().milestones.map(m => m.id === id ? { ...m, ...patch } : m) })
+    const payload: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(patch)) {
+      if (k === 'projectId') continue   // moving a milestone would change its path
+      payload[k] = v === undefined ? null : v
+    }
+    fbUpdate(ref(db, P.projectMilestone(current.projectId, id)), payload)
+      .catch(e => console.warn('[milestone update]', e))
   },
 
   deleteMilestone: (id) => {
-    const milestones = get().milestones.filter(m => m.id !== id)
-    set({ milestones }); persist(milestones); syncFb(milestones)
+    const current = get().milestones.find(m => m.id === id)
+    if (!current) return
+    set({ milestones: get().milestones.filter(m => m.id !== id) })
+    fbRemove(ref(db, P.projectMilestone(current.projectId, id)))
+      .catch(e => console.warn('[milestone delete]', e))
   },
 
+  // Deleting a project removes its whole subtree, milestones included, so this
+  // only has to drop them from local state until the subscription catches up.
   deleteMilestonesForProject: (projectId) => {
-    const milestones = get().milestones.filter(m => m.projectId !== projectId)
-    set({ milestones }); persist(milestones); syncFb(milestones)
+    set({ milestones: get().milestones.filter(m => m.projectId !== projectId) })
   },
 
-  getMilestonesForProject: (projectId) => {
-    return get().milestones.filter(m => m.projectId === projectId)
-  },
+  getMilestonesForProject: (projectId) => get().milestones.filter(m => m.projectId === projectId),
 
-  subscribeFirebase: () => {
-    const dbRef = ref(db, 'cringe')
-    const handler = onValue(dbRef, (snap) => {
-      const root = snap.val()
-      const localTs = getLocalTs(MILESTONE_KEY)
-
-      if (!root?.milestones) {
-        // Firebase has no milestones — push local data if we have any
-        const milestones = get().milestones
-        if (milestones.length > 0 && localTs > 0) {
-          syncFb(milestones)
-        }
-        return
-      }
-
-      const fbTs: number = root.milestonesSavedAt || 0
-      if (fbTs >= localTs || localTs === 0) {
-        const incoming: Milestone[] = Array.isArray(root.milestones)
-          ? root.milestones
-          : Object.values(root.milestones)
-        // Deduplicate by id in case of stale indices
-        const seen = new Set<string>()
-        const deduped = incoming.filter(m => m?.id && !seen.has(m.id) && seen.add(m.id))
-        set({ milestones: deduped })
-        saveToStorage(deduped, MILESTONE_KEY)
-      }
-    })
-    return () => off(dbRef, 'value', handler)
-  },
+  applyRemote: (milestones) => set({ milestones }),
 }))

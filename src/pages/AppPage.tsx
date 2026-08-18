@@ -7,6 +7,8 @@ import { useMilestoneStore } from '../store/milestoneStore'
 import { useAuthStore } from '../store/authStore'
 import { usePresenceStore } from '../store/presenceStore'
 import { useUserProfileStore } from '../store/userProfileStore'
+import { useSyncStore } from '../store/syncStore'
+import { parseInviteToken } from '../lib/paths'
 import { useMobile } from '../hooks/useMobile'
 import type { Project } from '../types'
 import { Sidebar } from '../components/layout/Sidebar'
@@ -45,12 +47,9 @@ export function AppPage() {
   const isMobile = useMobile()
   const view = useUiStore(s => s.view)
   const tasks = useTaskStore(s => s.tasks)
-  const subscribeFirebase = useTaskStore(s => s.subscribeFirebase)
-  const subscribeSpaces = useSpaceStore(s => s.subscribeFirebase)
-  const subscribeProjects = useProjectStore(s => s.subscribeFirebase)
-  const subscribeMilestones = useMilestoneStore(s => s.subscribeFirebase)
-  const findByInvite = useProjectStore(s => s.findByInvite)
-  const acceptInvite = useProjectStore(s => s.acceptInvite)
+  const subscribeWorkspace = useSyncStore(s => s.subscribe)
+  const joinProject = useProjectStore(s => s.joinProject)
+  const invites = useProjectStore(s => s.invites)
   const projects = useProjectStore(s => s.projects)
   const setProject = useUiStore(s => s.setProject)
   const [invitePending, setInvitePending] = useState<{ project: Project } | null>(null)
@@ -67,16 +66,13 @@ export function AppPage() {
   const { uid, memberKey, displayName, email } = useAuthStore()
   const detailTaskId = useUiStore(s => s.detailTaskId)
   const subscribePresence = usePresenceStore(s => s.subscribe)
-  const subscribeProfiles = useUserProfileStore(s => s.subscribe)
 
+  // Everything the workspace reads hangs off the signed-in account now: the
+  // project list is per-user, and so is the invite inbox.
   useEffect(() => {
-    const u1 = subscribeFirebase()
-    const u2 = subscribeSpaces()
-    const u3 = subscribeProjects()
-    const u4 = subscribeMilestones()
-    const u5 = subscribeProfiles()
-    return () => { u1(); u2(); u3(); u4(); u5() }
-  }, [])
+    if (!uid) return
+    return subscribeWorkspace(uid, email ?? null)
+  }, [uid, email])
 
   useEffect(() => {
     if (!uid) return
@@ -86,34 +82,34 @@ export function AppPage() {
     return unsub
   }, [uid])
 
-  // Process pending invite from URL link
+  // Invite link. The token carries the project id as well as the code, because
+  // a non-member cannot search the project list to find which project a bare
+  // code belongs to.
   useEffect(() => {
-    if (!uid || !email || !pendingInviteRef.current) return
-    const code = pendingInviteRef.current
-    const targetProject = projects.find(p => p.inviteCode === code)
-    if (!targetProject) return  // Not loaded from Firebase yet — wait for next sync
-
-    const result = findByInvite(code, email)
+    if (!uid || !pendingInviteRef.current) return
+    const token = pendingInviteRef.current
     pendingInviteRef.current = null
+    const parsed = parseInviteToken(token)
+    if (!parsed) return
+    let cancelled = false
+    joinProject(parsed.projectId, parsed.inviteCode).then(joined => {
+      if (joined && !cancelled) setProject(parsed.projectId)
+    })
+    return () => { cancelled = true }
+  }, [uid])
 
-    if (!result) return  // Not invited
-    if (result.status === 'active') {
-      setProject(result.project.id)
-    } else {
-      setInvitePending({ project: result.project })
-    }
-  }, [uid, email, projects])
-
-  // Auto-detect pending invites from Firebase (no link needed)
+  // Invitations waiting in my inbox, for people invited by address rather than
+  // by link. The project itself stays unreadable until the invite is accepted,
+  // so the name shown here is the copy stored with the invitation.
   useEffect(() => {
-    if (!email || invitePending) return
-    const normalizedEmail = email.toLowerCase()
-    const pending = projects.find(p =>
-      p.pendingEmails?.some(e => e.toLowerCase() === normalizedEmail) &&
-      !dismissedInvites.current.has(p.id)
+    if (invitePending) return
+    const entry = Object.entries(invites).find(([pid]) =>
+      !projects.some(p => p.id === pid) && !dismissedInvites.current.has(pid)
     )
-    if (pending) setInvitePending({ project: pending })
-  }, [email, projects, invitePending])
+    if (!entry) return
+    const [pid, invite] = entry
+    setInvitePending({ project: { id: pid, name: invite.name || '초대받은 프로젝트', color: '#2383e2', inviteCode: invite.code } })
+  }, [invites, projects, invitePending])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -173,8 +169,8 @@ export function AppPage() {
         <InviteAcceptModal
           project={invitePending.project}
           onAccept={() => {
-            if (email) acceptInvite(invitePending.project.id, email)
-            setProject(invitePending.project.id)
+            void joinProject(invitePending.project.id, invitePending.project.inviteCode ?? '')
+              .then(joined => { if (joined) setProject(invitePending.project.id) })
             setInvitePending(null)
           }}
           onDecline={() => {

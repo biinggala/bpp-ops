@@ -3,7 +3,6 @@ import { useTaskStore } from '../store/taskStore'
 import { useAuthStore } from '../store/authStore'
 import { useProjectStore } from '../store/projectStore'
 import { useUiStore } from '../store/uiStore'
-import { canAccessProject } from '../lib/utils'
 import type { Task } from '../types'
 
 // Returns tasks the current user is allowed to see, without applying any UI filters
@@ -15,7 +14,7 @@ export function useAccessibleTasks(): Task[] {
   const projectId = useUiStore(s => s.projectId)
 
   return useMemo(() => {
-    const accessibleIds = new Set(projects.filter(p => canAccessProject(p, email)).map(p => p.id))
+    const accessibleIds = new Set(projects.map(p => p.id))
     const hasAccess = accessibleIds.size > 0
     let result = tasks.filter(t => t.projectId ? accessibleIds.has(t.projectId) : hasAccess)
 

@@ -12,7 +12,7 @@ import { TagBadge } from '../../shared/Badge'
 import { AssigneeAvatar } from '../../shared/Avatar'
 import { ProgressBar } from '../../shared/ProgressBar'
 import { ContextMenu } from '../../shared/ContextMenu'
-import { fmtDate, isOverdue, parseAssignees, stripHtml, gid, canAccessProject, isComposing } from '../../../lib/utils'
+import { fmtDate, isOverdue, parseAssignees, stripHtml, gid, isComposing } from '../../../lib/utils'
 import type { Task, Milestone, Status, Priority, TaskLink } from '../../../types'
 
 // ── Column config ─────────────────────────────────────────────────────────────
@@ -348,7 +348,7 @@ export function TableView() {
   const userEmail = useAuthStore(s => s.email)
   // Only projects the current user is a member of
   const projects = React.useMemo(() =>
-    allProjects.filter(p => canAccessProject(p, userEmail))
+    allProjects
   , [allProjects, userEmail])
   // Union of all accessible project members — used as fallback for assignee dropdowns
   const accessibleMemberEmails = React.useMemo(() => {
