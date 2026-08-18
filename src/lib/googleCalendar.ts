@@ -13,6 +13,14 @@ export interface GoogleCalendar {
   accessRole?: string
 }
 
+export interface EventAttendee {
+  email: string
+  /** "needsAction" | "accepted" | "declined" | "tentative" */
+  responseStatus?: string
+  organizer?: boolean
+  self?: boolean
+}
+
 export interface RawCalendarEvent {
   id: string
   calendarId: string
@@ -21,6 +29,7 @@ export interface RawCalendarEvent {
   start: { dateTime?: string; date?: string }
   end: { dateTime?: string; date?: string }
   htmlLink?: string
+  attendees?: EventAttendee[]
 }
 
 /** Signals that the token is no longer good, so callers can stop and reconnect. */
@@ -113,6 +122,18 @@ export interface NewEvent {
   startDateTime: string
   endDateTime: string
   timeZone?: string
+  /** Addresses to invite. Google emails each of them.  */
+  attendees?: string[]
+}
+
+/**
+ * Google only notifies guests when asked to.
+ *
+ * Inviting someone without telling them defeats the point, so any request that
+ * carries guests asks for the mail to go out.
+ */
+function sendUpdatesParam(attendees: string[] | undefined): string {
+  return attendees?.length ? '?sendUpdates=all' : ''
 }
 
 /**
@@ -125,7 +146,7 @@ export interface NewEvent {
 export async function createCalendarEvent(token: string, event: NewEvent): Promise<RawCalendarEvent> {
   const timeZone = event.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
   const res = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(event.calendarId)}/events`,
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(event.calendarId)}/events${sendUpdatesParam(event.attendees)}`,
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -133,6 +154,7 @@ export async function createCalendarEvent(token: string, event: NewEvent): Promi
         summary: event.summary,
         start: { dateTime: event.startDateTime, timeZone },
         end: { dateTime: event.endDateTime, timeZone },
+        ...(event.attendees?.length ? { attendees: event.attendees.map(email => ({ email })) } : {}),
       }),
     }
   )
@@ -148,6 +170,7 @@ export interface EventPatch {
   startDateTime?: string
   endDateTime?: string
   timeZone?: string
+  attendees?: string[]
 }
 
 /** PATCH, so fields that are not being changed are left exactly as they were. */
@@ -159,9 +182,10 @@ export async function updateCalendarEvent(
   if (patch.summary !== undefined) body.summary = patch.summary
   if (patch.startDateTime) body.start = { dateTime: patch.startDateTime, timeZone }
   if (patch.endDateTime) body.end = { dateTime: patch.endDateTime, timeZone }
+  if (patch.attendees) body.attendees = patch.attendees.map(email => ({ email }))
 
   const res = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}${sendUpdatesParam(patch.attendees)}`,
     {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

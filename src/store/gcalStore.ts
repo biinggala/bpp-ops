@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import { auth } from '../lib/firebase'
 import { requestCalendarToken, AuthzError, GIS_CONFIGURED } from '../lib/googleAuthz'
-import { fetchCalendarList, fetchEventsAcross, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, writableCalendars, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent } from '../lib/googleCalendar'
+import { fetchCalendarList, fetchEventsAcross, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, writableCalendars, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent, type EventAttendee } from '../lib/googleCalendar'
 
 export interface GCalEvent {
   id: string
@@ -17,6 +17,7 @@ export interface GCalEvent {
   /** Exact start/end, kept for the timeline. Absent for all-day entries. */
   startIso?: string
   endIso?: string
+  attendees?: EventAttendee[]
 }
 
 const ENABLED_KEY = 'gcal_enabled_calendars'
@@ -52,8 +53,8 @@ interface GCalState {
   autoReconnect: () => Promise<void>
   setTargetCalendar: (id: string) => void
   /** Creates an event, asking for write permission the first time. */
-  createEvent: (input: { summary: string; startDateTime: string; endDateTime: string }) => Promise<boolean>
-  updateEvent: (eventId: string, patch: { summary?: string; startDateTime?: string; endDateTime?: string }) => Promise<boolean>
+  createEvent: (input: { summary: string; startDateTime: string; endDateTime: string; attendees?: string[] }) => Promise<boolean>
+  updateEvent: (eventId: string, patch: { summary?: string; startDateTime?: string; endDateTime?: string; attendees?: string[] }) => Promise<boolean>
   removeEvent: (eventId: string) => Promise<void>
 }
 
@@ -89,6 +90,7 @@ function toGCalEvent(item: RawCalendarEvent): GCalEvent | null {
     calendarColor: item.calendarColor,
     startIso: item.start?.dateTime,
     endIso: item.end?.dateTime,
+    attendees: item.attendees,
   }
 }
 
@@ -266,7 +268,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
    * a consent screen is warranted — and it needs the click that triggered it, so
    * this must be called straight from the interaction.
    */
-  createEvent: async ({ summary, startDateTime, endDateTime }) => {
+  createEvent: async ({ summary, startDateTime, endDateTime, attendees }) => {
     const { calendars, targetCalendarId } = get()
     const target = targetCalendarId
       ?? calendars.find(c => c.primary)?.id
@@ -280,7 +282,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     if (!token) return false
 
     try {
-      const created = await createCalendarEvent(token, { calendarId: target, summary, startDateTime, endDateTime })
+      const created = await createCalendarEvent(token, { calendarId: target, summary, startDateTime, endDateTime, attendees })
       const colour = calendars.find(c => c.id === target)?.backgroundColor ?? '#4285f4'
       const ev = toGCalEvent({ ...created, calendarId: target, calendarColor: colour })
       // Show it straight away; the next fetch will confirm it.
@@ -309,6 +311,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       events: before.map(e => e.id === eventId ? {
         ...e,
         summary: patch.summary ?? e.summary,
+        attendees: patch.attendees ? patch.attendees.map(email => ({ email })) : e.attendees,
         startIso: patch.startDateTime ?? e.startIso,
         endIso: patch.endDateTime ?? e.endIso,
         start: (patch.startDateTime ?? e.startIso ?? `${e.start}T00:00:00`).slice(0, 10),

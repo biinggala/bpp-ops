@@ -3,6 +3,10 @@ import { useGCalStore } from '../../../store/gcalStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
+import { useProjectStore } from '../../../store/projectStore'
+import { useAuthStore } from '../../../store/authStore'
+import { useUserProfileStore } from '../../../store/userProfileStore'
+import { authorizedEmails } from '../../../lib/utils'
 import type { Task } from '../../../types'
 import { addDays, toDate, fmtYMD, isComposing } from '../../../lib/utils'
 import { writableCalendars } from '../../../lib/googleCalendar'
@@ -50,6 +54,16 @@ export function TimelineView() {
   const tasks = useFilteredTasks()
   const updateTask = useTaskStore(s => s.updateTask)
   const openTaskDetail = useUiStore(s => s.openTaskDetail)
+  const projects = useProjectStore(s => s.projects)
+  const myEmail = useAuthStore(s => s.email)
+  const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+
+  // Who can be invited: the people this account already shares a project with.
+  // Not everyone who has ever signed in — that is a list of accounts, not a team.
+  const teammates = useMemo(
+    () => [...authorizedEmails(projects, myEmail)].filter(e => e !== myEmail?.toLowerCase()).sort(),
+    [projects, myEmail],
+  )
 
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
@@ -76,6 +90,10 @@ export function TimelineView() {
   const dragging = useRef<{ date: string; anchorMinutes: number } | null>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const [selected, setSelected] = useState<string | null>(null)
+  // A floating card, like Google Calendar's quick-create. Day columns are far
+  // too narrow to hold a guest list, and the grid clips anything wider.
+  const [cardAt, setCardAt] = useState<{ x: number; y: number } | null>(null)
+  const [guests, setGuests] = useState<string[]>([])
 
   // Moving or stretching an existing event. Held here so the block can be drawn
   // at the new position before Google has confirmed it.
@@ -146,11 +164,12 @@ export function TimelineView() {
       const until = Math.max(held.anchorMinutes, to)
       setDraft({ date, fromMinutes: from, toMinutes: Math.max(from + MIN_DURATION, until) })
     }
-    const up = () => {
+    const up = (ev: MouseEvent) => {
       window.removeEventListener('mousemove', move)
       window.removeEventListener('mouseup', up)
       dragging.current = null
-      setDraft(current => { if (current) { setNaming(current); setTitle('') } return null })
+      setCardAt({ x: ev.clientX, y: ev.clientY })
+      setDraft(current => { if (current) { setNaming(current); setTitle(''); setGuests([]) } return null })
     }
     window.addEventListener('mousemove', move)
     window.addEventListener('mouseup', up)
@@ -165,9 +184,10 @@ export function TimelineView() {
       summary: name,
       startDateTime: localIso(naming.date, naming.fromMinutes),
       endDateTime: localIso(naming.date, naming.toMinutes),
+      attendees: guests,
     })
     setSaving(false)
-    if (ok) { setNaming(null); setTitle('') }
+    if (ok) { setNaming(null); setTitle(''); setGuests([]) }
   }
 
   // ── Layout ────────────────────────────────────────────────────────────────
@@ -204,6 +224,17 @@ export function TimelineView() {
     }
     return map
   }, [events])
+
+  const [selectedTitle, setSelectedTitle] = useState('')
+  const selectedInfo = useMemo(() => {
+    if (!selected) return null
+    for (const list of eventsByDate.values()) {
+      const found = place(list).find(p => p.event.id === selected)
+      if (found) return found
+    }
+    return null
+  }, [selected, eventsByDate])
+  useEffect(() => { if (selectedInfo) setSelectedTitle(selectedInfo.event.summary) }, [selectedInfo?.event.id])
 
   const todayStr = fmtYMD(now)
   const nowMinutes = now.getHours() * 60 + now.getMinutes()
@@ -289,6 +320,46 @@ export function TimelineView() {
         ))}
       </div>
 
+      {naming && cardAt && (
+        <EventCard
+          at={cardAt}
+          heading={`${hhmm(naming.fromMinutes)} – ${hhmm(naming.toMinutes)}`}
+          title={title}
+          onTitle={setTitle}
+          saving={saving}
+          teammates={teammates}
+          guests={guests}
+          nameOf={getNameByEmail}
+          onToggleGuest={email => setGuests(g => g.includes(email) ? g.filter(x => x !== email) : [...g, email])}
+          onSave={save}
+          onClose={() => { setNaming(null); setTitle(''); setGuests([]) }}
+        />
+      )}
+
+      {selectedInfo && cardAt && (
+        <EventCard
+          at={cardAt}
+          heading={`${hhmm(selectedInfo.from)} – ${hhmm(selectedInfo.to)}`}
+          title={selectedTitle}
+          onTitle={setSelectedTitle}
+          saving={saving}
+          teammates={teammates}
+          guests={guests}
+          nameOf={getNameByEmail}
+          onToggleGuest={email => setGuests(g => g.includes(email) ? g.filter(x => x !== email) : [...g, email])}
+          onSave={async () => {
+            setSaving(true)
+            await updateEvent(selectedInfo.event.id, { summary: selectedTitle.trim() || selectedInfo.event.summary, attendees: guests })
+            setSaving(false)
+            setSelected(null)
+          }}
+          onDelete={async () => { await removeEvent(selectedInfo.event.id); setSelected(null) }}
+          openLink={selectedInfo.event.htmlLink}
+          responses={selectedInfo.event.attendees}
+          onClose={() => setSelected(null)}
+        />
+      )}
+
       <div ref={gridRef} style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
         <div style={{ display: 'flex', position: 'relative', height: 24 * SLOT_H }}>
           {/* Hour labels */}
@@ -317,34 +388,14 @@ export function TimelineView() {
                   placed={p}
                   ghost={ghost?.id === p.event.id ? ghost : null}
                   selected={selected === p.event.id}
-                  onSelect={() => setSelected(p.event.id)}
+                  onSelect={e => {
+                    setCardAt({ x: e.clientX, y: e.clientY })
+                    setGuests((p.event.attendees ?? []).map(a => a.email).filter(email => email !== myEmail?.toLowerCase()))
+                    setSelected(p.event.id)
+                  }}
                   onMove={(e, mode) => beginMove(e, p.event, date, p.from, p.to, mode)}
                 />
               ))}
-              {selected && (eventsByDate.get(date) ?? []).some(e => e.id === selected) && (() => {
-                const chosen = place(eventsByDate.get(date) ?? []).find(p => p.event.id === selected)!
-                return (
-                  <EventPopover
-                    placed={chosen}
-                    onClose={() => setSelected(null)}
-                    onRename={async name => { await updateEvent(chosen.event.id, { summary: name }); setSelected(null) }}
-                    onDelete={async () => { await removeEvent(chosen.event.id); setSelected(null) }}
-                  />
-                )
-              })()}
-
-              {draft?.date === date && <DraftBlock draft={draft} />}
-              {naming?.date === date && (
-                <NamingBlock
-                  draft={naming}
-                  title={title}
-                  saving={saving}
-                  onTitle={setTitle}
-                  onSave={save}
-                  onCancel={() => { setNaming(null); setTitle('') }}
-                />
-              )}
-
               {date === todayStr && (
                 <div style={{ position: 'absolute', top: nowMinutes * PX_PER_MIN, left: 0, right: 0, height: 2, background: '#ef4444', zIndex: 3 }}>
                   <div style={{ position: 'absolute', left: -4, top: -3, width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }} />
@@ -421,7 +472,7 @@ function EventBlock({ placed, ghost, selected, onSelect, onMove }: {
   placed: Placed
   ghost: { from: number; to: number } | null
   selected: boolean
-  onSelect: () => void
+  onSelect: (e: React.MouseEvent) => void
   onMove: (e: React.MouseEvent, mode: 'move' | 'resize') => void
 }) {
   const { event, lane, lanes } = placed
@@ -432,7 +483,7 @@ function EventBlock({ placed, ghost, selected, onSelect, onMove }: {
   return (
     <div
       onMouseDown={e => onMove(e, 'move')}
-      onClick={e => { e.stopPropagation(); onSelect() }}
+      onClick={e => { e.stopPropagation(); onSelect(e) }}
       title={`${hhmm(from)}–${hhmm(to)}  ${event.summary}`}
       style={{
         position: 'absolute',
@@ -454,51 +505,6 @@ function EventBlock({ placed, ghost, selected, onSelect, onMove }: {
         style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 6, cursor: 'ns-resize' }}
       />
     </div>
-  )
-}
-
-function EventPopover({ placed, onClose, onRename, onDelete }: {
-  placed: Placed
-  onClose: () => void
-  onRename: (name: string) => void
-  onDelete: () => void
-}) {
-  const [name, setName] = useState(placed.event.summary)
-  const top = Math.min(placed.from * PX_PER_MIN, 24 * SLOT_H - 150)
-  return (
-    <>
-      <div style={{ position: 'fixed', inset: 0, zIndex: 9 }} onMouseDown={e => { e.stopPropagation(); onClose() }} />
-      <div
-        onMouseDown={e => e.stopPropagation()}
-        style={{
-          position: 'absolute', top, left: 6, right: 6, zIndex: 10,
-          background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r2)',
-          boxShadow: 'var(--sh-md)', padding: 8, minWidth: 180,
-        }}
-      >
-        <input
-          value={name}
-          autoFocus
-          onChange={e => setName(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && !isComposing(e)) onRename(name.trim() || placed.event.summary)
-            if (e.key === 'Escape') onClose()
-          }}
-          style={{ width: '100%', border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontWeight: 600, color: 'var(--t1)', fontFamily: 'var(--font)' }}
-        />
-        <div style={{ fontSize: 11, color: 'var(--t3)', margin: '3px 0 8px' }}>
-          {hhmm(placed.from)} – {hhmm(placed.to)}
-        </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <button onClick={() => onRename(name.trim() || placed.event.summary)} style={{ ...navStyle, borderColor: 'var(--ac)', color: 'var(--ac)' }}>저장</button>
-          <button onClick={onDelete} style={{ ...navStyle, borderColor: 'rgba(239,68,68,.4)', color: '#dc2626' }}>삭제</button>
-          {placed.event.htmlLink && (
-            <a href={placed.event.htmlLink} target="_blank" rel="noopener noreferrer"
-              style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--t3)' }}>구글에서 열기 ↗</a>
-          )}
-        </div>
-      </div>
-    </>
   )
 }
 
@@ -553,6 +559,152 @@ function DueTask({ task, overdue, onToggle, onOpen }: {
   )
 }
 
+/**
+ * Picks who to invite from the people this account shares a project with.
+ *
+ * Google mails everyone listed the moment the event is saved, so the panel says
+ * so rather than letting an invitation go out unannounced.
+ */
+function AttendeePicker({ teammates, chosen, nameOf, onToggle }: {
+  teammates: string[]
+  chosen: string[]
+  nameOf: (email: string) => string
+  onToggle: (email: string) => void
+}) {
+  if (!teammates.length) {
+    return <div style={{ fontSize: 11, color: 'var(--t3)' }}>초대할 팀원이 없습니다</div>
+  }
+  return (
+    <div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxHeight: 96, overflowY: 'auto' }}>
+        {teammates.map(email => {
+          const on = chosen.includes(email)
+          return (
+            <button
+              key={email}
+              onClick={() => onToggle(email)}
+              title={email}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                padding: '3px 8px', borderRadius: 999, cursor: 'pointer',
+                border: `1px solid ${on ? 'var(--ac)' : 'var(--bd)'}`,
+                background: on ? 'var(--ac-l)' : 'transparent',
+                color: on ? 'var(--ac)' : 'var(--t2)',
+                fontSize: 11, fontFamily: 'var(--font)', whiteSpace: 'nowrap',
+              }}
+            >
+              {on && <span style={{ fontSize: 9 }}>✓</span>}
+              {nameOf(email)}
+            </button>
+          )
+        })}
+      </div>
+      {chosen.length > 0 && (
+        <div style={{ fontSize: 10, color: 'var(--t3)', marginTop: 6 }}>
+          저장하면 {chosen.length}명에게 구글 캘린더 초대장이 발송됩니다.
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The floating panel for naming a new block or editing an existing one.
+ *
+ * It follows the pointer rather than sitting inside the day column: a week's
+ * columns are only tens of pixels wide, and the scrolling grid clips anything
+ * that overflows one.
+ */
+function EventCard({
+  at, heading, title, onTitle, saving, teammates, guests, nameOf, onToggleGuest,
+  onSave, onDelete, onClose, openLink, responses,
+}: {
+  at: { x: number; y: number }
+  heading: string
+  title: string
+  onTitle: (v: string) => void
+  saving: boolean
+  teammates: string[]
+  guests: string[]
+  nameOf: (email: string) => string
+  onToggleGuest: (email: string) => void
+  onSave: () => void
+  onDelete?: () => void
+  onClose: () => void
+  openLink?: string
+  responses?: { email: string; responseStatus?: string }[]
+}) {
+  const WIDTH = 280
+  const left = Math.min(Math.max(8, at.x - WIDTH / 2), window.innerWidth - WIDTH - 8)
+  const top = Math.min(Math.max(8, at.y + 8), window.innerHeight - 280)
+
+  return (
+    <>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 9600 }} onMouseDown={onClose} />
+      <div
+        onMouseDown={e => e.stopPropagation()}
+        style={{
+          position: 'fixed', left, top, width: WIDTH, zIndex: 9601,
+          background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
+          boxShadow: 'var(--sh-lg)', padding: 12,
+        }}
+      >
+        <div style={{ fontSize: 11, color: 'var(--t3)', marginBottom: 4 }}>{heading}</div>
+        <input
+          autoFocus
+          value={title}
+          disabled={saving}
+          onChange={e => onTitle(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !isComposing(e)) onSave()
+            if (e.key === 'Escape') onClose()
+          }}
+          placeholder="일정 이름"
+          style={{
+            width: '100%', padding: '6px 8px', borderRadius: 'var(--r1)',
+            border: '1px solid var(--bd)', background: 'var(--bg)',
+            fontSize: 13, color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)',
+          }}
+        />
+
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--t2)', margin: '10px 0 6px' }}>참석자</div>
+        <AttendeePicker teammates={teammates} chosen={guests} nameOf={nameOf} onToggle={onToggleGuest} />
+
+        {responses && responses.length > 0 && (
+          <div style={{ marginTop: 8, fontSize: 10, color: 'var(--t3)', lineHeight: 1.6 }}>
+            {responses.map(a => (
+              <div key={a.email}>
+                {nameOf(a.email)} · {RESPONSE_LABEL[a.responseStatus ?? 'needsAction'] ?? a.responseStatus}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 12 }}>
+          <button onClick={onSave} disabled={saving} style={{ ...navStyle, borderColor: 'var(--ac)', color: '#fff', background: 'var(--ac)' }}>
+            {saving ? '저장 중…' : '저장'}
+          </button>
+          {onDelete && (
+            <button onClick={onDelete} style={{ ...navStyle, borderColor: 'rgba(239,68,68,.4)', color: '#dc2626' }}>삭제</button>
+          )}
+          {openLink && (
+            <a href={openLink} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--t3)' }}>
+              구글에서 열기 ↗
+            </a>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
+const RESPONSE_LABEL: Record<string, string> = {
+  accepted: '수락',
+  declined: '거절',
+  tentative: '미정',
+  needsAction: '응답 대기',
+}
+
 function DraftBlock({ draft }: { draft: Draft }) {
   return (
     <div style={{
@@ -566,49 +718,6 @@ function DraftBlock({ draft }: { draft: Draft }) {
       fontSize: 11, color: '#fff', pointerEvents: 'none',
     }}>
       {hhmm(draft.fromMinutes)} – {hhmm(draft.toMinutes)}
-    </div>
-  )
-}
-
-function NamingBlock({ draft, title, saving, onTitle, onSave, onCancel }: {
-  draft: Draft
-  title: string
-  saving: boolean
-  onTitle: (v: string) => void
-  onSave: () => void
-  onCancel: () => void
-}) {
-  return (
-    <div
-      onMouseDown={e => e.stopPropagation()}
-      style={{
-        position: 'absolute',
-        top: draft.fromMinutes * PX_PER_MIN,
-        minHeight: (draft.toMinutes - draft.fromMinutes) * PX_PER_MIN,
-        left: 3, right: 3, zIndex: 6,
-        background: 'var(--bg)', border: '2px solid var(--ac)', borderRadius: 4,
-        boxShadow: 'var(--sh-md)', padding: 4,
-      }}
-    >
-      <div style={{ fontSize: 10, color: 'var(--t3)', marginBottom: 2 }}>
-        {hhmm(draft.fromMinutes)} – {hhmm(draft.toMinutes)}
-      </div>
-      <input
-        autoFocus
-        value={title}
-        disabled={saving}
-        onChange={e => onTitle(e.target.value)}
-        onKeyDown={e => {
-          if (e.key === 'Enter' && !isComposing(e)) onSave()
-          if (e.key === 'Escape') onCancel()
-        }}
-        onBlur={onCancel}
-        placeholder="일정 이름"
-        style={{
-          width: '100%', border: 'none', outline: 'none', background: 'transparent',
-          fontSize: 12, color: 'var(--t1)', fontFamily: 'var(--font)',
-        }}
-      />
     </div>
   )
 }
