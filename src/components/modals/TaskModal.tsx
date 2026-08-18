@@ -8,6 +8,7 @@ import { useAccessibleTasks } from '../../hooks/useAccessibleTasks'
 import { useAuthStore } from '../../store/authStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { useMobile } from '../../hooks/useMobile'
+import { DateField } from '../shared/DatePicker'
 import { STATUS_LIST, PRIORITY_LIST, getTagColor } from '../../types'
 import type { Task } from '../../types'
 
@@ -45,6 +46,12 @@ export function TaskModal() {
     }
     return accessibleMemberEmails.map(e => ({ value: e, label: getNameByEmail(e) }))
   }, [form.projectId, projects, accessibleMemberEmails, getNameByEmail])
+
+  const dateContext = useMemo(() => ({
+    projectId: form.projectId ?? undefined,
+    milestoneId: form.milestoneId ?? undefined,
+    assignee: form.assignee,
+  }), [form.projectId, form.milestoneId, form.assignee])
 
   const editing = editTaskId ? tasks.find(t => t.id === editTaskId) : null
   const parentTask = newTaskParentId ? tasks.find(t => t.id === newTaskParentId) : null
@@ -173,11 +180,15 @@ export function TaskModal() {
             </Field>
 
             <Field label="시작일">
-              <input style={inputStyle} type="date" value={form.start} onChange={e => upd('start', e.target.value)} />
+              <div style={{ ...inputStyle, display: 'flex', alignItems: 'center' }}>
+                <DateField value={form.start} context={dateContext} onChange={v => upd('start', v)} placeholder="—" format="full" />
+              </div>
             </Field>
 
             <Field label="마감일">
-              <input style={inputStyle} type="date" value={form.due} onChange={e => upd('due', e.target.value)} />
+              <div style={{ ...inputStyle, display: 'flex', alignItems: 'center' }}>
+                <DateField value={form.due} context={dateContext} onChange={v => upd('due', v)} placeholder="—" format="full" />
+              </div>
             </Field>
           </div>
 

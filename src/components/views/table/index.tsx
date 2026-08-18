@@ -20,6 +20,8 @@ import {
   useResolvedLinks, useProjectFolderId, driveIdOf, linkFromDriveFile,
 } from '../../shared/DriveFiles'
 import { fileKind } from '../../../lib/googleDrive'
+import { DatePicker, DateField } from '../../shared/DatePicker'
+import type { DateContext } from '../../shared/DatePicker'
 import type { Task, Milestone, Status, Priority, TaskLink } from '../../../types'
 import type { ListGroup } from '../../../store/uiStore'
 
@@ -142,8 +144,10 @@ function MenuList({ children }: { children: React.ReactNode }) {
   return <div style={{ overflowY: 'auto', minHeight: 0, margin: '0 -4px', padding: '0 4px' }}>{children}</div>
 }
 
-function MenuItem({ selected = false, multi = false, onSelect, children, trailing }: {
+function MenuItem({ selected = false, multi = false, highlighted = false, onSelect, children, trailing }: {
   selected?: boolean
+  /** Where the arrow keys currently are — distinct from what is chosen. */
+  highlighted?: boolean
   /** Draws the leading checkbox — the signal that more than one may be chosen. */
   multi?: boolean
   onSelect: () => void
@@ -158,10 +162,11 @@ function MenuItem({ selected = false, multi = false, onSelect, children, trailin
         padding: '6px 8px', borderRadius: 'var(--r1)',
         fontSize: 13, cursor: 'pointer', color: 'var(--t1)',
         fontWeight: selected ? 500 : 400,
+        background: highlighted ? 'var(--bg3)' : 'transparent',
         transition: 'background .07s', flexShrink: 0,
       }}
       onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
-      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+      onMouseLeave={e => (e.currentTarget.style.background = highlighted ? 'var(--bg3)' : 'transparent')}
     >
       {multi && <MenuCheck on={selected} />}
       <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -231,16 +236,30 @@ const MENU_INPUT: React.CSSProperties = {
  * Nine columns each showing a permanent ▾ made every row read as a form. The
  * value is the affordance; the caret confirms it when the pointer is there.
  */
-function CellTrigger({ open, onOpen, children, style }: {
+function CellTrigger({ open, onOpen, children, style, tabbable = false }: {
   open: boolean
   onOpen: (el: HTMLElement) => void
   children: React.ReactNode
   style?: React.CSSProperties
+  /**
+   * Reachable by Tab. Off in the table proper — nobody wants to tab through
+   * nine cells times two hundred rows — and on in the add row, where tabbing
+   * from field to field is the whole point.
+   */
+  tabbable?: boolean
 }) {
   const [hovered, setHovered] = useState(false)
   return (
     <div
+      tabIndex={tabbable ? 0 : undefined}
       onClick={e => { e.stopPropagation(); onOpen(e.currentTarget) }}
+      onKeyDown={tabbable ? e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          // Stops here so the enclosing add row does not read it as "save".
+          e.preventDefault(); e.stopPropagation()
+          onOpen(e.currentTarget)
+        }
+      } : undefined}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', flex: 1, minWidth: 0, ...style }}
@@ -680,7 +699,7 @@ export function TableView() {
   const allTasks = useTaskStore(s => s.tasks)          // raw — only for task-tree traversal
   const accessibleTasks = useAccessibleTasks()          // for option lists (tags etc.)
   const { addTask, deleteTask, updateTask } = useTaskStore()
-  const { openTaskModal, openTaskDetail, projectId, space, hideCompleted, listGroup } = useUiStore()
+  const { openTaskDetail, projectId, space, hideCompleted, listGroup } = useUiStore()
   const { milestones, updateMilestone, deleteMilestone } = useMilestoneStore()
   const allProjects = useProjectStore(s => s.projects)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
@@ -704,6 +723,8 @@ export function TableView() {
   const [msCtxMenu, setMsCtxMenu] = useState<MsCtxState>(null)
   const [addingMs, setAddingMs] = useState<string | null>(null)
   const [draftMsId, setDraftMsId] = useState<string | null>(null)
+  /** "add at the end of this project", the inline answer to the old modal. */
+  const [draftEndPjId, setDraftEndPjId] = useState<string | null>(null)
   const [draftSubtaskParentId, setDraftSubtaskParentId] = useState<string | null>(null)
   const today = React.useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
 
@@ -1051,9 +1072,17 @@ export function TableView() {
     </button>
   )
 
-  const addBtn = (milestoneId?: string) => (
+  /**
+   * Adds a row to the table instead of opening a dialog.
+   *
+   * The dialog asked for one field at a time behind a modal; the row is the
+   * same shape as the thing being created, fills in with Tab, and commits with
+   * Enter — so adding five tasks is five lines of typing rather than five
+   * round trips through a popup.
+   */
+  const addBtn = (pjId?: string) => (
     <button
-      onClick={() => openTaskModal(undefined, undefined, milestoneId)}
+      onClick={() => setDraftEndPjId(pjId ?? '__none__')}
       style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', fontSize: 13, color: 'var(--t3)', background: 'transparent', border: 'none', borderTop: '1px solid var(--bd)', cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font)', transition: 'background .1s' }}
       onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; e.currentTarget.style.color = 'var(--t2)' }}
       onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
@@ -1128,7 +1157,6 @@ export function TableView() {
               )
             })}
           </div>
-          {addBtn()}
         </div>
         {ctx}
         {msCtx}
@@ -1165,14 +1193,26 @@ export function TableView() {
                   <div style={{ overflowX: 'auto' }}>
                     {colHeader}
                     {pjMilestones.length > 0
-                      ? renderMilestoneGroups(pjTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
+                      ? renderMilestoneGroups(pjTasks, pjMilestones, (msId) => setDraftMsId(msId ?? '__none__'))
                       : renderRows(pjTasks, pjMilestones)}
+                    {draftEndPjId === proj.id && (
+                      <AddTaskRow
+                        cols={visibleCols}
+                        assigneeOptions={getAssigneeOptions(proj.id)}
+                        projectId={proj.id}
+                        space={space ?? ''}
+                        addTask={addTask}
+                        userEmail={userEmail}
+                        onDone={another => { if (!another) setDraftEndPjId(null) }}
+                        onCancel={() => setDraftEndPjId(null)}
+                      />
+                    )}
                   </div>
                   {/* Add buttons – fixed, not scrollable */}
                   {addingMs === proj.id
                     ? <AddMilestoneInline projectId={proj.id} onDone={() => setAddingMs(null)} />
                     : addMsBtn(proj.id)}
-                  {addBtn()}
+                  {addBtn(proj.id)}
                 </>
               )}
             </div>
@@ -1194,6 +1234,17 @@ export function TableView() {
                 <div style={{ overflowX: 'auto' }}>
                   {colHeader}
                   {renderRows(unassignedTasks, [])}
+                  {draftEndPjId === '__none__' && (
+                    <AddTaskRow
+                      cols={visibleCols}
+                      assigneeOptions={getAssigneeOptions(undefined)}
+                      space={space ?? ''}
+                      addTask={addTask}
+                      userEmail={userEmail}
+                      onDone={another => { if (!another) setDraftEndPjId(null) }}
+                      onCancel={() => setDraftEndPjId(null)}
+                    />
+                  )}
                 </div>
                 {addBtn()}
               </>
@@ -1215,14 +1266,26 @@ export function TableView() {
         <div style={{ overflowX: 'auto' }}>
           {colHeader}
           {pjMilestones.length > 0
-            ? renderMilestoneGroups(rootTasks, pjMilestones, (msId) => openTaskModal(undefined, undefined, msId))
+            ? renderMilestoneGroups(rootTasks, pjMilestones, (msId) => setDraftMsId(msId ?? '__none__'))
             : renderRows(rootTasks, [])}
+          {draftEndPjId === projectId && (
+            <AddTaskRow
+              cols={visibleCols}
+              assigneeOptions={getAssigneeOptions(projectId)}
+              projectId={projectId}
+              space={space ?? ''}
+              addTask={addTask}
+              userEmail={userEmail}
+              onDone={another => { if (!another) setDraftEndPjId(null) }}
+              onCancel={() => setDraftEndPjId(null)}
+            />
+          )}
         </div>
         {/* Add buttons – fixed, not scrollable */}
         {addingMs === projectId
           ? <AddMilestoneInline projectId={projectId!} onDone={() => setAddingMs(null)} />
           : addMsBtn(projectId!)}
-        {addBtn()}
+        {addBtn(projectId!)}
       </div>
       {ctx}
       {msCtx}
@@ -1272,6 +1335,7 @@ function Row({
 }) {
   const [hovered, setHovered] = useState(false)
   const [editing, setEditing] = useState<string | null>(null)
+  const dueCellRef = useRef<HTMLDivElement>(null)
   const overdue = isOverdue(task.due, task.status)
 
   const stopEdit = () => setEditing(null)
@@ -1440,18 +1504,32 @@ function Row({
 
       case 'due':
         return (
-          <div key="due" style={cellBase(col, isLast, true)} onClick={startEdit('due')}>
-            {editing === 'due' ? (
-              <AutoDateInput
+          <div
+            key="due"
+            ref={dueCellRef}
+            style={cellBase(col, isLast, true)}
+            onClick={e => {
+              // The second click of a double-click would toggle the picker shut
+              // again; ignoring it leaves it open, which is what was meant.
+              if (e.detail >= 2) return
+              e.stopPropagation()
+              setEditing(editing === 'due' ? null : 'due')
+            }}
+          >
+            <span style={{ fontSize: 13, color: overdue ? '#D44C47' : task.due ? 'var(--t2)' : 'var(--t3)', fontWeight: overdue ? 500 : 400, cursor: 'pointer' }}>
+              {task.due ? (overdue ? '⚠ ' : '') + fmtDate(task.due) : '—'}
+            </span>
+            {editing === 'due' && (
+              <DatePicker
                 value={task.due || ''}
-                onChange={v => { onUpdate({ due: v }); stopEdit() }}
-                onBlur={stopEdit}
-                onEscape={stopEdit}
+                anchor={dueCellRef.current}
+                context={{
+                  taskId: task.id, projectId: task.projectId, milestoneId: task.milestoneId,
+                  parentId: task.parentId, assignee: task.assignee, blockedBy: task.blockedBy,
+                }}
+                onChange={v => onUpdate({ due: v })}
+                onClose={stopEdit}
               />
-            ) : (
-              <span style={{ fontSize: 13, color: overdue ? '#D44C47' : task.due ? 'var(--t2)' : 'var(--t3)', fontWeight: overdue ? 500 : 400, cursor: 'pointer' }}>
-                {task.due ? (overdue ? '⚠ ' : '') + fmtDate(task.due) : '—'}
-              </span>
             )}
           </div>
         )
@@ -1551,14 +1629,29 @@ function Row({
  * clicked cells in the table opened the operating system's menu while every
  * other cell opened the app's. Same badge, app's menu.
  */
-function ColoredSelect<T extends string>({ value, options, styleMap, onChange }: {
+function ColoredSelect<T extends string>({ value, options, styleMap, onChange, tabbable = false }: {
   value: T
   options: T[]
   styleMap: Record<T, { bg: string; color: string }>
   onChange: (v: string) => void
+  tabbable?: boolean
 }) {
   const m = useMenu()
   const s = styleMap[value] ?? { bg: 'var(--bg3)', color: 'var(--t2)' }
+  // Focus stays on the trigger while the menu is open, so the arrows are
+  // handled there. Without this the add row could be tabbed to but not filled.
+  const [hi, setHi] = useState(0)
+  useEffect(() => { if (m.open) setHi(Math.max(0, options.indexOf(value))) }, [m.open])
+  const onKey = (e: React.KeyboardEvent) => {
+    if (!m.open) return
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault(); e.stopPropagation()
+      setHi(i => (i + (e.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length)
+    } else if (e.key === 'Enter') {
+      e.preventDefault(); e.stopPropagation()
+      onChange(options[hi]); m.setOpen(false)
+    }
+  }
   const badge = (v: T, st: { bg: string; color: string }) => (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -1572,14 +1665,14 @@ function ColoredSelect<T extends string>({ value, options, styleMap, onChange }:
   )
 
   return (
-    <div ref={m.rootRef} style={{ position: 'relative', display: 'inline-flex', minWidth: 0 }} onClick={e => e.stopPropagation()}>
-      <CellTrigger open={m.open} onOpen={el => m.toggleAt(el, 150)} style={{ flex: 'none' }}>
+    <div ref={m.rootRef} style={{ position: 'relative', display: 'inline-flex', minWidth: 0 }} onClick={e => e.stopPropagation()} onKeyDown={onKey}>
+      <CellTrigger open={m.open} onOpen={el => m.toggleAt(el, 150)} style={{ flex: 'none' }} tabbable={tabbable}>
         {badge(value, s)}
       </CellTrigger>
       {m.open && (
         <Menu pos={m.pos} panelRef={m.panelRef} width={150}>
-          {options.map(o => (
-            <MenuItem key={o} selected={o === value} onSelect={() => { onChange(o); m.setOpen(false) }}>
+          {options.map((o, i) => (
+            <MenuItem key={o} selected={o === value} highlighted={i === hi} onSelect={() => { onChange(o); m.setOpen(false) }}>
               <Dot color={(styleMap[o] ?? s).color} />
               {o}
             </MenuItem>
@@ -1667,7 +1760,6 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
   const progress = taskCount ? Math.round(completed / taskCount * 100) : 0
 
   const saveName = () => { if (tempName.trim()) onUpdate({ name: tempName.trim() }); setEditingName(false) }
-  const saveDate = () => { if (tempDate) onUpdate({ dueDate: tempDate }); setEditingDate(false) }
 
   const inlineInput: React.CSSProperties = {
     fontSize: 12, padding: '1px 6px', borderRadius: 'var(--r1)',
@@ -1730,13 +1822,14 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
       )}
 
       {editingDate ? (
-        <input
-          autoFocus type="date" value={tempDate} onChange={e => setTempDate(e.target.value)}
-          onBlur={saveDate}
-          onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) saveDate(); if (e.key === 'Escape') { setTempDate(milestone.dueDate); setEditingDate(false) } }}
-          onClick={e => e.stopPropagation()}
-          style={{ ...inlineInput, colorScheme: 'dark' }}
-        />
+        <span onClick={e => e.stopPropagation()}>
+          <DateField
+            value={tempDate}
+            context={{ projectId: milestone.projectId }}
+            onChange={v => { onUpdate({ dueDate: v }); setTempDate(v); setEditingDate(false) }}
+            style={{ fontSize: 11, color: 'var(--t2)', outline: '1px solid var(--ac)', borderRadius: 3, padding: '2px 6px' }}
+          />
+        </span>
       ) : (
         <span
           onClick={e => { e.stopPropagation(); setTempDate(milestone.dueDate); setEditingDate(true) }}
@@ -1948,36 +2041,50 @@ function TaskBreadcrumb({ project, milestone, parentName }: {
 
 // ── AddMilestoneInline ────────────────────────────────────────────────────────
 
+/**
+ * Adding a milestone, in the same shape as the milestone header it becomes.
+ *
+ * Name, Tab, date, Enter. Shift+Enter adds it and stops; Enter alone leaves the
+ * row open for the next one, because milestones are laid out in a sitting.
+ */
 function AddMilestoneInline({ projectId, onDone }: { projectId: string; onDone: () => void }) {
   const addMilestone = useMilestoneStore(s => s.addMilestone)
   const [name, setName] = useState('')
   const [date, setDate] = useState('')
-  const submit = () => {
-    if (!name.trim() || !date) return
-    addMilestone(projectId, name.trim(), date)
-    onDone()
-  }
+  const nameRef = useRef<HTMLInputElement>(null)
   const valid = name.trim() !== '' && date !== ''
+
+  const submit = (another: boolean) => {
+    if (!valid) return
+    addMilestone(projectId, name.trim(), date)
+    setName(''); setDate('')
+    if (another) setTimeout(() => nameRef.current?.focus(), 0)
+    else onDone()
+  }
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: '3px solid #9065B0', borderTop: '1px solid var(--bd)' }}>
-      <span style={{ fontSize: 9, color: '#9065B0', flexShrink: 0 }}>◆</span>
+    <div
+      onKeyDown={e => {
+        if (e.key === 'Escape') { e.stopPropagation(); onDone(); return }
+        if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); submit(!e.shiftKey) }
+      }}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: NOTION.purple.bg, borderBottom: '1px solid var(--bd)', borderLeft: `3px solid ${NOTION.purple.text}`, borderTop: '1px solid var(--bd)' }}
+    >
+      <span style={{ fontSize: 9, color: NOTION.purple.text, flexShrink: 0 }}>◆</span>
       <input
-        autoFocus placeholder="마일스톤 이름..." value={name} onChange={e => setName(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) submit(); if (e.key === 'Escape') onDone() }}
-        style={{ flex: 1, border: '1px solid var(--ac)', borderRadius: 'var(--r1)', padding: '3px 8px', fontSize: 13, fontWeight: 600, background: 'var(--bg)', color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)' }}
+        ref={nameRef} autoFocus placeholder="마일스톤 이름..." value={name}
+        onChange={e => setName(e.target.value)}
+        style={{ flex: 1, border: 'none', outline: '1px solid var(--ac)', borderRadius: 'var(--r1)', padding: '3px 8px', fontSize: 13, fontWeight: 600, background: 'var(--bg)', color: 'var(--t1)', fontFamily: 'var(--font)' }}
       />
-      <input
-        type="date" value={date} onChange={e => setDate(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) submit(); if (e.key === 'Escape') onDone() }}
-        style={{ border: '1px solid var(--bd)', borderRadius: 'var(--r1)', padding: '3px 8px', fontSize: 11, background: 'var(--bg)', color: 'var(--t2)', outline: 'none', fontFamily: 'var(--font)' }}
-      />
-      <button
-        onClick={submit} disabled={!valid}
-        style={{ padding: '3px 10px', fontSize: 11, borderRadius: 'var(--r1)', border: `1px solid ${valid ? '#9065B0' : 'var(--bd)'}`, background: valid ? 'rgba(139,92,246,.1)' : 'transparent', color: valid ? '#9065B0' : 'var(--t3)', cursor: valid ? 'pointer' : 'default', fontFamily: 'var(--font)', transition: 'background .1s' }}
-      >추가</button>
+      <div style={{ width: 130, flexShrink: 0 }}>
+        <AddRowDatePicker value={date} context={{ projectId }} onChange={setDate} />
+      </div>
+      <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0, whiteSpace: 'nowrap' }}>
+        {valid ? 'Enter로 추가' : '이름과 날짜'}
+      </span>
       <button
         onClick={onDone}
-        style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', color: 'var(--t3)', cursor: 'pointer', fontFamily: 'var(--font)' }}
+        style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'var(--bg)', color: 'var(--t3)', cursor: 'pointer', fontFamily: 'var(--font)', flexShrink: 0 }}
       >취소</button>
     </div>
   )
@@ -2001,7 +2108,11 @@ function AddRowAssigneeSelect({ value, options, onChange }: {
     >
       <div
         data-addrow-popup
+        tabIndex={0}
         onClick={e => { e.stopPropagation(); m.toggleAt(e.currentTarget) }}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); m.toggleAt(e.currentTarget) }
+        }}
         style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', padding: '3px 6px', borderRadius: 'var(--r1)', outline: '1px solid var(--ac)', background: 'var(--bg)', width: '100%', boxSizing: 'border-box' }}
       >
         {current ? <AssigneeAvatar assigneeKey={current.value} size={18} /> : null}
@@ -2041,6 +2152,7 @@ function AddRowStatusSelect({ value, onChange }: { value: Status; onChange: (v: 
         options={STATUS_LIST}
         styleMap={STATUS_STYLE}
         onChange={v => onChange(v as Status)}
+        tabbable
       />
     </div>
   )
@@ -2048,107 +2160,43 @@ function AddRowStatusSelect({ value, onChange }: { value: Status; onChange: (v: 
 
 // ── AddRowDatePicker ──────────────────────────────────────────────────────────
 
-function AddRowDatePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const m = useMenu()
-  const { open, setOpen } = m
-  const [viewYear, setViewYear] = useState(new Date().getFullYear())
-  const [viewMonth, setViewMonth] = useState(new Date().getMonth())
+function AddRowDatePicker({ value, context, onChange }: {
+  value: string
+  context?: DateContext
+  onChange: (v: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (!open) return
-    const d = value ? new Date(value + 'T00:00:00') : new Date()
-    setViewYear(d.getFullYear()); setViewMonth(d.getMonth())
-  }, [open, value])
-
-  const prevMonth = () => setViewMonth(m => { if (m === 0) { setViewYear(y => y - 1); return 11 } return m - 1 })
-  const nextMonth = () => setViewMonth(m => { if (m === 11) { setViewYear(y => y + 1); return 0 } return m + 1 })
-
-  const firstDow = new Date(viewYear, viewMonth, 1).getDay()
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
-  const cells: (number | null)[] = []
-  for (let i = 0; i < firstDow; i++) cells.push(null)
-  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
-  while (cells.length % 7 !== 0) cells.push(null)
-
-  const today = new Date()
-  const todayD = today.getFullYear() === viewYear && today.getMonth() === viewMonth ? today.getDate() : null
-  const selD = (() => {
-    if (!value) return null
-    const d = new Date(value + 'T00:00:00')
-    return d.getFullYear() === viewYear && d.getMonth() === viewMonth ? d.getDate() : null
-  })()
-
-  const pick = (day: number) => {
-    const m = String(viewMonth + 1).padStart(2, '0'), dd = String(day).padStart(2, '0')
-    onChange(`${viewYear}-${m}-${dd}`)
-    setOpen(false)
-  }
-
-  const displayStr = value ? (() => {
+  const display = value ? (() => {
     const d = new Date(value + 'T00:00:00')
     return `${d.getMonth() + 1}/${d.getDate()}`
   })() : null
 
-  const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
-  const DAYS = ['일','월','화','수','목','금','토']
-
   return (
-    <div ref={m.rootRef} style={{ position: 'relative', width: '100%' }}
-      onKeyDown={e => { if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false) } }}
-    >
+    <div ref={ref} style={{ position: 'relative', width: '100%' }}>
       <div
         data-addrow-popup
-        onClick={e => { e.stopPropagation(); m.toggleAt(e.currentTarget, 240) }}
-        style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', padding: '3px 6px', borderRadius: 'var(--r1)', outline: '1px solid var(--ac)', background: 'var(--bg)', width: '100%', boxSizing: 'border-box' as const }}
+        tabIndex={0}
+        onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setOpen(o => !o) }
+        }}
+        style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', padding: '3px 6px', borderRadius: 'var(--r1)', outline: '1px solid var(--ac)', background: 'var(--bg)', width: '100%', boxSizing: 'border-box' }}
       >
-        <span style={{ flex: 1, fontSize: 13, color: displayStr ? 'var(--t1)' : 'var(--t3)' }}>
-          {displayStr || '마감일'}
+        <span style={{ flex: 1, fontSize: 13, color: display ? 'var(--t1)' : 'var(--t3)' }}>
+          {display || '마감일'}
         </span>
         <span style={{ fontSize: 9, color: 'var(--t3)', flexShrink: 0, opacity: .6 }}>▾</span>
       </div>
-
       {open && (
-        <Menu pos={m.pos} panelRef={m.panelRef} width={240}>
-        <div style={{ padding: 6, userSelect: 'none' as const }}>
-          {/* Month nav */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <button onMouseDown={e => { e.preventDefault(); prevMonth() }} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--t2)', padding: '2px 6px', borderRadius: 3, lineHeight: 1 }}>‹</button>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--t1)' }}>{viewYear}년 {MONTHS[viewMonth]}</span>
-            <button onMouseDown={e => { e.preventDefault(); nextMonth() }} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--t2)', padding: '2px 6px', borderRadius: 3, lineHeight: 1 }}>›</button>
-          </div>
-          {/* Day headers */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 4 }}>
-            {DAYS.map((d, i) => (
-              <div key={d} style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, padding: '2px 0', color: i === 0 ? '#D44C47' : i === 6 ? '#3b82f6' : 'var(--t3)' }}>{d}</div>
-            ))}
-          </div>
-          {/* Day grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
-            {cells.map((day, idx) => {
-              if (!day) return <div key={idx} />
-              const dow = (firstDow + day - 1) % 7
-              const isSel = day === selD
-              const isToday = day === todayD
-              return (
-                <div key={idx} onMouseDown={e => { e.preventDefault(); pick(day) }}
-                  style={{ textAlign: 'center', padding: '4px 0', borderRadius: 4, fontSize: 12, cursor: 'pointer', fontWeight: isSel || isToday ? 600 : 400, background: isSel ? 'var(--ac)' : isToday ? 'var(--ac-l)' : 'transparent', color: isSel ? '#fff' : dow === 0 ? '#D44C47' : dow === 6 ? '#3b82f6' : 'var(--t1)', outline: isToday && !isSel ? '1px solid var(--ac)' : 'none' }}
-                  onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'var(--bg3)' }}
-                  onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = isToday ? 'var(--ac-l)' : 'transparent' }}
-                >{day}</div>
-              )
-            })}
-          </div>
-          {value && (
-            <div style={{ borderTop: '1px solid var(--bd)', marginTop: 8, paddingTop: 6, textAlign: 'center' }}>
-              <span onMouseDown={e => { e.preventDefault(); onChange(''); setOpen(false) }}
-                style={{ fontSize: 11, color: 'var(--t3)', cursor: 'pointer' }}
-                onMouseEnter={e => (e.currentTarget.style.color = '#D44C47')}
-                onMouseLeave={e => (e.currentTarget.style.color = 'var(--t3)')}
-              >날짜 지우기</span>
-            </div>
-          )}
-        </div>
-        </Menu>
+        <DatePicker
+          value={value}
+          anchor={ref.current}
+          context={context}
+          onChange={onChange}
+          onClose={() => setOpen(false)}
+        />
       )}
     </div>
   )
@@ -2173,6 +2221,7 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, s
   const [assignee, setAssignee] = useState('')
   const [due, setDue] = useState('')
   const [status, setStatus] = useState<Status>('대기')
+  const [priority, setPriority] = useState<Priority>('중간')
   const containerRef = useRef<HTMLDivElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
 
@@ -2193,11 +2242,11 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, s
     if (!name.trim()) { nameRef.current?.focus(); return }
     addTask({
       type: parentId ? '세부' : '상위', cat: space, name: name.trim(), assignee,
-      start: '', due, priority: '중간', status,
+      start: '', due, priority, status,
       progress: 0, memo: '', parentId, projectId, milestoneId,
       createdBy: userEmail ?? undefined,
     })
-    setName(''); setAssignee(''); setDue(''); setStatus('대기')
+    setName(''); setAssignee(''); setDue(''); setStatus('대기'); setPriority('중간')
     onDone(addAnother)
     if (addAnother) setTimeout(() => nameRef.current?.focus(), 0)
   }
@@ -2244,13 +2293,29 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, s
       case 'due':
         return (
           <div key="due" style={base}>
-            <AddRowDatePicker value={due} onChange={setDue} />
+            <AddRowDatePicker
+              value={due}
+              context={{ projectId, milestoneId, parentId, assignee }}
+              onChange={setDue}
+            />
           </div>
         )
       case 'status':
         return (
           <div key="status" style={{ ...base, padding: '6px 10px' }}>
             <AddRowStatusSelect value={status} onChange={setStatus} />
+          </div>
+        )
+      case 'priority':
+        return (
+          <div key="priority" style={{ ...base, padding: '6px 10px' }}>
+            <ColoredSelect
+              value={priority}
+              options={PRIORITY_LIST}
+              styleMap={PRIORITY_STYLE}
+              onChange={v => setPriority(v as Priority)}
+              tabbable
+            />
           </div>
         )
       default:
@@ -2527,27 +2592,5 @@ function MsContextMenu({ x, y, onAdd, onClose }: {
         새 업무 추가
       </MenuItem>
     </div>
-  )
-}
-
-function AutoDateInput({ value, onChange, onBlur, onEscape }: {
-  value: string; onChange: (v: string) => void; onBlur: () => void; onEscape: () => void
-}) {
-  const ref = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    el.focus()
-    try { el.showPicker?.() } catch { /* ignore */ }
-  }, [])
-  return (
-    <input
-      ref={ref} type="date" value={value}
-      onChange={e => onChange(e.target.value)}
-      onBlur={onBlur}
-      onClick={e => e.stopPropagation()}
-      onKeyDown={e => { if (e.key === 'Escape') onEscape() }}
-      style={{ border: 'none', outline: '1px solid var(--ac)', borderRadius: 3, background: 'var(--bg)', fontSize: 12, fontFamily: 'var(--font)', color: 'var(--t1)', width: '100%', padding: '2px 4px' }}
-    />
   )
 }

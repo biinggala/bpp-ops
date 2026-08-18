@@ -18,6 +18,7 @@ import {
   FileRow, DriveSearch, UrlAdd, AttachTabs,
   useResolvedLinks, useProjectFolderId, driveIdOf, linkFromDriveFile,
 } from '../shared/DriveFiles'
+import { DateField } from '../shared/DatePicker'
 import { STATUS_LIST, PRIORITY_LIST } from '../../types'
 import type { Task, Status, Priority, TaskLink } from '../../types'
 import { isComposing } from '../../lib/utils'
@@ -427,11 +428,11 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
               {/* Dates */}
               <MobilePropRow icon={<IcCalendar />} label="Dates">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <input type="date" value={task.start || ''} onChange={e => upd({ start: e.target.value || undefined })}
-                    style={{ border: 'none', background: 'transparent', fontSize: 14, cursor: 'pointer', outline: 'none', color: task.start ? 'var(--t1)' : 'var(--t3)', fontFamily: 'var(--font)', padding: 0, width: 'auto' }} />
-                  {(task.start || task.due) && <span style={{ color: 'var(--t3)', fontSize: 12 }}>—</span>}
-                  <input type="date" value={task.due || ''} onChange={e => upd({ due: e.target.value || undefined })}
-                    style={{ border: 'none', background: 'transparent', fontSize: 14, cursor: 'pointer', outline: 'none', color: task.due ? 'var(--t1)' : 'var(--t3)', fontFamily: 'var(--font)', padding: 0, width: 'auto' }} />
+                  <DateField value={task.start || ''} context={{ taskId: task.id, projectId: task.projectId, milestoneId: task.milestoneId, parentId: task.parentId, assignee: task.assignee, blockedBy: task.blockedBy }}
+                    onChange={v => upd({ start: v || undefined })} placeholder="시작일" format="full" style={{ fontSize: 14 }} />
+                  <span style={{ color: 'var(--t3)', fontSize: 12 }}>—</span>
+                  <DateField value={task.due || ''} context={{ taskId: task.id, projectId: task.projectId, milestoneId: task.milestoneId, parentId: task.parentId, assignee: task.assignee, blockedBy: task.blockedBy }}
+                    onChange={v => upd({ due: v || undefined })} placeholder="마감일" format="full" style={{ fontSize: 14 }} />
                 </div>
               </MobilePropRow>
 
@@ -730,13 +731,13 @@ export function TaskDetailModal() {
             </PropRow>
 
             <PropRow label="시작일">
-              <input type="date" value={task.start || ''} onChange={e => upd({ start: e.target.value })}
-                style={{ border: 'none', background: 'transparent', fontSize: 13, cursor: 'pointer', outline: 'none', color: 'var(--t2)', fontFamily: 'var(--font)', width: '100%' }} />
+              <DateField value={task.start || ''} context={{ taskId: task.id, projectId: task.projectId, milestoneId: task.milestoneId, parentId: task.parentId, assignee: task.assignee, blockedBy: task.blockedBy }}
+                onChange={v => upd({ start: v })} placeholder="—" format="full" style={{ fontSize: 13 }} />
             </PropRow>
 
             <PropRow label="마감일">
-              <input type="date" value={task.due || ''} onChange={e => upd({ due: e.target.value })}
-                style={{ border: 'none', background: 'transparent', fontSize: 13, cursor: 'pointer', outline: 'none', color: 'var(--t2)', fontFamily: 'var(--font)', width: '100%' }} />
+              <DateField value={task.due || ''} context={{ taskId: task.id, projectId: task.projectId, milestoneId: task.milestoneId, parentId: task.parentId, assignee: task.assignee, blockedBy: task.blockedBy }}
+                onChange={v => upd({ due: v })} placeholder="—" format="full" style={{ fontSize: 13 }} />
             </PropRow>
 
             <PropRow label="진행률">
