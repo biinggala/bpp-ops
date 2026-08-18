@@ -189,3 +189,14 @@ test('리허설: 초대만 받은 사람은 로그인하면 초대장을 찾아 
   const after = await assertSucceeds(get(ref(db, 'projects/p1')))      // 이제 보인다
   assert.equal(after.val().tasks.t2.name, '디자인 시안')
 })
+
+test('--drop-projects로 지정한 프로젝트는 빠지고, 그 안의 업무는 보고된다', () => {
+  const { data, report } = migrate(sourceExport(), { dropProjects: ['p2'] })
+  assert.equal(data.projects.p2, undefined)
+  assert.deepEqual(report.droppedProjects.map(p => p.pid), ['p2'])
+  // p2가 갖고 있던 t3는 조용히 사라지지 않고 고아로 보고된다.
+  assert.equal(report.orphanTasks.some(o => o.task.id === 't3'), true)
+  assert.equal(report.balanced, true)
+  // 앨리스의 프로젝트 목록에서도 빠진다.
+  assert.deepEqual(Object.keys(data.userIndex[ALICE.uid].projects), ['p1'])
+})

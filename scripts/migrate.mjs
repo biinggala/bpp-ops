@@ -8,9 +8,10 @@
 // production; the export is taken and the result uploaded through the console.
 //
 // Options:
-//   --out <path>            where to write the converted database
-//   --orphan-owner <email>  who to hand tasks whose creator cannot be resolved
-//   --drop-legacy           omit the original `cringe` node from the output
+//   --out <path>             where to write the converted database
+//   --orphan-owner <email>   who to hand tasks whose creator cannot be resolved
+//   --drop-projects <ids>    comma-separated project ids to leave behind
+//   --drop-legacy            omit the original `cringe` node from the output
 //
 // The old `cringe` node is copied through untouched by default. Importing at
 // the database root replaces everything, so dropping it would delete the only
@@ -45,7 +46,8 @@ function newInviteCode(seed) {
 /* ── migration ───────────────────────────────────────────────────────────── */
 
 export function migrate(source, options = {}) {
-  const { orphanOwner = null, keepLegacy = true } = options
+  const { orphanOwner = null, keepLegacy = true, dropProjects = [] } = options
+  const dropped = new Set(dropProjects)
   const legacy = source.cringe ?? {}
   const report = {
     counts: { in: {}, out: {} },
@@ -55,6 +57,7 @@ export function migrate(source, options = {}) {
     orphanTasks: [],
     orphanMilestones: [],
     duplicateIds: [],
+    droppedProjects: [],
     notes: [],
   }
 
@@ -111,6 +114,14 @@ export function migrate(source, options = {}) {
     if (!project?.id || flagDuplicate('project', project.id)) continue
     const pid = project.id
     projectById.set(pid, project)
+
+    // Deliberately left behind. Anything pointing at it becomes an orphan and
+    // shows up in the report, so dropping a project that still holds work
+    // cannot happen quietly.
+    if (dropped.has(pid)) {
+      report.droppedProjects.push({ pid, name: project.name })
+      continue
+    }
 
     let inviteCode = project.inviteCode
     if (typeof inviteCode !== 'string' || inviteCode.length < 6) {
@@ -244,6 +255,7 @@ export function formatReport(report) {
     report.orphanTasks.map(o => `${o.task.name ?? o.task.id} — ${o.reason}`))
   section('⚠ 주인을 찾지 못한 마일스톤 (옮기지 않음):',
     report.orphanMilestones.map(m => `${m.name ?? m.id} (projectId: ${m.projectId})`))
+  section('버린 프로젝트:', report.droppedProjects.map(p => `${p.name ?? p.pid} (${p.pid})`))
   section('중복 id:', report.duplicateIds)
   section('참고:', report.notes)
 
@@ -266,6 +278,7 @@ function main(argv) {
   const { data, report } = migrate(source, {
     orphanOwner: valueOf('--orphan-owner') ?? null,
     keepLegacy: !args.includes('--drop-legacy'),
+    dropProjects: (valueOf('--drop-projects') ?? '').split(',').map(s => s.trim()).filter(Boolean),
   })
 
   const outPath = valueOf('--out')
