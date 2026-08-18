@@ -21,7 +21,38 @@ import type { GCalEvent } from '../../../store/gcalStore'
  * glance — nobody outside is invited, so there are no attendees involved.
  */
 
-const SLOT_H = 48          // px per hour
+// Notion's palette works by pairing a very pale tint with mid-tone text rather
+// than filling a shape with saturated colour and putting white on top. The
+// timeline follows that: a calendar's colour shows as a bar and a wash, and the
+// text stays dark enough to read at 11px.
+// (Reference values confirmed from Notion light mode: blue text #487CA5,
+// blue background #E7F3F8, green #DBEDDB, brown #EEE0DA.)
+function tint(hex: string, alpha: number): string {
+  const clean = hex.replace('#', '')
+  if (clean.length !== 6) return `rgba(55,53,47,${alpha})`
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(clean.slice(i, i + 2), 16))
+  return `rgba(${r},${g},${b},${alpha})`
+}
+
+/**
+ * A calendar's colour, darkened enough to read as text.
+ *
+ * Google hands out saturated colours meant for filled shapes. Notion's text
+ * colours are the same hue pulled toward its default ink (#37352F), which is
+ * what keeps a coloured label legible at 10px.
+ */
+function readable(hex: string): string {
+  const clean = hex.replace('#', '')
+  if (clean.length !== 6) return '#37352F'
+  const mixed = [0, 2, 4].map(i => {
+    const channel = parseInt(clean.slice(i, i + 2), 16)
+    const ink = [0x37, 0x35, 0x2f][i / 2]
+    return Math.round(channel * 0.62 + ink * 0.38)
+  })
+  return `#${mixed.map(c => c.toString(16).padStart(2, '0')).join('')}`
+}
+
+const SLOT_H = 64          // px per hour — a 30-minute block has to fit its own name
 const PX_PER_MIN = SLOT_H / 60
 const SNAP = 15            // minutes
 const MIN_DURATION = 15
@@ -276,12 +307,21 @@ export function TimelineView() {
           const dt = toDate(d)
           const isToday = d === todayStr
           return (
-            <div key={d} style={{ flex: 1, padding: '6px 8px', textAlign: 'center', borderLeft: '1px solid var(--bd)' }}>
+            <div key={d} style={{ flex: 1, padding: '7px 8px 8px', textAlign: 'center', borderLeft: '1px solid var(--bd)' }}>
               <div style={{ fontSize: 11, color: isToday ? 'var(--ac)' : 'var(--t3)' }}>
                 {['일','월','화','수','목','금','토'][dt.getDay()]}
               </div>
-              <div style={{ fontSize: 15, fontWeight: isToday ? 700 : 500, color: isToday ? 'var(--ac)' : 'var(--t1)' }}>
-                {dt.getDate()}
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: 1 }}>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  minWidth: 24, height: 24, borderRadius: '50%',
+                  fontSize: 14, fontWeight: isToday ? 700 : 500,
+                  background: isToday ? 'var(--ac)' : 'transparent',
+                  color: isToday ? '#fff' : 'var(--t1)',
+                  fontVariantNumeric: 'tabular-nums',
+                }}>
+                  {dt.getDate()}
+                </span>
               </div>
 
             </div>
@@ -290,15 +330,21 @@ export function TimelineView() {
       </div>
 
       {/* All-day strip: things pinned to the day rather than to a time. */}
-      <div style={{ display: 'flex', paddingLeft: GUTTER, borderBottom: '1px solid var(--bd)', flexShrink: 0, maxHeight: 108, overflowY: 'auto' }}>
+      <div style={{
+        display: 'flex', paddingLeft: GUTTER, flexShrink: 0,
+        borderBottom: '1px solid var(--bd2)', background: 'var(--bg2)',
+        maxHeight: 112, overflowY: 'auto',
+      }}>
         {days.map(date => (
           <div key={date} style={{ flex: 1, borderLeft: '1px solid var(--bd)', padding: '3px 4px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
             {(allDayByDate.get(date) ?? []).map(ev => (
               <a key={ev.id} href={ev.htmlLink || undefined} target="_blank" rel="noopener noreferrer"
                 title={ev.summary}
                 style={{
-                  fontSize: 10, lineHeight: 1.3, padding: '2px 5px', borderRadius: 3,
-                  background: ev.calendarColor || '#4285f4', color: '#fff',
+                  fontSize: 10, lineHeight: 1.4, padding: '2px 6px', borderRadius: 4,
+                  background: tint(ev.calendarColor || '#337EA9', .13),
+                  borderLeft: `3px solid ${ev.calendarColor || '#337EA9'}`,
+                  color: 'var(--t1)',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none',
                 }}>
                 {ev.summary}
@@ -365,7 +411,11 @@ export function TimelineView() {
           {/* Hour labels */}
           <div style={{ width: GUTTER, flexShrink: 0, position: 'relative' }}>
             {HOURS.map(h => (
-              <div key={h} style={{ position: 'absolute', top: h * SLOT_H - 6, right: 8, fontSize: 10, color: 'var(--t3)' }}>
+              <div key={h} style={{
+                position: 'absolute', top: h * SLOT_H - 7, right: 10,
+                fontSize: 10, lineHeight: '14px', color: 'var(--t3)',
+                fontVariantNumeric: 'tabular-nums',
+              }}>
                 {h === 0 ? '' : `${String(h).padStart(2, '0')}:00`}
               </div>
             ))}
@@ -376,11 +426,22 @@ export function TimelineView() {
               key={date}
               data-day-column
               onMouseDown={e => beginDrag(e, date)}
-              style={{ flex: 1, position: 'relative', borderLeft: '1px solid var(--bd)', cursor: 'crosshair' }}
+              style={{
+                flex: 1, position: 'relative', cursor: 'crosshair',
+                borderLeft: '1px solid var(--bd)',
+                background: date === todayStr ? 'rgba(35,131,226,.025)' : 'transparent',
+              }}
             >
               {HOURS.map(h => (
-                <div key={h} style={{ position: 'absolute', top: h * SLOT_H, left: 0, right: 0, height: 1, background: 'var(--bd)', opacity: .6 }} />
+                <React.Fragment key={h}>
+                  <div style={{ position: 'absolute', top: h * SLOT_H, left: 0, right: 0, height: 1, background: 'var(--bd)' }} />
+                  {/* Half-hour guide, faint — it helps aim without ruling the grid. */}
+                  <div style={{ position: 'absolute', top: h * SLOT_H + SLOT_H / 2, left: 0, right: 0, height: 1, background: 'var(--bd)', opacity: .4 }} />
+                </React.Fragment>
               ))}
+
+              {draft?.date === date && <DraftBlock draft={draft} />}
+              {naming?.date === date && <DraftBlock draft={naming} />}
 
               {place(eventsByDate.get(date) ?? []).map(p => (
                 <EventBlock
@@ -479,7 +540,12 @@ function EventBlock({ placed, ghost, selected, onSelect, onMove }: {
   const from = ghost?.from ?? placed.from
   const to = ghost?.to ?? placed.to
   const width = 100 / lanes
-  const colour = event.calendarColor || '#4285f4'
+  const colour = event.calendarColor || '#337EA9'
+  const height = Math.max(18, (to - from) * PX_PER_MIN - 2)
+  // Below roughly two lines there is no room to stack the time above the name,
+  // so they share one line and the name takes what is left.
+  const roomy = height >= 40
+
   return (
     <div
       onMouseDown={e => onMove(e, 'move')}
@@ -488,21 +554,40 @@ function EventBlock({ placed, ghost, selected, onSelect, onMove }: {
       style={{
         position: 'absolute',
         top: from * PX_PER_MIN,
-        height: Math.max(16, (to - from) * PX_PER_MIN - 2),
+        height,
         left: `calc(${lane * width}% + 3px)`,
         width: `calc(${width}% - 6px)`,
-        background: colour, opacity: ghost ? .7 : .92, color: '#fff',
-        borderRadius: 4, padding: '2px 5px', fontSize: 11, lineHeight: 1.25,
+        background: tint(colour, ghost ? .28 : .13),
+        borderLeft: `3px solid ${colour}`,
+        borderRadius: 5,
+        boxShadow: selected ? `0 0 0 2px ${colour}` : 'none',
+        color: 'var(--t1)',
+        padding: roomy ? '3px 6px' : '2px 6px',
+        fontSize: 11, lineHeight: 1.35,
         overflow: 'hidden', zIndex: selected ? 5 : 2, cursor: 'grab',
-        outline: selected ? '2px solid var(--t1)' : 'none',
+        display: 'flex', flexDirection: roomy ? 'column' : 'row',
+        gap: roomy ? 0 : 5, alignItems: roomy ? 'stretch' : 'baseline',
       }}
     >
-      <span style={{ opacity: .85, marginRight: 4 }}>{hhmm(from)}</span>
-      {event.summary}
-      {/* Bottom edge stretches the end time, as in Google Calendar. */}
+      <span style={{
+        fontSize: 10, color: readable(colour), fontWeight: 600,
+        fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', flexShrink: 0,
+      }}>
+        {hhmm(from)}
+      </span>
+      <span style={{
+        overflow: 'hidden', textOverflow: 'ellipsis',
+        whiteSpace: roomy ? 'normal' : 'nowrap',
+        display: roomy ? '-webkit-box' : 'block',
+        WebkitLineClamp: roomy ? 2 : undefined,
+        WebkitBoxOrient: roomy ? 'vertical' : undefined,
+        minWidth: 0,
+      }}>
+        {event.summary}
+      </span>
       <div
         onMouseDown={e => onMove(e, 'resize')}
-        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 6, cursor: 'ns-resize' }}
+        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 8, cursor: 'ns-resize' }}
       />
     </div>
   )
@@ -706,18 +791,30 @@ const RESPONSE_LABEL: Record<string, string> = {
 }
 
 function DraftBlock({ draft }: { draft: Draft }) {
+  const height = (draft.toMinutes - draft.fromMinutes) * PX_PER_MIN
   return (
     <div style={{
       position: 'absolute',
       top: draft.fromMinutes * PX_PER_MIN,
-      height: (draft.toMinutes - draft.fromMinutes) * PX_PER_MIN,
-      left: 3, right: 3, borderRadius: 4, zIndex: 4,
-      background: 'var(--ac)', opacity: .35,
-      border: '1px solid var(--ac)',
-      display: 'flex', alignItems: 'flex-start', padding: '2px 5px',
-      fontSize: 11, color: '#fff', pointerEvents: 'none',
+      height,
+      left: 3, right: 3, borderRadius: 6, zIndex: 7,
+      // Opacity on the whole box faded the label along with it; the wash carries
+      // the transparency instead so the outline and text stay solid.
+      background: 'rgba(35,131,226,.14)',
+      border: '1.5px solid var(--ac)',
+      boxShadow: '0 1px 4px rgba(35,131,226,.25)',
+      padding: '3px 6px', pointerEvents: 'none',
+      display: 'flex', flexDirection: 'column', justifyContent: 'flex-start',
+      overflow: 'hidden',
     }}>
-      {hhmm(draft.fromMinutes)} – {hhmm(draft.toMinutes)}
+      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--ac)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+        {hhmm(draft.fromMinutes)} – {hhmm(draft.toMinutes)}
+      </span>
+      {height >= 34 && (
+        <span style={{ fontSize: 10, color: 'var(--ac)', opacity: .75 }}>
+          {draft.toMinutes - draft.fromMinutes}분
+        </span>
+      )}
     </div>
   )
 }
