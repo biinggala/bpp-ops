@@ -23,8 +23,6 @@ import type { Task } from '../../types'
  *   Upcoming. When the task has an assignee the bar is *their* load, because
  *   the real question is "does this land on top of everything else Minsu owes
  *   me on the 14th", not "is the company busy".
- * - **Quick picks** — 오늘 / 내일 / 이번 주 금 / 다음 주 월. ClickUp and Todoist
- *   both open with these, and they cover most of what anyone actually types.
  * - **The dates this one is tied to**, as chips that jump the calendar there:
  *   the milestone, the parent task, whatever this is blocked by. Height and
  *   Linear surface dependencies at scheduling time for the same reason.
@@ -49,12 +47,6 @@ const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','
 
 export function ymd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-function addDays(d: Date, n: number) {
-  const out = new Date(d)
-  out.setDate(out.getDate() + n)
-  return out
 }
 
 /** Load is a ladder, not a gradient — four steps people can tell apart at 4px tall. */
@@ -91,7 +83,7 @@ export function DatePicker({ value, anchor, context, onChange, onClose }: {
   useEffect(() => {
     if (!anchor) return
     const r = anchor.getBoundingClientRect()
-    const W = 296, H = 480
+    const W = 296, H = 440
     const below = window.innerHeight - r.bottom - 6
     setPos({
       top: below < H && r.top > below ? Math.max(8, r.top - 6 - H) : r.bottom + 6,
@@ -179,14 +171,6 @@ export function DatePicker({ value, anchor, context, onChange, onClose }: {
   }
   const pick = (date: string) => { onChange(date); onClose() }
 
-  const quick: { label: string; date: string }[] = [
-    { label: '오늘', date: todayStr },
-    { label: '내일', date: ymd(addDays(today, 1)) },
-    // The Friday of this week, or next Friday if today is already past it.
-    { label: '이번 주 금', date: ymd(addDays(today, ((5 - today.getDay()) + 7) % 7 || 7)) },
-    { label: '다음 주 월', date: ymd(addDays(today, ((1 - today.getDay()) + 7) % 7 || 7)) },
-  ]
-
   const focus = hover ?? value
   const focusTasks = (focus ? loadByDay.get(focus) : undefined) ?? []
   const focusMs = focus ? milestonesByDay.get(focus) : undefined
@@ -204,24 +188,6 @@ export function DatePicker({ value, anchor, context, onChange, onClose }: {
         boxShadow: 'var(--sh-md)', padding: 10, boxSizing: 'border-box', userSelect: 'none',
       }}
     >
-      {/* Quick picks — most deadlines are one of these four. */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-        {quick.map(q => (
-          <button
-            key={q.label}
-            onMouseDown={e => { e.preventDefault(); pick(q.date) }}
-            onMouseEnter={() => setHover(q.date)}
-            onMouseLeave={() => setHover(null)}
-            style={{
-              flex: 1, padding: '4px 0', fontSize: 11, borderRadius: 'var(--r1)',
-              border: '1px solid var(--bd)', background: 'transparent',
-              color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap',
-            }}
-            onFocus={() => setHover(q.date)}
-          >{q.label}</button>
-        ))}
-      </div>
-
       {/* What this task is already tied to. Clicking lands the calendar there. */}
       {anchors.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--bd)' }}>
