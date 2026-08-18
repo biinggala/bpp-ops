@@ -1,12 +1,10 @@
 import React from 'react'
 import { useUiStore } from '../../store/uiStore'
-import { useAuthStore } from '../../store/authStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMobile } from '../../hooks/useMobile'
 
 export function Topbar() {
   const { space, projectId, myTasksOnly, openTaskModal, toggleSidebar, hideCompleted, setHideCompleted } = useUiStore()
-  const { memberKey } = useAuthStore()
   const projects = useProjectStore(s => s.projects)
   const isMobile = useMobile()
 
@@ -50,9 +48,6 @@ export function Topbar() {
         <h1 style={{ fontSize: isMobile ? 15 : 16, fontWeight: 600, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {title}
         </h1>
-        {memberKey && !isMobile && (
-          <span style={{ fontSize: 13, color: 'var(--t3)', fontWeight: 400 }}>/ {memberKey}</span>
-        )}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>

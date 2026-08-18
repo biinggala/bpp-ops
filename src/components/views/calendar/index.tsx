@@ -36,7 +36,7 @@ const MOB_STATUS: Record<string, { bg: string; color: string }> = {
 // ── GCal connect button ───────────────────────────────────────────────────────
 
 function GCalButton() {
-  const { token, loading, autoRefreshing, wasConnected, error, events: gcalEvents, calendars, enabledCalendarIds, connect, disconnect, autoReconnect, fetchCalendars, setCalendarEnabled } = useGCalStore()
+  const { token, loading, autoRefreshing, wasConnected, error, calendars, enabledCalendarIds, connect, disconnect, autoReconnect, fetchCalendars, setCalendarEnabled } = useGCalStore()
   const [pickerOpen, setPickerOpen] = React.useState(false)
 
   // The calendar list is what makes shared team calendars reachable at all, so
@@ -53,67 +53,73 @@ function GCalButton() {
   }, [])
 
   if (token) {
+    // One control for the whole integration. A chip announcing "연동됨" states
+    // what the visible events already prove, and an always-present ✕ puts
+    // disconnecting a click away from nothing — it belongs inside the menu with
+    // the rest of the settings.
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        {error ? (
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#D44C47', background: 'rgba(212,76,71,.08)', padding: '3px 8px', borderRadius: 20, fontWeight: 600, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={error}>
-            <GoogleDot /> 일정 로드 오류
-          </span>
-        ) : loading ? (
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--t3)', background: 'var(--bg3)', padding: '3px 8px', borderRadius: 20 }}>
-            <GoogleDot /> 불러오는 중…
-          </span>
-        ) : (
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: GCAL_TEXT, background: GCAL_BG, padding: '3px 8px', borderRadius: 20, fontWeight: 600 }}>
-            <GoogleDot /> 캘린더 연동됨 {gcalEvents.length > 0 && `(${gcalEvents.length}개)`}
-          </span>
-        )}
-        <div style={{ position: 'relative' }}>
-          <button
-            onClick={() => setPickerOpen(o => !o)}
-            title="표시할 캘린더 선택"
-            style={{ fontSize: 11, color: 'var(--t3)', background: 'transparent', border: '1px solid var(--bd)', cursor: 'pointer', padding: '2px 8px', borderRadius: 'var(--r1)', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}
-          >
-            캘린더 {enabledCalendarIds?.length ?? 0}/{calendars.length} ▾
-          </button>
-          {pickerOpen && (
-            <>
-              <div style={{ position: 'fixed', inset: 0, zIndex: 8998 }} onClick={() => setPickerOpen(false)} />
-              <div style={{
-                position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 8999,
-                background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
-                boxShadow: 'var(--sh-md)', minWidth: 220, maxHeight: 300, overflowY: 'auto', padding: '4px 0',
-              }}>
-                {calendars.length === 0 && (
-                  <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--t3)' }}>캘린더를 불러오는 중…</div>
-                )}
-                {calendars.map(c => {
-                  const on = (enabledCalendarIds ?? []).includes(c.id)
-                  return (
-                    <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', fontSize: 13, color: 'var(--t1)', cursor: 'pointer' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      <input type="checkbox" checked={on} onChange={() => setCalendarEnabled(c.id, !on)}
-                        style={{ accentColor: 'var(--ac)', width: 13, height: 13, cursor: 'pointer', flexShrink: 0 }} />
-                      <span style={{ width: 9, height: 9, borderRadius: 2, background: c.backgroundColor, flexShrink: 0 }} />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.summary}</span>
-                    </label>
-                  )
-                })}
-              </div>
-            </>
-          )}
-        </div>
+      <div style={{ position: 'relative' }}>
         <button
-          onClick={disconnect}
-          title="연동 해제"
-          style={{ fontSize: 11, color: 'var(--t3)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 6px', borderRadius: 'var(--r1)' }}
-          onMouseEnter={e => e.currentTarget.style.color = 'var(--t1)'}
-          onMouseLeave={e => e.currentTarget.style.color = 'var(--t3)'}
+          onClick={() => setPickerOpen(o => !o)}
+          title="표시할 캘린더 선택"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            fontSize: 12, color: error ? '#D44C47' : 'var(--t2)',
+            background: 'transparent',
+            border: `1px solid ${error ? 'rgba(212,76,71,.35)' : 'var(--bd2)'}`,
+            cursor: 'pointer', padding: '3px 9px', borderRadius: 'var(--r2)',
+            fontFamily: 'var(--font)', whiteSpace: 'nowrap',
+          }}
         >
-          ✕
+          <GoogleDot />
+          {error ? '일정 로드 오류' : loading ? '불러오는 중…' : `캘린더 ${enabledCalendarIds?.length ?? 0}/${calendars.length}`}
+          <span style={{ fontSize: 9, opacity: .5 }}>▾</span>
         </button>
+
+        {pickerOpen && (
+          <>
+            <div style={{ position: 'fixed', inset: 0, zIndex: 8998 }} onClick={() => setPickerOpen(false)} />
+            <div style={{
+              position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 8999,
+              background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
+              boxShadow: 'var(--sh-md)', minWidth: 230, maxHeight: 320, overflowY: 'auto', padding: '4px 0',
+            }}>
+              {error && (
+                <div style={{ padding: '6px 12px', fontSize: 11, color: '#D44C47', lineHeight: 1.5 }}>{error}</div>
+              )}
+              {calendars.length === 0 && (
+                <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--t3)' }}>캘린더를 불러오는 중…</div>
+              )}
+              {calendars.map(c => {
+                const on = (enabledCalendarIds ?? []).includes(c.id)
+                return (
+                  <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', fontSize: 13, color: 'var(--t1)', cursor: 'pointer' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <input type="checkbox" checked={on} onChange={() => setCalendarEnabled(c.id, !on)}
+                      style={{ accentColor: 'var(--ac)', width: 13, height: 13, cursor: 'pointer', flexShrink: 0 }} />
+                    <span style={{ width: 9, height: 9, borderRadius: 2, background: c.backgroundColor, flexShrink: 0 }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.summary}</span>
+                  </label>
+                )
+              })}
+              <div style={{ height: 1, background: 'var(--bd)', margin: '4px 0' }} />
+              <button
+                onClick={() => { setPickerOpen(false); disconnect() }}
+                style={{
+                  width: '100%', textAlign: 'left', padding: '6px 12px', fontSize: 12,
+                  color: '#D44C47', background: 'transparent', border: 'none',
+                  cursor: 'pointer', fontFamily: 'var(--font)',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                연동 해제
+              </button>
+            </div>
+          </>
+        )}
       </div>
     )
   }
@@ -478,7 +484,7 @@ function MobGCalRow({ event }: { event: GCalEvent }) {
     >
       <span style={{ width: 7, height: 7, borderRadius: '50%', background: event.calendarColor || GCAL_TEXT, flexShrink: 0 }} />
       <span style={{ flex: 1, fontSize: 14, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {event.startTime && <span style={{ color: GCAL_TEXT, fontWeight: 500, marginRight: 5 }}>{event.startTime}</span>}
+        {event.startTime && <span style={{ color: event.calendarColor || GCAL_TEXT, fontWeight: 500, marginRight: 5 }}>{event.startTime}</span>}
         {event.summary}
       </span>
       <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: GCAL_BG, color: GCAL_TEXT, flexShrink: 0 }}>

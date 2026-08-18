@@ -72,6 +72,11 @@ export function ViewBar() {
 
   const hasFilters = filters.assignees.length > 0 || filters.statuses.length > 0 || filters.tags.length > 0 || filters.projects.length > 0 || hideCompleted
   const showFilters = view !== 's'
+  // Sorting only means anything where rows are listed, and the calendar toggle
+  // only where calendar entries are drawn. Showing either everywhere just makes
+  // the bar longer than the decisions it offers.
+  const showSort = view === 't' || view === 'b'
+  const showGCalToggle = view === 'c' || view === 'l'
 
   // Mobile: in-flow bottom tab bar (rendered as the last flex child in AppPage).
   // Deliberately NOT position:fixed — iOS standalone PWAs mis-anchor fixed
@@ -162,7 +167,7 @@ export function ViewBar() {
               onChange={v => setFilters({ tags: v })}
             />
           )}
-          {view === 'c' && (
+          {showGCalToggle && (
             <button
               onClick={() => setShowGCal(!showGCal)}
               style={{
@@ -191,15 +196,18 @@ export function ViewBar() {
             완료 숨기기
           </button>
 
+          {/* Each dropdown clears only itself; with four set this is the only way
+              back to an unfiltered view in one action. */}
           {hasFilters && (
             <button
               onClick={() => { resetFilters(); setHideCompleted(false) }}
-              style={{ padding: '3px 9px', borderRadius: 'var(--r1)', border: '1px solid rgba(212,76,71,.25)', background: 'rgba(212,76,71,.05)', color: '#D44C47', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)' }}
+              title="필터 모두 해제"
+              style={{ padding: '3px 9px', borderRadius: 'var(--r1)', border: '1px solid var(--bd2)', background: 'transparent', color: 'var(--t2)', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}
             >
-              ✕ 초기화
+              필터 해제
             </button>
           )}
-          {view !== 'c' && (
+          {showSort && (
             <SingleSelect
               options={SORT_OPTIONS}
               value={filters.sort}

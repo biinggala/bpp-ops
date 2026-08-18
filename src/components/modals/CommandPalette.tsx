@@ -10,7 +10,6 @@ const VIEW_META: { id: ViewType; icon: string; label: string }[] = [
   { id: 't', icon: '≡', label: '리스트 뷰' },
   { id: 'b', icon: '⬛', label: '보드 뷰' },
   { id: 'c', icon: '📅', label: '캘린더 뷰' },
-  { id: 'p', icon: '🗂', label: '프로젝트 뷰' },
   { id: 'g', icon: '📊', label: '간트 차트' },
   { id: 's', icon: '📈', label: '통계' },
 ]
