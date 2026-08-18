@@ -2,7 +2,14 @@ import { applicationDefault, cert, getApps, initializeApp, type ServiceAccount }
 import { getDatabase, type Database } from 'firebase-admin/database'
 import type { Milestone, Project, Task } from './types.js'
 
-const ROOT = 'cringe'
+/**
+ * Data access for the per-project layout described in docs/data-model.md.
+ *
+ * Tasks live at projects/$pid/tasks/$id or personalTasks/$uid/$id. The Admin SDK
+ * bypasses the security rules, so the scoping in access.ts is still what keeps
+ * an operator from seeing projects they have no part in — the rules protect the
+ * web clients, not this server.
+ */
 
 let db: Database | null = null
 
@@ -31,64 +38,149 @@ export function initDb(): Database {
   return db
 }
 
-/** RTDB stores these as arrays, but sparse writes can turn them into objects. */
-function toList<T>(value: unknown): T[] {
-  if (Array.isArray(value)) return value.filter(Boolean) as T[]
-  if (value && typeof value === 'object') return Object.values(value as Record<string, T>).filter(Boolean)
-  return []
+interface ProjectNode {
+  meta?: Partial<Project>
+  members?: Record<string, string>
+  tasks?: Record<string, Task>
+  milestones?: Record<string, Milestone>
 }
 
-export async function readTasks(): Promise<Task[]> {
-  const snap = await initDb().ref(`${ROOT}/tasks`).get()
-  return toList<Task>(snap.val())
+const entries = <T,>(record: Record<string, T> | undefined): [string, T][] =>
+  record ? Object.entries(record).filter(([, v]) => !!v) : []
+
+async function readProjectNodes(): Promise<Record<string, ProjectNode>> {
+  const snap = await initDb().ref('projects').get()
+  return (snap.val() ?? {}) as Record<string, ProjectNode>
 }
 
 export async function readProjects(): Promise<Project[]> {
-  const snap = await initDb().ref(`${ROOT}/projects`).get()
-  return toList<Project>(snap.val())
+  const nodes = await readProjectNodes()
+  return entries(nodes)
+    .filter(([, node]) => !!node.meta)
+    .map(([pid, node]) => ({ ...(node.meta as Project), id: pid }))
 }
 
 export async function readMilestones(): Promise<Milestone[]> {
-  const snap = await initDb().ref(`${ROOT}/milestones`).get()
-  return toList<Milestone>(snap.val())
+  const nodes = await readProjectNodes()
+  return entries(nodes).flatMap(([pid, node]) =>
+    entries(node.milestones).map(([mid, m]) => ({ ...m, id: mid, projectId: pid }))
+  )
+}
+
+/** Where each task is stored, so a change can be written back to the right key. */
+interface TaskLocation {
+  task: Task
+  path: string
+}
+
+async function readTaskLocations(): Promise<TaskLocation[]> {
+  const database = initDb()
+  const [nodes, personalSnap, profilesSnap] = await Promise.all([
+    readProjectNodes(),
+    database.ref('personalTasks').get(),
+    database.ref('userProfiles').get(),
+  ])
+
+  const out: TaskLocation[] = []
+  for (const [pid, node] of entries(nodes)) {
+    for (const [tid, task] of entries(node.tasks)) {
+      // The path is what decides which project a task belongs to; a stale
+      // projectId on the record itself must not override it.
+      out.push({ task: { ...task, id: tid, projectId: pid }, path: `projects/${pid}/tasks/${tid}` })
+    }
+  }
+
+  const profiles = (profilesSnap.val() ?? {}) as Record<string, { email?: string }>
+  const emailByUid = new Map(Object.entries(profiles).map(([uid, p]) => [uid, (p?.email ?? '').toLowerCase()]))
+  const personal = (personalSnap.val() ?? {}) as Record<string, Record<string, Task>>
+  for (const [uid, tasks] of entries(personal)) {
+    for (const [tid, task] of entries(tasks)) {
+      out.push({
+        task: { ...task, id: tid, projectId: undefined, createdBy: task.createdBy ?? emailByUid.get(uid) },
+        path: `personalTasks/${uid}/${tid}`,
+      })
+    }
+  }
+  return out
+}
+
+export async function readTasks(): Promise<Task[]> {
+  return (await readTaskLocations()).map(l => l.task)
+}
+
+async function uidForEmail(email: string): Promise<string | null> {
+  const snap = await initDb().ref('userProfiles').get()
+  const profiles = (snap.val() ?? {}) as Record<string, { email?: string }>
+  const target = email.toLowerCase()
+  for (const [uid, profile] of Object.entries(profiles)) {
+    if ((profile?.email ?? '').toLowerCase() === target) return uid
+  }
+  return null
+}
+
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(stripUndefined) as unknown as T
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) if (v !== undefined) out[k] = stripUndefined(v)
+    return out as T
+  }
+  return value
 }
 
 /**
- * Applies `mutate` to the task list inside an RTDB transaction.
+ * Applies `mutate` to the task list and writes back only what changed.
  *
- * The web app stores every task in a single array and rewrites the whole thing
- * on each change, so a naive read-modify-write here would silently discard any
- * edit made while we were thinking. A transaction re-runs on conflict, which
- * closes that window against other transactional writers.
- *
- * It cannot protect against the app's own plain `set()` overwrite landing in the
- * same instant — fixing that properly means moving to per-task keys
- * (`cringe/tasks/<id>`), which is a data-model change, not a server change.
- *
- * Writes land on `cringe/tasks` and `cringe/savedAt` separately; never on the
- * `cringe` root, which would clobber projects, milestones and profiles.
+ * The signature is unchanged from when everything lived in one array, but the
+ * write is no longer a wholesale replacement: the before and after lists are
+ * compared and each difference lands on its own key. That is what stops a tool
+ * call from overwriting edits someone made in the app while it was thinking —
+ * the failure the old transaction could only narrow, not close.
  */
 export async function mutateTasks<T>(
   mutate: (tasks: Task[]) => { tasks: Task[]; result: T }
 ): Promise<T> {
   const database = initDb()
-  let captured: T | undefined
-  let ran = false
+  const locations = await readTaskLocations()
+  const before = new Map(locations.map(l => [l.task.id, l]))
 
-  const outcome = await database.ref(`${ROOT}/tasks`).transaction(current => {
-    const tasks = toList<Task>(current)
-    const { tasks: next, result } = mutate(tasks)
-    captured = result
-    ran = true
-    return next
-  })
+  const { tasks: next, result } = mutate(locations.map(l => l.task))
+  const after = new Map(next.map(t => [t.id, t]))
 
-  if (!outcome.committed) throw new Error('write conflict — the task list changed mid-update; retry')
-  if (!ran) throw new Error('transaction did not execute')
+  const updates: Record<string, unknown> = {}
 
-  // The app only accepts remote data when savedAt is newer than its local copy.
-  await database.ref(`${ROOT}/savedAt`).set(Date.now())
-  return captured as T
+  const pathFor = async (task: Task): Promise<string> => {
+    if (task.projectId) return `projects/${task.projectId}/tasks/${task.id}`
+    const owner = task.createdBy ? await uidForEmail(task.createdBy) : null
+    if (!owner) throw new Error(`cannot place task ${task.id}: no account matches its creator`)
+    return `personalTasks/${owner}/${task.id}`
+  }
+
+  const record = (task: Task, path: string) => {
+    const { projectId: _pid, ...rest } = task
+    updates[path] = stripUndefined(rest)
+  }
+
+  for (const [id, existing] of before) {
+    const updated = after.get(id)
+    if (!updated) { updates[existing.path] = null; continue }
+
+    const path = await pathFor(updated)
+    if (path !== existing.path) {
+      // A move changes where the record lives, so the old key has to go.
+      updates[existing.path] = null
+      record(updated, path)
+    } else if (JSON.stringify(updated) !== JSON.stringify(existing.task)) {
+      record(updated, path)
+    }
+  }
+  for (const [id, task] of after) {
+    if (before.has(id)) continue
+    record(task, await pathFor(task))
+  }
+
+  if (Object.keys(updates).length) await database.ref().update(updates)
+  return result
 }
 
 export function newId(): string {

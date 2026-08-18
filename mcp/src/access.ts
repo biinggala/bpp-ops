@@ -1,14 +1,13 @@
 // Access control for the MCP server.
 //
 // This matters more here than anywhere else in the codebase. The database rules
-// are `auth != null` for the whole `cringe` subtree, so a service account — or
-// any signed-in user — can read and write everything. All real scoping lives in
-// client code. A server that skipped these checks would hand an AI every
-// project in the workspace, including ones the caller has no part in.
+// enforce project membership for the web clients, but this server connects with
+// the Admin SDK and bypasses them entirely — a service account sees everything.
+// A server that skipped these checks would hand an AI every project in the
+// workspace, including ones the caller has no part in.
 //
 // Every tool therefore resolves data through this module, scoped to the calling
-// operator's email. The rules below intentionally mirror canAccessProject() and
-// useFilteredTasks() in the web app.
+// operator's email, matching the membership the rules apply to the app.
 
 import { LEGACY_MEMBERS, type Project, type Task } from './types.js'
 

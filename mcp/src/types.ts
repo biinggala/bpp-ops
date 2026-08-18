@@ -1,6 +1,9 @@
-// Mirrors the shapes stored under `cringe/` in Realtime Database. Kept as a
-// standalone copy rather than imported from ../src so the server has no
-// dependency on the web bundle's build setup.
+// Mirrors the record shapes stored in Realtime Database (see docs/data-model.md).
+// Kept as a standalone copy rather than imported from ../src so the server has
+// no dependency on the web bundle's build setup.
+//
+// projectId is the task's location rather than a stored field: the store module
+// fills it in from the path a task was read from.
 
 export type Status = '진행중' | '대기' | '검토중' | '완료'
 export type Priority = '높음' | '중간' | '낮음'
