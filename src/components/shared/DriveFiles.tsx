@@ -152,11 +152,11 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
   onPick: (f: DriveFile) => void
   onClose?: () => void
 }) {
-  const { wasConnected, token, connect, connecting, search, error } = useDriveStore()
+  const { wasConnected, token, needsReconnect, connect, connecting, search, error } = useDriveStore()
   const [q, setQ] = useState('')
   const [results, setResults] = useState<DriveFile[]>([])
   const [loading, setLoading] = useState(false)
-  const connected = wasConnected || !!token
+  const connected = (wasConnected || !!token) && !needsReconnect
   const seq = useRef(0)
 
   // Debounced, and every response carries the request number that asked for it —
@@ -176,14 +176,16 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
     return (
       <div style={{ padding: '14px 10px', textAlign: 'center' }}>
         <div style={{ fontSize: 12, color: 'var(--t3)', marginBottom: 9, lineHeight: 1.5 }}>
-          구글 드라이브를 연결하면<br />파일을 검색해서 바로 붙일 수 있습니다
+          {needsReconnect
+            ? <>구글 로그인이 만료되었습니다<br />다시 연결해 주세요</>
+            : <>구글 드라이브를 연결하면<br />파일을 검색해서 바로 붙일 수 있습니다</>}
         </div>
         <button
           onClick={() => void connect()}
           disabled={connecting}
           style={{ padding: '6px 14px', borderRadius: 'var(--r2)', border: 'none', background: 'var(--ac)', color: '#fff', fontSize: 12, fontWeight: 500, cursor: connecting ? 'default' : 'pointer', fontFamily: 'var(--font)', opacity: connecting ? .6 : 1 }}
         >
-          {connecting ? '연결 중...' : '드라이브 연결'}
+          {connecting ? '연결 중...' : needsReconnect ? '다시 연결' : '드라이브 연결'}
         </button>
         {error && <div style={{ fontSize: 11, color: '#D44C47', marginTop: 8 }}>{error}</div>}
       </div>
@@ -216,10 +218,15 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
             최근 항목
           </div>
         )}
-        {loading && results.length === 0 && (
+        {error && (
+          <div style={{ padding: '10px 8px', fontSize: 12, color: '#D44C47', lineHeight: 1.5, wordBreak: 'break-word' }}>
+            {error}
+          </div>
+        )}
+        {!error && loading && results.length === 0 && (
           <div style={{ padding: '10px 8px', fontSize: 12, color: 'var(--t3)' }}>불러오는 중...</div>
         )}
-        {!loading && results.length === 0 && (
+        {!error && !loading && results.length === 0 && (
           <div style={{ padding: '10px 8px', fontSize: 12, color: 'var(--t3)' }}>
             {q ? '검색 결과가 없습니다' : '표시할 파일이 없습니다'}
           </div>

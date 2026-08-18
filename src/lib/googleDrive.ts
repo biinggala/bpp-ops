@@ -11,6 +11,7 @@ const API = 'https://www.googleapis.com/drive/v3'
 const FIELDS = 'id,name,mimeType,webViewLink,iconLink,modifiedTime,parents,owners(displayName,emailAddress)'
 
 export const TOKEN_EXPIRED = 'DRIVE_TOKEN_EXPIRED'
+export const NOT_FOUND = 'DRIVE_NOT_FOUND'
 
 export interface DriveFile {
   id: string
@@ -23,6 +24,17 @@ export interface DriveFile {
   owners?: { displayName?: string; emailAddress?: string }[]
 }
 
+/**
+ * 403 is not an expired token.
+ *
+ * Treating it as one cost an afternoon: Drive answers 403 when the API is not
+ * enabled on the Cloud project, and the code responded by throwing the token
+ * away and asking Google for a new one — which succeeded, and was refused
+ * again. Every keystroke in the search box started a fresh authorisation, so a
+ * popup flashed once per letter typed and no search ever returned anything.
+ * Only 401 means the token is stale; everything else is Google explaining a
+ * problem the person needs to read.
+ */
 async function call<T>(token: string, path: string, params: Record<string, string>): Promise<T> {
   const qs = new URLSearchParams({
     supportsAllDrives: 'true',
@@ -30,13 +42,23 @@ async function call<T>(token: string, path: string, params: Record<string, strin
     ...params,
   })
   const res = await fetch(`${API}${path}?${qs}`, { headers: { Authorization: `Bearer ${token}` } })
-  if (res.status === 401 || res.status === 403) {
-    // 403 is also "you may not see this file", but the caller cannot tell the
-    // difference from here and re-authorising is harmless either way.
-    throw new Error(TOKEN_EXPIRED)
+  if (res.ok) return res.json() as Promise<T>
+  if (res.status === 401) throw new Error(TOKEN_EXPIRED)
+
+  let detail = ''
+  try {
+    const body = await res.json() as { error?: { message?: string } }
+    detail = body.error?.message ?? ''
+  } catch { /* not JSON */ }
+
+  if (res.status === 403 && /has not been used|is disabled|accessNotConfigured/i.test(detail)) {
+    throw new Error(
+      'Google Cloud 프로젝트에서 Drive API가 켜져 있지 않습니다. ' +
+      'APIs & Services → Library → Google Drive API → 사용 설정',
+    )
   }
-  if (!res.ok) throw new Error(`드라이브 오류 (${res.status})`)
-  return res.json() as Promise<T>
+  if (res.status === 404) throw new Error(NOT_FOUND)
+  throw new Error(detail || `드라이브 오류 (${res.status})`)
 }
 
 /** Drive's query language takes single quotes, so any in the term must be escaped. */
@@ -77,17 +99,16 @@ export async function searchFiles(
     }
   }
 
-  if (folderId) {
-    const scoped = await call<{ files?: DriveFile[] }>(token, '/files', {
-      ...common,
-      q: `'${quote(folderId)}' in parents and ${base}`,
-    })
-    push(scoped.files)
-  }
-  if (out.length < limit) {
-    const all = await call<{ files?: DriveFile[] }>(token, '/files', { ...common, q: base })
-    push(all.files)
-  }
+  // Both passes always run. Gating the second on the first coming up short
+  // meant a project with a busy folder could never find anything outside it.
+  const [scoped, all] = await Promise.all([
+    folderId
+      ? call<{ files?: DriveFile[] }>(token, '/files', { ...common, q: `'${quote(folderId)}' in parents and ${base}` })
+      : Promise.resolve({ files: [] as DriveFile[] }),
+    call<{ files?: DriveFile[] }>(token, '/files', { ...common, q: base }),
+  ])
+  push(scoped.files)
+  push(all.files)
   return out.slice(0, limit)
 }
 

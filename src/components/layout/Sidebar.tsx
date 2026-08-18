@@ -8,12 +8,9 @@ import { useMilestoneStore } from '../../store/milestoneStore'
 import { usePresenceStore } from '../../store/presenceStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { useMobile } from '../../hooks/useMobile'
-import { useResolvedLinks, driveIdOf } from '../shared/DriveFiles'
-import { fileKind } from '../../lib/googleDrive'
 import { MEMBERS } from '../../types'
 import { buildInviteToken } from '../../lib/paths'
-import type { MemberKey, Project, TaskLink } from '../../types'
-import type { DriveFile } from '../../lib/googleDrive'
+import type { MemberKey, Project } from '../../types'
 
 export function Sidebar() {
   const { filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly, sidebarOpen, setSidebarOpen } = useUiStore()
@@ -21,7 +18,6 @@ export function Sidebar() {
   const tasks = useTaskStore(s => s.tasks)
   const { projects, addProject, updateProject, deleteProject, addMember, removeMember } = useProjectStore()
   const deleteMilestonesForProject = useMilestoneStore(s => s.deleteMilestonesForProject)
-  const milestones = useMilestoneStore(s => s.milestones)
   const { memberKey, displayName, email, photoURL, signOutUser } = useAuthStore()
 
   // Project state
@@ -38,7 +34,6 @@ export function Sidebar() {
   const [memberModal, setMemberModal] = useState<{ id: string; name: string } | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
   const profileRef = useRef<HTMLDivElement>(null)
-  const [assetsExpanded, setAssetsExpanded] = useState(false)
 
   useEffect(() => { if (addingProject) projectNameRef.current?.focus() }, [addingProject])
   useEffect(() => { if (editingProjectId) projectEditRef.current?.select() }, [editingProjectId])
@@ -65,7 +60,7 @@ export function Sidebar() {
     return () => window.removeEventListener('mousedown', close)
   }, [profileOpen])
 
-  // Archived projects are excluded so the 전체 업무 badge and Assets list match
+  // Archived projects are excluded so the counts match the views they describe
   // what that view actually shows.
   const accessibleProjectIds = new Set(
     projects
@@ -107,22 +102,6 @@ export function Sidebar() {
     }
     return m
   }, [accessibleTasks, today])
-
-  // Materials across the visible tasks — milestones already finished drop out,
-  // since their files are history rather than something to reach for.
-  const assetLinks = useMemo(() => {
-    const doneMsIds = new Set(milestones.filter(m => m.done).map(m => m.id))
-    return accessibleTasks
-      .filter(t => !t.milestoneId || !doneMsIds.has(t.milestoneId))
-      .flatMap(t => (t.links ?? []).map(link => ({ link, task: t })))
-  }, [accessibleTasks, milestones])
-  // Only what is on screen gets looked up. Resolving the whole list would fire a
-  // Drive request per link on every load, for rows nobody has scrolled to.
-  const visibleAssets = useMemo(
-    () => assetsExpanded ? assetLinks : assetLinks.slice(0, 6),
-    [assetLinks, assetsExpanded],
-  )
-  const resolvedAssets = useResolvedLinks(useMemo(() => visibleAssets.map(a => a.link), [visibleAssets]))
 
   const isProjectCreator = (id: string): boolean => {
     const p = projects.find(pj => pj.id === id)
@@ -434,35 +413,6 @@ export function Sidebar() {
             </>
           )}
 
-          {/* ASSETS section */}
-          {(() => {
-            const allLinks = assetLinks
-            const visibleLinks = visibleAssets
-            return (
-              <>
-                <SectionLabel>자료</SectionLabel>
-                {allLinks.length === 0 ? (
-                  <div style={{ padding: '4px 10px', fontSize: 11, color: 'var(--sb-t3)' }}>자료가 없습니다</div>
-                ) : (
-                  <>
-                    {visibleLinks.map(({ link, task }) => (
-                      <AssetLinkItem key={link.id} link={link} file={resolvedAssets.get(driveIdOf(link) ?? '')} taskName={task.name} />
-                    ))}
-                    {allLinks.length > 6 && (
-                      <div
-                        onClick={() => setAssetsExpanded(e => !e)}
-                        style={{ padding: '4px 10px', fontSize: 11, color: 'var(--sb-t3)', cursor: 'pointer', transition: 'color .1s' }}
-                        onMouseEnter={e => (e.currentTarget.style.color = 'var(--sb-t2)')}
-                        onMouseLeave={e => (e.currentTarget.style.color = 'var(--sb-t3)')}
-                      >
-                        {assetsExpanded ? '접기' : `${allLinks.length - 6}개 더보기`}
-                      </div>
-                    )}
-                  </>
-                )}
-              </>
-            )
-          })()}
 
         </div>
 
@@ -803,32 +753,6 @@ function AddBtn({ children, onClick }: { children: React.ReactNode; onClick: () 
     >
       <span style={{ fontSize: 14, lineHeight: 1, opacity: .7 }}>+</span>
       {children}
-    </div>
-  )
-}
-
-function AssetLinkItem({ link, file, taskName }: {
-  link: TaskLink
-  file?: DriveFile | null
-  taskName: string
-}) {
-  const isDrive = !!driveIdOf(link)
-  const url = file?.webViewLink ?? link.url
-  const name = file?.name ?? link.title
-  return (
-    <div
-      onClick={() => window.open(url, '_blank', 'noopener')}
-      style={{ padding: '5px 8px 5px 10px', borderRadius: 'var(--r2)', cursor: 'pointer', margin: '1px 0', transition: 'background .1s' }}
-      onMouseEnter={e => (e.currentTarget.style.background = 'var(--sb-hover)')}
-      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-      title={name}
-    >
-      <div style={{ fontSize: 12, color: 'var(--sb-t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
-        {isDrive ? fileKind(file?.mimeType ?? link.mimeType).icon : '🔗'} {name || url}
-      </div>
-      <div style={{ fontSize: 10, color: 'var(--sb-t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
-        {taskName}
-      </div>
     </div>
   )
 }
