@@ -114,15 +114,22 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     set({ error: null, loading: true })
     try {
       if (GIS_CONFIGURED) {
-        const granted = await requestCalendarToken({
-          scope: CALENDAR_SCOPE,
-          interactive: true,
-          hint: auth.currentUser?.email ?? undefined,
-        })
-        const expiry = storeToken(granted.token, granted.expiresIn)
-        localStorage.setItem('gcal_connected', '1')
-        set({ token: granted.token, expiry, wasConnected: true, loading: false, error: null })
-        return
+        try {
+          const granted = await requestCalendarToken({
+            scope: CALENDAR_SCOPE,
+            interactive: true,
+            hint: auth.currentUser?.email ?? undefined,
+          })
+          const expiry = storeToken(granted.token, granted.expiresIn)
+          localStorage.setItem('gcal_connected', '1')
+          set({ token: granted.token, expiry, wasConnected: true, loading: false, error: null })
+          return
+        } catch (gisError) {
+          // GIS refuses if the site is not listed as an authorised origin on the
+          // client, among other setup problems. Connecting still has to work, so
+          // fall through to the old popup rather than leaving people stuck.
+          console.warn('[gcal] GIS 연동 실패, 기존 방식으로 시도합니다', gisError)
+        }
       }
 
       const provider = new GoogleAuthProvider()

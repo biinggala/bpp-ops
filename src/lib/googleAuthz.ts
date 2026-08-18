@@ -12,7 +12,7 @@
 // a refresh token, which is a separate decision (see docs).
 
 /** From the Google Cloud console: APIs & Services → Credentials → Web client. */
-export const GOOGLE_CLIENT_ID = ''
+export const GOOGLE_CLIENT_ID = '1050546278891-elmuh3saq38q8rsj02li9d3j6q043ko7.apps.googleusercontent.com'
 
 export const GIS_CONFIGURED = GOOGLE_CLIENT_ID.length > 0
 
