@@ -57,6 +57,8 @@ const SNAP = 15            // minutes
 const MIN_DURATION = 15
 const GUTTER = 52          // width of the hour labels
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
+/** The hour the grid is scrolled to on open — sits flush with the top edge. */
+const DAY_START_HOUR = 9
 
 const snap = (minutes: number) => Math.round(minutes / SNAP) * SNAP
 const clampDay = (minutes: number) => Math.max(0, Math.min(24 * 60, minutes))
@@ -271,9 +273,10 @@ export function TimelineGrid({ days }: { days: string[] }) {
   const todayStr = fmtYMD(now)
   const nowMinutes = now.getHours() * 60 + now.getMinutes()
 
-  // Scroll to the working day rather than midnight.
+  // Open at the start of the working day rather than midnight. The team starts
+  // at 10, so the small hours are dead space that only costs a scroll.
   useEffect(() => {
-    if (gridRef.current) gridRef.current.scrollTop = Math.max(0, (8 * 60) * PX_PER_MIN - 40)
+    if (gridRef.current) gridRef.current.scrollTop = DAY_START_HOUR * 60 * PX_PER_MIN
   }, [])
 
   if (!token) {
