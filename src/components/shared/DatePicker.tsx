@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccessibleTasks } from '../../hooks/useAccessibleTasks'
 import { useMobile } from '../../hooks/useMobile'
+import { haptic } from '../../lib/haptics'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { useTaskStore } from '../../store/taskStore'
@@ -176,7 +177,7 @@ export function DatePicker({ value, anchor, context, onChange, onClose }: {
     const d = new Date(date + 'T00:00:00')
     setViewYear(d.getFullYear()); setViewMonth(d.getMonth())
   }
-  const pick = (date: string) => { onChange(date); onClose() }
+  const pick = (date: string) => { haptic('toggle'); onChange(date); onClose() }
 
   const focus = hover ?? value
   const focusTasks = (focus ? loadByDay.get(focus) : undefined) ?? []

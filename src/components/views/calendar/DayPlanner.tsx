@@ -8,6 +8,7 @@ import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useMobile } from '../../../hooks/useMobile'
+import { haptic } from '../../../lib/haptics'
 import { isComposing, parseAssignees } from '../../../lib/utils'
 import { NOTION, STATUS_COLORS } from '../../../types'
 
@@ -117,6 +118,7 @@ export function DayPlanner({ date, anchor, onClose }: {
       progress: 0, memo: '', projectId: pickedProject,
       createdBy: email ?? undefined,
     })
+    haptic('toggle')
     // Stays open and cleared: putting three things on a Thursday is one sitting,
     // not three trips.
     setName('')
@@ -206,7 +208,7 @@ export function DayPlanner({ date, anchor, onClose }: {
               return (
                 <div
                   key={t.id}
-                  onClick={() => updateTask(t.id, { due: date })}
+                  onClick={() => { haptic('toggle'); updateTask(t.id, { due: date }) }}
                   title={t.name}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 7,

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import { STATUS_LIST, STATUS_COLORS, NOTION } from '../../types'
+import { haptic } from '../../lib/haptics'
 import type { Task, Status } from '../../types'
 
 interface ContextMenuProps {
@@ -47,8 +48,8 @@ export function ContextMenu({ x, y, task, onClose, onEdit, onAddSubtask, onStatu
         zIndex: 500, padding: 4, userSelect: 'none', boxSizing: 'border-box',
       }}
     >
-      <Item icon="✎" label="수정" onClick={() => { onEdit(); onClose() }} />
-      <Item icon="+" label="하위 업무 추가" onClick={() => { onAddSubtask(); onClose() }} />
+      <Item icon="✎" label="수정" onClick={() => { haptic('tap'); onEdit(); onClose() }} />
+      <Item icon="+" label="하위 업무 추가" onClick={() => { haptic('tap'); onAddSubtask(); onClose() }} />
 
       <Divider />
       <div style={{ padding: '4px 8px 2px', fontSize: 10, fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em' }}>상태 변경</div>
@@ -58,12 +59,13 @@ export function ContextMenu({ x, y, task, onClose, onEdit, onAddSubtask, onStatu
           dot={STATUS_COLORS[s].text}
           label={s}
           active={task.status === s}
-          onClick={() => { onStatusChange(s); onClose() }}
+          // Finishing something earns a different note from merely changing it.
+          onClick={() => { haptic(s === '완료' ? 'success' : 'toggle'); onStatusChange(s); onClose() }}
         />
       ))}
 
       <Divider />
-      <Item icon="✕" label="삭제" danger onClick={() => { onDelete(); onClose() }} />
+      <Item icon="✕" label="삭제" danger onClick={() => { haptic('warn'); onDelete(); onClose() }} />
     </div>
   )
 }

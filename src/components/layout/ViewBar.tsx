@@ -6,6 +6,7 @@ import { useUserProfileStore } from '../../store/userProfileStore'
 import { useAuthStore } from '../../store/authStore'
 import { useScopedTasks } from '../../hooks/useScopedTasks'
 import { useMobile } from '../../hooks/useMobile'
+import { haptic } from '../../lib/haptics'
 import { MEMBERS, STATUS_COLORS } from '../../types'
 import type { ViewType, Status, MemberKey } from '../../types'
 import { STATUS_LIST } from '../../types'
@@ -163,7 +164,7 @@ export function ViewBar() {
         {VIEWS.map(v => (
           <button
             key={v.id}
-            onClick={() => setView(v.id)}
+            onClick={() => { haptic('tap'); setView(v.id) }}
             style={{
               flex: 1, height: '100%',
               display: 'flex', flexDirection: 'column', alignItems: 'center',

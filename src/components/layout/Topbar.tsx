@@ -3,6 +3,7 @@ import { useUiStore } from '../../store/uiStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMobile } from '../../hooks/useMobile'
 import { safeExternalUrl } from '../../lib/utils'
+import { haptic } from '../../lib/haptics'
 
 export function Topbar() {
   const { space, projectId, myTasksOnly, openTaskModal, toggleSidebar, hideCompleted, setHideCompleted } = useUiStore()
@@ -33,7 +34,7 @@ export function Topbar() {
       }}>
       {isMobile && (
         <button
-          onClick={toggleSidebar}
+          onClick={() => { haptic('tap'); toggleSidebar() }}
           aria-label="메뉴"
           style={{
             width: 36, height: 36, display: 'flex', flexDirection: 'column',
@@ -76,7 +77,7 @@ export function Topbar() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
         {isMobile && (
           <button
-            onClick={() => setHideCompleted(!hideCompleted)}
+            onClick={() => { haptic('toggle'); setHideCompleted(!hideCompleted) }}
             aria-label="완료 숨기기"
             title={hideCompleted ? '완료 표시' : '완료 숨기기'}
             style={{
@@ -93,7 +94,7 @@ export function Topbar() {
         )}
         {isMobile ? (
           <button
-            onClick={() => openTaskModal()}
+            onClick={() => { haptic('tap'); openTaskModal() }}
             aria-label="새 업무"
             style={{
               width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',

@@ -4,6 +4,7 @@ import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { DayPlanner } from './DayPlanner'
+import { haptic } from '../../../lib/haptics'
 import { useProjectStore } from '../../../store/projectStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
 import { useGCalStore } from '../../../store/gcalStore'
@@ -308,6 +309,7 @@ function MobileCalendar() {
   }, [selectedDate])
 
   const handleDateSelect = (dateStr: string) => {
+    haptic('tap')
     setSelectedDate(dateStr)
     setTimeout(() => {
       const el = sectionRefs.current.get(dateStr)
@@ -442,13 +444,13 @@ function MobileCalendar() {
               {/* Tapping the day's heading opens the planner for it — the same
                   place the desktop grid puts it, and the only element here that
                   means "this day" rather than "this task". */}
-              <div onClick={e => setPlanning({ date: dateStr, anchor: e.currentTarget })} style={{ cursor: 'pointer' }}>
+              <div onClick={e => { haptic('tap'); setPlanning({ date: dateStr, anchor: e.currentTarget }) }} style={{ cursor: 'pointer' }}>
                 <SectionHeader label={fmtSection(dateStr)} count={total} color={dateStr === todayStr ? 'var(--ac)' : 'var(--t2)'} />
               </div>
               {dayGCal.map(ev => <MobGCalRow key={ev.id} event={ev} />)}
               {dayTasks.length === 0 && dayGCal.length === 0 ? (
                 <div
-                  onClick={e => setPlanning({ date: dateStr, anchor: e.currentTarget })}
+                  onClick={e => { haptic('tap'); setPlanning({ date: dateStr, anchor: e.currentTarget }) }}
                   style={{ padding: '10px 16px', fontSize: 13, color: 'var(--t3)', cursor: 'pointer' }}
                 >
                   업무 없음 · 눌러서 추가

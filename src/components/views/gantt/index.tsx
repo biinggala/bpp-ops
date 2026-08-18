@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useMobile } from '../../../hooks/useMobile'
+import { haptic } from '../../../lib/haptics'
 import { useTaskStore } from '../../../store/taskStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
@@ -425,7 +426,7 @@ function MilestoneHeaderRow({ milestone, isExpanded, onToggle, rollup, rangeStar
     lpActive.current = false
     lpTimer.current = setTimeout(() => {
       lpActive.current = true
-      navigator.vibrate?.(40)
+      haptic('longPress')
       onContextMenu(lpStart.current.x, lpStart.current.y)
     }, 500)
   }

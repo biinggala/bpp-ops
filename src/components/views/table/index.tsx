@@ -21,6 +21,7 @@ import {
 } from '../../shared/DriveFiles'
 import { fileKind } from '../../../lib/googleDrive'
 import { DatePicker, DateField } from '../../shared/DatePicker'
+import { haptic } from '../../../lib/haptics'
 import type { DateContext } from '../../shared/DatePicker'
 import type { Task, Milestone, Status, Priority, TaskLink } from '../../../types'
 import type { ListGroup } from '../../../store/uiStore'
@@ -475,8 +476,7 @@ function MobileTableView() {
       longPressActive.current = false
       longPressTimer.current = setTimeout(() => {
         longPressActive.current = true
-        // Vibrate feedback if available
-        if (navigator.vibrate) navigator.vibrate(30)
+        haptic('longPress')
         setMobCtxMenu({ x: startX, y: startY, task })
       }, 500)
     }
@@ -497,7 +497,7 @@ function MobileTableView() {
         <div
           className="lp-row"
           draggable={false}
-          onClick={() => { if (longPressActive.current) { longPressActive.current = false; return }; openTaskDetail(task.id) }}
+          onClick={() => { if (longPressActive.current) { longPressActive.current = false; return }; haptic('tap'); openTaskDetail(task.id) }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
           onTouchMove={handleTouchMove}
@@ -520,7 +520,7 @@ function MobileTableView() {
         >
           {!isChild && hasChildren && (
             <button
-              onClick={e => { e.stopPropagation(); toggle(task.id) }}
+              onClick={e => { e.stopPropagation(); haptic('tap'); toggle(task.id) }}
               style={{ width: 20, height: 20, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: 10, padding: 0 }}
             >{isExpanded ? '▼' : '▶'}</button>
           )}
@@ -538,7 +538,7 @@ function MobileTableView() {
           </span>
           {!isDone && (
             <button
-              onClick={e => { e.stopPropagation(); const child = addTask({ type: '세부', cat: task.cat, name: '새 하위 업무', assignee: '', start: '', due: '', priority: '중간', status: '대기', progress: 0, memo: '', parentId: task.id, projectId: task.projectId, milestoneId: task.milestoneId, createdBy: userEmail ?? undefined }); openTaskDetail(child.id) }}
+              onClick={e => { e.stopPropagation(); haptic('toggle'); const child = addTask({ type: '세부', cat: task.cat, name: '새 하위 업무', assignee: '', start: '', due: '', priority: '중간', status: '대기', progress: 0, memo: '', parentId: task.id, projectId: task.projectId, milestoneId: task.milestoneId, createdBy: userEmail ?? undefined }); openTaskDetail(child.id) }}
               style={{ width: 26, height: 26, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: 18, padding: 0, lineHeight: 1 }}
             >⊕</button>
           )}

@@ -8,6 +8,7 @@ import { useMilestoneStore } from '../../store/milestoneStore'
 import { usePresenceStore } from '../../store/presenceStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { useMobile } from '../../hooks/useMobile'
+import { haptic } from '../../lib/haptics'
 import { MEMBERS } from '../../types'
 import { buildInviteToken } from '../../lib/paths'
 import type { MemberKey, Project } from '../../types'
@@ -177,7 +178,7 @@ export function Sidebar() {
   const archivedProjects = accessibleProjects.filter(p => p.archived)
   const onlineUsers = Object.values(presences).filter(p => p.online)
 
-  const closeSidebar = () => { if (isMobile) setSidebarOpen(false) }
+  const closeSidebar = () => { if (isMobile) { haptic('tap'); setSidebarOpen(false) } }
 
   return (
     <>
