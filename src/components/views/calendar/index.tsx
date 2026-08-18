@@ -36,7 +36,15 @@ const MOB_STATUS: Record<string, { bg: string; color: string }> = {
 // ── GCal connect button ───────────────────────────────────────────────────────
 
 function GCalButton() {
-  const { token, loading, autoRefreshing, wasConnected, error, events: gcalEvents, connect, disconnect, autoReconnect } = useGCalStore()
+  const { token, loading, autoRefreshing, wasConnected, error, events: gcalEvents, calendars, enabledCalendarIds, connect, disconnect, autoReconnect, fetchCalendars, setCalendarEnabled } = useGCalStore()
+  const [pickerOpen, setPickerOpen] = React.useState(false)
+
+  // The calendar list is what makes shared team calendars reachable at all, so
+  // it is read as soon as there is a token to read it with.
+  React.useEffect(() => {
+    if (token && !calendars.length) fetchCalendars()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token])
 
   // On mount: if user was connected before but token expired, silently refresh
   React.useEffect(() => {
@@ -60,6 +68,43 @@ function GCalButton() {
             <GoogleDot /> 캘린더 연동됨 {gcalEvents.length > 0 && `(${gcalEvents.length}개)`}
           </span>
         )}
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => setPickerOpen(o => !o)}
+            title="표시할 캘린더 선택"
+            style={{ fontSize: 11, color: 'var(--t3)', background: 'transparent', border: '1px solid var(--bd)', cursor: 'pointer', padding: '2px 8px', borderRadius: 'var(--r1)', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}
+          >
+            캘린더 {enabledCalendarIds?.length ?? 0}/{calendars.length} ▾
+          </button>
+          {pickerOpen && (
+            <>
+              <div style={{ position: 'fixed', inset: 0, zIndex: 8998 }} onClick={() => setPickerOpen(false)} />
+              <div style={{
+                position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 8999,
+                background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
+                boxShadow: 'var(--sh-md)', minWidth: 220, maxHeight: 300, overflowY: 'auto', padding: '4px 0',
+              }}>
+                {calendars.length === 0 && (
+                  <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--t3)' }}>캘린더를 불러오는 중…</div>
+                )}
+                {calendars.map(c => {
+                  const on = (enabledCalendarIds ?? []).includes(c.id)
+                  return (
+                    <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', fontSize: 13, color: 'var(--t1)', cursor: 'pointer' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <input type="checkbox" checked={on} onChange={() => setCalendarEnabled(c.id, !on)}
+                        style={{ accentColor: 'var(--ac)', width: 13, height: 13, cursor: 'pointer', flexShrink: 0 }} />
+                      <span style={{ width: 9, height: 9, borderRadius: 2, background: c.backgroundColor, flexShrink: 0 }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.summary}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
         <button
           onClick={disconnect}
           title="연동 해제"
@@ -171,13 +216,15 @@ function MobileCalendar() {
   const todayStr  = useMemo(() => fmt(todayDate), [todayDate])
   const [selectedDate, setSelectedDate] = useState(todayStr)
 
-  // Fetch GCal events for a 3-month window around today
+  // Fetch GCal events for a 3-month window around today. Re-runs when the set of
+  // shown calendars changes, otherwise ticking one on would do nothing visible.
+  const enabledKey = (useGCalStore(s => s.enabledCalendarIds) ?? []).join(',')
   useEffect(() => {
     if (!token) return
     const from = fmt(addDays(todayDate, -14))
     const to   = fmt(addDays(todayDate, 75))
     fetchEvents(from, to)
-  }, [token])
+  }, [token, enabledKey])
 
   // Group tasks by due date
   const tasksByDate = useMemo(() => {
@@ -429,7 +476,7 @@ function MobGCalRow({ event }: { event: GCalEvent }) {
       rel="noopener noreferrer"
       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--bd)', textDecoration: 'none' }}
     >
-      <span style={{ width: 7, height: 7, borderRadius: '50%', background: GCAL_TEXT, flexShrink: 0 }} />
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: event.calendarColor || GCAL_TEXT, flexShrink: 0 }} />
       <span style={{ flex: 1, fontSize: 14, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {event.startTime && <span style={{ color: GCAL_TEXT, fontWeight: 500, marginRight: 5 }}>{event.startTime}</span>}
         {event.summary}
