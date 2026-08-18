@@ -429,6 +429,15 @@ function bucketTasks(
       a.label.localeCompare(b.label, 'ko'))
   }
 
+  // Done last, inside every bucket.
+  //
+  // The sort the list is under is about when work is due, and a finished task
+  // still has its deadline — so "마감 가까운 순" was floating things that were
+  // already done to the top of the list, which is the one place they have no
+  // business being. Stable, so the chosen order survives underneath.
+  for (const b of order) {
+    b.tasks = [...b.tasks].sort((a, c) => (a.status === '완료' ? 1 : 0) - (c.status === '완료' ? 1 : 0))
+  }
   return order.filter(b => b.tasks.length > 0)
 }
 
