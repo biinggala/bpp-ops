@@ -64,7 +64,7 @@ const MENU_GAP = 4
  */
 function useMenu() {
   const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const [pos, setPos] = useState({ top: 0, left: 0, maxHeight: 320 })
   const rootRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
 
@@ -79,26 +79,41 @@ function useMenu() {
     return () => document.removeEventListener('mousedown', h)
   }, [open])
 
-  /** Clamped to the viewport — the right-hand columns used to push menus off-screen. */
-  const openAt = (el: HTMLElement | null, width = MENU_W) => {
+  /**
+   * Places the panel next to `el`, kept inside the window.
+   *
+   * Horizontally it is clamped; vertically it flips above the trigger when
+   * there is more room there. Without the flip a tall panel opened from a row
+   * near the bottom of the list would just run off the screen, which is exactly
+   * where the long ones — the file picker — tend to be opened from.
+   */
+  const openAt = (el: HTMLElement | null, width = MENU_W, height = 320) => {
     if (!el) return
     const r = el.getBoundingClientRect()
+    const below = window.innerHeight - r.bottom - MENU_GAP - 8
+    const above = r.top - MENU_GAP - 8
+    const flip = below < Math.min(height, 220) && above > below
     setPos({
-      top: r.bottom + MENU_GAP,
+      top: flip
+        ? Math.max(8, r.top - MENU_GAP - Math.min(height, above))
+        : r.bottom + MENU_GAP,
       left: Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - width - 8)),
+      maxHeight: Math.max(180, flip ? above : below),
     })
     setOpen(true)
   }
-  const toggleAt = (el: HTMLElement | null, width = MENU_W) =>
-    open ? setOpen(false) : openAt(el, width)
+  const toggleAt = (el: HTMLElement | null, width = MENU_W, height = 320) =>
+    open ? setOpen(false) : openAt(el, width, height)
 
   return { open, setOpen, pos, rootRef, panelRef, openAt, toggleAt }
 }
 
-function Menu({ pos, panelRef, width = MENU_W, children }: {
-  pos: { top: number; left: number }
+function Menu({ pos, panelRef, width = MENU_W, maxHeight, children }: {
+  pos: { top: number; left: number; maxHeight?: number }
   panelRef: React.RefObject<HTMLDivElement | null>
   width?: number
+  /** Ceiling for this menu; the space actually available still wins. */
+  maxHeight?: number
   children: React.ReactNode
 }) {
   return (
@@ -111,7 +126,8 @@ function Menu({ pos, panelRef, width = MENU_W, children }: {
           position: 'fixed', top: pos.top, left: pos.left, width, zIndex: 9000,
           background: 'var(--bg)', border: '1px solid var(--bd)',
           borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)',
-          padding: 4, maxHeight: 320, boxSizing: 'border-box',
+          padding: 4, boxSizing: 'border-box',
+          maxHeight: Math.min(maxHeight ?? 320, pos.maxHeight ?? 320),
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
         }}
       >
@@ -2361,7 +2377,7 @@ function LinksCell({ links, projectId, onChange }: {
 
   return (
     <div ref={m.rootRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
-      <CellTrigger open={m.open} onOpen={el => m.toggleAt(el, 320)}>
+      <CellTrigger open={m.open} onOpen={el => m.toggleAt(el, 340, 480)}>
         {!first ? <Dash /> : (
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, fontSize: 12 }}>
             <span style={{ flexShrink: 0 }}>{firstIcon}</span>
@@ -2372,16 +2388,19 @@ function LinksCell({ links, projectId, onChange }: {
       </CellTrigger>
 
       {m.open && (
-        <Menu pos={m.pos} panelRef={m.panelRef} width={320}>
+        <Menu pos={m.pos} panelRef={m.panelRef} width={340} maxHeight={480}>
+          {/* Two scroll areas, each with its own floor. Sharing one meant the
+              search results grew until what was already attached was a sliver —
+              and what is already attached is the thing you check before adding. */}
           {links.length > 0 && (
             <>
-              <MenuList>
+              <div style={{ flex: '0 1 auto', minHeight: 40, maxHeight: 150, overflowY: 'auto', margin: '0 -4px', padding: '0 4px' }}>
                 {links.map(l => (
                   <FileRow key={l.id} link={l} compact
                     file={resolved.get(driveIdOf(l) ?? '')}
                     onRemove={() => remove(l.id)} />
                 ))}
-              </MenuList>
+              </div>
               <MenuDivider />
             </>
           )}

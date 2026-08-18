@@ -3,7 +3,8 @@ import { auth } from '../lib/firebase'
 import { requestGoogleToken, GIS_CONFIGURED } from '../lib/googleAuthz'
 import {
   DRIVE_SCOPE, TOKEN_EXPIRED, searchFiles, getFile, driveIdFromUrl,
-  type DriveFile, type DriveSearchResult,
+  fetchSnippet, canSnippet,
+  type DriveFile, type DriveSearchResult, type Snippet,
 } from '../lib/googleDrive'
 
 const TOKEN_KEY = 'drive_token'
@@ -21,6 +22,8 @@ interface DriveState {
   error: string | null
   /** Live metadata, keyed by Drive id. `null` means "asked, not available". */
   meta: Record<string, DriveFile | null>
+  /** Matched passages, keyed by `id::term`. `null` means "asked, none found". */
+  snippets: Record<string, Snippet | null>
 
   connect: () => Promise<boolean>
   disconnect: () => void
@@ -28,6 +31,8 @@ interface DriveState {
   search: (query: string, folderId?: string | null) => Promise<DriveSearchResult[]>
   /** Fills `meta` for ids not already known. Safe to call on every render. */
   resolve: (ids: string[]) => void
+  /** Fills `snippets` for content matches. Safe to call on every render. */
+  loadSnippets: (files: DriveSearchResult[], term: string) => void
 }
 
 function loadStored() {
@@ -56,12 +61,16 @@ const inFlight = new Set<string>()
 /** The single in-progress token renewal, shared by every caller that asks. */
 let renewal: Promise<string | null> | null = null
 
+const SNIPPET_LIMIT = 8
+export const snippetKey = (id: string, term: string) => `${id}::${term.trim().toLowerCase()}`
+
 export const useDriveStore = create<DriveState>((set, get) => ({
   ...loadStored(),
   connecting: false,
   needsReconnect: false,
   error: null,
   meta: {},
+  snippets: {},
 
   connect: async () => {
     if (!GIS_CONFIGURED) {
@@ -92,7 +101,7 @@ export const useDriveStore = create<DriveState>((set, get) => ({
       localStorage.removeItem(EXPIRY_KEY)
       localStorage.removeItem(CONNECTED_KEY)
     } catch { /* ignore */ }
-    set({ token: null, expiry: null, wasConnected: false, needsReconnect: false, meta: {}, error: null })
+    set({ token: null, expiry: null, wasConnected: false, needsReconnect: false, meta: {}, snippets: {}, error: null })
   },
 
   /**
@@ -159,6 +168,49 @@ export const useDriveStore = create<DriveState>((set, get) => ({
       else set({ error: msg })
       return []
     }
+  },
+
+  /**
+   * Reading a whole document to quote one line is not free, so this is capped.
+   * The cap is deliberately near what fits on screen — nobody reads past the
+   * eighth result of a search they are going to refine anyway.
+   */
+  loadSnippets: (files, term) => {
+    const needle = term.trim()
+    if (!needle) return
+    const { snippets } = get()
+    const todo = files
+      .filter(f => f.contentMatch && canSnippet(f.mimeType))
+      .filter(f => !(snippetKey(f.id, needle) in snippets) && !inFlight.has(snippetKey(f.id, needle)))
+      .slice(0, SNIPPET_LIMIT)
+    if (!todo.length) return
+    todo.forEach(f => inFlight.add(snippetKey(f.id, needle)))
+
+    void (async () => {
+      const token = await get().ensureToken()
+      if (!token) {
+        todo.forEach(f => inFlight.delete(snippetKey(f.id, needle)))
+        return
+      }
+      // Serial, not parallel: each of these can be a few hundred kilobytes, and
+      // they are a nicety — they must not crowd out the search itself.
+      for (const f of todo) {
+        const key = snippetKey(f.id, needle)
+        try {
+          const snip = await fetchSnippet(token, { id: f.id, mimeType: f.mimeType }, needle)
+          set(s => ({ snippets: { ...s.snippets, [key]: snip } }))
+        } catch (e) {
+          set(s => ({ snippets: { ...s.snippets, [key]: null } }))
+          if (e instanceof Error && e.message === TOKEN_EXPIRED) {
+            set({ token: null, expiry: null })
+            todo.forEach(x => inFlight.delete(snippetKey(x.id, needle)))
+            return
+          }
+        } finally {
+          inFlight.delete(key)
+        }
+      }
+    })()
   },
 
   resolve: (ids) => {

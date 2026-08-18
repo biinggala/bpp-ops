@@ -190,6 +190,74 @@ export function driveUrl(fileId: string, mimeType?: string): string {
   }
 }
 
+// ── Content snippets ──────────────────────────────────────────────────────────
+
+/**
+ * Drive has no snippet field.
+ *
+ * `fullText contains` will tell you a document mentions your term and then say
+ * nothing about where or in what sentence — which is the half that makes a
+ * result worth clicking. So the text is exported and the match found here.
+ *
+ * Only for the formats Drive will hand over as text. A PDF would have to be
+ * downloaded as a blob and parsed, which is a library and a lot of bytes for a
+ * line of preview, so PDFs keep the "내용 일치" label and no quote.
+ */
+const EXPORT_AS: Record<string, string> = {
+  'application/vnd.google-apps.document': 'text/plain',
+  'application/vnd.google-apps.presentation': 'text/plain',
+  // Sheets export one sheet at a time, so a match on a later tab finds nothing.
+  'application/vnd.google-apps.spreadsheet': 'text/csv',
+}
+
+export function canSnippet(mimeType?: string): boolean {
+  if (!mimeType) return false
+  return mimeType in EXPORT_AS || mimeType.startsWith('text/')
+}
+
+export interface Snippet {
+  before: string
+  match: string
+  after: string
+}
+
+/** Enough of a long document to find the term in; past this it is not worth the bytes. */
+const MAX_TEXT = 400_000
+
+export async function fetchSnippet(
+  token: string,
+  file: { id: string; mimeType: string },
+  term: string,
+  radius = 70,
+): Promise<Snippet | null> {
+  const needle = term.trim()
+  if (!needle || !canSnippet(file.mimeType)) return null
+
+  const exportAs = EXPORT_AS[file.mimeType]
+  const url = exportAs
+    ? `${API}/files/${encodeURIComponent(file.id)}/export?mimeType=${encodeURIComponent(exportAs)}`
+    : `${API}/files/${encodeURIComponent(file.id)}?alt=media&supportsAllDrives=true`
+
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  if (res.status === 401) throw new Error(TOKEN_EXPIRED)
+  if (!res.ok) return null
+
+  const text = (await res.text()).slice(0, MAX_TEXT)
+  const at = text.toLowerCase().indexOf(needle.toLowerCase())
+  // Drive matched on something this export does not contain — a later sheet, a
+  // comment, the file's description. Better no quote than a misleading one.
+  if (at < 0) return null
+
+  const tidy = (v: string) => v.replace(/\s+/g, ' ')
+  const from = Math.max(0, at - radius)
+  const to = Math.min(text.length, at + needle.length + radius)
+  return {
+    before: (from > 0 ? '…' : '') + tidy(text.slice(from, at)),
+    match: text.slice(at, at + needle.length),
+    after: tidy(text.slice(at + needle.length, to)) + (to < text.length ? '…' : ''),
+  }
+}
+
 export function relativeTime(iso?: string): string {
   if (!iso) return ''
   const then = new Date(iso).getTime()

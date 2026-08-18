@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { useDriveStore } from '../../store/driveStore'
+import { useDriveStore, snippetKey } from '../../store/driveStore'
 import { useProjectStore } from '../../store/projectStore'
 import { isComposing, gid, safeExternalUrl } from '../../lib/utils'
 import { fileKind, relativeTime, driveIdFromUrl, driveUrl, type DriveFile, type DriveSearchResult } from '../../lib/googleDrive'
+import { NOTION } from '../../types'
 import type { TaskLink } from '../../types'
 
 /**
@@ -153,6 +154,8 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
   onClose?: () => void
 }) {
   const { wasConnected, token, needsReconnect, connect, connecting, search, error } = useDriveStore()
+  const snippets = useDriveStore(s => s.snippets)
+  const loadSnippets = useDriveStore(s => s.loadSnippets)
   const [q, setQ] = useState('')
   const [results, setResults] = useState<DriveSearchResult[]>([])
   const [loading, setLoading] = useState(false)
@@ -167,7 +170,12 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
     setLoading(true)
     const t = setTimeout(async () => {
       const files = await search(q, folderId)
-      if (seq.current === mine) { setResults(files); setLoading(false) }
+      if (seq.current !== mine) return
+      setResults(files); setLoading(false)
+      // Quotes come after the list. Showing results the moment they exist and
+      // filling the passages in behind beats holding the whole list back for a
+      // detail that is a nicety.
+      loadSnippets(files, q)
     }, q ? 250 : 0)
     return () => clearTimeout(t)
   }, [q, folderId, connected, search])
@@ -212,7 +220,7 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
           }}
         />
       </div>
-      <div style={{ overflowY: 'auto', minHeight: 0, margin: '0 -4px', padding: '0 4px' }}>
+      <div style={{ flex: '1 1 auto', overflowY: 'auto', minHeight: 96, margin: '0 -4px', padding: '0 4px' }}>
         {!q && !loading && results.length > 0 && (
           <div style={{ padding: '4px 8px 2px', fontSize: 10, fontWeight: 600, color: 'var(--t3)', letterSpacing: '.04em' }}>
             최근 항목
@@ -235,12 +243,13 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
           const already = attachedIds.has(f.id)
           const kind = fileKind(f.mimeType)
           const inFolder = !!folderId && !!f.parents?.includes(folderId)
+          const snip = f.contentMatch ? snippets[snippetKey(f.id, q)] : null
           return (
             <div
               key={f.id}
               onMouseDown={e => { e.preventDefault(); if (!already) onPick(f) }}
               style={{
-                display: 'flex', alignItems: 'center', gap: 8,
+                display: 'flex', alignItems: snip ? 'flex-start' : 'center', gap: 8,
                 padding: '6px 8px', borderRadius: 'var(--r1)',
                 cursor: already ? 'default' : 'pointer',
                 opacity: already ? .45 : 1,
@@ -249,7 +258,7 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
               onMouseEnter={e => { if (!already) e.currentTarget.style.background = 'var(--bg3)' }}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
-              <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1 }}>{kind.icon}</span>
+              <span style={{ fontSize: 14, flexShrink: 0, lineHeight: snip ? 1.4 : 1 }}>{kind.icon}</span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: 'block', fontSize: 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {f.name}
@@ -257,10 +266,24 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
                 <span style={{ display: 'block', fontSize: 10, color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
                   {[
                     inFolder ? '이 프로젝트 폴더' : null,
-                    f.contentMatch ? '내용 일치' : null,
+                    f.contentMatch && !snip ? '내용 일치' : null,
                     f.modifiedTime ? `${relativeTime(f.modifiedTime)} 수정` : null,
                   ].filter(Boolean).join(' · ')}
                 </span>
+                {snip && (
+                  <span style={{
+                    fontSize: 11, color: 'var(--t2)', marginTop: 3,
+                    lineHeight: 1.45, background: 'var(--bg2)', borderRadius: 4,
+                    padding: '3px 6px', overflow: 'hidden',
+                    // Two lines of context. One is often half a sentence; three
+                    // turns a result list into a wall of prose.
+                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                  } as React.CSSProperties}>
+                    {snip.before}
+                    <mark style={{ background: NOTION.yellow.bg, color: NOTION.yellow.text, fontWeight: 600, padding: '0 1px', borderRadius: 2 }}>{snip.match}</mark>
+                    {snip.after}
+                  </span>
+                )}
               </span>
               {already && <span style={{ fontSize: 10, color: 'var(--t3)', flexShrink: 0 }}>첨부됨</span>}
             </div>
