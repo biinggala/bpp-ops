@@ -237,6 +237,8 @@ function MobileCalendar() {
   const todayDate = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
   const todayStr  = useMemo(() => fmt(todayDate), [todayDate])
   const [selectedDate, setSelectedDate] = useState(todayStr)
+  /** Placing work on one day, from that day's section header. */
+  const [planning, setPlanning] = useState<{ date: string; anchor: HTMLElement } | null>(null)
 
   // Fetch GCal events for a 3-month window around today. Re-runs when the set of
   // shown calendars changes, otherwise ticking one on would do nothing visible.
@@ -437,10 +439,20 @@ function MobileCalendar() {
           const total = dayTasks.length + dayGCal.length
           return (
             <div key={dateStr} ref={el => { if (el) sectionRefs.current.set(dateStr, el) }}>
-              <SectionHeader label={fmtSection(dateStr)} count={total} color={dateStr === todayStr ? 'var(--ac)' : 'var(--t2)'} />
+              {/* Tapping the day's heading opens the planner for it — the same
+                  place the desktop grid puts it, and the only element here that
+                  means "this day" rather than "this task". */}
+              <div onClick={e => setPlanning({ date: dateStr, anchor: e.currentTarget })} style={{ cursor: 'pointer' }}>
+                <SectionHeader label={fmtSection(dateStr)} count={total} color={dateStr === todayStr ? 'var(--ac)' : 'var(--t2)'} />
+              </div>
               {dayGCal.map(ev => <MobGCalRow key={ev.id} event={ev} />)}
               {dayTasks.length === 0 && dayGCal.length === 0 ? (
-                <div style={{ padding: '4px 16px 8px', fontSize: 13, color: 'var(--t3)' }}>업무 없음</div>
+                <div
+                  onClick={e => setPlanning({ date: dateStr, anchor: e.currentTarget })}
+                  style={{ padding: '10px 16px', fontSize: 13, color: 'var(--t3)', cursor: 'pointer' }}
+                >
+                  업무 없음 · 눌러서 추가
+                </div>
               ) : dayTasks.map(t => <MobCalTaskRow key={t.id} task={t} onOpen={() => openTaskDetail(t.id)} />)}
             </div>
           )
@@ -455,6 +467,13 @@ function MobileCalendar() {
           </button>
         </div>
       </div>
+      {planning && (
+        <DayPlanner
+          date={planning.date}
+          anchor={planning.anchor}
+          onClose={() => setPlanning(null)}
+        />
+      )}
     </div>
   )
 }

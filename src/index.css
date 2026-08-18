@@ -255,3 +255,16 @@ input, select, textarea, button {
 @media (prefers-reduced-motion: reduce) {
   .bpp-snippet-loading, .bpp-snippet { animation: none }
 }
+
+/* iOS Safari zooms the whole page in when a field smaller than 16px takes
+   focus, and never zooms back out — so tapping a search box leaves the app
+   scaled up and shifted sideways. The only fix is for every field to be at
+   least 16px on a phone, and it has to be !important because these sizes are
+   set inline all over the app, where a stylesheet cannot reach them. */
+@media (max-width: 767px) {
+  input:not([type='range']):not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}

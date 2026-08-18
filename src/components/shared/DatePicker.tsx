@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccessibleTasks } from '../../hooks/useAccessibleTasks'
+import { useMobile } from '../../hooks/useMobile'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { useTaskStore } from '../../store/taskStore'
@@ -66,6 +67,7 @@ export function DatePicker({ value, anchor, context, onChange, onClose }: {
 }) {
   const accessible = useAccessibleTasks()
   const nameOf = useUserProfileStore(s => s.getNameByEmail)
+  const isMobile = useMobile()
   const allTasks = useTaskStore(s => s.tasks)
   const milestones = useMilestoneStore(s => s.milestones)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -79,8 +81,13 @@ export function DatePicker({ value, anchor, context, onChange, onClose }: {
   const todayStr = ymd(today)
 
   // ── Placement ───────────────────────────────────────────────────────────────
+  // Only the desktop panel is anchored. On a phone it rises from the bottom
+  // instead: a 296px card pinned near whatever was tapped lands under the
+  // thumb, half off-screen as often as not, and there is no room to put it
+  // anywhere better.
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   useEffect(() => {
+    if (isMobile) { setPos({ top: 0, left: 0 }); return }
     if (!anchor) return
     const r = anchor.getBoundingClientRect()
     const W = 296, H = 440
@@ -89,7 +96,7 @@ export function DatePicker({ value, anchor, context, onChange, onClose }: {
       top: below < H && r.top > below ? Math.max(8, r.top - 6 - H) : r.bottom + 6,
       left: Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - W - 8)),
     })
-  }, [anchor])
+  }, [anchor, isMobile])
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -177,17 +184,40 @@ export function DatePicker({ value, anchor, context, onChange, onClose }: {
 
   if (!pos) return null
 
+  const shell: React.CSSProperties = isMobile
+    ? {
+        position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 9100,
+        background: 'var(--bg)', borderTop: '1px solid var(--bd)',
+        borderRadius: '16px 16px 0 0', boxShadow: '0 -8px 32px rgba(0,0,0,.18)',
+        padding: 14, paddingBottom: 'calc(14px + env(safe-area-inset-bottom, 0px))',
+        boxSizing: 'border-box', userSelect: 'none',
+        maxHeight: '85vh', overflowY: 'auto',
+      }
+    : {
+        position: 'fixed', top: pos.top, left: pos.left, width: 296, zIndex: 9100,
+        background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
+        boxShadow: 'var(--sh-md)', padding: 10, boxSizing: 'border-box', userSelect: 'none',
+      }
+
   return createPortal(
+    <>
+    {/* A sheet needs something behind it to catch the tap that dismisses it —
+        on a phone there is no "outside the panel" left to click. */}
+    {isMobile && (
+      <div
+        onClick={onClose}
+        style={{ position: 'fixed', inset: 0, zIndex: 9099, background: 'rgba(15,15,15,.32)' }}
+      />
+    )}
     <div
       ref={panelRef}
       data-addrow-popup
       onClick={e => e.stopPropagation()}
-      style={{
-        position: 'fixed', top: pos.top, left: pos.left, width: 296, zIndex: 9100,
-        background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
-        boxShadow: 'var(--sh-md)', padding: 10, boxSizing: 'border-box', userSelect: 'none',
-      }}
+      style={shell}
     >
+      {isMobile && (
+        <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--bd2)', margin: '-4px auto 10px' }} />
+      )}
       {/* What this task is already tied to. Clicking lands the calendar there. */}
       {anchors.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--bd)' }}>
@@ -239,7 +269,8 @@ export function DatePicker({ value, anchor, context, onChange, onClose }: {
               onMouseEnter={() => setHover(date)}
               onMouseLeave={() => setHover(null)}
               style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+                minHeight: isMobile ? 42 : undefined,
                 padding: '3px 0 4px', borderRadius: 4, cursor: 'pointer',
                 background: isSel ? 'var(--ac)' : hover === date ? 'var(--bg3)' : isToday ? 'var(--ac-l)' : 'transparent',
                 outline: isToday && !isSel ? '1px solid var(--ac)' : 'none',
@@ -247,7 +278,7 @@ export function DatePicker({ value, anchor, context, onChange, onClose }: {
               }}
             >
               <span style={{
-                fontSize: 12, lineHeight: 1.2,
+                fontSize: isMobile ? 15 : 12, lineHeight: 1.2,
                 fontWeight: isSel || isToday ? 600 : 400,
                 color: isSel ? '#fff' : dow === 0 ? NOTION.red.text : dow === 6 ? NOTION.blue.text : 'var(--t1)',
               }}>{day}</span>
@@ -322,7 +353,8 @@ export function DatePicker({ value, anchor, context, onChange, onClose }: {
           >날짜 지우기</span>
         </div>
       )}
-    </div>,
+    </div>
+    </>,
     document.body,
   )
 }

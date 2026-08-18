@@ -7,6 +7,7 @@ import { useProjectStore } from '../../../store/projectStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
+import { useMobile } from '../../../hooks/useMobile'
 import { isComposing, parseAssignees } from '../../../lib/utils'
 import { NOTION, STATUS_COLORS } from '../../../types'
 
@@ -47,6 +48,7 @@ export function DayPlanner({ date, anchor, onClose }: {
   const milestones = useMilestoneStore(s => s.milestones)
   const nameOf = useUserProfileStore(s => s.getNameByEmail)
   const tasks = useFilteredTasks()
+  const isMobile = useMobile()
 
   const panelRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -76,6 +78,7 @@ export function DayPlanner({ date, anchor, onClose }: {
   // ── Placement ───────────────────────────────────────────────────────────────
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   useEffect(() => {
+    if (isMobile) { setPos({ top: 0, left: 0 }); return }
     if (!anchor) return
     const r = anchor.getBoundingClientRect()
     const W = 300, H = 340
@@ -83,9 +86,11 @@ export function DayPlanner({ date, anchor, onClose }: {
       top: Math.min(Math.max(8, r.top), Math.max(8, window.innerHeight - H - 8)),
       left: Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - W - 8)),
     })
-  }, [anchor])
+  }, [anchor, isMobile])
 
-  useEffect(() => { inputRef.current?.focus() }, [])
+  // Not on a phone: focusing the field throws the keyboard up over the backlog,
+  // which is the half most people opened this for.
+  useEffect(() => { if (!isMobile) inputRef.current?.focus() }, [isMobile])
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -122,17 +127,35 @@ export function DayPlanner({ date, anchor, onClose }: {
 
   const label = `${d.getMonth() + 1}월 ${d.getDate()}일 (${DOW[d.getDay()]})`
 
-  return createPortal(
-    <div
-      ref={panelRef}
-      onClick={e => e.stopPropagation()}
-      style={{
+  const shell: React.CSSProperties = isMobile
+    ? {
+        position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 9100,
+        background: 'var(--bg)', borderTop: '1px solid var(--bd)',
+        borderRadius: '16px 16px 0 0', boxShadow: '0 -8px 32px rgba(0,0,0,.18)',
+        padding: 14, paddingBottom: 'calc(14px + env(safe-area-inset-bottom, 0px))',
+        boxSizing: 'border-box',
+        display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '80vh',
+      }
+    : {
         position: 'fixed', top: pos.top, left: pos.left, width: 300, zIndex: 9100,
         background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
         boxShadow: 'var(--sh-md)', padding: 10, boxSizing: 'border-box',
         display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '70vh',
-      }}
+      }
+
+  return createPortal(
+    <>
+    {isMobile && (
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9099, background: 'rgba(15,15,15,.32)' }} />
+    )}
+    <div
+      ref={panelRef}
+      onClick={e => e.stopPropagation()}
+      style={shell}
     >
+      {isMobile && (
+        <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--bd2)', margin: '-4px auto 0' }} />
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--t1)' }}>{label}</span>
         {dayMilestones.map(m => (
@@ -154,7 +177,7 @@ export function DayPlanner({ date, anchor, onClose }: {
         style={{
           width: '100%', boxSizing: 'border-box',
           border: '1px solid var(--bd)', borderRadius: 'var(--r1)',
-          padding: '6px 9px', fontSize: 13,
+          padding: isMobile ? '10px 11px' : '6px 9px', fontSize: 16,
           background: 'var(--bg2)', color: 'var(--t1)',
           outline: 'none', fontFamily: 'var(--font)',
         }}
@@ -186,9 +209,10 @@ export function DayPlanner({ date, anchor, onClose }: {
                   onClick={() => updateTask(t.id, { due: date })}
                   title={t.name}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '5px 6px', borderRadius: 'var(--r1)', cursor: 'pointer',
-                    fontSize: 12, minWidth: 0, transition: 'background .07s',
+                    display: 'flex', alignItems: 'center', gap: 7,
+                    padding: isMobile ? '11px 8px' : '5px 6px',
+                    borderRadius: 'var(--r1)', cursor: 'pointer',
+                    fontSize: isMobile ? 14 : 12, minWidth: 0, transition: 'background .07s',
                   }}
                   onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
@@ -216,7 +240,8 @@ export function DayPlanner({ date, anchor, onClose }: {
           </div>
         </>
       )}
-    </div>,
+    </div>
+    </>,
     document.body,
   )
 }
