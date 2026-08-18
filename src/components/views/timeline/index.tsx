@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useGCalStore } from '../../../store/gcalStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
+import { useTaskStore } from '../../../store/taskStore'
+import type { Task } from '../../../types'
 import { addDays, toDate, fmtYMD, isComposing } from '../../../lib/utils'
 import { writableCalendars } from '../../../lib/googleCalendar'
 import type { GCalEvent } from '../../../store/gcalStore'
@@ -46,6 +48,8 @@ export function TimelineView() {
   const { timelineDays, timelineAnchor, setTimelineAnchor } = useUiStore()
   const { token, events, calendars, targetCalendarId, canWrite, createEvent, updateEvent, removeEvent, fetchEvents, setTargetCalendar } = useGCalStore()
   const tasks = useFilteredTasks()
+  const updateTask = useTaskStore(s => s.updateTask)
+  const openTaskDetail = useUiStore(s => s.openTaskDetail)
 
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
@@ -178,10 +182,28 @@ export function TimelineView() {
   }, [events])
 
   const tasksByDate = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const t of tasks) { if (t.due) map.set(t.due, (map.get(t.due) ?? 0) + 1) }
+    const map = new Map<string, Task[]>()
+    for (const t of tasks) {
+      if (!t.due) continue
+      if (!map.has(t.due)) map.set(t.due, [])
+      map.get(t.due)!.push(t)
+    }
     return map
   }, [tasks])
+
+  // All-day entries sit above the hours rather than in them, which is where
+  // Google Calendar puts both its all-day events and anything merely due today.
+  const allDayByDate = useMemo(() => {
+    const map = new Map<string, GCalEvent[]>()
+    for (const ev of events) {
+      if (!ev.allDay) continue
+      for (let d = ev.start; d <= ev.end; d = fmtYMD(addDays(toDate(d), 1))) {
+        if (!map.has(d)) map.set(d, [])
+        map.get(d)!.push(ev)
+      }
+    }
+    return map
+  }, [events])
 
   const todayStr = fmtYMD(now)
   const nowMinutes = now.getHours() * 60 + now.getMinutes()
@@ -222,7 +244,6 @@ export function TimelineView() {
         {days.map(d => {
           const dt = toDate(d)
           const isToday = d === todayStr
-          const count = tasksByDate.get(d) ?? 0
           return (
             <div key={d} style={{ flex: 1, padding: '6px 8px', textAlign: 'center', borderLeft: '1px solid var(--bd)' }}>
               <div style={{ fontSize: 11, color: isToday ? 'var(--ac)' : 'var(--t3)' }}>
@@ -231,12 +252,41 @@ export function TimelineView() {
               <div style={{ fontSize: 15, fontWeight: isToday ? 700 : 500, color: isToday ? 'var(--ac)' : 'var(--t1)' }}>
                 {dt.getDate()}
               </div>
-              {count > 0 && (
-                <div style={{ fontSize: 10, color: 'var(--t3)' }}>마감 {count}</div>
-              )}
+
             </div>
           )
         })}
+      </div>
+
+      {/* All-day strip: things pinned to the day rather than to a time. */}
+      <div style={{ display: 'flex', paddingLeft: GUTTER, borderBottom: '1px solid var(--bd)', flexShrink: 0, maxHeight: 108, overflowY: 'auto' }}>
+        {days.map(date => (
+          <div key={date} style={{ flex: 1, borderLeft: '1px solid var(--bd)', padding: '3px 4px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+            {(allDayByDate.get(date) ?? []).map(ev => (
+              <a key={ev.id} href={ev.htmlLink || undefined} target="_blank" rel="noopener noreferrer"
+                title={ev.summary}
+                style={{
+                  fontSize: 10, lineHeight: 1.3, padding: '2px 5px', borderRadius: 3,
+                  background: ev.calendarColor || '#4285f4', color: '#fff',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none',
+                }}>
+                {ev.summary}
+              </a>
+            ))}
+            {(tasksByDate.get(date) ?? []).map(task => (
+              <DueTask
+                key={task.id}
+                task={task}
+                overdue={date < todayStr}
+                onToggle={() => updateTask(task.id, { status: task.status === '완료' ? '진행중' : '완료' })}
+                onOpen={() => openTaskDetail(task.id)}
+              />
+            ))}
+            {!(allDayByDate.get(date)?.length || tasksByDate.get(date)?.length) && (
+              <div style={{ height: 16 }} />
+            )}
+          </div>
+        ))}
       </div>
 
       <div ref={gridRef} style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
@@ -449,6 +499,57 @@ function EventPopover({ placed, onClose, onRename, onDelete }: {
         </div>
       </div>
     </>
+  )
+}
+
+/**
+ * A task whose deadline lands on this day.
+ *
+ * Deadlines are not appointments — they belong to the day, not to an hour — so
+ * they sit in the all-day strip with a checkbox, the way Google Calendar shows
+ * anything due. Ticking it here marks the task complete in the app; there is no
+ * calendar entry behind it.
+ */
+function DueTask({ task, overdue, onToggle, onOpen }: {
+  task: Task
+  overdue: boolean
+  onToggle: () => void
+  onOpen: () => void
+}) {
+  const done = task.status === '완료'
+  const late = overdue && !done
+  return (
+    <div
+      onClick={onOpen}
+      title={`${task.name}${late ? ' · 기한 지남' : ''}`}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 4,
+        fontSize: 10, lineHeight: 1.3, padding: '2px 4px', borderRadius: 3,
+        border: '1px solid var(--bd)',
+        borderLeft: `3px solid ${late ? '#ef4444' : done ? 'var(--bd2)' : 'var(--ac)'}`,
+        background: 'var(--bg)', cursor: 'pointer', minWidth: 0,
+        opacity: done ? .55 : 1,
+      }}
+    >
+      <button
+        onClick={e => { e.stopPropagation(); onToggle() }}
+        title={done ? '완료 취소' : '완료로 표시'}
+        style={{
+          width: 12, height: 12, flexShrink: 0, padding: 0, cursor: 'pointer',
+          borderRadius: '50%', border: `1.5px solid ${done ? '#22c55e' : 'var(--bd2)'}`,
+          background: done ? '#22c55e' : 'transparent', color: '#fff', fontSize: 8,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+        }}
+      >{done ? '✓' : ''}</button>
+      {task.priority === '높음' && !done && (
+        <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#dc2626', flexShrink: 0 }} />
+      )}
+      <span style={{
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        textDecoration: done ? 'line-through' : 'none',
+        color: late ? '#dc2626' : 'var(--t1)',
+      }}>{task.name}</span>
+    </div>
   )
 }
 
