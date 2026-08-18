@@ -103,3 +103,57 @@ export async function fetchEventsAcross(
     .filter((r): r is PromiseFulfilledResult<RawCalendarEvent[]> => r.status === 'fulfilled')
     .flatMap(r => r.value)
 }
+
+// ── 쓰기 ──────────────────────────────────────────────────────────────────────
+
+export interface NewEvent {
+  calendarId: string
+  summary: string
+  /** Local wall-clock ISO without a zone, e.g. "2026-08-18T14:00:00". */
+  startDateTime: string
+  endDateTime: string
+  timeZone?: string
+}
+
+/**
+ * Creates a timed event.
+ *
+ * The times are sent as local wall-clock plus an explicit zone rather than UTC,
+ * so an event dragged onto 2pm reads as 2pm to everyone in that zone regardless
+ * of where it was created.
+ */
+export async function createCalendarEvent(token: string, event: NewEvent): Promise<RawCalendarEvent> {
+  const timeZone = event.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(event.calendarId)}/events`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        summary: event.summary,
+        start: { dateTime: event.startDateTime, timeZone },
+        end: { dateTime: event.endDateTime, timeZone },
+      }),
+    }
+  )
+  if (res.status === 401) throw new Error(TOKEN_EXPIRED)
+  if (res.status === 403) throw new Error('이 캘린더에 일정을 만들 권한이 없습니다')
+  if (!res.ok) throw new Error(`Calendar API ${res.status}`)
+  const created = await res.json() as RawCalendarEvent
+  return { ...created, calendarId: event.calendarId, calendarColor: '' }
+}
+
+export async function deleteCalendarEvent(token: string, calendarId: string, eventId: string): Promise<void> {
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }
+  )
+  if (res.status === 401) throw new Error(TOKEN_EXPIRED)
+  // 410 means it is already gone, which is the outcome the caller wanted.
+  if (!res.ok && res.status !== 410 && res.status !== 404) throw new Error(`Calendar API ${res.status}`)
+}
+
+/** Calendars this account may actually add events to. */
+export function writableCalendars(calendars: GoogleCalendar[]): GoogleCalendar[] {
+  return calendars.filter(c => c.accessRole === 'owner' || c.accessRole === 'writer')
+}

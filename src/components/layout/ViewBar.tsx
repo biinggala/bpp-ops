@@ -14,6 +14,7 @@ const VIEWS: { id: ViewType; label: string; icon: string }[] = [
   { id: 't', label: '리스트', icon: '≡' },
   { id: 'b', label: '보드', icon: '⊞' },
   { id: 'c', label: '캘린더', icon: '◪' },
+  { id: 'l', label: '타임라인', icon: '◷' },
   { id: 'g', label: '간트', icon: '▤' },
   { id: 's', label: '통계', icon: '◑' },
 ]

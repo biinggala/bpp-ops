@@ -2,7 +2,7 @@ export type TaskType = '상위' | '세부'
 export type Status = '진행중' | '대기' | '검토중' | '완료'
 export type Priority = '높음' | '중간' | '낮음'
 export type MemberKey = 'YL' | 'SJ' | 'HC'
-export type ViewType = 't' | 'b' | 'c' | 'p' | 'g' | 's'
+export type ViewType = 't' | 'b' | 'c' | 'l' | 'p' | 'g' | 's'   // l = 타임라인
 
 // Category는 이제 동적 — Space의 name 값
 export type Category = string

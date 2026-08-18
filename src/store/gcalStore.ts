@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import { auth } from '../lib/firebase'
 import { requestCalendarToken, AuthzError, GIS_CONFIGURED } from '../lib/googleAuthz'
-import { fetchCalendarList, fetchEventsAcross, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent } from '../lib/googleCalendar'
+import { fetchCalendarList, fetchEventsAcross, createCalendarEvent, deleteCalendarEvent, writableCalendars, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent } from '../lib/googleCalendar'
 
 export interface GCalEvent {
   id: string
@@ -14,6 +14,9 @@ export interface GCalEvent {
   htmlLink: string
   calendarId: string
   calendarColor: string
+  /** Exact start/end, kept for the timeline. Absent for all-day entries. */
+  startIso?: string
+  endIso?: string
 }
 
 const ENABLED_KEY = 'gcal_enabled_calendars'
@@ -35,6 +38,10 @@ interface GCalState {
   calendars: GoogleCalendar[]
   /** Which of them to show. null until the list has been read once. */
   enabledCalendarIds: string[] | null
+  /** Whether the stored token carries permission to add events. */
+  canWrite: boolean
+  /** Calendar new events are added to. */
+  targetCalendarId: string | null
   loading: boolean
   error: string | null
   connect: () => Promise<void>
@@ -43,6 +50,10 @@ interface GCalState {
   setCalendarEnabled: (id: string, on: boolean) => void
   fetchEvents: (from: string, to: string) => Promise<void>
   autoReconnect: () => Promise<void>
+  setTargetCalendar: (id: string) => void
+  /** Creates an event, asking for write permission the first time. */
+  createEvent: (input: { summary: string; startDateTime: string; endDateTime: string }) => Promise<boolean>
+  removeEvent: (eventId: string) => Promise<void>
 }
 
 /** Google returns dates two ways; the views want plain YYYY-MM-DD either way. */
@@ -75,6 +86,8 @@ function toGCalEvent(item: RawCalendarEvent): GCalEvent | null {
     htmlLink: item.htmlLink ?? '',
     calendarId: item.calendarId,
     calendarColor: item.calendarColor,
+    startIso: item.start?.dateTime,
+    endIso: item.end?.dateTime,
   }
 }
 
@@ -90,6 +103,18 @@ function loadStored(): { token: string | null; expiry: number | null; wasConnect
 }
 
 const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly'
+const CALENDAR_WRITE_SCOPE = 'https://www.googleapis.com/auth/calendar.events'
+const WRITE_KEY = 'gcal_can_write'
+const TARGET_KEY = 'gcal_target_calendar'
+
+/**
+ * Write access is asked for the first time somebody creates an event, not at
+ * connect. Most people only ever read the calendar, and there is no reason to
+ * put a broader consent screen in front of them for a thing they never do.
+ */
+function loadWrite(): boolean {
+  try { return localStorage.getItem(WRITE_KEY) === '1' } catch { return false }
+}
 
 /** Trust Google's own lifetime, minus a minute so a request never races expiry. */
 function storeToken(token: string, expiresInSeconds = 3500) {
@@ -105,6 +130,8 @@ export const useGCalStore = create<GCalState>((set, get) => ({
   events: [],
   calendars: [],
   enabledCalendarIds: loadEnabled(),
+  canWrite: loadWrite(),
+  targetCalendarId: (() => { try { return localStorage.getItem(TARGET_KEY) } catch { return null } })(),
   loading: false,
   error: null,
 
@@ -154,7 +181,8 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     localStorage.removeItem('gcal_expiry')
     localStorage.removeItem('gcal_connected')
     localStorage.removeItem(ENABLED_KEY)
-    set({ token: null, expiry: null, wasConnected: false, events: [], calendars: [], enabledCalendarIds: null, error: null })
+    localStorage.removeItem(WRITE_KEY)
+    set({ token: null, expiry: null, wasConnected: false, events: [], calendars: [], enabledCalendarIds: null, canWrite: false, error: null })
   },
 
   /**
@@ -174,7 +202,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     try {
       if (GIS_CONFIGURED) {
         const granted = await requestCalendarToken({
-          scope: CALENDAR_SCOPE,
+          scope: get().canWrite ? `${CALENDAR_SCOPE} ${CALENDAR_WRITE_SCOPE}` : CALENDAR_SCOPE,
           interactive: false,
           hint: auth.currentUser.email ?? undefined,
         })
@@ -196,6 +224,79 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       // Keep wasConnected so the button offers reconnect rather than a fresh setup.
       if (e instanceof AuthzError && !e.needsInteraction) console.warn('[gcal refresh]', e.message)
       set({ autoRefreshing: false })
+    }
+  },
+
+  setTargetCalendar: (id) => {
+    localStorage.setItem(TARGET_KEY, id)
+    set({ targetCalendarId: id })
+  },
+
+  /**
+   * Adds an event to the chosen calendar.
+   *
+   * The first call widens the grant to include writing, which is the one moment
+   * a consent screen is warranted — and it needs the click that triggered it, so
+   * this must be called straight from the interaction.
+   */
+  createEvent: async ({ summary, startDateTime, endDateTime }) => {
+    const { canWrite, calendars, targetCalendarId } = get()
+    const target = targetCalendarId
+      ?? calendars.find(c => c.primary)?.id
+      ?? writableCalendars(calendars)[0]?.id
+    if (!target) {
+      set({ error: '일정을 만들 수 있는 캘린더가 없습니다' })
+      return false
+    }
+
+    let token = get().token
+    if (!canWrite) {
+      try {
+        const granted = await requestCalendarToken({
+          scope: `${CALENDAR_SCOPE} ${CALENDAR_WRITE_SCOPE}`,
+          interactive: true,
+          hint: auth.currentUser?.email ?? undefined,
+        })
+        token = granted.token
+        storeToken(granted.token, granted.expiresIn)
+        localStorage.setItem(WRITE_KEY, '1')
+        set({ token: granted.token, expiry: Date.now() + granted.expiresIn * 1000, canWrite: true, error: null })
+      } catch {
+        set({ error: '일정을 만들려면 캘린더 쓰기 권한이 필요합니다' })
+        return false
+      }
+    }
+    if (!token) return false
+
+    try {
+      const created = await createCalendarEvent(token, { calendarId: target, summary, startDateTime, endDateTime })
+      const colour = calendars.find(c => c.id === target)?.backgroundColor ?? '#4285f4'
+      const ev = toGCalEvent({ ...created, calendarId: target, calendarColor: colour })
+      // Show it straight away; the next fetch will confirm it.
+      if (ev) set({ events: [...get().events, ev] })
+      return true
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '일정 생성 실패'
+      if (msg === TOKEN_EXPIRED) {
+        set({ token: null, expiry: null, error: '토큰이 만료됐습니다. 다시 연동해 주세요.' })
+      } else {
+        set({ error: msg })
+      }
+      return false
+    }
+  },
+
+  removeEvent: async (eventId) => {
+    const { token, events } = get()
+    const target = events.find(e => e.id === eventId)
+    if (!token || !target) return
+    const previous = events
+    set({ events: events.filter(e => e.id !== eventId) })
+    try {
+      // The stored id is namespaced by calendar; Google wants the bare one.
+      await deleteCalendarEvent(token, target.calendarId, eventId.slice(target.calendarId.length + 1))
+    } catch (e: unknown) {
+      set({ events: previous, error: e instanceof Error ? e.message : '일정 삭제 실패' })
     }
   },
 

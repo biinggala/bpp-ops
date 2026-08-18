@@ -29,6 +29,9 @@ interface UiState {
   sidebarOpen: boolean
   calYear: number
   calMonth: number
+  /** Timeline view: how many day columns, and the leftmost date. */
+  timelineDays: number
+  timelineAnchor: string
   showGCal: boolean
 
   setView: (v: ViewType) => void
@@ -51,6 +54,8 @@ interface UiState {
   setShowGCal: (v: boolean) => void
   calNav: (delta: number) => void
   calToday: () => void
+  setTimelineDays: (n: number) => void
+  setTimelineAnchor: (date: string) => void
 }
 
 const now = new Date()
@@ -83,6 +88,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   sidebarOpen: false,
   calYear: now.getFullYear(),
   calMonth: now.getMonth(),
+  timelineDays: 3,
+  timelineAnchor: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
   showGCal: true,
 
   setView: (view) => set({ view }),
@@ -108,6 +115,8 @@ export const useUiStore = create<UiState>((set, get) => ({
     const d = new Date(calYear, calMonth + delta, 1)
     set({ calYear: d.getFullYear(), calMonth: d.getMonth() })
   },
+  setTimelineDays: (timelineDays) => set({ timelineDays }),
+  setTimelineAnchor: (timelineAnchor) => set({ timelineAnchor }),
   calToday: () => {
     const n = new Date()
     set({ calYear: n.getFullYear(), calMonth: n.getMonth() })
