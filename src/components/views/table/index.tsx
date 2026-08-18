@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useAccessibleTasks } from '../../../hooks/useAccessibleTasks'
 import { useTaskStore } from '../../../store/taskStore'
@@ -19,6 +20,19 @@ import type { Task, Milestone, Status, Priority, TaskLink } from '../../../types
 // ── Column config ─────────────────────────────────────────────────────────────
 
 type ColDef = { key: string; label: string; width: number }
+
+/**
+ * Renders into document.body.
+ *
+ * position: fixed does not escape a stacking context — it only changes what the
+ * coordinates are relative to. These menus sit inside the sticky name cell,
+ * which has a z-index of its own, so their z-index of 9000 was compared against
+ * that cell's siblings and lost to the milestone header above it. Leaving the
+ * tree entirely is the only thing that actually puts them on top.
+ */
+function FloatingMenu({ children }: { children: React.ReactNode }) {
+  return createPortal(children, document.body)
+}
 
 const MIN_COL_WIDTH = 60
 const COL_STORAGE_KEY = 'cringe_table_cols_v1'
@@ -1231,6 +1245,7 @@ function AssigneeMultiSelect({ assignee, options, onChange }: {
       </div>
 
       {open && (
+        <FloatingMenu>
         <div style={{
           position: 'fixed', top: pos.top, left: pos.left, zIndex: 9000,
           background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
@@ -1278,6 +1293,7 @@ function AssigneeMultiSelect({ assignee, options, onChange }: {
             </>
           )}
         </div>
+        </FloatingMenu>
       )}
     </div>
   )
@@ -1546,6 +1562,7 @@ function AddRowAssigneeSelect({ value, options, onChange }: {
       </div>
 
       {open && (
+        <FloatingMenu>
         <div data-addrow-popup style={{
           position: 'fixed', top: pos.top, left: pos.left, zIndex: 9001,
           background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
@@ -1570,6 +1587,7 @@ function AddRowAssigneeSelect({ value, options, onChange }: {
             <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--t3)' }}>멤버가 없습니다</div>
           )}
         </div>
+        </FloatingMenu>
       )}
     </div>
   )
@@ -1620,6 +1638,7 @@ function AddRowStatusSelect({ value, onChange }: {
         <span style={{ fontSize: 9, opacity: .6 }}>▾</span>
       </div>
       {open && (
+        <FloatingMenu>
         <div data-addrow-popup style={{
           position: 'fixed', top: pos.top, left: pos.left, zIndex: 9001,
           background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
@@ -1642,6 +1661,7 @@ function AddRowStatusSelect({ value, onChange }: {
             )
           })}
         </div>
+        </FloatingMenu>
       )}
     </div>
   )
@@ -1723,6 +1743,7 @@ function AddRowDatePicker({ value, onChange }: { value: string; onChange: (v: st
       </div>
 
       {open && (
+        <FloatingMenu>
         <div data-addrow-popup style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9001, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', width: 234, padding: '10px', userSelect: 'none' as const }}>
           {/* Month nav */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -1762,6 +1783,7 @@ function AddRowDatePicker({ value, onChange }: { value: string; onChange: (v: st
             </div>
           )}
         </div>
+        </FloatingMenu>
       )}
     </div>
   )
@@ -1934,12 +1956,14 @@ function MilestonePicker({ milestoneId, milestones, onChange }: {
         <span style={{ fontSize: 7, opacity: .5 }}>▾</span>
       </button>
       {open && (
+        <FloatingMenu>
         <div style={{ position: 'fixed', top: pos.top, left: pos.left, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', zIndex: 9000, minWidth: 200, padding: '4px 0' }}>
           <PickerRow onClick={() => { onChange(undefined); setOpen(false) }} active={!milestoneId} label="— 없음 (미배정)" accent={false} />
           {milestones.map(m => (
             <PickerRow key={m.id} onClick={() => { onChange(m.id); setOpen(false) }} active={m.id === milestoneId} label={`◆ ${m.name}`} sub={m.dueDate} accent />
           ))}
         </div>
+        </FloatingMenu>
       )}
     </div>
   )
@@ -2040,6 +2064,7 @@ function LinksCell({ links, onChange }: {
       </div>
 
       {open && (
+        <FloatingMenu>
         <div style={{
           position: 'fixed', top: pos.top, left: pos.left, zIndex: 9000,
           background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
@@ -2092,6 +2117,7 @@ function LinksCell({ links, onChange }: {
             </div>
           </div>
         </div>
+        </FloatingMenu>
       )}
     </div>
   )
@@ -2159,6 +2185,7 @@ function TagMultiSelect({ tags, allTags, onChange }: {
       </div>
 
       {open && (
+        <FloatingMenu>
         <div style={{
           position: 'fixed', top: pos.top, left: pos.left, zIndex: 9000,
           background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
@@ -2226,6 +2253,7 @@ function TagMultiSelect({ tags, allTags, onChange }: {
             </div>
           )}
         </div>
+        </FloatingMenu>
       )}
     </div>
   )
