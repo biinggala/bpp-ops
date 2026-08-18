@@ -1,0 +1,110 @@
+name: Deploy MCP server to Cloud Run
+
+# Only when the server itself changes. The web app and the MCP server share a
+# repository but not a lifecycle, and rebuilding a container for a CSS tweak
+# costs build minutes and hands out a new revision nobody asked for.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mcp/**'
+      - '.github/workflows/deploy-mcp.yml'
+  workflow_dispatch:
+
+env:
+  SERVICE: bpp-ops-mcp
+  REGION: asia-northeast3
+  PROJECT_ID: crng-task-manager
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: mcp/package-lock.json
+
+      # A server that does not compile must never reach a revision. Cloud Build
+      # would catch the build, but not the access-control tests, and those are
+      # the ones that decide whose projects an operator can see.
+      - name: Build & test the server
+        working-directory: mcp
+        run: |
+          npm ci
+          npm run build
+          npm test
+
+      # Fail here rather than half-way through a deploy. A revision that comes
+      # up without PUBLIC_URL starts and then refuses every OAuth round trip,
+      # which reads as "the connector broke" rather than "a value is missing".
+      - name: Check required configuration
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          MCP_PUBLIC_URL: ${{ secrets.MCP_PUBLIC_URL }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+        run: |
+          missing=()
+          for name in GCP_SA_KEY MCP_PUBLIC_URL GOOGLE_OAUTH_CLIENT_ID GOOGLE_OAUTH_CLIENT_SECRET; do
+            [ -n "${!name}" ] || missing+=("$name")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing repository secrets: ${missing[*]}"
+            echo "See mcp/README.md → 'GitHub Actions로 배포' for what each one is."
+            exit 1
+          fi
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      # Every variable is set on every deploy, deliberately.
+      #
+      # The trap this replaces: a Cloud Build trigger puts up its own revision
+      # on each push, carrying only what the build knows about. Values typed
+      # into the console live on the revision that was current when they were
+      # typed, so the next push silently reverts them and the server comes back
+      # up unconfigured. Declaring them here makes the deploy the single source
+      # of truth, and the settings survive because they are in the pipeline.
+      #
+      # ^@^ picks '@' as the separator so a secret containing a comma cannot
+      # split one value into two.
+      - name: Deploy
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --source mcp \
+            --region "$REGION" \
+            --platform managed \
+            --allow-unauthenticated \
+            --quiet \
+            --set-env-vars "^@^PUBLIC_URL=${{ secrets.MCP_PUBLIC_URL }}@FIREBASE_DATABASE_URL=${{ vars.FIREBASE_DATABASE_URL || 'https://crng-task-manager-default-rtdb.firebaseio.com' }}@GOOGLE_OAUTH_CLIENT_ID=${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}@GOOGLE_OAUTH_CLIENT_SECRET=${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}"
+
+      # FIREBASE_SERVICE_ACCOUNT is deliberately not set: on Cloud Run the
+      # runtime's own service account is used, so there is no key to hand around
+      # or rotate. It is only for running the server on a laptop.
+
+      - name: Report the service URL
+        run: |
+          url=$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')
+          echo "Deployed: $url"
+          echo "### MCP server deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Service: \`$url\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Connector endpoint: \`$url/mcp\`" >> "$GITHUB_STEP_SUMMARY"
+          # PUBLIC_URL is the OAuth issuer identifier. If it does not match the
+          # address clients actually reach, token validation fails in a way that
+          # looks like a login problem rather than a configuration one.
+          if [ "$url" != "${{ secrets.MCP_PUBLIC_URL }}" ]; then
+            echo "::warning::MCP_PUBLIC_URL (${{ secrets.MCP_PUBLIC_URL }}) does not match the service URL ($url). OAuth will reject tokens until they agree."
+          fi

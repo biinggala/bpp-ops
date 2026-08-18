@@ -116,7 +116,8 @@ OAuth 클라이언트·인가 코드·토큰은 **최상위 `mcpAuth/`** 에 저
    Cloud Console → 사용자 인증 정보 → OAuth 클라이언트 ID → 유형 **웹 애플리케이션**.
    승인된 리디렉션 URI에 `https://<배포주소>/oauth/google/callback` 등록
 
-2. **배포** (Cloud Run 예시):
+2. **배포** — GitHub Actions를 쓰면 아래 절은 건너뛰어도 됩니다 (다음 섹션 참고).
+   손으로 한 번 올려야 한다면:
 
    ```bash
    cd mcp
@@ -131,17 +132,67 @@ OAuth 클라이언트·인가 코드·토큰은 **최상위 `mcpAuth/`** 에 저
 
 3. **DB 규칙 배포** — `mcpAuth` 차단 규칙이 반영돼야 합니다. 웹 배포 워크플로가 `database.rules.json`을 함께 올립니다.
 
-   > **순서 주의 — 저장소 연결 배포를 쓰는 경우**
+   > **순서 주의 — 저장소 연결(Cloud Build 트리거) 배포를 쓰는 경우**
    >
    > Cloud Build 트리거는 푸시할 때마다 **자체 리비전을 새로 얹습니다.** 콘솔에서
    > 손으로 넣은 환경변수가 그 리비전에는 실리지 않아, 방금 설정했더라도 다음
    > 푸시 한 번에 `PUBLIC_URL is not set`으로 되돌아갑니다.
    >
-   > 그래서 **빌드를 먼저 끝내고, 환경변수는 마지막에** 넣어야 합니다. 코드가
-   > 자주 바뀌는 동안에는 트리거를 잠시 꺼두는 편이 편합니다.
+   > 그래서 **빌드를 먼저 끝내고, 환경변수는 마지막에** 넣어야 합니다.
+   >
+   > 아래 GitHub Actions 워크플로는 배포할 때마다 환경변수를 전부 다시 지정해서
+   > 이 문제 자체를 없앱니다. 그쪽을 쓴다면 Cloud Build 트리거는 꺼두세요 —
+   > 두 파이프라인이 같은 서비스에 서로 다른 리비전을 얹게 됩니다.
 
 4. **팀원 연결** — claude.ai → 설정 → 커넥터 → 사용자 지정 커넥터 추가 → `https://<배포주소>/mcp`.
    각자 Google 로그인 화면이 뜨고, 로그인한 계정 기준으로 자기 프로젝트만 보입니다.
+
+### GitHub Actions로 배포 (권장)
+
+`mcp/` 아래가 바뀐 채로 `main`에 푸시되면 `.github/workflows/deploy-mcp.yml`이
+빌드·테스트하고 Cloud Run에 올립니다. Actions 탭에서 손으로 실행할 수도 있습니다.
+
+**이게 위의 "순서 주의"를 없앱니다.** 워크플로가 배포할 때마다 환경변수를 전부
+다시 지정하기 때문에, 콘솔에서 손으로 넣은 값이 다음 푸시에 날아가는 일이
+생기지 않습니다. 설정이 파이프라인 안에 있어서 살아남습니다.
+
+**1. 배포용 서비스 계정 만들기**
+
+Cloud Console → IAM 및 관리자 → 서비스 계정 → 만들기. 이 역할들이 필요합니다:
+
+| 역할 | 왜 |
+|---|---|
+| Cloud Run 관리자 (`roles/run.admin`) | 서비스 배포 |
+| Cloud Build 편집자 (`roles/cloudbuild.builds.editor`) | `--source` 빌드 |
+| Artifact Registry 작성자 (`roles/artifactregistry.writer`) | 이미지 저장 |
+| 스토리지 관리자 (`roles/storage.admin`) | 소스 업로드 |
+| 서비스 계정 사용자 (`roles/iam.serviceAccountUser`) | 런타임 계정으로 실행 |
+
+키를 JSON으로 내려받습니다.
+
+**2. 저장소 시크릿 등록**
+
+GitHub → Settings → Secrets and variables → Actions → New repository secret:
+
+| 이름 | 값 |
+|---|---|
+| `GCP_SA_KEY` | 위에서 받은 JSON **원문 전체** |
+| `MCP_PUBLIC_URL` | 배포된 주소 (`https://bpp-ops-mcp-xxxx.a.run.app`, 끝에 `/` 없이) |
+| `GOOGLE_OAUTH_CLIENT_ID` | OAuth **웹** 클라이언트 ID |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | 같은 클라이언트의 시크릿 |
+
+RTDB 주소는 기본값이 들어 있어 따로 넣지 않아도 됩니다. 바꾸려면 저장소 변수
+`FIREBASE_DATABASE_URL`을 지정하세요.
+
+> **첫 배포는 닭과 달걀입니다.** `MCP_PUBLIC_URL`은 배포되기 전에는 모릅니다.
+> 아무 값이나 넣고 한 번 돌린 뒤, 요약에 찍힌 실제 주소로 고쳐서 다시 돌리면
+> 됩니다. 값이 어긋나 있으면 워크플로가 경고를 남깁니다 — `PUBLIC_URL`은 OAuth
+> 발급자 식별자라, 실제 주소와 다르면 토큰 검증이 실패하고 그게 설정 문제가
+> 아니라 로그인 문제처럼 보입니다.
+
+**시크릿을 Cloud Run 환경변수로 두는 게 걸린다면** Secret Manager에 넣고
+워크플로의 `--set-env-vars`에서 그 두 줄을 `--set-secrets`로 바꾸면 됩니다.
+콘솔 접근 권한이 있는 사람에게 값이 보이지 않게 됩니다.
 
 ### 환경 변수 (HTTP 모드)
 
