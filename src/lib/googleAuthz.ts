@@ -1,4 +1,4 @@
-// Google authorization for calendar access, via Google Identity Services.
+// Google API authorization, via Google Identity Services.
 //
 // Firebase's signInWithPopup was doing double duty here: it signs the user into
 // the app AND hands back a Google API token. Using it to refresh calendar access
@@ -79,13 +79,13 @@ export class AuthzError extends Error {
 }
 
 /**
- * Asks Google for a calendar token.
+ * Asks Google for an API token covering `scope`.
  *
  * `interactive: false` is the refresh path — it must be allowed to fail quietly,
  * because that is what happens when the Google session has gone and the only
  * remedy is for the person to click.
  */
-export async function requestCalendarToken(
+export async function requestGoogleToken(
   { scope, interactive, hint }: { scope: string; interactive: boolean; hint?: string }
 ): Promise<GrantedToken> {
   await loadGis()

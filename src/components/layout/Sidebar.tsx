@@ -8,9 +8,12 @@ import { useMilestoneStore } from '../../store/milestoneStore'
 import { usePresenceStore } from '../../store/presenceStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { useMobile } from '../../hooks/useMobile'
+import { useResolvedLinks, driveIdOf } from '../shared/DriveFiles'
+import { fileKind } from '../../lib/googleDrive'
 import { MEMBERS } from '../../types'
 import { buildInviteToken } from '../../lib/paths'
-import type { MemberKey, Project } from '../../types'
+import type { MemberKey, Project, TaskLink } from '../../types'
+import type { DriveFile } from '../../lib/googleDrive'
 
 export function Sidebar() {
   const { filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly, sidebarOpen, setSidebarOpen } = useUiStore()
@@ -104,6 +107,22 @@ export function Sidebar() {
     }
     return m
   }, [accessibleTasks, today])
+
+  // Materials across the visible tasks — milestones already finished drop out,
+  // since their files are history rather than something to reach for.
+  const assetLinks = useMemo(() => {
+    const doneMsIds = new Set(milestones.filter(m => m.done).map(m => m.id))
+    return accessibleTasks
+      .filter(t => !t.milestoneId || !doneMsIds.has(t.milestoneId))
+      .flatMap(t => (t.links ?? []).map(link => ({ link, task: t })))
+  }, [accessibleTasks, milestones])
+  // Only what is on screen gets looked up. Resolving the whole list would fire a
+  // Drive request per link on every load, for rows nobody has scrolled to.
+  const visibleAssets = useMemo(
+    () => assetsExpanded ? assetLinks : assetLinks.slice(0, 6),
+    [assetLinks, assetsExpanded],
+  )
+  const resolvedAssets = useResolvedLinks(useMemo(() => visibleAssets.map(a => a.link), [visibleAssets]))
 
   const isProjectCreator = (id: string): boolean => {
     const p = projects.find(pj => pj.id === id)
@@ -353,7 +372,6 @@ export function Sidebar() {
                 daysInfo={daysInfo}
                 projectId={p.id}
                 inviteCode={p.inviteCode}
-                driveFolderUrl={p.driveFolderUrl}
                 onClick={() => { setProject(p.id); setMyTasksOnly(false); closeSidebar() }}
                 onContextMenu={e => handleContextMenu(e, p.id, p.name, false)}
               >
@@ -418,20 +436,17 @@ export function Sidebar() {
 
           {/* ASSETS section */}
           {(() => {
-            const doneMsIds = new Set(milestones.filter(m => m.done).map(m => m.id))
-            const allLinks = accessibleTasks
-              .filter(t => !t.milestoneId || !doneMsIds.has(t.milestoneId))
-              .flatMap(t => (t.links ?? []).map(link => ({ link, task: t })))
-            const visibleLinks = assetsExpanded ? allLinks : allLinks.slice(0, 6)
+            const allLinks = assetLinks
+            const visibleLinks = visibleAssets
             return (
               <>
-                <SectionLabel>Assets</SectionLabel>
+                <SectionLabel>자료</SectionLabel>
                 {allLinks.length === 0 ? (
-                  <div style={{ padding: '4px 10px', fontSize: 11, color: 'var(--sb-t3)' }}>링크가 없습니다</div>
+                  <div style={{ padding: '4px 10px', fontSize: 11, color: 'var(--sb-t3)' }}>자료가 없습니다</div>
                 ) : (
                   <>
                     {visibleLinks.map(({ link, task }) => (
-                      <AssetLinkItem key={link.id} title={link.title} url={link.url} taskName={task.name} />
+                      <AssetLinkItem key={link.id} link={link} file={resolvedAssets.get(driveIdOf(link) ?? '')} taskName={task.name} />
                     ))}
                     {allLinks.length > 6 && (
                       <div
@@ -622,27 +637,19 @@ function NavItem({ children, active, onClick, count, emphasis, icon }: {
   )
 }
 
-function ProjectItem({ children, active, dot, overdue, daysInfo, projectId, inviteCode, driveFolderUrl, dimmed, onClick, onContextMenu }: {
+function ProjectItem({ children, active, dot, overdue, daysInfo, projectId, inviteCode, dimmed, onClick, onContextMenu }: {
   children: React.ReactNode; active: boolean; dot: string
   /** Tasks past their due date. Nothing is drawn at zero. */
   overdue: number
   daysInfo: { days: number; overdue: boolean } | null
   projectId: string
   inviteCode?: string
-  driveFolderUrl?: string
   dimmed?: boolean
   onClick: () => void
   onContextMenu: (e: React.MouseEvent) => void
 }) {
   const [hovered, setHovered] = useState(false)
   const [copied, setCopied] = useState(false)
-  const folderUrl = safeExternalUrl(driveFolderUrl)
-
-  const openFolder = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (folderUrl) window.open(folderUrl, '_blank', 'noopener,noreferrer')
-  }
-
   const copyLink = (e: React.MouseEvent) => {
     e.stopPropagation()
     if (!inviteCode) return
@@ -673,22 +680,14 @@ function ProjectItem({ children, active, dot, overdue, daysInfo, projectId, invi
       <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flexShrink: 0, opacity: dimmed ? .5 : 1 }} />
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
 
-      {hovered && (inviteCode || folderUrl) ? (
+      {hovered && inviteCode ? (
         <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
-          {folderUrl && (
-            <ActionIcon onClick={openFolder} title="드라이브 폴더 열기">📁</ActionIcon>
-          )}
-          {inviteCode && (
-            <ActionIcon onClick={copyLink} title={copied ? '복사됨!' : '초대 링크 복사'}>
-              {copied ? '✓' : '↗'}
-            </ActionIcon>
-          )}
+          <ActionIcon onClick={copyLink} title={copied ? '복사됨!' : '초대 링크 복사'}>
+            {copied ? '✓' : '↗'}
+          </ActionIcon>
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto', flexShrink: 0 }}>
-          {folderUrl && !hovered && (
-            <span title="드라이브 폴더 연결됨" style={{ fontSize: 10, opacity: .5, flexShrink: 0 }}>📁</span>
-          )}
           {daysInfo && (
             <span style={{
               fontSize: 10, fontWeight: 600, flexShrink: 0,
@@ -808,17 +807,24 @@ function AddBtn({ children, onClick }: { children: React.ReactNode; onClick: () 
   )
 }
 
-function AssetLinkItem({ title, url, taskName }: { title: string; url: string; taskName: string }) {
+function AssetLinkItem({ link, file, taskName }: {
+  link: TaskLink
+  file?: DriveFile | null
+  taskName: string
+}) {
+  const isDrive = !!driveIdOf(link)
+  const url = file?.webViewLink ?? link.url
+  const name = file?.name ?? link.title
   return (
     <div
       onClick={() => window.open(url, '_blank', 'noopener')}
       style={{ padding: '5px 8px 5px 10px', borderRadius: 'var(--r2)', cursor: 'pointer', margin: '1px 0', transition: 'background .1s' }}
       onMouseEnter={e => (e.currentTarget.style.background = 'var(--sb-hover)')}
       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-      title={url}
+      title={name}
     >
       <div style={{ fontSize: 12, color: 'var(--sb-t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
-        ↗ {title || url}
+        {isDrive ? fileKind(file?.mimeType ?? link.mimeType).icon : '🔗'} {name || url}
       </div>
       <div style={{ fontSize: 10, color: 'var(--sb-t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
         {taskName}

@@ -70,8 +70,19 @@ export interface ChecklistItem {
 
 export interface TaskLink {
   id: string
+  /** What it was called when it was attached — the fallback when Drive is unreachable. */
   title: string
   url: string
+  /**
+   * Set when this points at something in Drive.
+   *
+   * The id is the durable half: names change, files move between folders, and a
+   * URL captured once records neither. Holding the id lets the app show what the
+   * file is called now rather than what somebody typed last spring.
+   */
+  driveId?: string
+  /** Cached so the right icon is drawn before Drive answers. */
+  mimeType?: string
 }
 
 export interface Member {

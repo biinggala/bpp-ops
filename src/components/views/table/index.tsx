@@ -13,8 +13,13 @@ import { TagBadge } from '../../shared/Badge'
 import { AssigneeAvatar } from '../../shared/Avatar'
 import { ProgressBar } from '../../shared/ProgressBar'
 import { ContextMenu } from '../../shared/ContextMenu'
-import { fmtDate, isOverdue, parseAssignees, assigneeKeyToEmail, stripHtml, gid, isComposing } from '../../../lib/utils'
+import { fmtDate, isOverdue, parseAssignees, assigneeKeyToEmail, stripHtml, isComposing } from '../../../lib/utils'
 import { NOTION, STATUS_LIST, PRIORITY_LIST } from '../../../types'
+import {
+  FileRow, DriveSearch, UrlAdd, AttachTabs,
+  useResolvedLinks, useProjectFolderId, driveIdOf, linkFromDriveFile,
+} from '../../shared/DriveFiles'
+import { fileKind } from '../../../lib/googleDrive'
 import type { Task, Milestone, Status, Priority, TaskLink } from '../../../types'
 import type { ListGroup } from '../../../store/uiStore'
 
@@ -1477,6 +1482,7 @@ function Row({
           <div key="links" style={{ ...cellBase(col, isLast, true), padding: '4px 8px' }}>
             <LinksCell
               links={task.links ?? []}
+              projectId={task.projectId}
               onChange={v => onUpdate({ links: v })}
             />
           </div>
@@ -2326,83 +2332,63 @@ function InlineTextEdit({ value, onCommit, onCancel, fontSize = 13, bold = false
   )
 }
 
-// ── LinksCell ─────────────────────────────────────────────────────────────────
+// ── LinksCell — a task's materials ────────────────────────────────────────────
 
-function LinksCell({ links, onChange }: {
+function LinksCell({ links, projectId, onChange }: {
   links: TaskLink[]
+  projectId?: string
   onChange: (links: TaskLink[]) => void
 }) {
   const m = useMenu()
-  const [addTitle, setAddTitle] = useState('')
-  const [addUrl, setAddUrl] = useState('')
+  const [mode, setMode] = useState<'drive' | 'url'>('drive')
+  const folderId = useProjectFolderId(projectId)
+  const resolved = useResolvedLinks(links)
+  const attachedIds = React.useMemo(
+    () => new Set(links.map(driveIdOf).filter((v): v is string => !!v)),
+    [links],
+  )
 
-  const addLink = () => {
-    const url = addUrl.trim()
-    if (!url) return
-    const href = /^https?:\/\//i.test(url) ? url : `https://${url}`
-    onChange([...links, { id: gid(), title: addTitle.trim() || href.replace(/^https?:\/\//i, '').slice(0, 30), url: href }])
-    setAddTitle(''); setAddUrl('')
-  }
-  const removeLink = (id: string) => onChange(links.filter(l => l.id !== id))
+  const add = (link: TaskLink) => onChange([...links, link])
+  const remove = (id: string) => onChange(links.filter(l => l.id !== id))
+
+  // The cell itself shows the first file by name rather than a count: "대본" is
+  // what someone is looking for, "2개" only says there is looking to be done.
+  const first = links[0]
+  const firstName = first ? (resolved.get(driveIdOf(first) ?? '')?.name ?? first.title) : null
+  const firstIcon = first
+    ? (driveIdOf(first) ? fileKind(resolved.get(driveIdOf(first)!)?.mimeType ?? first.mimeType).icon : '🔗')
+    : null
 
   return (
     <div ref={m.rootRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
-      <CellTrigger open={m.open} onOpen={el => m.toggleAt(el, 280)}>
-        {links.length === 0
-          ? <Dash />
-          : <span style={{ fontSize: 12, color: 'var(--ac)', fontWeight: 500 }}>↗ {links.length}개</span>}
+      <CellTrigger open={m.open} onOpen={el => m.toggleAt(el, 320)}>
+        {!first ? <Dash /> : (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, fontSize: 12 }}>
+            <span style={{ flexShrink: 0 }}>{firstIcon}</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--t1)' }}>{firstName}</span>
+            {links.length > 1 && <span style={{ color: 'var(--t3)', flexShrink: 0 }}>+{links.length - 1}</span>}
+          </span>
+        )}
       </CellTrigger>
 
       {m.open && (
-        <Menu pos={m.pos} panelRef={m.panelRef} width={280}>
+        <Menu pos={m.pos} panelRef={m.panelRef} width={320}>
           {links.length > 0 && (
-            <MenuList>
-              {links.map(l => (
-                <div key={l.id}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: 'var(--r1)', transition: 'background .07s' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <a href={l.url} target="_blank" rel="noopener noreferrer"
-                    onClick={e => e.stopPropagation()}
-                    style={{ flex: 1, fontSize: 13, color: 'var(--ac)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                    title={l.url}
-                  >↗ {l.title}</a>
-                  <span
-                    onMouseDown={e => { e.preventDefault(); removeLink(l.id) }}
-                    style={{ fontSize: 13, color: 'var(--t3)', cursor: 'pointer', flexShrink: 0, lineHeight: 1 }}
-                    onMouseEnter={e => (e.currentTarget.style.color = NOTION.red.text)}
-                    onMouseLeave={e => (e.currentTarget.style.color = 'var(--t3)')}
-                  >✕</span>
-                </div>
-              ))}
-            </MenuList>
+            <>
+              <MenuList>
+                {links.map(l => (
+                  <FileRow key={l.id} link={l} compact
+                    file={resolved.get(driveIdOf(l) ?? '')}
+                    onRemove={() => remove(l.id)} />
+                ))}
+              </MenuList>
+              <MenuDivider />
+            </>
           )}
-          {links.length > 0 && <MenuDivider />}
-          <div style={{ padding: '4px 4px 0', flexShrink: 0 }}>
-            <input
-              autoFocus={links.length === 0}
-              value={addTitle}
-              onChange={e => setAddTitle(e.target.value)}
-              placeholder="링크 제목 (선택)"
-              onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) { const next = e.currentTarget.nextElementSibling?.firstElementChild as HTMLInputElement; next?.focus() } }}
-              style={{ ...MENU_INPUT, marginBottom: 5 }}
-            />
-            <div style={{ display: 'flex', gap: 5 }}>
-              <input
-                value={addUrl}
-                onChange={e => setAddUrl(e.target.value)}
-                placeholder="https://..."
-                onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) addLink() }}
-                style={{ ...MENU_INPUT, flex: 1, width: 'auto' }}
-              />
-              <button
-                onMouseDown={e => { e.preventDefault(); addLink() }}
-                disabled={!addUrl.trim()}
-                style={{ padding: '4px 10px', borderRadius: 'var(--r1)', border: 'none', background: addUrl.trim() ? 'var(--ac)' : 'var(--bg3)', color: addUrl.trim() ? '#fff' : 'var(--t3)', fontSize: 12, cursor: addUrl.trim() ? 'pointer' : 'default', fontFamily: 'var(--font)', flexShrink: 0 }}
-              >추가</button>
-            </div>
-          </div>
+          <AttachTabs mode={mode} onChange={setMode} />
+          {mode === 'drive'
+            ? <DriveSearch folderId={folderId} attachedIds={attachedIds} onPick={f => add(linkFromDriveFile(f))} onClose={() => m.setOpen(false)} />
+            : <UrlAdd onAdd={add} />}
         </Menu>
       )}
     </div>

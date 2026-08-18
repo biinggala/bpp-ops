@@ -14,9 +14,13 @@ import { useMilestoneStore } from '../../store/milestoneStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { useMobile } from '../../hooks/useMobile'
 import { AssigneeAvatar } from '../shared/Avatar'
+import {
+  FileRow, DriveSearch, UrlAdd, AttachTabs,
+  useResolvedLinks, useProjectFolderId, driveIdOf, linkFromDriveFile,
+} from '../shared/DriveFiles'
 import { STATUS_LIST, PRIORITY_LIST } from '../../types'
 import type { Task, Status, Priority, TaskLink } from '../../types'
-import { gid, isComposing } from '../../lib/utils'
+import { isComposing } from '../../lib/utils'
 
 const SIDEBAR_KEY = 'cringe_detail_sidebar_w'
 const MIN_SIDEBAR = 200
@@ -71,81 +75,62 @@ function PropRow({ label, children }: { label: string; children: React.ReactNode
   )
 }
 
-/* ── AssetsPanel ── */
+/* ── AssetsPanel — the task's materials ── */
 
-function AssetsPanel({ links, onChange }: { links: TaskLink[]; onChange: (links: TaskLink[]) => void }) {
+/**
+ * The files a task is made of, attached from Drive rather than described by a
+ * URL somebody typed. See DriveFiles.tsx for what "aligned" is taken to mean.
+ */
+function AssetsPanel({ links, projectId, onChange }: {
+  links: TaskLink[]
+  projectId?: string
+  onChange: (links: TaskLink[]) => void
+}) {
   const [adding, setAdding] = useState(false)
-  const [title, setTitle] = useState('')
-  const [url, setUrl] = useState('')
+  const [mode, setMode] = useState<'drive' | 'url'>('drive')
+  const folderId = useProjectFolderId(projectId)
+  const resolved = useResolvedLinks(links)
+  const attachedIds = React.useMemo(
+    () => new Set(links.map(driveIdOf).filter((v): v is string => !!v)),
+    [links],
+  )
 
-  const submit = () => {
-    const trimUrl = url.trim()
-    if (!trimUrl) return
-    onChange([...links, { id: gid(), title: title.trim() || trimUrl, url: trimUrl }])
-    setTitle(''); setUrl(''); setAdding(false)
-  }
-
+  const add = (link: TaskLink) => onChange([...links, link])
   const remove = (id: string) => onChange(links.filter(l => l.id !== id))
 
   return (
     <div style={{ borderTop: '1px solid var(--bd)', paddingTop: 12, marginTop: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Assets</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em' }}>자료</span>
         <button
           onClick={() => setAdding(a => !a)}
+          title={adding ? '닫기' : '자료 추가'}
           style={{ width: 20, height: 20, borderRadius: 3, border: 'none', background: 'transparent', cursor: 'pointer', color: adding ? 'var(--ac)' : 'var(--t3)', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, fontFamily: 'var(--font)' }}
           onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; e.currentTarget.style.color = 'var(--t1)' }}
           onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = adding ? 'var(--ac)' : 'var(--t3)' }}
-        >+</button>
+        >{adding ? '\u00d7' : '+'}</button>
       </div>
 
       {links.length === 0 && !adding && (
-        <div style={{ fontSize: 12, color: 'var(--t3)' }}>링크 없음</div>
+        <div style={{ fontSize: 12, color: 'var(--t3)' }}>자료 없음</div>
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {links.map(l => (
-          <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: 'var(--r2)', border: '1px solid var(--bd)', background: 'var(--bg2)' }}
-            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--bd2)')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--bd)')}
-          >
-            <a href={l.url} target="_blank" rel="noopener noreferrer"
-              style={{ flex: 1, fontSize: 12, color: 'var(--ac)', textDecoration: 'none', overflow: 'hidden', minWidth: 0 }}
-              title={l.url}
-            >
-              <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>↗ {l.title}</div>
-              <div style={{ fontSize: 10, color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>{l.url}</div>
-            </a>
-            <button onClick={() => remove(l.id)}
-              style={{ flexShrink: 0, width: 18, height: 18, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--t3)', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 2 }}
-              onMouseEnter={e => { e.currentTarget.style.color = '#D44C47'; e.currentTarget.style.background = 'rgba(212,76,71,.08)' }}
-              onMouseLeave={e => { e.currentTarget.style.color = 'var(--t3)'; e.currentTarget.style.background = 'transparent' }}
-            >×</button>
-          </div>
+          <FileRow key={l.id} link={l} file={resolved.get(driveIdOf(l) ?? '')} onRemove={() => remove(l.id)} />
         ))}
       </div>
 
       {adding && (
-        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <input autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder="링크 제목 (선택)"
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !isComposing(e)) (e.currentTarget.nextElementSibling as HTMLInputElement | null)?.focus()
-              if (e.key === 'Escape') { setAdding(false); setTitle(''); setUrl('') }
-            }}
-            style={{ border: '1px solid var(--bd)', borderRadius: 'var(--r1)', padding: '5px 8px', fontSize: 12, background: 'var(--bg)', color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)', width: '100%', boxSizing: 'border-box' }}
-          />
-          <div style={{ display: 'flex', gap: 5 }}>
-            <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://..."
-              onKeyDown={e => {
-                if (e.key === 'Enter' && !isComposing(e)) submit()
-                if (e.key === 'Escape') { setAdding(false); setTitle(''); setUrl('') }
-              }}
-              style={{ flex: 1, border: '1px solid var(--bd)', borderRadius: 'var(--r1)', padding: '5px 8px', fontSize: 12, background: 'var(--bg)', color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)' }}
-            />
-            <button onClick={submit} disabled={!url.trim()}
-              style={{ padding: '4px 10px', borderRadius: 'var(--r1)', border: 'none', background: url.trim() ? 'var(--ac)' : 'var(--bg3)', color: url.trim() ? '#fff' : 'var(--t3)', fontSize: 12, cursor: url.trim() ? 'pointer' : 'default', fontFamily: 'var(--font)', flexShrink: 0 }}
-            >추가</button>
-          </div>
+        <div style={{
+          marginTop: 8, padding: 4, borderRadius: 'var(--r3)',
+          border: '1px solid var(--bd)', background: 'var(--bg)',
+          display: 'flex', flexDirection: 'column', maxHeight: 300, overflow: 'hidden',
+        }}>
+          <AttachTabs mode={mode} onChange={setMode} />
+          {mode === 'drive'
+            ? <DriveSearch folderId={folderId} attachedIds={attachedIds} onPick={f => add(linkFromDriveFile(f))} onClose={() => setAdding(false)} />
+            : <UrlAdd onAdd={add} />}
         </div>
       )}
     </div>
@@ -497,7 +482,7 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
 
               {/* Assets */}
               <div style={{ padding: '0 20px 24px', borderTop: '1px solid var(--bd)' }}>
-                <AssetsPanel links={task.links ?? []} onChange={links => upd({ links })} />
+                <AssetsPanel links={task.links ?? []} projectId={task.projectId} onChange={links => upd({ links })} />
               </div>
             </>
           )}
@@ -781,7 +766,7 @@ export function TaskDetailModal() {
               </PropRow>
             )}
 
-            <AssetsPanel links={task.links ?? []} onChange={links => upd({ links })} />
+            <AssetsPanel links={task.links ?? []} projectId={task.projectId} onChange={links => upd({ links })} />
 
             <div style={{ marginTop: 'auto', paddingTop: 16 }}>
               {currentProject && (

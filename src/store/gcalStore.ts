@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import { auth } from '../lib/firebase'
-import { requestCalendarToken, AuthzError, GIS_CONFIGURED } from '../lib/googleAuthz'
+import { requestGoogleToken, AuthzError, GIS_CONFIGURED } from '../lib/googleAuthz'
 import { fetchCalendarList, fetchEventsAcross, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, writableCalendars, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent, type EventAttendee } from '../lib/googleCalendar'
 
 export interface GCalEvent {
@@ -165,7 +165,7 @@ type Setter = (partial: Partial<GCalState>) => void
 async function ensureWriteToken(get: () => GCalState, set: Setter): Promise<string | null> {
   if (get().canWrite && get().token) return get().token
   try {
-    const granted = await requestCalendarToken({
+    const granted = await requestGoogleToken({
       scope: `${CALENDAR_SCOPE} ${CALENDAR_WRITE_SCOPE}`,
       interactive: true,
       hint: auth.currentUser?.email ?? undefined,
@@ -201,7 +201,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     try {
       if (GIS_CONFIGURED) {
         try {
-          const granted = await requestCalendarToken({
+          const granted = await requestGoogleToken({
             scope: CALENDAR_SCOPE,
             interactive: true,
             hint: auth.currentUser?.email ?? undefined,
@@ -260,7 +260,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     set({ autoRefreshing: true, error: null })
     try {
       if (GIS_CONFIGURED) {
-        const granted = await requestCalendarToken({
+        const granted = await requestGoogleToken({
           scope: get().canWrite ? `${CALENDAR_SCOPE} ${CALENDAR_WRITE_SCOPE}` : CALENDAR_SCOPE,
           interactive: false,
           hint: auth.currentUser.email ?? undefined,
