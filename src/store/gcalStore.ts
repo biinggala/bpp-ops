@@ -22,6 +22,25 @@ export interface GCalEvent {
 
 const ENABLED_KEY = 'gcal_enabled_calendars'
 
+/**
+ * How far either side of the asked-for range to fetch.
+ *
+ * Every range switch used to be its own round trip — day view fetched one day,
+ * then week refetched seven, then month refetched a month, each one throwing the
+ * previous result away. Fetching a generous window once means switching between
+ * 일/3일/주/월 around the same date touches the network not at all.
+ */
+const PAD_DAYS = 45
+
+/** Beyond this the cached window is refetched, so a stale calendar catches up. */
+const STALE_MS = 5 * 60 * 1000
+
+function shiftDate(date: string, days: number): string {
+  const d = new Date(date + 'T00:00:00')
+  d.setDate(d.getDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
 function loadEnabled(): string[] | null {
   try {
     const raw = localStorage.getItem(ENABLED_KEY)
@@ -43,12 +62,20 @@ interface GCalState {
   canWrite: boolean
   /** Calendar new events are added to. */
   targetCalendarId: string | null
+  /** The span currently held in `events`, and when it was read. */
+  loadedFrom: string | null
+  loadedTo: string | null
+  fetchedAt: number
   loading: boolean
   error: string | null
   connect: () => Promise<void>
   disconnect: () => void
   fetchCalendars: () => Promise<void>
   setCalendarEnabled: (id: string, on: boolean) => void
+  /** Loads the range if the cached window does not already cover it. */
+  ensureEvents: (from: string, to: string) => Promise<void>
+  /** Refetches the cached window regardless of age. */
+  refreshEvents: () => Promise<void>
   fetchEvents: (from: string, to: string) => Promise<void>
   autoReconnect: () => Promise<void>
   setTargetCalendar: (id: string) => void
@@ -161,6 +188,9 @@ export const useGCalStore = create<GCalState>((set, get) => ({
   enabledCalendarIds: loadEnabled(),
   canWrite: loadWrite(),
   targetCalendarId: (() => { try { return localStorage.getItem(TARGET_KEY) } catch { return null } })(),
+  loadedFrom: null,
+  loadedTo: null,
+  fetchedAt: 0,
   loading: false,
   error: null,
 
@@ -211,7 +241,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     localStorage.removeItem('gcal_connected')
     localStorage.removeItem(ENABLED_KEY)
     localStorage.removeItem(WRITE_KEY)
-    set({ token: null, expiry: null, wasConnected: false, events: [], calendars: [], enabledCalendarIds: null, canWrite: false, error: null })
+    set({ token: null, expiry: null, wasConnected: false, events: [], calendars: [], enabledCalendarIds: null, canWrite: false, error: null, loadedFrom: null, loadedTo: null, fetchedAt: 0 })
   },
 
   /**
@@ -366,7 +396,23 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     const current = get().enabledCalendarIds ?? get().calendars.map(c => c.id)
     const next = on ? [...new Set([...current, id])] : current.filter(x => x !== id)
     localStorage.setItem(ENABLED_KEY, JSON.stringify(next))
-    set({ enabledCalendarIds: next })
+    // The window held in `events` was read for a different set of calendars.
+    set({ enabledCalendarIds: next, loadedFrom: null, loadedTo: null, fetchedAt: 0 })
+  },
+
+  ensureEvents: async (from, to) => {
+    const { loadedFrom, loadedTo, fetchedAt, loading } = get()
+    if (loading) return
+    const covered = !!loadedFrom && !!loadedTo && loadedFrom <= from && to <= loadedTo
+    if (covered && Date.now() - fetchedAt < STALE_MS) return
+    await get().fetchEvents(shiftDate(from, -PAD_DAYS), shiftDate(to, PAD_DAYS))
+  },
+
+  refreshEvents: async () => {
+    const { loadedFrom, loadedTo } = get()
+    if (!loadedFrom || !loadedTo) return
+    set({ fetchedAt: 0 })
+    await get().fetchEvents(loadedFrom, loadedTo)
   },
 
   fetchEvents: async (from: string, to: string) => {
@@ -387,7 +433,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     }
 
     const active = get().calendars.filter(c => (get().enabledCalendarIds ?? []).includes(c.id))
-    if (!active.length) { set({ events: [], loading: false }); return }
+    if (!active.length) { set({ events: [], loading: false, loadedFrom: from, loadedTo: to, fetchedAt: Date.now() }); return }
 
     set({ loading: true, error: null })
     const abort = new AbortController()
@@ -403,7 +449,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
         seen.add(ev.id)
         events.push(ev)
       }
-      set({ events, loading: false })
+      set({ events, loading: false, loadedFrom: from, loadedTo: to, fetchedAt: Date.now() })
     } catch (e: unknown) {
       clearTimeout(timer)
       if (e instanceof Error && e.message === TOKEN_EXPIRED) {

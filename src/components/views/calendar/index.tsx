@@ -39,7 +39,7 @@ const MOB_STATUS: Record<string, { bg: string; color: string }> = {
 // ── GCal connect button ───────────────────────────────────────────────────────
 
 function GCalButton() {
-  const { token, loading, autoRefreshing, wasConnected, error, calendars, enabledCalendarIds, connect, disconnect, autoReconnect, fetchCalendars, setCalendarEnabled } = useGCalStore()
+  const { token, loading, autoRefreshing, wasConnected, error, calendars, enabledCalendarIds, connect, disconnect, autoReconnect, fetchCalendars, setCalendarEnabled, refreshEvents } = useGCalStore()
   const [pickerOpen, setPickerOpen] = React.useState(false)
 
   // The calendar list is what makes shared team calendars reachable at all, so
@@ -108,6 +108,18 @@ function GCalButton() {
                 )
               })}
               <div style={{ height: 1, background: 'var(--bd)', margin: '4px 0' }} />
+              <button
+                onClick={() => { setPickerOpen(false); refreshEvents() }}
+                style={{
+                  width: '100%', textAlign: 'left', padding: '6px 12px', fontSize: 12,
+                  color: 'var(--t2)', background: 'transparent', border: 'none',
+                  cursor: 'pointer', fontFamily: 'var(--font)',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                지금 새로고침
+              </button>
               <button
                 onClick={() => { setPickerOpen(false); disconnect() }}
                 style={{
@@ -199,7 +211,7 @@ function GoogleDot() {
 function MobileCalendar() {
   const { openTaskModal, openTaskDetail, filters, setFilters, resetFilters, showGCal, setShowGCal } = useUiStore()
   const tasks = useFilteredTasks()
-  const { token, events: gcalEvents, fetchEvents } = useGCalStore()
+  const { token, events: gcalEvents, ensureEvents } = useGCalStore()
   const allProjects = useProjectStore(s => s.projects)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const email = useAuthStore(s => s.email)
@@ -232,7 +244,7 @@ function MobileCalendar() {
     if (!token) return
     const from = fmt(addDays(todayDate, -14))
     const to   = fmt(addDays(todayDate, 75))
-    fetchEvents(from, to)
+    ensureEvents(from, to)
   }, [token, enabledKey])
 
   // Group tasks by due date
@@ -645,6 +657,17 @@ function DesktopCalendar() {
   const writable = writableCalendars(calendars)
   const target = targetCalendarId ?? calendars.find(c => c.primary)?.id ?? writable[0]?.id ?? ''
 
+  // Coming back to the tab is the moment someone expects to see what changed in
+  // Google meanwhile. The cached window is only re-read if it has gone stale.
+  useEffect(() => {
+    const onFocus = () => {
+      const { loadedFrom, loadedTo } = useGCalStore.getState()
+      if (loadedFrom && loadedTo) useGCalStore.getState().ensureEvents(loadedFrom, loadedTo)
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       <div style={{ background: 'var(--bg)', borderBottom: '1px solid var(--bd)', padding: '0 16px', minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
@@ -723,7 +746,7 @@ function MonthGrid({ calYear, calMonth }: { calYear: number; calMonth: number })
     const ids = new Set(projects.map(p => p.id))
     return allMilestones.filter(m => ids.has(m.projectId))
   }, [allMilestones, projects])
-  const { token, events: gcalEvents, fetchEvents } = useGCalStore()
+  const { token, events: gcalEvents, ensureEvents } = useGCalStore()
 
   // Fetch GCal events when month changes
   useEffect(() => {
@@ -731,7 +754,7 @@ function MonthGrid({ calYear, calMonth }: { calYear: number; calMonth: number })
     // Cover the full 6-week grid: some days before/after the month
     const start = new Date(calYear, calMonth, -6)
     const end   = new Date(calYear, calMonth + 1, 14)
-    fetchEvents(fmt(start), fmt(end))
+    ensureEvents(fmt(start), fmt(end))
   }, [token, calYear, calMonth])
 
   const milestoneByDate = useMemo(() => {

@@ -87,7 +87,7 @@ interface Draft {
  * merge was meant to remove.
  */
 export function TimelineGrid({ days }: { days: string[] }) {
-  const { token, events, calendars, createEvent, updateEvent, removeEvent, fetchEvents } = useGCalStore()
+  const { token, events, calendars, createEvent, updateEvent, removeEvent, ensureEvents } = useGCalStore()
   const tasks = useFilteredTasks()
   const updateTask = useTaskStore(s => s.updateTask)
   const openTaskDetail = useUiStore(s => s.openTaskDetail)
@@ -110,7 +110,7 @@ export function TimelineGrid({ days }: { days: string[] }) {
 
   useEffect(() => {
     if (!token) return
-    fetchEvents(days[0], days[days.length - 1])
+    ensureEvents(days[0], days[days.length - 1])
   }, [token, days[0], days[days.length - 1]])
 
   // ── Drag to create ────────────────────────────────────────────────────────
