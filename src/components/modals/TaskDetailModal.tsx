@@ -19,7 +19,10 @@ import {
   useResolvedLinks, useProjectFolderId, driveIdOf, linkFromDriveFile,
 } from '../shared/DriveFiles'
 import { DateField } from '../shared/DatePicker'
-import { STATUS_LIST, PRIORITY_LIST } from '../../types'
+import { AssigneePicker } from '../shared/AssigneePicker'
+import { BadgeSelect } from '../shared/BadgeSelect'
+import { useMenu, Menu, MenuList, MenuItem, CellTrigger, Dot } from '../shared/Menu'
+import { STATUS_LIST, PRIORITY_LIST, NOTION } from '../../types'
 import type { Task, Status, Priority, TaskLink } from '../../types'
 import { isComposing } from '../../lib/utils'
 
@@ -27,46 +30,24 @@ const SIDEBAR_KEY = 'cringe_detail_sidebar_w'
 const MIN_SIDEBAR = 200
 const MAX_SIDEBAR = 480
 
+// The same pairs the list and the board use. This panel predated the shared
+// palette and had grown its own approximations of it — close enough to look
+// like a rendering bug rather than a different colour.
 const STATUS_STYLE: Record<Status, { bg: string; color: string }> = {
-  '진행중': { bg: 'rgba(35,131,226,.15)', color: '#487CA5' },
-  '대기':   { bg: 'rgba(120,117,114,.14)', color: '#5a5857' },
-  '검토중': { bg: '#fef3c7',              color: '#D9730D' },
-  '완료':   { bg: '#d1fae5',              color: '#448361' },
+  '진행중': { bg: NOTION.blue.bg,   color: NOTION.blue.text },
+  '대기':   { bg: NOTION.gray.bg,   color: NOTION.gray.text },
+  '검토중': { bg: NOTION.yellow.bg, color: NOTION.yellow.text },
+  '완료':   { bg: NOTION.green.bg,  color: NOTION.green.text },
 }
 const PRIORITY_STYLE: Record<Priority, { bg: string; color: string }> = {
-  '높음': { bg: 'rgba(212,76,71,.13)',  color: '#D44C47' },
-  '중간': { bg: 'rgba(217,115,13,.14)', color: '#D9730D' },
-  '낮음': { bg: 'rgba(59,130,246,.13)', color: '#1d4ed8' },
+  '높음': { bg: NOTION.red.bg,    color: NOTION.red.text },
+  '중간': { bg: NOTION.orange.bg, color: NOTION.orange.text },
+  '낮음': { bg: 'transparent',    color: 'var(--t3)' },
 }
 
 /* ── Shared helpers ── */
 
-function ColoredSelect<T extends string>({
-  value, options, styles, onChange,
-}: {
-  value: T
-  options: T[]
-  styles: Record<T, { bg: string; color: string }>
-  onChange: (v: T) => void
-}) {
-  const s = styles[value]
-  return (
-    <div style={{ position: 'relative', display: 'inline-flex' }}>
-      <span style={{
-        padding: '2px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600,
-        background: s.bg, color: s.color, pointerEvents: 'none', whiteSpace: 'nowrap',
-      }}>{value}</span>
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value as T)}
-        style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%', border: 'none' }}
-      >
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
-    </div>
-  )
-}
-
+/** One line of the properties panel: a quiet label, then the control. */
 function PropRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 0', borderBottom: '1px solid var(--bd)' }}>
@@ -133,6 +114,55 @@ function AssetsPanel({ links, projectId, onChange }: {
             ? <DriveSearch folderId={folderId} attachedIds={attachedIds} onPick={f => add(linkFromDriveFile(f))} onClose={() => setAdding(false)} />
             : <UrlAdd onAdd={add} />}
         </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A single-choice property, on the app's own menu.
+ *
+ * 프로젝트 and 마일스톤 were native `<select>`s here — the operating system's
+ * picker, opened from inside a panel where everything else opens the app's.
+ * The colour dot also does real work: it is how a project is recognised
+ * everywhere else in the app, and a list of bare names is not.
+ */
+function OptionPicker({ value, options, empty, onChange }: {
+  value: string | undefined
+  options: { value: string; label: string; dot?: string; sub?: string }[]
+  empty: string
+  onChange: (v: string | undefined) => void
+}) {
+  const m = useMenu()
+  const current = options.find(o => o.value === value)
+
+  return (
+    <div ref={m.rootRef} style={{ position: 'relative', display: 'flex', flex: 1, minWidth: 0 }}>
+      <CellTrigger open={m.open} onOpen={el => m.toggleAt(el, 220)}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, fontSize: 13 }}>
+          {current?.dot && <Dot color={current.dot} />}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: current ? 'var(--t1)' : 'var(--t3)' }}>
+            {current?.label ?? empty}
+          </span>
+        </span>
+      </CellTrigger>
+      {m.open && (
+        <Menu pos={m.pos} panelRef={m.panelRef} width={220}>
+          <MenuList>
+            <MenuItem selected={!value} onSelect={() => { onChange(undefined); m.setOpen(false) }}>{empty}</MenuItem>
+            {options.map(o => (
+              <MenuItem
+                key={o.value}
+                selected={o.value === value}
+                onSelect={() => { onChange(o.value); m.setOpen(false) }}
+                trailing={o.sub ? <span style={{ fontSize: 10, color: 'var(--t3)', flexShrink: 0 }}>{o.sub}</span> : undefined}
+              >
+                {o.dot && <Dot color={o.dot} />}
+                {o.label}
+              </MenuItem>
+            ))}
+          </MenuList>
+        </Menu>
       )}
     </div>
   )
@@ -212,7 +242,7 @@ const IcCalendar = () => (
 )
 const IcDiamond = () => (
   <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-    <path d="M10 3L17 10L10 17L3 10L10 3Z" stroke="#9065B0" strokeWidth="1.5"/>
+    <path d="M10 3L17 10L10 17L3 10L10 3Z" stroke={NOTION.purple.text} strokeWidth="1.5"/>
   </svg>
 )
 const IcProgress = () => (
@@ -268,21 +298,7 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
   const currentMilestone = milestones.find(m => m.id === task.milestoneId)
   const taskMilestones = milestones.filter(m => m.projectId === task.projectId)
 
-  const statusStyle = STATUS_STYLE[task.status]
   const priorityStyle = task.priority ? PRIORITY_STYLE[task.priority] : null
-
-  const formatDate = (d: string | undefined) => {
-    if (!d) return ''
-    const [, m, day] = d.split('-')
-    return `${Number(m)}/${Number(day)}`
-  }
-
-  const datesLabel = (() => {
-    if (task.start && task.due) return `${formatDate(task.start)} - ${formatDate(task.due)}`
-    if (task.due) return `~ ${formatDate(task.due)}`
-    if (task.start) return `${formatDate(task.start)} ~`
-    return '없음'
-  })()
 
   const hasMemo = task.memo && task.memo !== '<p></p>' && task.memo.trim() !== ''
 
@@ -325,7 +341,7 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
               <div style={{ width: 8, height: 8, borderRadius: 2, background: currentProject.color, flexShrink: 0 }} />
               <span>{currentProject.name}</span>
               {currentMilestone && (
-                <><span style={{ opacity: .4 }}>/</span><span style={{ color: '#9065B0' }}>◆ {currentMilestone.name}</span></>
+                <><span style={{ opacity: .4 }}>/</span><span style={{ color: NOTION.purple.text }}>◆ {currentMilestone.name}</span></>
               )}
             </div>
           )}
@@ -383,50 +399,22 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
           {tab === 'details' && (
             <>
               {/* Status */}
-              <MobilePropRow icon={<IcStatus />} label="Status">
-                <div style={{ position: 'relative', display: 'inline-flex' }}>
-                  <span style={{ padding: '3px 12px', borderRadius: 12, fontSize: 13, fontWeight: 600, background: statusStyle.bg, color: statusStyle.color }}>
-                    {task.status}
-                  </span>
-                  <select value={task.status} onChange={e => upd({ status: e.target.value as Status })}
-                    style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%', border: 'none' }}>
-                    {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
+              <MobilePropRow icon={<IcStatus />} label="상태">
+                <BadgeSelect value={task.status} options={STATUS_LIST as Status[]} styleMap={STATUS_STYLE} onChange={v => upd({ status: v as Status })} />
               </MobilePropRow>
 
-              {/* Assignees */}
-              <MobilePropRow icon={<IcUser />} label="Assignees">
-                <select value={task.assignee} onChange={e => upd({ assignee: e.target.value })}
-                  style={{ border: 'none', background: 'transparent', fontSize: 14, cursor: 'pointer', outline: 'none', color: task.assignee ? 'var(--t1)' : 'var(--t3)', fontFamily: 'var(--font)', padding: 0, margin: 0, appearance: 'none', WebkitAppearance: 'none' }}>
-                  <option value="">미배정</option>
-                  {assigneeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+              {/* Assignees — the multi-select, same as everywhere else. */}
+              <MobilePropRow icon={<IcUser />} label="담당자">
+                <AssigneePicker assignee={task.assignee} options={assigneeOptions} onChange={v => upd({ assignee: v })} />
               </MobilePropRow>
 
               {/* Priority */}
-              <MobilePropRow icon={<IcFlag color={priorityStyle?.color} />} label="Priority">
-                {priorityStyle ? (
-                  <div style={{ position: 'relative', display: 'inline-flex' }}>
-                    <span style={{ padding: '3px 12px', borderRadius: 12, fontSize: 13, fontWeight: 600, background: priorityStyle.bg, color: priorityStyle.color }}>
-                      {task.priority}
-                    </span>
-                    <select value={task.priority} onChange={e => upd({ priority: e.target.value as Priority })}
-                      style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%', border: 'none' }}>
-                      {PRIORITY_LIST.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                  </div>
-                ) : (
-                  <select value="" onChange={e => upd({ priority: e.target.value as Priority })}
-                    style={{ border: 'none', background: 'transparent', fontSize: 14, cursor: 'pointer', outline: 'none', color: 'var(--t3)', fontFamily: 'var(--font)', padding: 0, appearance: 'none', WebkitAppearance: 'none' }}>
-                    <option value="">없음</option>
-                    {PRIORITY_LIST.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                )}
+              <MobilePropRow icon={<IcFlag color={priorityStyle?.color} />} label="우선순위">
+                <BadgeSelect value={task.priority} options={PRIORITY_LIST as Priority[]} styleMap={PRIORITY_STYLE} onChange={v => upd({ priority: v as Priority })} />
               </MobilePropRow>
 
               {/* Dates */}
-              <MobilePropRow icon={<IcCalendar />} label="Dates">
+              <MobilePropRow icon={<IcCalendar />} label="기간">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <DateField value={task.start || ''} context={{ taskId: task.id, projectId: task.projectId, milestoneId: task.milestoneId, parentId: task.parentId, assignee: task.assignee, blockedBy: task.blockedBy }}
                     onChange={v => upd({ start: v || undefined })} placeholder="시작일" format="full" style={{ fontSize: 14 }} />
@@ -438,17 +426,18 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
 
               {/* Milestone */}
               {currentProject && (
-                <MobilePropRow icon={<IcDiamond />} label="Milestone">
-                  <select value={task.milestoneId || ''} onChange={e => upd({ milestoneId: e.target.value || undefined })}
-                    style={{ border: 'none', background: 'transparent', fontSize: 14, cursor: 'pointer', outline: 'none', color: task.milestoneId ? '#9065B0' : 'var(--t3)', fontFamily: 'var(--font)', padding: 0, appearance: 'none', WebkitAppearance: 'none' }}>
-                    <option value="">없음</option>
-                    {taskMilestones.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
+                <MobilePropRow icon={<IcDiamond />} label="마일스톤">
+                  <OptionPicker
+                    value={task.milestoneId}
+                    empty="없음"
+                    options={taskMilestones.map(m => ({ value: m.id, label: m.name, dot: NOTION.purple.text, sub: m.dueDate }))}
+                    onChange={v => upd({ milestoneId: v })}
+                  />
                 </MobilePropRow>
               )}
 
               {/* Progress */}
-              <MobilePropRow icon={<IcProgress />} label="Progress">
+              <MobilePropRow icon={<IcProgress />} label="진행률">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
                   <input type="range" min={0} max={100} step={5} value={task.progress}
                     onChange={e => upd({ progress: Number(e.target.value) })}
@@ -515,7 +504,7 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
               완료
             </button>
             <span style={{ flex: 1, textAlign: 'center', fontSize: 15, fontWeight: 600, color: 'var(--t1)' }}>메모</span>
-            <span style={{ fontSize: 11, color: saveStatus === 'saving' ? 'var(--ac)' : '#10b981', minWidth: 44, textAlign: 'right' }}>
+            <span style={{ fontSize: 11, color: saveStatus === 'saving' ? 'var(--ac)' : NOTION.green.text, minWidth: 44, textAlign: 'right' }}>
               {saveStatus === 'saving' ? '저장 중' : '저장됨'}
             </span>
           </div>
@@ -541,7 +530,7 @@ export function TaskDetailModal() {
   const { detailTaskId, closeTaskDetail } = useUiStore()
   const task = useTaskStore(s => s.tasks.find(t => t.id === detailTaskId))
   const { updateTask } = useTaskStore()
-  const { uid, email: userEmail } = useAuthStore()
+  const { uid } = useAuthStore()
   const { presences, setCurrentTask } = usePresenceStore()
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const allProjects = useProjectStore(s => s.projects)
@@ -673,6 +662,22 @@ export function TaskDetailModal() {
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}>✕</button>
 
           <div style={{ flex: 1, minWidth: 0 }}>
+            {/* Where this sits, above its name — the same line the mobile panel
+                has always shown, and the same breadcrumb the flat list puts
+                under a row. A task opened from a search or a calendar arrives
+                with no surrounding context at all otherwise. */}
+            {currentProject && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--t3)', marginBottom: 3, minWidth: 0 }}>
+                <span style={{ width: 7, height: 7, borderRadius: 2, background: currentProject.color, flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentProject.name}</span>
+                {currentMilestone && (
+                  <>
+                    <span style={{ opacity: .4, flexShrink: 0 }}>›</span>
+                    <span style={{ color: NOTION.purple.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>◆ {currentMilestone.name}</span>
+                  </>
+                )}
+              </div>
+            )}
             {editingTitle ? (
               <input autoFocus value={titleValue}
                 onChange={e => setTitleValue(e.target.value)}
@@ -715,19 +720,15 @@ export function TaskDetailModal() {
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>속성</div>
 
             <PropRow label="담당자">
-              <select value={task.assignee} onChange={e => upd({ assignee: e.target.value })}
-                style={{ border: 'none', background: 'transparent', fontSize: 13, cursor: 'pointer', outline: 'none', color: 'var(--t1)', fontFamily: 'var(--font)', width: '100%' }}>
-                <option value="">미배정</option>
-                {assigneeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+              <AssigneePicker assignee={task.assignee} options={assigneeOptions} onChange={v => upd({ assignee: v })} />
             </PropRow>
 
             <PropRow label="상태">
-              <ColoredSelect value={task.status} options={STATUS_LIST as unknown as Status[]} styles={STATUS_STYLE} onChange={v => upd({ status: v })} />
+              <BadgeSelect value={task.status} options={STATUS_LIST as Status[]} styleMap={STATUS_STYLE} onChange={v => upd({ status: v as Status })} />
             </PropRow>
 
             <PropRow label="우선순위">
-              <ColoredSelect value={task.priority} options={PRIORITY_LIST as unknown as Priority[]} styles={PRIORITY_STYLE} onChange={v => upd({ priority: v })} />
+              <BadgeSelect value={task.priority} options={PRIORITY_LIST as Priority[]} styleMap={PRIORITY_STYLE} onChange={v => upd({ priority: v as Priority })} />
             </PropRow>
 
             <PropRow label="시작일">
@@ -750,42 +751,35 @@ export function TaskDetailModal() {
             </PropRow>
 
             <PropRow label="프로젝트">
-              <select value={task.projectId || ''} onChange={e => upd({ projectId: e.target.value || undefined })}
-                style={{ border: 'none', background: 'transparent', fontSize: 13, cursor: 'pointer', outline: 'none', color: 'var(--t2)', fontFamily: 'var(--font)', width: '100%' }}>
-                <option value="">없음</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+              <OptionPicker
+                value={task.projectId}
+                empty="없음"
+                options={projects.map(p => ({ value: p.id, label: p.name, dot: p.color }))}
+                onChange={v => upd({ projectId: v })}
+              />
             </PropRow>
 
             {currentProject && (
               <PropRow label="마일스톤">
-                <select value={task.milestoneId || ''} onChange={e => upd({ milestoneId: e.target.value || undefined })}
-                  style={{ border: 'none', background: 'transparent', fontSize: 13, cursor: 'pointer', outline: 'none', color: 'var(--t2)', fontFamily: 'var(--font)', width: '100%' }}>
-                  <option value="">없음</option>
-                  {taskMilestones.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
+                <OptionPicker
+                  value={task.milestoneId}
+                  empty="없음"
+                  options={taskMilestones.map(m => ({ value: m.id, label: m.name, dot: NOTION.purple.text, sub: m.dueDate }))}
+                  onChange={v => upd({ milestoneId: v })}
+                />
               </PropRow>
             )}
 
             <AssetsPanel links={task.links ?? []} projectId={task.projectId} onChange={links => upd({ links })} />
 
-            <div style={{ marginTop: 'auto', paddingTop: 16 }}>
-              {currentProject && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: currentProject.color, flexShrink: 0 }} />
-                  <span style={{ fontSize: 11, color: 'var(--t3)' }}>{currentProject.name}</span>
-                </div>
-              )}
-              {currentMilestone && (
-                <div style={{ fontSize: 11, color: '#9065B0' }}>◆ {currentMilestone.name}</div>
-              )}
-            </div>
-
-            <div style={{ paddingTop: 12, fontSize: 11, color: 'var(--t3)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            {/* The project and milestone that used to be repeated here are two
+                rows up, and editable there. Restating them read as a second,
+                weaker copy of the same facts. */}
+            <div style={{ marginTop: 'auto', paddingTop: 14, fontSize: 11, color: 'var(--t3)', display: 'flex', alignItems: 'center', gap: 5 }}>
               {saveStatus === 'saving' ? (
                 <><span style={{ animation: 'pulse 1s infinite', display: 'inline-block' }}>●</span> 저장 중...</>
               ) : (
-                <><span style={{ color: '#10b981' }}>●</span> 저장됨</>
+                <><span style={{ color: NOTION.green.text }}>●</span> 저장됨</>
               )}
             </div>
           </div>
