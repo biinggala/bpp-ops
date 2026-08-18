@@ -15,18 +15,33 @@ import { registerTools } from './tools.js'
 import { canAccessProject } from './access.js'
 import { initDb, readProjects } from './store.js'
 
-function required(name: string): string {
-  const value = process.env[name]
-  if (!value) throw new Error(`${name} is not set`)
-  return value
+/**
+ * Every missing variable at once, not just the first.
+ *
+ * Startup failure on a serverless host shows up as "the container failed to
+ * listen on $PORT", with the real reason buried in the logs — so being told
+ * about one missing name, fixing it, and redeploying to be told about the next
+ * costs a full deploy per variable.
+ */
+function requireEnv(names: string[]): Record<string, string> {
+  const missing = names.filter(n => !process.env[n])
+  if (missing.length) {
+    throw new Error(
+      `missing environment variables: ${missing.join(', ')}. ` +
+      'On Cloud Run these are set with `gcloud run services update <service> --set-env-vars ...`; ' +
+      'see mcp/README.md for what each one is.'
+    )
+  }
+  return Object.fromEntries(names.map(n => [n, process.env[n]!]))
 }
 
 async function main() {
-  const publicUrl = required('PUBLIC_URL').replace(/\/$/, '')
+  const env = requireEnv(['PUBLIC_URL', 'GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET'])
+  const publicUrl = env.PUBLIC_URL.replace(/\/$/, '')
   const provider = new GoogleBackedProvider(
     {
-      clientId: required('GOOGLE_OAUTH_CLIENT_ID'),
-      clientSecret: required('GOOGLE_OAUTH_CLIENT_SECRET'),
+      clientId: env.GOOGLE_OAUTH_CLIENT_ID,
+      clientSecret: env.GOOGLE_OAUTH_CLIENT_SECRET,
       publicUrl,
     },
     // Anyone who is not part of a project would see nothing anyway, but refusing
