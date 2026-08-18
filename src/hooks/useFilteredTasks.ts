@@ -3,7 +3,7 @@ import { useTaskStore } from '../store/taskStore'
 import { useUiStore } from '../store/uiStore'
 import { useAuthStore } from '../store/authStore'
 import { useProjectStore } from '../store/projectStore'
-import { assigneeAliases, parseAssignees } from '../lib/utils'
+import { assigneeAliases, parseAssignees, isAssignedTo } from '../lib/utils'
 import type { Task } from '../types'
 
 export function useFilteredTasks(): Task[] {
@@ -39,13 +39,7 @@ export function useFilteredTasks(): Task[] {
 
     if (space) result = result.filter(t => t.cat === space)
     if (projectId) result = result.filter(t => t.projectId === projectId)
-    if (myTasksOnly) {
-      result = result.filter(t => {
-        if (memberKey && t.assignee.includes(memberKey)) return true
-        if (email && t.assignee.toLowerCase().includes(email.toLowerCase())) return true
-        return false
-      })
-    }
+    if (myTasksOnly) result = result.filter(t => isAssignedTo(t.assignee, memberKey, email))
 
     if (filters.projects.length) {
       result = result.filter(t => t.projectId ? filters.projects.includes(t.projectId) : false)

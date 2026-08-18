@@ -91,6 +91,26 @@ export function parseAssignees(assignee: string): string[] {
   return assignee ? assignee.split(',').map(s => s.trim()).filter(Boolean) : []
 }
 
+/**
+ * Is this task assigned to the given person?
+ *
+ * One definition, used by both the 내 할 일 view and the sidebar's count of it.
+ * They used to disagree: the sidebar compared the whole assignee string for
+ * equality, so any task with two assignees ("a,b") never matched, and anyone
+ * without a legacy MemberKey counted zero — while the view matched on substring
+ * and by email. The badge and the list were answering different questions.
+ */
+export function isAssignedTo(
+  assignee: string,
+  memberKey: string | null | undefined,
+  email: string | null | undefined,
+): boolean {
+  if (!assignee) return false
+  if (memberKey && assignee.includes(memberKey)) return true
+  if (email && assignee.toLowerCase().includes(email.toLowerCase())) return true
+  return false
+}
+
 const STORAGE_KEY = 'cringe_v9'
 
 export function loadFromStorage<T>(key = STORAGE_KEY): T | null {

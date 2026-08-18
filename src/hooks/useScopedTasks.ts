@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useUiStore } from '../store/uiStore'
 import { useAuthStore } from '../store/authStore'
 import { useAccessibleTasks } from './useAccessibleTasks'
+import { isAssignedTo } from '../lib/utils'
 
 /**
  * Tasks in the current scope — space, project, 내 할 일 — but with none of the
@@ -26,13 +27,7 @@ export function useScopedTasks() {
     let result = accessible
     if (space) result = result.filter(t => t.cat === space)
     if (projectId) result = result.filter(t => t.projectId === projectId)
-    if (myTasksOnly) {
-      result = result.filter(t => {
-        if (memberKey && t.assignee.includes(memberKey)) return true
-        if (email && t.assignee.toLowerCase().includes(email.toLowerCase())) return true
-        return false
-      })
-    }
+    if (myTasksOnly) result = result.filter(t => isAssignedTo(t.assignee, memberKey, email))
     return result
   }, [accessible, space, projectId, myTasksOnly, memberKey, email])
 }

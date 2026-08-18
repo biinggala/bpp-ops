@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { isComposing, authorizedEmails, safeExternalUrl } from '../../lib/utils'
+import { isComposing, authorizedEmails, safeExternalUrl, isAssignedTo } from '../../lib/utils'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useAuthStore } from '../../store/authStore'
@@ -73,6 +73,37 @@ export function Sidebar() {
   const accessibleTasks = tasks.filter(t =>
     t.projectId ? accessibleProjectIds.has(t.projectId) : hasAccess
   )
+
+  // Archived projects are absent from every aggregate view, so they must be
+  // absent from the numbers describing those views too.
+  const archivedIds = useMemo(
+    () => new Set(projects.filter(p => p.archived).map(p => p.id)),
+    [projects],
+  )
+  const activeTasks = useMemo(
+    () => accessibleTasks.filter(t => !t.projectId || !archivedIds.has(t.projectId)),
+    [accessibleTasks, archivedIds],
+  )
+
+  // What is still on my plate — the same predicate 내 할 일 filters by, minus
+  // the ones already finished. A count of everything ever assigned answers no
+  // question anyone asks of a sidebar.
+  const myOpenCount = useMemo(
+    () => activeTasks.filter(t => t.status !== '완료' && isAssignedTo(t.assignee, memberKey, email)).length,
+    [activeTasks, memberKey, email],
+  )
+
+  const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
+  /** Per project: only what has blown its deadline. Zero shows nothing at all. */
+  const overdueByProject = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const t of accessibleTasks) {
+      if (!t.projectId || t.status === '완료' || !t.due) continue
+      if (new Date(t.due).setHours(0, 0, 0, 0) >= today.getTime()) continue
+      m.set(t.projectId, (m.get(t.projectId) ?? 0) + 1)
+    }
+    return m
+  }, [accessibleTasks, today])
 
   const isProjectCreator = (id: string): boolean => {
     const p = projects.find(pj => pj.id === id)
@@ -267,29 +298,31 @@ export function Sidebar() {
         {/* Nav */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 6px' }}>
 
-          <NavItem
-            active={!myTasksOnly && projectId === null}
-            onClick={() => { setProject(null); setMyTasksOnly(false); closeSidebar() }}
-            count={accessibleTasks.length}
-            icon="◈"
-          >
-            전체 업무
-          </NavItem>
-
+          {/* 내 할 일 comes first and is the only nav row carrying a number.
+              It is where the day starts, and "how many are still mine" is the
+              one count in this sidebar that changes what someone does next. */}
           <NavItem
             active={myTasksOnly}
             onClick={() => { setMyTasksOnly(!myTasksOnly); setProject(null); closeSidebar() }}
-            count={tasks.filter(t => memberKey ? t.assignee === memberKey : false).length}
+            count={myOpenCount}
+            emphasis
             icon="☑"
           >
             내 할 일
+          </NavItem>
+
+          <NavItem
+            active={!myTasksOnly && projectId === null}
+            onClick={() => { setProject(null); setMyTasksOnly(false); closeSidebar() }}
+            icon="◈"
+          >
+            전체 업무
           </NavItem>
 
           {/* Projects section */}
           <SectionLabel>Projects</SectionLabel>
 
           {visibleProjects.map(p => {
-            const taskCount = tasks.filter(t => t.projectId === p.id).length
             const daysInfo = p.dueDate ? getDaysRemaining(p.dueDate) : null
 
             if (editingProjectId === p.id) {
@@ -316,7 +349,7 @@ export function Sidebar() {
                 key={p.id}
                 active={projectId === p.id}
                 dot={p.color}
-                count={taskCount}
+                overdue={overdueByProject.get(p.id) ?? 0}
                 daysInfo={daysInfo}
                 projectId={p.id}
                 inviteCode={p.inviteCode}
@@ -364,13 +397,12 @@ export function Sidebar() {
               </div>
 
               {archivedExpanded && archivedProjects.map(p => {
-                const taskCount = tasks.filter(t => t.projectId === p.id).length
                 return (
                   <ProjectItem
                     key={p.id}
                     active={projectId === p.id}
                     dot={p.color}
-                    count={taskCount}
+                    overdue={0}
                     daysInfo={null}
                     projectId={p.id}
                     dimmed
@@ -549,9 +581,13 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-function NavItem({ children, active, onClick, count, icon }: {
+function NavItem({ children, active, onClick, count, emphasis, icon }: {
   children: React.ReactNode; active: boolean; onClick: () => void
-  count: number; icon?: string
+  /** Omitted where a number would be decoration rather than information. */
+  count?: number
+  /** Draws the count as a filled pill — the row you are meant to start from. */
+  emphasis?: boolean
+  icon?: string
 }) {
   return (
     <div
@@ -559,23 +595,37 @@ function NavItem({ children, active, onClick, count, icon }: {
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
         padding: '4px 8px', borderRadius: 'var(--r2)', cursor: 'pointer',
-        fontSize: 13, fontWeight: active ? 500 : 400, margin: '1px 0',
-        color: active ? 'var(--sb-t1)' : 'var(--sb-t2)',
+        fontSize: 13, fontWeight: active || emphasis ? 500 : 400, margin: '1px 0',
+        color: active || emphasis ? 'var(--sb-t1)' : 'var(--sb-t2)',
         background: active ? 'var(--sb-active)' : 'transparent',
         transition: 'background .1s, color .1s',
       }}
       onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--sb-hover)' }}
       onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
     >
-      {icon && <span style={{ fontSize: 11, opacity: .6, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>}
+      {icon && <span style={{ fontSize: 11, opacity: emphasis ? .85 : .6, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>}
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
-      <span style={{ fontSize: 12, color: 'var(--sb-t3)', marginLeft: 'auto', flexShrink: 0 }}>{count}</span>
+      {count !== undefined && count > 0 && (
+        emphasis ? (
+          <span title="아직 완료하지 않은 내 업무" style={{
+            marginLeft: 'auto', flexShrink: 0,
+            minWidth: 18, padding: '0 6px', height: 17,
+            borderRadius: 999, background: 'var(--ac)', color: '#fff',
+            fontSize: 11, fontWeight: 600,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          }}>{count}</span>
+        ) : (
+          <span style={{ fontSize: 12, color: 'var(--sb-t3)', marginLeft: 'auto', flexShrink: 0 }}>{count}</span>
+        )
+      )}
     </div>
   )
 }
 
-function ProjectItem({ children, active, dot, count, daysInfo, projectId, inviteCode, driveFolderUrl, dimmed, onClick, onContextMenu }: {
-  children: React.ReactNode; active: boolean; dot: string; count: number
+function ProjectItem({ children, active, dot, overdue, daysInfo, projectId, inviteCode, driveFolderUrl, dimmed, onClick, onContextMenu }: {
+  children: React.ReactNode; active: boolean; dot: string
+  /** Tasks past their due date. Nothing is drawn at zero. */
+  overdue: number
   daysInfo: { days: number; overdue: boolean } | null
   projectId: string
   inviteCode?: string
@@ -647,7 +697,16 @@ function ProjectItem({ children, active, dot, count, daysInfo, projectId, invite
               {daysInfo.overdue ? `D+${daysInfo.days}` : `D-${daysInfo.days}`}
             </span>
           )}
-          <span style={{ fontSize: 11, color: 'var(--sb-t3)', flexShrink: 0 }}>{count}</span>
+          {/* A project's total task count is the same big number every day and
+              nobody acts on it. What is past due is worth interrupting for. */}
+          {overdue > 0 && (
+            <span title={`마감 지난 업무 ${overdue}개`} style={{
+              fontSize: 10, fontWeight: 600, flexShrink: 0,
+              minWidth: 16, padding: '0 5px', height: 15, borderRadius: 999,
+              background: 'rgba(248,113,113,.16)', color: '#f87171',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            }}>{overdue}</span>
+          )}
         </div>
       )}
     </div>
