@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import { auth } from '../lib/firebase'
+import { requestCalendarToken, AuthzError, GIS_CONFIGURED } from '../lib/googleAuthz'
 import { fetchCalendarList, fetchEventsAcross, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent } from '../lib/googleCalendar'
 
 export interface GCalEvent {
@@ -88,8 +89,11 @@ function loadStored(): { token: string | null; expiry: number | null; wasConnect
   return { token: null, expiry: null, wasConnected: false }
 }
 
-function storeToken(token: string) {
-  const expiry = Date.now() + 3500 * 1000  // ~58 minutes
+const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly'
+
+/** Trust Google's own lifetime, minus a minute so a request never races expiry. */
+function storeToken(token: string, expiresInSeconds = 3500) {
+  const expiry = Date.now() + Math.max(60, expiresInSeconds - 60) * 1000
   localStorage.setItem('gcal_token', token)
   localStorage.setItem('gcal_expiry', String(expiry))
   return expiry
@@ -104,12 +108,25 @@ export const useGCalStore = create<GCalState>((set, get) => ({
   loading: false,
   error: null,
 
-  // Full connect: always shows consent screen. Called by user tapping the button.
+  // Asks for calendar access. GIS handles this on its own; the Firebase popup is
+  // only still here for the case where no web client id has been configured yet.
   connect: async () => {
     set({ error: null, loading: true })
     try {
+      if (GIS_CONFIGURED) {
+        const granted = await requestCalendarToken({
+          scope: CALENDAR_SCOPE,
+          interactive: true,
+          hint: auth.currentUser?.email ?? undefined,
+        })
+        const expiry = storeToken(granted.token, granted.expiresIn)
+        localStorage.setItem('gcal_connected', '1')
+        set({ token: granted.token, expiry, wasConnected: true, loading: false, error: null })
+        return
+      }
+
       const provider = new GoogleAuthProvider()
-      provider.addScope('https://www.googleapis.com/auth/calendar.readonly')
+      provider.addScope(CALENDAR_SCOPE)
       provider.setCustomParameters({ prompt: 'consent', access_type: 'online' })
       const result = await signInWithPopup(auth, provider)
       const credential = GoogleAuthProvider.credentialFromResult(result)
@@ -120,7 +137,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       set({ token, expiry, wasConnected: true, loading: false, error: null })
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '구글 캘린더 연동 오류'
-      const isCancel = msg.includes('popup-closed') || msg.includes('cancelled')
+      const isCancel = msg.includes('popup-closed') || msg.includes('cancelled') || msg.includes('취소')
       set({ loading: false, error: isCancel ? null : msg })
     }
   },
@@ -133,8 +150,14 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     set({ token: null, expiry: null, wasConnected: false, events: [], calendars: [], enabledCalendarIds: null, error: null })
   },
 
-  // Silent background reconnect: no consent screen, no visible popup if Google session is active.
-  // Falls back gracefully if blocked (iOS Safari) — user will see the reconnect button.
+  /**
+   * Renews the token without asking. Runs on load and whenever a request finds
+   * the token gone.
+   *
+   * Failure is expected and quiet: it means the Google session has lapsed, and
+   * the only way through is a click, so the reconnect button comes back rather
+   * than an error appearing.
+   */
   autoReconnect: async () => {
     const { wasConnected, token, autoRefreshing } = get()
     if (!wasConnected || token || autoRefreshing) return
@@ -142,9 +165,19 @@ export const useGCalStore = create<GCalState>((set, get) => ({
 
     set({ autoRefreshing: true, error: null })
     try {
+      if (GIS_CONFIGURED) {
+        const granted = await requestCalendarToken({
+          scope: CALENDAR_SCOPE,
+          interactive: false,
+          hint: auth.currentUser.email ?? undefined,
+        })
+        const expiry = storeToken(granted.token, granted.expiresIn)
+        set({ token: granted.token, expiry, autoRefreshing: false, error: null })
+        return
+      }
+
       const provider = new GoogleAuthProvider()
-      provider.addScope('https://www.googleapis.com/auth/calendar.readonly')
-      // prompt:'none' = silent if Google session active; throws interaction_required if not
+      provider.addScope(CALENDAR_SCOPE)
       provider.setCustomParameters({ prompt: 'none' })
       const result = await signInWithPopup(auth, provider)
       const credential = GoogleAuthProvider.credentialFromResult(result)
@@ -152,9 +185,9 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       if (!newToken) throw new Error('no token')
       const expiry = storeToken(newToken)
       set({ token: newToken, expiry, autoRefreshing: false, error: null })
-    } catch {
-      // Silent failure: popup blocked or session expired.
-      // Don't clear wasConnected — user can still manually reconnect.
+    } catch (e: unknown) {
+      // Keep wasConnected so the button offers reconnect rather than a fresh setup.
+      if (e instanceof AuthzError && !e.needsInteraction) console.warn('[gcal refresh]', e.message)
       set({ autoRefreshing: false })
     }
   },
@@ -186,14 +219,18 @@ export const useGCalStore = create<GCalState>((set, get) => ({
   },
 
   fetchEvents: async (from: string, to: string) => {
-    const { token, expiry, calendars, enabledCalendarIds } = get()
+    let { token, expiry } = get()
     if (!token || !expiry || expiry < Date.now()) {
+      // Expired mid-session. Renew in place rather than making the person click:
+      // this is the moment the old code gave up and showed the reconnect button.
       localStorage.removeItem('gcal_token')
       localStorage.removeItem('gcal_expiry')
       set({ token: null, expiry: null })
-      return
+      await get().autoReconnect()
+      ;({ token, expiry } = get())
+      if (!token) return
     }
-    if (!calendars.length) {
+    if (!get().calendars.length) {
       await get().fetchCalendars()
       if (!get().calendars.length) return
     }
