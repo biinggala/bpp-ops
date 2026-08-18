@@ -2,9 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccessibleTasks } from '../../hooks/useAccessibleTasks'
 import { useMilestoneStore } from '../../store/milestoneStore'
+import { useUserProfileStore } from '../../store/userProfileStore'
 import { useTaskStore } from '../../store/taskStore'
 import { parseAssignees } from '../../lib/utils'
-import { NOTION } from '../../types'
+import { NOTION, STATUS_COLORS } from '../../types'
+import type { Task } from '../../types'
 
 /**
  * ── Picking a deadline with the calendar in front of you ─────────────────────
@@ -26,8 +28,9 @@ import { NOTION } from '../../types'
  * - **The dates this one is tied to**, as chips that jump the calendar there:
  *   the milestone, the parent task, whatever this is blocked by. Height and
  *   Linear surface dependencies at scheduling time for the same reason.
- * - **A line about the selected day**, so the number under a date can be
- *   expanded into what it is made of without leaving the picker.
+ * - **The day's actual deadlines, named**, under the grid. A count tells you
+ *   the 14th is heavy; the names tell you whether it is heavy with things that
+ *   matter to this decision, which is the question actually being asked.
  */
 
 export interface DateContext {
@@ -70,6 +73,7 @@ export function DatePicker({ value, anchor, context, onChange, onClose }: {
   onClose: () => void
 }) {
   const accessible = useAccessibleTasks()
+  const nameOf = useUserProfileStore(s => s.getNameByEmail)
   const allTasks = useTaskStore(s => s.tasks)
   const milestones = useMilestoneStore(s => s.milestones)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -87,7 +91,7 @@ export function DatePicker({ value, anchor, context, onChange, onClose }: {
   useEffect(() => {
     if (!anchor) return
     const r = anchor.getBoundingClientRect()
-    const W = 296, H = 420
+    const W = 296, H = 480
     const below = window.innerHeight - r.bottom - 6
     setPos({
       top: below < H && r.top > below ? Math.max(8, r.top - 6 - H) : r.bottom + 6,
@@ -115,15 +119,18 @@ export function DatePicker({ value, anchor, context, onChange, onClose }: {
     owners.length === 0 || owners.some(o => assignee.includes(o))
 
   const loadByDay = useMemo(() => {
-    const m = new Map<string, { total: number; byPerson: Map<string, number> }>()
+    const m = new Map<string, Task[]>()
     for (const t of accessible) {
       if (!t.due || t.status === '완료') continue
       if (t.id === context?.taskId) continue
       if (!mine(t.assignee)) continue
-      let e = m.get(t.due)
-      if (!e) { e = { total: 0, byPerson: new Map() }; m.set(t.due, e) }
-      e.total++
-      for (const p of parseAssignees(t.assignee)) e.byPerson.set(p, (e.byPerson.get(p) ?? 0) + 1)
+      m.set(t.due, [...(m.get(t.due) ?? []), t])
+    }
+    // Highest priority first: if only four names fit, they should be the four
+    // worth knowing about.
+    const rank: Record<string, number> = { '높음': 0, '중간': 1, '낮음': 2 }
+    for (const list of m.values()) {
+      list.sort((a, b) => (rank[a.priority] ?? 3) - (rank[b.priority] ?? 3) || a.name.localeCompare(b.name, 'ko'))
     }
     return m
   }, [accessible, context?.taskId, owners])
@@ -181,7 +188,7 @@ export function DatePicker({ value, anchor, context, onChange, onClose }: {
   ]
 
   const focus = hover ?? value
-  const focusLoad = focus ? loadByDay.get(focus) : undefined
+  const focusTasks = (focus ? loadByDay.get(focus) : undefined) ?? []
   const focusMs = focus ? milestonesByDay.get(focus) : undefined
 
   if (!pos) return null
@@ -256,7 +263,7 @@ export function DatePicker({ value, anchor, context, onChange, onClose }: {
           const isSel = date === value
           const isToday = date === todayStr
           const dow = i % 7
-          const load = loadByDay.get(date)?.total ?? 0
+          const load = loadByDay.get(date)?.length ?? 0
           const bar = loadStyle(load)
           const hasMs = milestonesByDay.has(date)
           return (
@@ -294,28 +301,45 @@ export function DatePicker({ value, anchor, context, onChange, onClose }: {
         })}
       </div>
 
-      {/* What the bar under the focused day is made of. */}
-      <div style={{ marginTop: 8, paddingTop: 7, borderTop: '1px solid var(--bd)', minHeight: 32 }}>
+      {/*
+        What the bar under the focused day is made of, by name.
+
+        Fixed height on purpose: this changes on every hover, and a panel that
+        grew and shrank as the pointer crossed the grid would move the calendar
+        out from under it.
+      */}
+      <div style={{ marginTop: 8, paddingTop: 7, borderTop: '1px solid var(--bd)', height: 96, overflow: 'hidden' }}>
         {focus ? (
           <>
-            <div style={{ fontSize: 11, color: 'var(--t2)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 600, color: 'var(--t1)' }}>{focus.slice(5).replace('-', '월 ')}일</span>
-              <span style={{ color: focusLoad?.total ? (loadStyle(focusLoad.total)?.color ?? 'var(--t3)') : 'var(--t3)' }}>
-                {focusLoad?.total
-                  ? `마감 ${focusLoad.total}건${owners.length ? ' (담당자 기준)' : ''}`
+            <div style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap', overflow: 'hidden' }}>
+              <span style={{ fontWeight: 600, color: 'var(--t1)', flexShrink: 0 }}>{focus.slice(5).replace('-', '월 ')}일</span>
+              <span style={{ flexShrink: 0, color: focusTasks.length ? (loadStyle(focusTasks.length)?.color ?? 'var(--t3)') : 'var(--t3)' }}>
+                {focusTasks.length
+                  ? `마감 ${focusTasks.length}건${owners.length ? ' (담당자 기준)' : ''}`
                   : '마감 없음'}
               </span>
               {focusMs?.map(n => (
-                <span key={n} style={{ color: NOTION.purple.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>◆ {n}</span>
+                <span key={n} style={{ color: NOTION.purple.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>◆ {n}</span>
               ))}
             </div>
-            {focusLoad && focusLoad.byPerson.size > 0 && owners.length === 0 && (
-              <div style={{ fontSize: 10, color: 'var(--t3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {Array.from(focusLoad.byPerson.entries())
-                  .sort((a, b) => b[1] - a[1]).slice(0, 3)
-                  .map(([p, n]) => `${p} ${n}`).join(' · ')}
-              </div>
-            )}
+            <div style={{ marginTop: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {focusTasks.slice(0, 3).map(t => (
+                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, minWidth: 0 }}>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', flexShrink: 0, background: STATUS_COLORS[t.status]?.text ?? 'var(--t3)' }} />
+                  <span style={{ flex: 1, minWidth: 0, color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.name}>
+                    {t.name}
+                  </span>
+                  {owners.length === 0 && t.assignee && (
+                    <span style={{ flexShrink: 0, color: 'var(--t3)', fontSize: 10, maxWidth: 70, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {parseAssignees(t.assignee).map(a => nameOf(a)).join(', ')}
+                    </span>
+                  )}
+                </div>
+              ))}
+              {focusTasks.length > 3 && (
+                <div style={{ fontSize: 10, color: 'var(--t3)' }}>+{focusTasks.length - 3}건 더</div>
+              )}
+            </div>
           </>
         ) : (
           <div style={{ fontSize: 11, color: 'var(--t3)' }}>날짜 위에 올리면 그날 마감이 보입니다</div>
