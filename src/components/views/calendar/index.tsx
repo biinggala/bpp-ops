@@ -6,16 +6,13 @@ import { useMilestoneStore } from '../../../store/milestoneStore'
 import { DayPlanner } from './DayPlanner'
 import { haptic } from '../../../lib/haptics'
 import { useProjectStore } from '../../../store/projectStore'
-import { useUserProfileStore } from '../../../store/userProfileStore'
 import { useGCalStore } from '../../../store/gcalStore'
 import { TimelineGrid } from '../timeline'
 import { writableCalendars } from '../../../lib/googleCalendar'
 import type { CalRange } from '../../../types'
 import type { GCalEvent } from '../../../store/gcalStore'
-import { useAuthStore } from '../../../store/authStore'
 import { useMobile } from '../../../hooks/useMobile'
-import { getCatColor, MEMBERS, STATUS_LIST, NOTION } from '../../../types'
-import type { MemberKey, Status } from '../../../types'
+import { getCatColor, NOTION } from '../../../types'
 import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade } from '../../../lib/utils'
 import type { Task } from '../../../types'
 
@@ -211,30 +208,9 @@ function GoogleDot() {
 // ── Mobile calendar ───────────────────────────────────────────────────────────
 
 function MobileCalendar() {
-  const { openTaskModal, openTaskDetail, filters, setFilters, resetFilters, showGCal, setShowGCal } = useUiStore()
+  const { openTaskModal, openTaskDetail, showGCal } = useUiStore()
   const tasks = useFilteredTasks()
   const { token, events: gcalEvents, ensureEvents } = useGCalStore()
-  const allProjects = useProjectStore(s => s.projects)
-  const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
-  const email = useAuthStore(s => s.email)
-
-  const accessibleProjects = useMemo(() =>
-    allProjects
-  , [allProjects, email])
-
-  const allAssigneeOptions = useMemo(() => {
-    const keys = new Set<string>()
-    accessibleProjects.forEach(p => p.memberEmails?.forEach(e => keys.add(e)))
-    return Array.from(keys).sort().map(key => {
-      const known = MEMBERS[key as MemberKey]
-      return { value: key, label: known?.n ?? getNameByEmail(key) }
-    })
-  }, [accessibleProjects, getNameByEmail])
-  const allTagOptions = useMemo(() => {
-    const s = new Set<string>(); tasks.forEach(t => t.tags?.forEach(tag => s.add(tag))); return Array.from(s).sort()
-  }, [tasks])
-  const hasFilters = filters.assignees.length > 0 || filters.statuses.length > 0 || filters.tags.length > 0 || filters.projects.length > 0
-
   const todayDate = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
   const todayStr  = useMemo(() => fmt(todayDate), [todayDate])
   const [selectedDate, setSelectedDate] = useState(todayStr)
@@ -347,46 +323,9 @@ function MobileCalendar() {
           <GCalButton />
         </div>
 
-        {/* Filter row */}
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8, scrollbarWidth: 'none' }}>
-          {accessibleProjects.length > 1 && (
-            <MobFilterSelect
-              label="프로젝트" active={filters.projects.length > 0}
-              options={accessibleProjects.map(p => ({ value: p.id, label: p.name }))}
-              selected={filters.projects} onChange={v => setFilters({ projects: v })}
-            />
-          )}
-          {allAssigneeOptions.length > 0 && (
-            <MobFilterSelect
-              label="담당자" active={filters.assignees.length > 0}
-              options={allAssigneeOptions}
-              selected={filters.assignees} onChange={v => setFilters({ assignees: v })}
-            />
-          )}
-          <MobFilterSelect
-            label="상태" active={filters.statuses.length > 0}
-            options={STATUS_LIST.map(s => ({ value: s, label: s }))}
-            selected={filters.statuses} onChange={v => setFilters({ statuses: v as Status[] })}
-          />
-          {allTagOptions.length > 0 && (
-            <MobFilterSelect
-              label="태그" active={filters.tags.length > 0}
-              options={allTagOptions.map(t => ({ value: t, label: `#${t}` }))}
-              selected={filters.tags} onChange={v => setFilters({ tags: v })}
-            />
-          )}
-          <button
-            onClick={() => setShowGCal(!showGCal)}
-            style={{ flexShrink: 0, padding: '4px 10px', borderRadius: 20, border: showGCal ? '1px solid rgba(68,131,97,.4)' : '1px solid var(--bd)', background: showGCal ? 'rgba(68,131,97,.12)' : 'transparent', color: showGCal ? '#448361' : 'var(--t3)', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}
-          >
-            📅 일정
-          </button>
-          {hasFilters && (
-            <button onClick={resetFilters} style={{ flexShrink: 0, padding: '4px 10px', borderRadius: 20, border: '1px solid rgba(212,76,71,.25)', background: 'rgba(212,76,71,.05)', color: '#D44C47', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}>
-              ✕ 초기화
-            </button>
-          )}
-        </div>
+        {/* The filter row that used to sit here is now the ⚙ sheet in the top
+            bar, together with the sort and grouping a phone had nowhere to put.
+            One door, and a few more lines of calendar on screen. */}
 
         {/* Date strip */}
         <div ref={stripRef} style={{ display: 'flex', gap: 2, overflowX: 'auto', paddingBottom: 10, scrollbarWidth: 'none' }}>
@@ -529,67 +468,6 @@ function MobGCalRow({ event }: { event: GCalEvent }) {
       </span>
       <span style={{ fontSize: 12, color: 'var(--t3)', flexShrink: 0 }}>↗</span>
     </a>
-  )
-}
-
-// ── Mobile filter select ──────────────────────────────────────────────────────
-
-function MobFilterSelect<T extends string>({ label, active, options, selected, onChange }: {
-  label: string; active: boolean
-  options: { value: T; label: string }[]
-  selected: T[]; onChange: (v: T[]) => void
-}) {
-  const [open, setOpen] = React.useState(false)
-  const [pos, setPos] = React.useState({ top: 0, left: 0 })
-  const ref = React.useRef<HTMLDivElement>(null)
-  const btnRef = React.useRef<HTMLButtonElement>(null)
-
-  React.useEffect(() => {
-    if (!open) return
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [open])
-
-  const toggle = (v: T) => onChange(selected.includes(v) ? selected.filter(s => s !== v) : [...selected, v])
-
-  const handleOpen = () => {
-    if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect()
-      setPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 180) })
-    }
-    setOpen(o => !o)
-  }
-
-  return (
-    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
-      <button
-        ref={btnRef}
-        onClick={handleOpen}
-        style={{ padding: '4px 10px', borderRadius: 20, border: active ? '1px solid var(--ac)' : '1px solid var(--bd)', background: active ? 'var(--ac-l)' : 'transparent', color: active ? 'var(--ac)' : 'var(--t2)', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap' }}
-      >
-        {active ? `${label} (${selected.length})` : label} <span style={{ fontSize: 8, opacity: .5 }}>▾</span>
-      </button>
-      {open && (
-        <div style={{ position: 'fixed', top: pos.top, left: pos.left, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', zIndex: 9000, minWidth: 160, padding: '4px 0' }}>
-          {options.map(opt => (
-            <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', fontSize: 13, color: 'var(--t1)', cursor: 'pointer' }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-            >
-              <input type="checkbox" checked={selected.includes(opt.value)} onChange={() => toggle(opt.value)} style={{ accentColor: 'var(--ac)', width: 13, height: 13, cursor: 'pointer', flexShrink: 0 }} />
-              {opt.label}
-            </label>
-          ))}
-          {selected.length > 0 && (
-            <>
-              <div style={{ height: 1, background: 'var(--bd)', margin: '3px 0' }} />
-              <button onClick={() => { onChange([]); setOpen(false) }} style={{ width: '100%', padding: '6px 12px', fontSize: 12, color: 'var(--ac)', cursor: 'pointer', border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'var(--font)' }}>전체 해제</button>
-            </>
-          )}
-        </div>
-      )}
-    </div>
   )
 }
 

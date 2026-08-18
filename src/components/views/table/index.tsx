@@ -440,10 +440,12 @@ function MobileTableView() {
   const filteredTasks = useFilteredTasks()
   const allTasks = useTaskStore(s => s.tasks)
   const { addTask, updateTask, deleteTask } = useTaskStore()
-  const { openTaskModal: _openTaskModal, openTaskDetail, projectId, hideCompleted } = useUiStore()
+  const { openTaskModal: _openTaskModal, openTaskDetail, projectId, hideCompleted, listGroup } = useUiStore()
   const { milestones, updateMilestone } = useMilestoneStore()
   const projects = useProjectStore(s => s.projects)
   const userEmail = useAuthStore(s => s.email)
+  const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  const todayDate = React.useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
 
   const rootTasks = filteredTasks.filter(t => !t.parentId)
   const getChildren = (id: string) => allTasks.filter(t => t.parentId === id && (!hideCompleted || t.status !== '완료'))
@@ -465,7 +467,14 @@ function MobileTableView() {
   const togglePj = (id: string) =>
     setCollapsedPj(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
 
-  const renderTask = (task: Task, isChild = false, groupAccent?: string): React.ReactNode => {
+  const crumbFor = (task: Task) => {
+    const proj = projectId ? undefined : projects.find(p => p.id === task.projectId)
+    const ms = task.milestoneId ? milestones.find(m => m.id === task.milestoneId) : undefined
+    if (!proj && !ms) return undefined
+    return <TaskBreadcrumb project={proj} milestone={ms} />
+  }
+
+  const renderTask = (task: Task, isChild = false, groupAccent?: string, crumb?: React.ReactNode): React.ReactNode => {
     const isDone = task.status === '완료'
     const overdue = isOverdue(task.due, task.status)
     const children = getChildren(task.id)
@@ -528,8 +537,11 @@ function MobileTableView() {
             >{isExpanded ? '▼' : '▶'}</button>
           )}
           {isChild && <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0 }}>└</span>}
-          <span style={{ flex: 1, fontSize: 14, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: isDone ? 'line-through' : 'none' }}>
-            {task.name}
+          <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <span style={{ fontSize: 14, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: isDone ? 'line-through' : 'none' }}>
+              {task.name}
+            </span>
+            {crumb}
           </span>
           {task.due && !isDone && (
             <span style={{ fontSize: 11, color: overdue ? '#D44C47' : 'var(--t3)', flexShrink: 0, marginRight: 6 }}>
@@ -637,6 +649,46 @@ function MobileTableView() {
       onDelete={() => deleteTask(mobCtxMenu.task.id)}
     />
   )
+
+  // ── Flat modes ──────────────────────────────────────────────────────────────
+  // Same buckets as the desktop list, drawn as sections. Grouping is a stored
+  // preference, so a phone that ignored it would quietly disagree with the
+  // laptop the same person set it on.
+  if (listGroup !== 'project') {
+    const buckets = bucketTasks(filteredTasks, listGroup, todayDate, getNameByEmail)
+    return (
+      <>
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {buckets.length === 0 && (
+            <div style={{ padding: '32px 16px', textAlign: 'center', fontSize: 13, color: 'var(--t3)' }}>
+              조건에 맞는 업무가 없습니다
+            </div>
+          )}
+          {buckets.map(b => {
+            if (b.key === '__all__') {
+              return <React.Fragment key={b.key}>{b.tasks.map(t => renderTask(t, false, undefined, crumbFor(t)))}</React.Fragment>
+            }
+            const isCollapsed = collapsedMs.has(b.key)
+            return (
+              <React.Fragment key={b.key}>
+                <div
+                  onClick={() => { haptic('tap'); toggleMs(b.key) }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: 'var(--bg2)', borderBottom: '1px solid var(--bd)', borderLeft: `3px solid ${b.accent ?? 'var(--bd)'}`, cursor: 'pointer' }}
+                >
+                  <span style={{ fontSize: 9, color: 'var(--t3)', width: 10 }}>{isCollapsed ? '▶' : '▼'}</span>
+                  <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: b.accent ?? 'var(--t1)' }}>{b.label}</span>
+                  <span style={{ fontSize: 11, color: 'var(--t3)' }}>{b.tasks.length}</span>
+                </div>
+                {!isCollapsed && b.tasks.map(t => renderTask(t, false, undefined, crumbFor(t)))}
+              </React.Fragment>
+            )
+          })}
+          {addTaskBtn()}
+        </div>
+        {mobCtxMenuEl}
+      </>
+    )
+  }
 
   // Multi-project mode
   if (!projectId) {

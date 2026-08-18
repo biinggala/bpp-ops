@@ -4,9 +4,10 @@ import { useProjectStore } from '../../store/projectStore'
 import { useMobile } from '../../hooks/useMobile'
 import { safeExternalUrl } from '../../lib/utils'
 import { haptic } from '../../lib/haptics'
+import { MobileFilterButton } from './MobileFilterSheet'
 
 export function Topbar() {
-  const { space, projectId, myTasksOnly, openTaskModal, toggleSidebar, hideCompleted, setHideCompleted } = useUiStore()
+  const { space, projectId, myTasksOnly, openTaskModal, toggleSidebar } = useUiStore()
   const projects = useProjectStore(s => s.projects)
   const isMobile = useMobile()
 
@@ -75,23 +76,10 @@ export function Topbar() {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-        {isMobile && (
-          <button
-            onClick={() => { haptic('toggle'); setHideCompleted(!hideCompleted) }}
-            aria-label="완료 숨기기"
-            title={hideCompleted ? '완료 표시' : '완료 숨기기'}
-            style={{
-              width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: hideCompleted ? 'var(--ac-l)' : 'transparent',
-              border: hideCompleted ? '1px solid var(--ac)' : '1px solid var(--bd)',
-              borderRadius: 'var(--r2)', cursor: 'pointer', flexShrink: 0,
-              color: hideCompleted ? 'var(--ac)' : 'var(--t3)',
-              fontSize: 15, transition: 'background .1s, color .1s',
-            }}
-          >
-            ✓
-          </button>
-        )}
+        {/* One door to everything that narrows or reorders the view. The ✓ that
+            used to sit here toggled only 완료 숨기기, and left the other six
+            controls with nowhere to live on a phone. */}
+        {isMobile && <MobileFilterButton />}
         {isMobile ? (
           <button
             onClick={() => { haptic('tap'); openTaskModal() }}
