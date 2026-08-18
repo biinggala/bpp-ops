@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - claude/wonderful-feynman-hE32E
 
 jobs:
   deploy:

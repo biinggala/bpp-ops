@@ -5,6 +5,8 @@ import { useSpaceStore } from '../../store/spaceStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { useAuthStore } from '../../store/authStore'
+import { useMembers } from '../../store/memberStore'
+import { parseAssignees } from '../../lib/utils'
 import { STATUS_LIST, PRIORITY_LIST, getTagColor } from '../../types'
 import type { Task } from '../../types'
 
@@ -20,6 +22,7 @@ export function TaskModal() {
   const allProjects = useProjectStore(s => s.projects)
   const milestones = useMilestoneStore(s => s.milestones)
   const email = useAuthStore(s => s.email)
+  const members = useMembers()
   const projects = allProjects.filter(p =>
     !p.memberEmails?.length || (email ? p.memberEmails.includes(email) : false)
   )
@@ -166,25 +169,28 @@ export function TaskModal() {
           </div>
 
           <Field label="담당자">
-            <div style={{ display: 'flex', gap: 6 }}>
-              {(['YL', 'SJ', 'HC'] as const).map(key => {
-                const on = form.assignee.includes(key)
-                const label = { YL: '이연주', SJ: '정세운', HC: '최희건' }[key]
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => {
-                      const keys = form.assignee.split(',').filter(Boolean)
-                      upd('assignee', on ? keys.filter(k => k !== key).join(',') : [...keys, key].join(','))
-                    }}
-                    style={{ padding: '5px 14px', borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 500, cursor: 'pointer', border: `1px solid ${on ? 'var(--ac)' : 'var(--bd)'}`, background: on ? 'var(--ac)' : 'transparent', color: on ? '#fff' : 'var(--t2)', transition: 'all .1s', fontFamily: 'var(--font)' }}
-                  >
-                    {label}
-                  </button>
-                )
-              })}
-            </div>
+            {members.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--t3)', lineHeight: 1.6 }}>
+                등록된 팀원이 없습니다. 사이드바의 <b>팀원 관리</b>에서 먼저 추가하세요.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {members.map(m => {
+                  const keys = parseAssignees(form.assignee)
+                  const on = keys.includes(m.key)
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => upd('assignee', (on ? keys.filter(k => k !== m.key) : [...keys, m.key]).join(','))}
+                      style={{ padding: '5px 14px', borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 500, cursor: 'pointer', border: `1px solid ${on ? 'var(--ac)' : 'var(--bd)'}`, background: on ? 'var(--ac)' : 'transparent', color: on ? '#fff' : 'var(--t2)', transition: 'all .1s', fontFamily: 'var(--font)' }}
+                    >
+                      {m.name}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </Field>
 
           <Field label={`진행률  ${form.progress}%`}>

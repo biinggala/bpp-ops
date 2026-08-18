@@ -1,8 +1,8 @@
 import { create } from 'zustand'
-import type { ViewType, Status, MemberKey } from '../types'
+import type { ViewType, Status } from '../types'
 
 interface Filters {
-  assignees: MemberKey[]
+  assignees: string[]   // Member.key
   statuses: Status[]
   tags: string[]
   search: string
@@ -23,6 +23,7 @@ interface UiState {
   isFilterPanelOpen: boolean
   isColorSettingsOpen: boolean
   isCommandPaletteOpen: boolean
+  isMemberSettingsOpen: boolean
   calYear: number
   calMonth: number
 
@@ -40,6 +41,8 @@ interface UiState {
   setColorSettings: (open: boolean) => void
   openCommandPalette: () => void
   closeCommandPalette: () => void
+  openMemberSettings: () => void
+  closeMemberSettings: () => void
   calNav: (delta: number) => void
   calToday: () => void
 }
@@ -68,6 +71,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   isFilterPanelOpen: false,
   isColorSettingsOpen: false,
   isCommandPaletteOpen: false,
+  isMemberSettingsOpen: false,
   calYear: now.getFullYear(),
   calMonth: now.getMonth(),
 
@@ -85,6 +89,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   setColorSettings: (open) => set({ isColorSettingsOpen: open }),
   openCommandPalette: () => set({ isCommandPaletteOpen: true }),
   closeCommandPalette: () => set({ isCommandPaletteOpen: false }),
+  openMemberSettings: () => set({ isMemberSettingsOpen: true }),
+  closeMemberSettings: () => set({ isMemberSettingsOpen: false }),
   calNav: (delta) => {
     const { calYear, calMonth } = get()
     const d = new Date(calYear, calMonth + delta, 1)

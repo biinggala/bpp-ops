@@ -27,10 +27,10 @@ export function LoginPage() {
         <div style={{ fontSize: 52, lineHeight: 1, marginBottom: 24, userSelect: 'none' }}>🎯</div>
 
         <div style={{ fontSize: 28, fontWeight: 700, color: '#1c1b18', marginBottom: 8, letterSpacing: '-.3px' }}>
-          크린지 프렌즈
+          업무 보드
         </div>
         <div style={{ fontSize: 15, color: '#a8a29e', marginBottom: 40, lineHeight: 1.6, textAlign: 'center' }}>
-          팀 업무 보드에 로그인하세요
+          Google 계정으로 로그인하세요
         </div>
 
         {hasPendingInvite && (

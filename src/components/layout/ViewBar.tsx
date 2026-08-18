@@ -1,7 +1,8 @@
 import React from 'react'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
-import type { ViewType, Status, MemberKey } from '../../types'
+import { useMembers } from '../../store/memberStore'
+import type { ViewType, Status } from '../../types'
 import { STATUS_LIST } from '../../types'
 
 const VIEWS: { id: ViewType; label: string }[] = [
@@ -12,15 +13,10 @@ const VIEWS: { id: ViewType; label: string }[] = [
   { id: 's', label: '통계' },
 ]
 
-const MEMBERS_FILTER: { key: MemberKey; label: string }[] = [
-  { key: 'YL', label: '이연주' },
-  { key: 'SJ', label: '정세운' },
-  { key: 'HC', label: '최희건' },
-]
-
 export function ViewBar() {
   const { view, setView, filters, setFilters, resetFilters } = useUiStore()
   const allTasks = useTaskStore(s => s.tasks)
+  const members = useMembers()
   const allTagOptions = React.useMemo(() => {
     const s = new Set<string>()
     allTasks.forEach(t => t.tags?.forEach(tag => s.add(tag)))
@@ -52,12 +48,14 @@ export function ViewBar() {
 
       {showFilters && (
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          <MultiSelect
-            label="담당자"
-            options={MEMBERS_FILTER.map(m => ({ value: m.key, label: m.label }))}
-            selected={filters.assignees}
-            onChange={v => setFilters({ assignees: v as MemberKey[] })}
-          />
+          {members.length > 0 && (
+            <MultiSelect
+              label="담당자"
+              options={members.map(m => ({ value: m.key, label: m.name }))}
+              selected={filters.assignees}
+              onChange={v => setFilters({ assignees: v })}
+            />
+          )}
           <MultiSelect
             label="상태"
             options={STATUS_LIST.map(s => ({ value: s, label: s }))}

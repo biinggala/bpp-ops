@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -12,17 +12,17 @@ import { usePresenceStore } from '../../store/presenceStore'
 import { useSpaceStore } from '../../store/spaceStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMilestoneStore } from '../../store/milestoneStore'
-import { MEMBERS, STATUS_LIST, PRIORITY_LIST, STATUS_COLORS } from '../../types'
-import type { Task, Status, Priority, MemberKey } from '../../types'
-
-const MEMBER_KEYS: MemberKey[] = ['YL', 'SJ', 'HC']
+import { useMembers, useResolveMember } from '../../store/memberStore'
+import { STATUS_LIST, PRIORITY_LIST, STATUS_COLORS, getMemberGrad, getMemberColor } from '../../types'
+import type { Task, Status, Priority } from '../../types'
 
 /* ── Helpers ── */
 
 function MemberAvatar({ memberKey, name, size = 28 }: { memberKey: string; name?: string; size?: number }) {
-  const m = MEMBERS[memberKey as MemberKey]
-  const grad = m?.grad ?? 'linear-gradient(135deg,#667eea,#764ba2)'
-  const initial = (m?.n ?? name ?? memberKey)[0]?.toUpperCase() ?? '?'
+  const members = useMembers()
+  const m = members.find(x => x.key === memberKey)
+  const grad = getMemberGrad(m?.color ?? getMemberColor(memberKey))
+  const initial = (m?.name ?? name ?? memberKey)[0]?.toUpperCase() ?? '?'
   return (
     <div style={{ width: size, height: size, borderRadius: '50%', background: grad, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.38, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
       {initial}
@@ -105,6 +105,15 @@ export function TaskDetailModal() {
   const spaces = useSpaceStore(s => s.spaces)
   const projects = useProjectStore(s => s.projects)
   const milestones = useMilestoneStore(s => s.milestones)
+  const members = useMembers()
+  const resolveMember = useResolveMember()
+
+  // 디렉터리에 없는 기존 담당자 값도 선택지에 남겨 둔다 (미등록 키가 조용히 지워지는 것 방지)
+  const assigneeOptions = useMemo(() => {
+    const keys = members.map(m => m.key)
+    if (task?.assignee && !keys.includes(task.assignee)) return [task.assignee, ...keys]
+    return keys
+  }, [members, task?.assignee])
 
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved')
   const [editingTitle, setEditingTitle] = useState(false)
@@ -231,7 +240,7 @@ export function TaskDetailModal() {
               <select value={task.assignee} onChange={e => upd({ assignee: e.target.value })}
                 style={{ border: 'none', background: 'transparent', fontSize: 13, cursor: 'pointer', outline: 'none', color: 'var(--t1)', fontFamily: 'var(--font)', width: '100%' }}>
                 <option value="">미배정</option>
-                {MEMBER_KEYS.map(k => <option key={k} value={k}>{MEMBERS[k].n}</option>)}
+                {assigneeOptions.map(k => <option key={k} value={k}>{resolveMember(k).name}</option>)}
               </select>
             </PropRow>
 

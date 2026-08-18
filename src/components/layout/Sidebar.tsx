@@ -5,15 +5,18 @@ import { useSpaceStore } from '../../store/spaceStore'
 import { useAuthStore } from '../../store/authStore'
 import { useProjectStore } from '../../store/projectStore'
 import { usePresenceStore } from '../../store/presenceStore'
-import { MEMBERS } from '../../types'
-import type { MemberKey } from '../../types'
+import { useMembers, useCurrentMember } from '../../store/memberStore'
+import { getMemberGrad, getMemberColor } from '../../types'
+import { parseAssignees } from '../../lib/utils'
 
 export function Sidebar() {
-  const { space, setSpace, filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly } = useUiStore()
+  const { space, setSpace, filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly, openMemberSettings } = useUiStore()
   const tasks = useTaskStore(s => s.tasks)
   const { spaces, addSpace, deleteSpace, updateSpace } = useSpaceStore()
   const { projects, addProject, updateProject, deleteProject } = useProjectStore()
-  const { memberKey, displayName, email, signOutUser } = useAuthStore()
+  const { displayName, email, signOutUser } = useAuthStore()
+  const members = useMembers()
+  const currentMember = useCurrentMember()
 
   // Space state
   const [addingSpace, setAddingSpace] = useState(false)
@@ -111,8 +114,7 @@ export function Sidebar() {
     return { days: Math.abs(diff), overdue: diff < 0 }
   }
 
-  const member = memberKey ? MEMBERS[memberKey as MemberKey] : null
-  const userName = member?.n ?? displayName ?? null
+  const userName = currentMember?.name ?? displayName ?? null
   const presences = usePresenceStore(s => s.presences)
 
   const visibleProjects = projects.filter(p =>
@@ -126,7 +128,7 @@ export function Sidebar() {
 
         {/* Workspace header */}
         <div style={{ padding: '14px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(255,255,255,.06)' }}>
-          <div style={{ width: 26, height: 26, borderRadius: 6, background: member?.grad ?? 'var(--ac)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+          <div style={{ width: 26, height: 26, borderRadius: 6, background: currentMember ? getMemberGrad(currentMember.color) : 'var(--ac)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
             {(userName?.[0]?.toUpperCase() ?? 'W')}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -173,7 +175,7 @@ export function Sidebar() {
           <NavItem
             active={myTasksOnly}
             onClick={() => { setMyTasksOnly(!myTasksOnly); setSpace(null); setProject(null) }}
-            count={tasks.filter(t => memberKey ? t.assignee === memberKey : false).length}
+            count={currentMember ? tasks.filter(t => parseAssignees(t.assignee).includes(currentMember.key)).length : 0}
             icon="☑"
           >
             내 할 일
@@ -297,6 +299,25 @@ export function Sidebar() {
           )}
         </div>
 
+        {/* Team members */}
+        <div style={{ borderTop: '1px solid rgba(255,255,255,.06)', padding: '8px 10px' }}>
+          <button
+            onClick={openMemberSettings}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 7,
+              padding: '5px 6px', borderRadius: 'var(--r1)', border: 'none',
+              background: 'transparent', color: 'var(--sb-t2)', fontSize: 12,
+              cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,.06)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            <span style={{ fontSize: 11, opacity: .7, width: 14, textAlign: 'center' }}>◐</span>
+            팀원 관리
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--sb-t3)' }}>{members.length}</span>
+          </button>
+        </div>
+
         {/* Online users */}
         {onlineUsers.length > 0 && (
           <div style={{ borderTop: '1px solid rgba(255,255,255,.06)', padding: '8px 10px' }}>
@@ -305,9 +326,9 @@ export function Sidebar() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {onlineUsers.map(p => {
-                const m = MEMBERS[p.memberKey as MemberKey]
-                const avatarGrad = m?.grad ?? 'linear-gradient(135deg,#667eea,#764ba2)'
-                const name = p.name
+                const m = members.find(x => x.key === p.memberKey)
+                const avatarGrad = getMemberGrad(m?.color ?? getMemberColor(p.memberKey))
+                const name = m?.name ?? p.name
                 return (
                   <div key={p.memberKey} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <div style={{ position: 'relative', flexShrink: 0 }}>

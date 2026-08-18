@@ -3,7 +3,7 @@ import { ref, set as fbSet, onValue, onDisconnect } from 'firebase/database'
 import { db } from '../lib/firebase'
 
 export interface PresenceEntry {
-  memberKey: string   // MemberKey ('YL'|'SJ'|'HC') or uid for guests
+  memberKey: string   // 등록된 Member.key, 미등록 사용자는 uid
   name: string        // Google display name
   online: boolean
   lastSeen: number

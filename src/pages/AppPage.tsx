@@ -4,6 +4,7 @@ import { useTaskStore } from '../store/taskStore'
 import { useSpaceStore } from '../store/spaceStore'
 import { useProjectStore } from '../store/projectStore'
 import { useMilestoneStore } from '../store/milestoneStore'
+import { useMemberStore, useCurrentMember } from '../store/memberStore'
 import { useAuthStore } from '../store/authStore'
 import { usePresenceStore } from '../store/presenceStore'
 import { Sidebar } from '../components/layout/Sidebar'
@@ -17,6 +18,7 @@ import { GanttView } from '../components/views/gantt'
 import { TaskModal } from '../components/modals/TaskModal'
 import { TaskDetailModal } from '../components/modals/TaskDetailModal'
 import { CommandPalette } from '../components/modals/CommandPalette'
+import { MemberSettingsModal } from '../components/modals/MemberSettingsModal'
 import { EmptyState } from '../components/shared/EmptyState'
 import { Toast } from '../components/shared/Toast'
 
@@ -27,12 +29,14 @@ export function AppPage() {
   const subscribeSpaces = useSpaceStore(s => s.subscribeFirebase)
   const subscribeProjects = useProjectStore(s => s.subscribeFirebase)
   const subscribeMilestones = useMilestoneStore(s => s.subscribeFirebase)
+  const subscribeMembers = useMemberStore(s => s.subscribeFirebase)
   const joinByInvite = useProjectStore(s => s.joinByInvite)
   const setProject = useUiStore(s => s.setProject)
   const openCommandPalette = useUiStore(s => s.openCommandPalette)
   const isTaskModalOpen = useUiStore(s => s.isTaskModalOpen)
   const undo = useTaskStore(s => s.undo)
-  const { uid, memberKey, displayName, email } = useAuthStore()
+  const { uid, displayName, email } = useAuthStore()
+  const currentMember = useCurrentMember()
   const subscribePresence = usePresenceStore(s => s.subscribe)
 
   useEffect(() => {
@@ -40,16 +44,17 @@ export function AppPage() {
     const u2 = subscribeSpaces()
     const u3 = subscribeProjects()
     const u4 = subscribeMilestones()
-    return () => { u1(); u2(); u3(); u4() }
+    const u5 = subscribeMembers()
+    return () => { u1(); u2(); u3(); u4(); u5() }
   }, [])
 
   useEffect(() => {
     if (!uid) return
-    const presenceKey = memberKey ?? uid
-    const name = displayName ?? email?.split('@')[0] ?? uid
+    const presenceKey = currentMember?.key ?? uid
+    const name = currentMember?.name ?? displayName ?? email?.split('@')[0] ?? uid
     const unsub = subscribePresence(uid, presenceKey, name)
     return unsub
-  }, [uid])
+  }, [uid, currentMember?.key, currentMember?.name])
 
   // Process pending invite code after login + Firebase sync (1s grace period)
   useEffect(() => {
@@ -111,6 +116,7 @@ export function AppPage() {
       <TaskModal />
       <TaskDetailModal />
       <CommandPalette />
+      <MemberSettingsModal />
       <Toast />
     </div>
   )

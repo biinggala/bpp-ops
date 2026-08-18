@@ -1,11 +1,14 @@
 import { useTaskStore } from '../../../store/taskStore'
 import { useSpaceStore } from '../../../store/spaceStore'
-import { STATUS_COLORS, STATUS_LIST, MEMBERS, getCatColor } from '../../../types'
-import type { Status, MemberKey } from '../../../types'
+import { useMembers } from '../../../store/memberStore'
+import { STATUS_COLORS, STATUS_LIST, getCatColor, getMemberGrad } from '../../../types'
+import { parseAssignees } from '../../../lib/utils'
+import type { Status } from '../../../types'
 
 export function StatsView() {
   const tasks = useTaskStore(s => s.tasks)
   const spaces = useSpaceStore(s => s.spaces)
+  const members = useMembers()
 
   const total = tasks.length
   const done = tasks.filter(t => t.status === '완료').length
@@ -62,16 +65,19 @@ export function StatsView() {
       </div>
 
       <Section title="담당자별">
+        {members.length === 0 && (
+          <div style={{ fontSize: 12, color: 'var(--t3)' }}>등록된 팀원이 없습니다.</div>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-          {(Object.keys(MEMBERS) as MemberKey[]).map(key => {
-            const m = MEMBERS[key]
-            const myTasks = tasks.filter(t => t.assignee.includes(key))
+          {members.map(m => {
+            const key = m.key
+            const myTasks = tasks.filter(t => parseAssignees(t.assignee).includes(key))
             const myProgress = myTasks.length
               ? Math.round(myTasks.reduce((s, t) => s + t.progress, 0) / myTasks.length)
               : 0
 
             return (
-              <div key={key} style={{
+              <div key={m.id} style={{
                 padding: '14px 16px', borderRadius: 'var(--r3)',
                 border: '1px solid var(--bd)', background: 'var(--bg2)',
               }}>
@@ -79,12 +85,12 @@ export function StatsView() {
                   <div style={{
                     width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: '#fff', fontWeight: 700, fontSize: 11, background: m.grad,
+                    color: '#fff', fontWeight: 700, fontSize: 11, background: getMemberGrad(m.color),
                   }}>
                     {key}
                   </div>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--t1)' }}>{m.n}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--t1)' }}>{m.name}</div>
                     <div style={{ fontSize: 11, color: 'var(--t3)' }}>{myTasks.length}개 업무</div>
                   </div>
                 </div>

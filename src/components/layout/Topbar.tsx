@@ -1,9 +1,9 @@
 import { useUiStore } from '../../store/uiStore'
-import { useAuthStore } from '../../store/authStore'
+import { useCurrentMember } from '../../store/memberStore'
 
 export function Topbar() {
   const { space, openTaskModal } = useUiStore()
-  const { memberKey } = useAuthStore()
+  const currentMember = useCurrentMember()
 
   return (
     <header style={{
@@ -20,8 +20,8 @@ export function Topbar() {
         <h1 style={{ fontSize: 16, fontWeight: 600, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {space ?? '전체 업무'}
         </h1>
-        {memberKey && (
-          <span style={{ fontSize: 13, color: 'var(--t3)', fontWeight: 400 }}>/ {memberKey}</span>
+        {currentMember && (
+          <span style={{ fontSize: 13, color: 'var(--t3)', fontWeight: 400 }}>/ {currentMember.name}</span>
         )}
       </div>
 

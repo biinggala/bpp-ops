@@ -1,8 +1,8 @@
 export type TaskType = '상위' | '세부'
 export type Status = '진행중' | '대기' | '검토중' | '완료'
 export type Priority = '높음' | '중간' | '낮음'
-export type MemberKey = 'YL' | 'SJ' | 'HC'
-export type ViewType = 't' | 'b' | 'c' | 'p' | 'g' | 's'
+export type MemberKey = string   // Member.key 참조 (동적 등록)
+export type ViewType = 't' | 'b' | 'c' | 'g' | 's'
 
 // Category는 이제 동적 — Space의 name 값
 export type Category = string
@@ -59,22 +59,43 @@ export interface ChecklistItem {
 }
 
 export interface Member {
-  key: MemberKey
-  n: string
+  id: string
+  key: string     // 아바타에 표시되는 짧은 식별자. Task.assignee가 이 값을 참조한다.
+  name: string
   email: string
-  grad: string
+  color: string   // MEMBER_PALETTE의 color 값
 }
 
-export const MEMBERS: Record<MemberKey, Member> = {
-  YL: { key: 'YL', n: '이연주', email: 'yeonju@crngfriends.com', grad: 'linear-gradient(135deg,#f093fb,#f5576c)' },
-  SJ: { key: 'SJ', n: '정세운', email: 'cotta@crngfriends.com',  grad: 'linear-gradient(135deg,#4facfe,#00f2fe)' },
-  HC: { key: 'HC', n: '최희건', email: 'biinggala@crngfriends.com', grad: 'linear-gradient(135deg,#43e97b,#38f9d7)' },
+// 멤버 아바타용 그라데이션 팔레트
+export const MEMBER_PALETTE: { color: string; grad: string }[] = [
+  { color: '#f5576c', grad: 'linear-gradient(135deg,#f093fb,#f5576c)' },
+  { color: '#4facfe', grad: 'linear-gradient(135deg,#4facfe,#00f2fe)' },
+  { color: '#43e97b', grad: 'linear-gradient(135deg,#43e97b,#38f9d7)' },
+  { color: '#764ba2', grad: 'linear-gradient(135deg,#667eea,#764ba2)' },
+  { color: '#f5a623', grad: 'linear-gradient(135deg,#fbd786,#f5a623)' },
+  { color: '#0072ff', grad: 'linear-gradient(135deg,#00c6ff,#0072ff)' },
+  { color: '#ee0979', grad: 'linear-gradient(135deg,#ff6a00,#ee0979)' },
+  { color: '#11998e', grad: 'linear-gradient(135deg,#11998e,#38ef7d)' },
+]
+
+function hashCode(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = s.charCodeAt(i) + ((h << 5) - h)
+  return Math.abs(h)
 }
 
-export const ALLOWED_EMAILS: Record<string, MemberKey> = {
-  'yeonju@crngfriends.com': 'YL',
-  'cotta@crngfriends.com': 'SJ',
-  'biinggala@crngfriends.com': 'HC',
+// 미등록 키(과거 데이터 등)를 위한 안정적인 색상
+export function getMemberColor(key: string): string {
+  return MEMBER_PALETTE[hashCode(key) % MEMBER_PALETTE.length].color
+}
+
+export function getMemberGrad(color: string): string {
+  return MEMBER_PALETTE.find(p => p.color === color)?.grad ?? `linear-gradient(135deg,${color},${color})`
+}
+
+// 멤버 디렉터리에 없는 assignee 키도 이름/색을 잃지 않고 렌더링되도록 한다.
+export function fallbackMember(key: string): Member {
+  return { id: '', key, name: key, email: '', color: getMemberColor(key) }
 }
 
 export const STATUS_LIST: Status[] = ['진행중', '대기', '검토중', '완료']

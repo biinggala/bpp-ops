@@ -3,13 +3,15 @@ import { useTaskStore } from '../store/taskStore'
 import { useUiStore } from '../store/uiStore'
 import { useAuthStore } from '../store/authStore'
 import { useProjectStore } from '../store/projectStore'
+import { useCurrentMember } from '../store/memberStore'
+import { parseAssignees } from '../lib/utils'
 import type { Task } from '../types'
 
 export function useFilteredTasks(): Task[] {
   const tasks = useTaskStore(s => s.tasks)
   const { space, projectId, myTasksOnly, filters } = useUiStore()
-  const memberKey = useAuthStore(s => s.memberKey)
   const email = useAuthStore(s => s.email)
+  const memberKey = useCurrentMember()?.key ?? null
   const projects = useProjectStore(s => s.projects)
 
   return useMemo(() => {
@@ -30,7 +32,9 @@ export function useFilteredTasks(): Task[] {
 
     if (space) result = result.filter(t => t.cat === space)
     if (projectId) result = result.filter(t => t.projectId === projectId)
-    if (myTasksOnly && memberKey) result = result.filter(t => t.assignee.includes(memberKey))
+    if (myTasksOnly && memberKey) {
+      result = result.filter(t => parseAssignees(t.assignee).includes(memberKey))
+    }
 
     if (filters.assignees.length) {
       result = result.filter(t => filters.assignees.some(a => t.assignee.includes(a)))

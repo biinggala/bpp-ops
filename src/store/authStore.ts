@@ -1,11 +1,8 @@
 import { create } from 'zustand'
 import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth'
 import { auth } from '../lib/firebase'
-import { ALLOWED_EMAILS } from '../types'
-import type { MemberKey } from '../types'
 
 interface AuthState {
-  memberKey: MemberKey | null
   uid: string | null
   email: string | null
   displayName: string | null
@@ -19,7 +16,6 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  memberKey: null,
   uid: null,
   email: null,
   displayName: null,
@@ -40,18 +36,17 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   signOutUser: async () => {
     await signOut(auth)
-    set({ memberKey: null, uid: null, email: null, displayName: null, photoURL: null })
+    set({ uid: null, email: null, displayName: null, photoURL: null })
   },
 
   subscribe: () => {
     const unsub = onAuthStateChanged(auth, (user) => {
       if (!user) {
-        set({ memberKey: null, uid: null, email: null, displayName: null, photoURL: null, loading: false })
+        set({ uid: null, email: null, displayName: null, photoURL: null, loading: false })
         return
       }
-      const email = user.email || ''
-      const memberKey = ALLOWED_EMAILS[email] ?? null
-      set({ memberKey, uid: user.uid, email, displayName: user.displayName, photoURL: user.photoURL, loading: false, error: null })
+      // 멤버 연결은 이메일 기준으로 memberStore에서 해석한다 (useCurrentMember).
+      set({ uid: user.uid, email: user.email || '', displayName: user.displayName, photoURL: user.photoURL, loading: false, error: null })
     })
 
     return unsub
