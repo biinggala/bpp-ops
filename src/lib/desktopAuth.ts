@@ -19,26 +19,52 @@ export function isDesktopShell(): boolean {
   return tauri() !== null
 }
 
+/** Calls a native command. Throws in a browser, where there is no shell. */
+export function invokeDesktop<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const shell = tauri()
+  if (!shell) return Promise.reject(new Error('데스크톱 앱에서만 사용할 수 있습니다'))
+  return shell.core.invoke<T>(cmd, args)
+}
+
 function base64Url(bytes: Uint8Array): string {
   let binary = ''
   for (const b of bytes) binary += String.fromCharCode(b)
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
-export async function signInWithSystemBrowser(): Promise<void> {
-  const shell = tauri()
-  if (!shell) throw new Error('데스크톱 앱에서만 사용할 수 있는 로그인 방식입니다')
-
+/** The PKCE pair the native flow needs; made here so the shell carries no crypto. */
+export async function createPkce(): Promise<{ codeVerifier: string; codeChallenge: string }> {
   const verifierBytes = new Uint8Array(32)
   crypto.getRandomValues(verifierBytes)
   const codeVerifier = base64Url(verifierBytes)
-
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier))
-  const codeChallenge = base64Url(new Uint8Array(digest))
+  return { codeVerifier, codeChallenge: base64Url(new Uint8Array(digest)) }
+}
 
-  const idToken = await shell.core.invoke<string>('google_sign_in', {
-    codeChallenge,
-    codeVerifier,
-  })
+export async function signInWithSystemBrowser(): Promise<void> {
+  if (!isDesktopShell()) throw new Error('데스크톱 앱에서만 사용할 수 있는 로그인 방식입니다')
+  const { codeVerifier, codeChallenge } = await createPkce()
+  const idToken = await invokeDesktop<string>('google_sign_in', { codeChallenge, codeVerifier })
   await signInWithCredential(auth, GoogleAuthProvider.credential(idToken))
+}
+
+/**
+ * Grants an API scope — Calendar, Drive — through the system browser.
+ *
+ * Google Identity Services does this with a popup, and Google refuses its
+ * sign-in pages inside an embedded webview, so in the desktop shell that popup
+ * opens onto a wall: the connect button appeared to do nothing. This is the same
+ * loopback flow sign-in already uses.
+ */
+export async function authorizeWithSystemBrowser(
+  scope: string,
+  loginHint?: string,
+): Promise<{ token: string; expiresIn: number }> {
+  const { codeVerifier, codeChallenge } = await createPkce()
+  const res = await invokeDesktop<{ access_token?: string; expires_in?: number; error?: string }>(
+    'google_authorize',
+    { scope, codeChallenge, codeVerifier, loginHint },
+  )
+  if (!res.access_token) throw new Error(res.error ?? '토큰을 받지 못했습니다')
+  return { token: res.access_token, expiresIn: res.expires_in ?? 3600 }
 }

@@ -43,6 +43,18 @@ jobs:
           if not re.fullmatch(r"v\d+\.\d+\.\d+", version):
               raise SystemExit(f"top section heading is not a version: {version!r}")
 
+          # The desktop app compares its own version against the one the web
+          # deployment publishes, and both come from package.json. If that has
+          # not been bumped with the notes, the released app announces an update
+          # to itself forever.
+          import json
+          pkg = json.loads(pathlib.Path("package.json").read_text(encoding="utf-8"))["version"]
+          if pkg != version.lstrip("v"):
+              raise SystemExit(
+                  f"CHANGELOG says {version} but package.json says {pkg}. "
+                  "Bump package.json, src-tauri/tauri.conf.json and src-tauri/Cargo.toml together."
+              )
+
           print(f"version={version}")
           delim = "EOF_NOTES"
           print(f"body<<{delim}")

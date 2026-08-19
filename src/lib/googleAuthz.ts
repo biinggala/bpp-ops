@@ -1,4 +1,7 @@
-// Google API authorization, via Google Identity Services.
+// Google API authorization, via Google Identity Services — or, in the desktop
+// shell, via the system browser (see desktopAuth). GIS asks for the token in a
+// popup, and Google refuses its sign-in pages inside an embedded webview, so
+// the popup opens onto a wall there.
 //
 // Firebase's signInWithPopup was doing double duty here: it signs the user into
 // the app AND hands back a Google API token. Using it to refresh calendar access
@@ -10,6 +13,8 @@
 // re-issues a token without a popup while the Google session is alive. It still
 // cannot outlive that session: only a server holding the client secret can keep
 // a refresh token, which is a separate decision (see docs).
+
+import { isDesktopShell, authorizeWithSystemBrowser } from './desktopAuth'
 
 /** From the Google Cloud console: APIs & Services → Credentials → Web client. */
 export const GOOGLE_CLIENT_ID = '1050546278891-elmuh3saq38q8rsj02li9d3j6q043ko7.apps.googleusercontent.com'
@@ -88,6 +93,17 @@ export class AuthzError extends Error {
 export async function requestGoogleToken(
   { scope, interactive, hint }: { scope: string; interactive: boolean; hint?: string }
 ): Promise<GrantedToken> {
+  if (isDesktopShell()) {
+    // The native flow always opens a browser window, so there is no silent
+    // refresh to attempt: the reconnect button is the refresh path here.
+    if (!interactive) throw new AuthzError('연동을 다시 시작해 주세요', true)
+    try {
+      return await authorizeWithSystemBrowser(scope, hint)
+    } catch (e) {
+      throw new AuthzError(e instanceof Error ? e.message : '인증이 취소되었습니다', true)
+    }
+  }
+
   await loadGis()
   const oauth2 = window.google?.accounts?.oauth2
   if (!oauth2) throw new AuthzError('구글 인증을 사용할 수 없습니다', true)

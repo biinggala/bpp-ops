@@ -4,6 +4,7 @@ import { useProjectStore } from '../../store/projectStore'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import { MobileFilterButton } from './MobileFilterSheet'
+import { pendingUpdate, openInBrowser, type DesktopRelease } from '../../lib/desktopUpdate'
 
 export function Topbar() {
   const { space, projectId, myTasksOnly, openTaskModal, toggleSidebar, view } = useUiStore()
@@ -53,6 +54,7 @@ export function Topbar() {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        <UpdateButton />
         {/* One door to everything that narrows or reorders the view. The ✓ that
             used to sit here toggled only 완료 숨기기, and left the other six
             controls with nowhere to live on a phone. */}
@@ -103,6 +105,51 @@ function Btn({ children, onClick, primary }: { children: React.ReactNode; onClic
       onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
     >
       {children}
+    </button>
+  )
+}
+
+/**
+ * Shown only in the desktop app, and only when its binary is behind.
+ *
+ * The web half of the app updates itself — the shell loads the deployment — so
+ * there is nothing here to announce most of the time, and a button that says
+ * "최신입니다" every day is a button nobody reads. It appears when there is
+ * something to do and is absent otherwise.
+ */
+function UpdateButton() {
+  const [update, setUpdate] = React.useState<DesktopRelease | null>(null)
+
+  React.useEffect(() => {
+    let alive = true
+    const check = () => { void pendingUpdate().then(u => { if (alive) setUpdate(u) }) }
+    check()
+    // The app sits open for days, and a release lands while it does.
+    const timer = setInterval(check, 6 * 60 * 60 * 1000)
+    window.addEventListener('focus', check)
+    return () => { alive = false; clearInterval(timer); window.removeEventListener('focus', check) }
+  }, [])
+
+  if (!update) return null
+
+  return (
+    <button
+      onClick={() => { haptic('tap'); void openInBrowser(update.url) }}
+      title={`새 버전 ${update.version} — 다운로드 페이지를 엽니다`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '5px 11px', borderRadius: 'var(--r2)',
+        fontSize: 12, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap',
+        border: '1px solid #448361', background: 'rgba(68,131,97,.12)', color: '#448361',
+        fontFamily: 'var(--font)',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(68,131,97,.2)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(68,131,97,.12)' }}
+    >
+      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+        <path d="M6 9V2M6 2L3 5M6 2l3 3M2 10h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+      업데이트 {update.version}
     </button>
   )
 }
