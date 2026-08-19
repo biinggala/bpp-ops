@@ -183,6 +183,21 @@ jobs:
           git pull --rebase origin main
           git push origin HEAD:main
 
+      # The commit above lands on main but publishes nothing: a push made with
+      # GITHUB_TOKEN does not start another workflow, so the deploy that would
+      # normally carry it never runs and the endpoint stays a 404. This job puts
+      # the bundle live itself. Committing still matters — it is what keeps the
+      # files there when the *next* ordinary deploy replaces the whole site.
+      - name: Put the updater bundle live
+        run: npm run build
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: crng-task-manager
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
