@@ -26,10 +26,13 @@ https://crng-task-manager.web.app/updates/bpp-ops.app.tar.gz   ← 실제 파일
 
 서명 키 한 쌍이 필요합니다. **비밀키는 저장소에 절대 넣지 않습니다.**
 
-1. 저장소 폴더에서 키를 만듭니다. 암호는 비워도 됩니다.
+1. 키를 만듭니다. `<암호>`는 아무 문자열이나 정하면 됩니다 — 2번에서 시크릿으로
+   그대로 넣을 값입니다. (`npm run tauri`는 저장소의 `node_modules`에 CLI가 설치돼
+   있어야 도는데, 빌드는 CI가 하므로 대개 없습니다. `npx`가 그 자리에서 받아옵니다.)
 
    ```bash
-   npm run tauri -- signer generate -w ~/.bpp-ops-updater.key
+   npx --yes @tauri-apps/cli@latest signer generate \
+     -w ~/.bpp-ops-updater.key -p '<암호>' --ci
    ```
 
 2. GitHub → 저장소 → Settings → Secrets and variables → Actions → New repository secret
@@ -37,7 +40,7 @@ https://crng-task-manager.web.app/updates/bpp-ops.app.tar.gz   ← 실제 파일
    | 이름 | 값 |
    |---|---|
    | `TAURI_SIGNING_PRIVATE_KEY` | `cat ~/.bpp-ops-updater.key` 의 내용 전체 |
-   | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 1번에서 정한 암호 (비웠으면 빈 값) |
+   | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 1번에서 정한 `<암호>` — GitHub은 빈 시크릿을 받지 않으므로 반드시 정해야 합니다 |
 
 3. 공개키를 `src-tauri/tauri.conf.json`의 `plugins.updater.pubkey`에 넣습니다.
 
