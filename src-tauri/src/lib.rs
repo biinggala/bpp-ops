@@ -452,8 +452,10 @@ fn app_version(app: tauri::AppHandle) -> String {
 /// download lives behind that sign-in.
 #[tauri::command]
 fn open_external(url: String) -> Result<(), String> {
-    if !url.starts_with("https://") {
-        return Err("https 주소만 열 수 있습니다".into());
+    // Web addresses only: `open` will happily launch anything, and this command
+    // is reachable from the remotely loaded frontend.
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("http 또는 https 주소만 열 수 있습니다".into());
     }
     std::process::Command::new("open")
         .arg(url)

@@ -26,6 +26,7 @@ import {
 } from '../../shared/DriveFiles'
 import { fileKind } from '../../../lib/googleDrive'
 import { DatePicker, DateField } from '../../shared/DatePicker'
+import { askConfirm } from '../../shared/Confirm'
 import { haptic } from '../../../lib/haptics'
 import type { DateContext } from '../../shared/DatePicker'
 import type { Task, Milestone, Status, Priority, TaskLink } from '../../../types'
@@ -981,9 +982,14 @@ export function TableView() {
         setCtxMenu(null)
       }}
       onStatusChange={s => updateTask(ctxMenu.task.id, { status: s })}
-      onDelete={() => {
-        if (!confirm('삭제할까요?')) return
-        getChildren(ctxMenu.task.id).forEach(c => deleteTask(c.id))
+      onDelete={async () => {
+        const children = getChildren(ctxMenu.task.id)
+        const ok = await askConfirm({
+          message: `"${ctxMenu.task.name || '이름 없음'}" 업무를 삭제할까요?`,
+          detail: children.length ? `하위 업무 ${children.length}개도 함께 삭제됩니다.` : undefined,
+        })
+        if (!ok) return
+        children.forEach(c => deleteTask(c.id))
         deleteTask(ctxMenu.task.id)
       }}
     />
@@ -1661,7 +1667,10 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, position: 'sticky', right: 12, marginLeft: 'auto', flexShrink: 0, opacity: hovered ? 1 : 0, pointerEvents: hovered ? 'auto' : 'none', transition: 'opacity .12s' }}>
           {onDelete && (
             <button
-              onClick={e => { e.stopPropagation(); if (confirm(`"${milestone.name}" 마일스톤을 삭제할까요?`)) onDelete() }}
+              onClick={async e => {
+                e.stopPropagation()
+                if (await askConfirm({ message: `"${milestone.name}" 마일스톤을 삭제할까요?` })) onDelete()
+              }}
               style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid rgba(212,76,71,.4)', background: 'var(--bg2)', color: '#D44C47', cursor: 'pointer', fontFamily: 'var(--font)' }}
               onMouseEnter={e => { e.currentTarget.style.background = 'rgba(212,76,71,.07)' }}
               onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg2)' }}

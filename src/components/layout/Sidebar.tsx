@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { isComposing, authorizedEmails, isAssignedTo } from '../../lib/utils'
+import { isComposing, authorizedEmails, isAssignedTo, copyText } from '../../lib/utils'
+import { askConfirm } from '../shared/Confirm'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useAuthStore } from '../../store/authStore'
@@ -110,9 +111,14 @@ export function Sidebar() {
     return p.memberEmails?.[0]?.toLowerCase() === email.toLowerCase()
   }
 
-  const handleLeaveProject = (id: string) => {
+  const handleLeaveProject = async (id: string) => {
     if (!email) return
-    if (!confirm('이 프로젝트에서 나가시겠어요?')) return
+    const ok = await askConfirm({
+      message: '이 프로젝트에서 나가시겠어요?',
+      detail: '다시 초대받아야 볼 수 있습니다.',
+      confirmLabel: '나가기',
+    })
+    if (!ok) return
     if (projectId === id) setProject(null)
     removeMember(id, email)
     setContextMenu(null)
@@ -582,17 +588,15 @@ function ProjectItem({ children, active, dot, overdue, daysInfo, projectId, invi
   onContextMenu: (e: React.MouseEvent) => void
 }) {
   const [hovered, setHovered] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const copyLink = (e: React.MouseEvent) => {
+  const [copied, setCopied] = useState<'yes' | 'no' | null>(null)
+  const copyLink = async (e: React.MouseEvent) => {
     e.stopPropagation()
     if (!inviteCode) return
     // The token names the project as well as the code — whoever opens the link
     // is not a member yet and cannot look the project up by code alone.
     const link = `${window.location.origin}${window.location.pathname}?invite=${buildInviteToken(projectId, inviteCode)}`
-    navigator.clipboard.writeText(link).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1800)
-    })
+    setCopied(await copyText(link) ? 'yes' : 'no')
+    setTimeout(() => setCopied(null), 1800)
   }
 
   return (
@@ -615,8 +619,11 @@ function ProjectItem({ children, active, dot, overdue, daysInfo, projectId, invi
 
       {hovered && inviteCode ? (
         <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
-          <ActionIcon onClick={copyLink} title={copied ? '복사됨!' : '초대 링크 복사'}>
-            {copied ? '✓' : '↗'}
+          <ActionIcon
+            onClick={copyLink}
+            title={copied === 'yes' ? '복사됨!' : copied === 'no' ? '복사 실패 — 링크를 직접 선택해 주세요' : '초대 링크 복사'}
+          >
+            {copied === 'yes' ? '✓' : copied === 'no' ? '✕' : '↗'}
           </ActionIcon>
         </div>
       ) : (

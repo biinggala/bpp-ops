@@ -68,6 +68,36 @@ export function safeExternalUrl(raw: string | undefined | null): string | null {
   } catch { return null }
 }
 
+/**
+ * Copies text, by whichever route the surface allows.
+ *
+ * navigator.clipboard is the modern one and can reject outright — an embedded
+ * webview may refuse it even inside a click. The old selection trick still works
+ * where that happens, and the boolean is there so the caller can stop claiming
+ * success it did not have.
+ */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch { /* fall through to the old way */ }
+
+  try {
+    const field = document.createElement('textarea')
+    field.value = text
+    field.setAttribute('readonly', '')
+    field.style.position = 'fixed'
+    field.style.opacity = '0'
+    document.body.appendChild(field)
+    field.select()
+    const ok = document.execCommand('copy')
+    field.remove()
+    return ok
+  } catch {
+    return false
+  }
+}
+
 export function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 }

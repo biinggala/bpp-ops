@@ -9,6 +9,7 @@ import { useProjectStore } from '../../../store/projectStore'
 import { useAuthStore } from '../../../store/authStore'
 import { getCatColor } from '../../../types'
 import { CategoryBadge } from '../../shared/Badge'
+import { askConfirm } from '../../shared/Confirm'
 import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade, isComposing } from '../../../lib/utils'
 import type { Task, Milestone } from '../../../types'
 
@@ -480,7 +481,12 @@ export function GanttView() {
             y={msCtxMenu.y}
             onClose={() => setMsCtxMenu(null)}
             onAddTask={() => { addInGroup(msCtxMenu.milestone); setMsCtxMenu(null) }}
-            onDelete={() => { if (confirm(`"${msCtxMenu.milestone.name}" 마일스톤을 삭제할까요?`)) { deleteMilestone(msCtxMenu.milestone.id); setMsCtxMenu(null) } }}
+            onDelete={async () => {
+              if (await askConfirm({ message: `"${msCtxMenu.milestone.name}" 마일스톤을 삭제할까요?` })) {
+                deleteMilestone(msCtxMenu.milestone.id)
+                setMsCtxMenu(null)
+              }
+            }}
           />
         )}
 

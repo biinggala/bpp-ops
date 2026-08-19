@@ -1,4 +1,5 @@
 import { isDesktopShell, invokeDesktop } from './desktopAuth'
+import { openExternal } from './desktopLinks'
 
 /**
  * ── Telling the desktop app it is out of date ────────────────────────────────
@@ -17,6 +18,8 @@ import { isDesktopShell, invokeDesktop } from './desktopAuth'
  * by a signature rather than by where it came from. Opening the release page in
  * a browser remains the fallback for a shell too old to have an updater in it.
  */
+
+export { openExternal as openInBrowser }
 
 export interface DesktopRelease {
   /** The version the web app was built from, e.g. "1.2.0". */
@@ -69,15 +72,6 @@ export async function pendingUpdate(): Promise<DesktopRelease | null> {
   const [mine, latest] = await Promise.all([runningVersion(), latestRelease()])
   if (!mine || !latest) return null
   return compareVersions(latest.version, mine) > 0 ? latest : null
-}
-
-/** Hands the URL to the real browser; a webview cannot log in to GitHub. */
-export async function openInBrowser(url: string): Promise<void> {
-  try {
-    await invokeDesktop('open_external', { url })
-  } catch {
-    window.open(url, '_blank', 'noopener')
-  }
 }
 
 /** How far along an in-place update is; null while there is no percentage yet. */
