@@ -1,0 +1,19 @@
+{
+  "version": "1.3.0",
+  "notes": "bpp-ops 1.3.0",
+  "pub_date": "2026-08-19T08:27:26Z",
+  "platforms": {
+    "darwin-universal": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRb0N6Q0M3U1RFQ0FTam5LS0hlTVJlenZpaDAxdFNOOC9nVXl4WnkyUkFXWGFWeHlUd2JPTUx3bVYxR2JsckRDUU50VDBxZlBKWE1iMjM0MGVWaWkxYjVRYUZrUEFBb3cwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MTI4MDQ1CWZpbGU6YnBwLW9wcy5hcHAudGFyLmd6CitXMUxCSzQ4d3kxUDdPNUgyS25hZ0oyZk1XWUdQTUliQ2tJZTBrbVpyR2ZoZWVKelRzVjdUL3RFamh1QWRvYnNPS0JDWEE3U0FpY3FZZEdZQW51UUJnPT0K",
+      "url": "https://crng-task-manager.web.app/updates/bpp-ops.app.tar.gz"
+    },
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRb0N6Q0M3U1RFQ0FTam5LS0hlTVJlenZpaDAxdFNOOC9nVXl4WnkyUkFXWGFWeHlUd2JPTUx3bVYxR2JsckRDUU50VDBxZlBKWE1iMjM0MGVWaWkxYjVRYUZrUEFBb3cwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MTI4MDQ1CWZpbGU6YnBwLW9wcy5hcHAudGFyLmd6CitXMUxCSzQ4d3kxUDdPNUgyS25hZ0oyZk1XWUdQTUliQ2tJZTBrbVpyR2ZoZWVKelRzVjdUL3RFamh1QWRvYnNPS0JDWEE3U0FpY3FZZEdZQW51UUJnPT0K",
+      "url": "https://crng-task-manager.web.app/updates/bpp-ops.app.tar.gz"
+    },
+    "darwin-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRb0N6Q0M3U1RFQ0FTam5LS0hlTVJlenZpaDAxdFNOOC9nVXl4WnkyUkFXWGFWeHlUd2JPTUx3bVYxR2JsckRDUU50VDBxZlBKWE1iMjM0MGVWaWkxYjVRYUZrUEFBb3cwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MTI4MDQ1CWZpbGU6YnBwLW9wcy5hcHAudGFyLmd6CitXMUxCSzQ4d3kxUDdPNUgyS25hZ0oyZk1XWUdQTUliQ2tJZTBrbVpyR2ZoZWVKelRzVjdUL3RFamh1QWRvYnNPS0JDWEE3U0FpY3FZZEdZQW51UUJnPT0K",
+      "url": "https://crng-task-manager.web.app/updates/bpp-ops.app.tar.gz"
+    }
+  }
+}
