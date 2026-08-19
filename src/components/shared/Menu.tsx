@@ -47,6 +47,11 @@ export function useMenu() {
     const h = (e: MouseEvent) => {
       const t = e.target as Node
       if (rootRef.current?.contains(t) || panelRef.current?.contains(t)) return
+      // A target that has left the document cannot say anything about where the
+      // click landed: it is gone because handling the click re-rendered the menu
+      // out from under it. Treating that as "outside" closes the menu on its own
+      // first tick — which is exactly what a multi-select must not do.
+      if (!t.isConnected) return
       // A date picker is always opened *from* something rather than beside it,
       // so picking a day is not a click outside the menu that opened it — even
       // though the calendar renders into a portal of its own.
@@ -163,7 +168,10 @@ export function MenuCheck({ on }: { on: boolean }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       transition: 'all .1s',
     }}>
-      {on && <span style={{ color: '#fff', fontSize: 9, lineHeight: 1, fontWeight: 700 }}>✓</span>}
+      {/* Kept mounted and faded rather than added and removed: the tick is
+          small enough that it is often what the pointer is actually over, and a
+          node that disappears mid-click takes the click's target with it. */}
+      <span style={{ color: '#fff', fontSize: 9, lineHeight: 1, fontWeight: 700, opacity: on ? 1 : 0, transition: 'opacity .1s' }}>✓</span>
     </span>
   )
 }
