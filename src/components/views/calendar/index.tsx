@@ -519,6 +519,93 @@ export function CalendarView() {
  * more or less time; two separate tabs read as two different features, and
  * choosing between them is a question nobody should have to answer.
  */
+/**
+ * ── Scrolling through time ───────────────────────────────────────────────────
+ *
+ * Apple Calendar moves vertically through months and horizontally through
+ * weeks, and the content arrives from the direction you are travelling. Both of
+ * those are copied here; what is not is the continuous surface — this pages,
+ * because the grid is built one range at a time.
+ *
+ * The hard part is not the paging, it is the trackpad. One flick produces
+ * dozens of wheel events over about a second as the momentum decays, so
+ * advancing on each of them walks a year. Firing once per *gesture* is the fix,
+ * and a gesture ends where the events stop arriving: any gap longer than
+ * QUIET_MS starts a new one, and the momentum tail — which never has a gap —
+ * belongs to the one that already fired.
+ */
+const WHEEL_THRESHOLD = 60
+const QUIET_MS = 120
+
+function useWheelPaging(
+  ref: React.RefObject<HTMLDivElement | null>,
+  axis: 'x' | 'y',
+  onPage: (direction: 1 | -1) => void,
+) {
+  const onPageRef = useRef(onPage)
+  onPageRef.current = onPage
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    let accumulated = 0
+    let lastAt = 0
+    let firedThisGesture = false
+
+    const handle = (e: WheelEvent) => {
+      // Lines and pages, as some mice and older browsers report them.
+      const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1
+      const delta = (axis === 'y' ? e.deltaY : e.deltaX) * scale
+      if (delta === 0) return
+
+      // Horizontal paging has to take the event: left the browser would read it
+      // as a back-navigation swipe, and the calendar would vanish.
+      e.preventDefault()
+
+      const now = e.timeStamp
+      if (now - lastAt > QUIET_MS) { accumulated = 0; firedThisGesture = false }
+      lastAt = now
+      if (firedThisGesture) return
+
+      accumulated += delta
+      if (Math.abs(accumulated) < WHEEL_THRESHOLD) return
+      firedThisGesture = true
+      accumulated = 0
+      onPageRef.current(delta > 0 ? 1 : -1)
+    }
+
+    el.addEventListener('wheel', handle, { passive: false })
+    return () => el.removeEventListener('wheel', handle)
+  }, [ref, axis])
+}
+
+/**
+ * Slides the body in from whichever way time just moved.
+ *
+ * Animated rather than re-keyed: remounting would reset the hour grid's own
+ * scroll, so paging a week would throw you back to nine in the morning.
+ */
+function useSlideOnChange(ref: React.RefObject<HTMLElement | null>, anchor: string, axis: 'x' | 'y') {
+  const previous = useRef(anchor)
+  useEffect(() => {
+    const before = previous.current
+    if (before === anchor) return
+    previous.current = anchor
+    const el = ref.current
+    if (!el || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const forward = toDate(anchor) > toDate(before)
+    const offset = axis === 'y' ? 18 : 28
+    const from = axis === 'y'
+      ? `translateY(${forward ? offset : -offset}px)`
+      : `translateX(${forward ? offset : -offset}px)`
+    el.animate(
+      [{ opacity: 0, transform: from }, { opacity: 1, transform: 'none' }],
+      { duration: 240, easing: 'cubic-bezier(.22,.61,.36,1)' },
+    )
+  }, [anchor, axis, ref])
+}
+
 function DesktopCalendar() {
   const { calRange, calAnchor, setCalRange, setCalAnchor } = useUiStore()
   const { calendars, targetCalendarId, canWrite, setTargetCalendar } = useGCalStore()
@@ -541,6 +628,13 @@ function DesktopCalendar() {
       setCalAnchor(fmt(addDays(anchor, direction * calRange)))
     }
   }
+
+  // Months move under a vertical scroll, days and weeks under a horizontal one —
+  // the axis each range is already laid out along, so the gesture matches the
+  // grid rather than fighting it.
+  const bodyRef = useRef<HTMLDivElement>(null)
+  useWheelPaging(bodyRef, isMonth ? 'y' : 'x', shift)
+  useSlideOnChange(bodyRef, calAnchor, isMonth ? 'y' : 'x')
 
   const label = isMonth
     ? `${anchor.getFullYear()}년 ${MONTHS[anchor.getMonth()]}`
@@ -593,9 +687,11 @@ function DesktopCalendar() {
         <GCalButton />
       </div>
 
-      {isMonth
-        ? <MonthGrid calYear={anchor.getFullYear()} calMonth={anchor.getMonth()} />
-        : <TimelineGrid days={days} />}
+      <div ref={bodyRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+        {isMonth
+          ? <MonthGrid calYear={anchor.getFullYear()} calMonth={anchor.getMonth()} />
+          : <TimelineGrid days={days} />}
+      </div>
     </div>
   )
 }
