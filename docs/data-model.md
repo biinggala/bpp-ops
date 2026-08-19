@@ -114,7 +114,12 @@ URL 안에 Drive 파일 ID가 들어 있으면 앱이 읽는 시점에 알아서
 붙여넣은 URL은 붙여넣은 그 순간의 사진이라, 파일 이름이 바뀌면 태스크가 조용히
 거짓말을 하기 시작한다. ID를 들고 있으면 그 문제가 생기지 않는다.
 
-권한은 `drive.readonly` 하나이며 GIS로 받는다. 앱은 Drive에 아무것도 쓰지 않고,
+문서에 **탭이 여러 개**면 첨부는 그 키워드가 있는 탭을 가리킨다 (`tabTitle`에
+탭 이름을 같이 저장). 탭은 Drive API로 보이지 않아서 **Google Docs API**
+(`documents.readonly`)를 따로 쓰고, 그게 막혀 있으면 조용히 문서 전체 링크로
+내려간다.
+
+권한은 `drive.readonly`와 `documents.readonly`이며 GIS로 받는다. 앱은 Drive에 아무것도 쓰지 않고,
 파일 내용도 가져오지 않는다. 메타데이터만 읽는다.
 
 > **OAuth 동의 화면이 External이면** `drive.readonly`는 제한 범위라 "확인되지 않은 앱"

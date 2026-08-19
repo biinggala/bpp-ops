@@ -219,6 +219,9 @@ export interface Snippet {
   before: string
   match: string
   after: string
+  /** Set when the passage was found inside one tab of a multi-tab Doc. */
+  tabId?: string
+  tabTitle?: string
 }
 
 /** Enough of a long document to find the term in; past this it is not worth the bytes. */
@@ -242,12 +245,19 @@ export async function fetchSnippet(
   if (res.status === 401) throw new Error(TOKEN_EXPIRED)
   if (!res.ok) return null
 
-  const text = (await res.text()).slice(0, MAX_TEXT)
-  const at = text.toLowerCase().indexOf(needle.toLowerCase())
-  // Drive matched on something this export does not contain — a later sheet, a
-  // comment, the file's description. Better no quote than a misleading one.
-  if (at < 0) return null
+  return passageIn((await res.text()).slice(0, MAX_TEXT), needle, radius)
+}
 
+/**
+ * The term in its sentence, or null if this text does not contain it.
+ *
+ * Null rather than an empty quote: Drive matches on things an export does not
+ * carry — a later sheet, a comment, the file's description — and a passage that
+ * does not contain the term is worse than none.
+ */
+export function passageIn(text: string, needle: string, radius = 70): Snippet | null {
+  const at = text.toLowerCase().indexOf(needle.toLowerCase())
+  if (at < 0) return null
   const tidy = (v: string) => v.replace(/\s+/g, ' ')
   const from = Math.max(0, at - radius)
   const to = Math.min(text.length, at + needle.length + radius)

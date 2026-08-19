@@ -83,6 +83,13 @@ export interface TaskLink {
   driveId?: string
   /** Cached so the right icon is drawn before Drive answers. */
   mimeType?: string
+  /**
+   * The tab of a multi-tab Google Doc this points at.
+   *
+   * Kept beside the URL rather than only inside it, so the row can say which
+   * tab it opens without parsing its own link back apart.
+   */
+  tabTitle?: string
 }
 
 export interface Member {

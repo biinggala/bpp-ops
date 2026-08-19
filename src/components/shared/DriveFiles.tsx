@@ -3,6 +3,7 @@ import { useDriveStore, snippetKey } from '../../store/driveStore'
 import { useProjectStore } from '../../store/projectStore'
 import { isComposing, gid, safeExternalUrl } from '../../lib/utils'
 import { fileKind, relativeTime, driveIdFromUrl, driveUrl, type DriveFile, type DriveSearchResult } from '../../lib/googleDrive'
+import { docTabUrl } from '../../lib/googleDocs'
 import { NOTION } from '../../types'
 import type { TaskLink } from '../../types'
 
@@ -58,13 +59,21 @@ export function driveIdOf(link: TaskLink): string | null {
   return link.driveId ?? driveIdFromUrl(link.url)
 }
 
-export function linkFromDriveFile(f: DriveFile): TaskLink {
+/**
+ * `tab` sends the link to one tab of a multi-tab Doc.
+ *
+ * Without it, a document found by a phrase on its fourth tab opens on whichever
+ * tab the reader last had open — which for a 기획 / 대본 / 일정 document is most
+ * of the way to not having found it.
+ */
+export function linkFromDriveFile(f: DriveFile, tab?: { id: string; title: string }): TaskLink {
   return {
     id: gid(),
     title: f.name,
-    url: f.webViewLink || driveUrl(f.id, f.mimeType),
+    url: tab ? docTabUrl(f.id, tab.id) : (f.webViewLink || driveUrl(f.id, f.mimeType)),
     driveId: f.id,
     mimeType: f.mimeType,
+    ...(tab ? { tabTitle: tab.title } : {}),
   }
 }
 
@@ -89,7 +98,10 @@ export function FileRow({ link, file, onRemove, compact = false }: {
   const isDrive = !!driveIdOf(link)
   const kind = fileKind(file?.mimeType ?? link.mimeType)
   const name = file?.name ?? link.title
-  const href = safeExternalUrl(file?.webViewLink ?? link.url)
+  // The stored URL wins when it names a tab: Drive's own link always points at
+  // the document, and would quietly undo the thing that made this worth
+  // attaching.
+  const href = safeExternalUrl(link.tabTitle ? link.url : (file?.webViewLink ?? link.url))
   // A Drive link that resolved to nothing is either deleted or not shared with
   // this person. Saying so beats drawing a name that no longer opens.
   const gone = isDrive && file === null
@@ -124,7 +136,11 @@ export function FileRow({ link, file, onRemove, compact = false }: {
         }}>{name}</div>
         <div style={{ fontSize: 10, color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
           {gone ? '드라이브에서 찾을 수 없음'
-            : isDrive ? [kind.label, file?.modifiedTime ? `${relativeTime(file.modifiedTime)} 수정` : null].filter(Boolean).join(' · ')
+            : isDrive ? [
+                kind.label,
+                link.tabTitle ? `탭: ${link.tabTitle}` : null,
+                file?.modifiedTime ? `${relativeTime(file.modifiedTime)} 수정` : null,
+              ].filter(Boolean).join(' · ')
             : hostOf(link.url)}
         </div>
       </a>
@@ -164,7 +180,7 @@ function hostOf(url: string) {
 export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
   folderId: string | null
   attachedIds: Set<string>
-  onPick: (f: DriveFile) => void
+  onPick: (f: DriveFile, tab?: { id: string; title: string }) => void
   onClose?: () => void
 }) {
   const { wasConnected, token, needsReconnect, connect, connecting, search, error } = useDriveStore()
@@ -266,7 +282,11 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
           return (
             <div
               key={f.id}
-              onMouseDown={e => { e.preventDefault(); if (!already) onPick(f) }}
+              onMouseDown={e => {
+                e.preventDefault()
+                if (already) return
+                onPick(f, snip?.tabId ? { id: snip.tabId, title: snip.tabTitle ?? '' } : undefined)
+              }}
               style={{
                 display: 'flex', alignItems: hasBox ? 'flex-start' : 'center', gap: 8,
                 padding: '6px 8px', borderRadius: 'var(--r1)',
@@ -285,6 +305,7 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
                 <span style={{ display: 'block', fontSize: 10, color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
                   {[
                     inFolder ? '이 프로젝트 폴더' : null,
+                    snip?.tabTitle ? `탭: ${snip.tabTitle}` : null,
                     f.contentMatch && !hasBox ? '내용 일치' : null,
                     f.modifiedTime ? `${relativeTime(f.modifiedTime)} 수정` : null,
                   ].filter(Boolean).join(' · ')}

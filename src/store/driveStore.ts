@@ -3,9 +3,10 @@ import { auth } from '../lib/firebase'
 import { requestGoogleToken, GIS_CONFIGURED } from '../lib/googleAuthz'
 import {
   DRIVE_SCOPE, TOKEN_EXPIRED, searchFiles, getFile, driveIdFromUrl,
-  fetchSnippet, canSnippet,
+  fetchSnippet, canSnippet, passageIn,
   type DriveFile, type DriveSearchResult, type Snippet,
 } from '../lib/googleDrive'
+import { DOCS_SCOPE, fetchDocTabs } from '../lib/googleDocs'
 
 const TOKEN_KEY = 'drive_token'
 const EXPIRY_KEY = 'drive_expiry'
@@ -70,6 +71,40 @@ const inFlight = new Set<string>()
 let renewal: Promise<string | null> | null = null
 
 const SNIPPET_LIMIT = 8
+
+/**
+ * The passage and the tab it lives in, for a Doc that has tabs.
+ *
+ * Returns null for anything else — a plain document, a Sheet, or a workspace
+ * where the Docs API is off or the grant predates the scope — and the caller
+ * falls back to the Drive export, which finds the same passage but cannot say
+ * where in the document it is.
+ */
+async function docSnippet(token: string, f: DriveSearchResult, needle: string): Promise<Snippet | null> {
+  if (f.mimeType !== 'application/vnd.google-apps.document') return null
+  if (docsUnavailable) return null
+  let tabs
+  try {
+    tabs = await fetchDocTabs(token, f.id)
+  } catch {
+    // One refusal is enough: the API is off, or the scope was never granted.
+    // Asking again per document per search would be a request each for nothing.
+    docsUnavailable = true
+    return null
+  }
+  // A single unnamed tab is just a document. Sending someone to "?tab=t.0" of a
+  // document with one tab is noise in the URL and a promise the UI should not
+  // make.
+  if (tabs.length < 2) return null
+  for (const tab of tabs) {
+    const found = passageIn(tab.text, needle)
+    if (found) return { ...found, tabId: tab.tabId, tabTitle: tab.title }
+  }
+  return null
+}
+
+/** Latched after the first refusal; cleared when somebody reconnects. */
+let docsUnavailable = false
 export const snippetKey = (id: string, term: string) => `${id}::${term.trim().toLowerCase()}`
 
 export const useDriveStore = create<DriveState>((set, get) => ({
@@ -89,11 +124,13 @@ export const useDriveStore = create<DriveState>((set, get) => ({
     set({ connecting: true, error: null })
     try {
       const granted = await requestGoogleToken({
-        scope: DRIVE_SCOPE,
+        scope: `${DRIVE_SCOPE} ${DOCS_SCOPE}`,
         interactive: true,
         hint: auth.currentUser?.email ?? undefined,
       })
       const expiry = storeToken(granted.token, granted.expiresIn)
+      // A reconnect is the moment the Docs grant could have arrived.
+      docsUnavailable = false
       set({ token: granted.token, expiry, wasConnected: true, needsReconnect: false, connecting: false, error: null })
       return true
     } catch (e) {
@@ -217,7 +254,8 @@ export const useDriveStore = create<DriveState>((set, get) => ({
         const f = todo[i]
         const key = keys[i]
         try {
-          const snip = await fetchSnippet(token, { id: f.id, mimeType: f.mimeType }, needle)
+          const snip = await docSnippet(token, f, needle)
+            ?? await fetchSnippet(token, { id: f.id, mimeType: f.mimeType }, needle)
           set(s => ({ snippets: { ...s.snippets, [key]: snip } }))
           done([key])
         } catch (e) {

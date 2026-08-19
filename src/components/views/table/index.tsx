@@ -2352,7 +2352,7 @@ function LinksCell({ links, projectId, onChange }: {
           )}
           <AttachTabs mode={mode} onChange={setMode} />
           {mode === 'drive'
-            ? <DriveSearch folderId={folderId} attachedIds={attachedIds} onPick={f => add(linkFromDriveFile(f))} onClose={() => m.setOpen(false)} />
+            ? <DriveSearch folderId={folderId} attachedIds={attachedIds} onPick={(f, tab) => add(linkFromDriveFile(f, tab))} onClose={() => m.setOpen(false)} />
             : <UrlAdd onAdd={add} />}
         </Menu>
       )}
