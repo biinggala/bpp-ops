@@ -1,10 +1,18 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Core permissions, granted to the hosted app origin so the OAuth bridge commands are reachable from the remotely loaded frontend.",
-  "windows": ["main"],
+  "description": "Core permissions, granted to the hosted app origin so the OAuth bridge commands and the in-place updater are reachable from the remotely loaded frontend.",
+  "windows": [
+    "main"
+  ],
   "remote": {
-    "urls": ["https://crng-task-manager.web.app"]
+    "urls": [
+      "https://crng-task-manager.web.app"
+    ]
   },
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "updater:default",
+    "process:allow-restart"
+  ]
 }

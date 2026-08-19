@@ -11,10 +11,11 @@ import { isDesktopShell, invokeDesktop } from './desktopAuth'
  * shell compares that against its own. The comparison costs one small file and
  * needs no update server: the app is already loading from the place that knows.
  *
- * It reports rather than installs. The build is unsigned and the repository is
- * private, so an in-place download would be a login prompt inside a webview —
- * the same wall the sign-in flow already has to route around. Opening the
- * release page in the real browser is the honest version of that.
+ * Installing is the shell's own job. The .dmg on GitHub sits behind a login the
+ * webview cannot pass — the repository is private — so the bundle the updater
+ * fetches is published to this same deployment, which is public, and verified
+ * by a signature rather than by where it came from. Opening the release page in
+ * a browser remains the fallback for a shell too old to have an updater in it.
  */
 
 export interface DesktopRelease {
@@ -77,4 +78,45 @@ export async function openInBrowser(url: string): Promise<void> {
   } catch {
     window.open(url, '_blank', 'noopener')
   }
+}
+
+/** How far along an in-place update is; null while there is no percentage yet. */
+export type UpdateProgress = (percent: number | null) => void
+
+/**
+ * Downloads and installs the update, then restarts into it.
+ *
+ * The plugin verifies the bundle's signature before replacing anything, so a
+ * tampered file at the endpoint is refused rather than run. Loaded on demand:
+ * a browser never fetches this code, and neither does the shell until somebody
+ * asks for the update.
+ */
+export async function installUpdate(onProgress: UpdateProgress): Promise<void> {
+  const [{ check }, { relaunch }] = await Promise.all([
+    import('@tauri-apps/plugin-updater'),
+    import('@tauri-apps/plugin-process'),
+  ])
+
+  const update = await check()
+  if (!update) throw new Error('설치할 업데이트가 없습니다')
+
+  let total = 0
+  let received = 0
+  onProgress(null)
+  await update.downloadAndInstall(event => {
+    if (event.event === 'Started') {
+      total = event.data.contentLength ?? 0
+      received = 0
+      onProgress(total ? 0 : null)
+    } else if (event.event === 'Progress') {
+      received += event.data.chunkLength
+      // Held below 100 until the install itself is done, so the bar does not
+      // sit full while the bundle is still being swapped in.
+      if (total) onProgress(Math.min(99, Math.round((received / total) * 100)))
+    } else if (event.event === 'Finished') {
+      onProgress(100)
+    }
+  })
+
+  await relaunch()
 }

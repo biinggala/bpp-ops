@@ -4,7 +4,7 @@ import { useProjectStore } from '../../store/projectStore'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import { MobileFilterButton } from './MobileFilterSheet'
-import { pendingUpdate, openInBrowser, type DesktopRelease } from '../../lib/desktopUpdate'
+import { pendingUpdate, installUpdate, openInBrowser, type DesktopRelease } from '../../lib/desktopUpdate'
 
 export function Topbar() {
   const { space, projectId, myTasksOnly, openTaskModal, toggleSidebar, view } = useUiStore()
@@ -116,9 +116,16 @@ function Btn({ children, onClick, primary }: { children: React.ReactNode; onClic
  * there is nothing here to announce most of the time, and a button that says
  * "최신입니다" every day is a button nobody reads. It appears when there is
  * something to do and is absent otherwise.
+ *
+ * Clicking it does the update rather than describing where to find one. A shell
+ * old enough to have no updater in it falls back to the download page, which is
+ * the only thing it can do.
  */
 function UpdateButton() {
   const [update, setUpdate] = React.useState<DesktopRelease | null>(null)
+  const [percent, setPercent] = React.useState<number | null>(null)
+  const [busy, setBusy] = React.useState(false)
+  const [failed, setFailed] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     let alive = true
@@ -132,24 +139,53 @@ function UpdateButton() {
 
   if (!update) return null
 
+  const run = async () => {
+    haptic('tap')
+    setBusy(true); setFailed(null); setPercent(null)
+    try {
+      // Returns only by restarting into the new build; anything else threw.
+      await installUpdate(setPercent)
+    } catch (e) {
+      setBusy(false)
+      setFailed(e instanceof Error ? e.message : '업데이트에 실패했습니다')
+    }
+  }
+
+  const label = busy
+    ? (percent === null ? '준비 중…' : percent < 100 ? `내려받는 중 ${percent}%` : '설치 중…')
+    : failed
+      ? '다운로드 페이지 열기'
+      : `업데이트 ${update.version}`
+
   return (
     <button
-      onClick={() => { haptic('tap'); void openInBrowser(update.url) }}
-      title={`새 버전 ${update.version} — 다운로드 페이지를 엽니다`}
+      onClick={() => { if (busy) return; if (failed) { void openInBrowser(update.url) } else { void run() } }}
+      title={failed ?? `새 버전 ${update.version} — 받아서 설치하고 다시 시작합니다`}
       style={{
+        position: 'relative', overflow: 'hidden',
         display: 'inline-flex', alignItems: 'center', gap: 5,
         padding: '5px 11px', borderRadius: 'var(--r2)',
-        fontSize: 12, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap',
-        border: '1px solid #448361', background: 'rgba(68,131,97,.12)', color: '#448361',
+        fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap',
+        cursor: busy ? 'default' : 'pointer',
+        border: `1px solid ${failed ? '#D44C47' : '#448361'}`,
+        background: failed ? 'rgba(212,76,71,.1)' : 'rgba(68,131,97,.12)',
+        color: failed ? '#D44C47' : '#448361',
         fontFamily: 'var(--font)',
       }}
-      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(68,131,97,.2)' }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(68,131,97,.12)' }}
+      onMouseEnter={e => { if (!busy) e.currentTarget.style.background = failed ? 'rgba(212,76,71,.18)' : 'rgba(68,131,97,.2)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = failed ? 'rgba(212,76,71,.1)' : 'rgba(68,131,97,.12)' }}
     >
-      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+      {/* The bar is the button filling up, rather than a second thing to look at. */}
+      {busy && percent !== null && (
+        <span style={{
+          position: 'absolute', left: 0, top: 0, bottom: 0, width: `${percent}%`,
+          background: 'rgba(68,131,97,.22)', transition: 'width .2s', pointerEvents: 'none',
+        }} />
+      )}
+      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, zIndex: 1 }}>
         <path d="M6 9V2M6 2L3 5M6 2l3 3M2 10h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
-      업데이트 {update.version}
+      <span style={{ zIndex: 1 }}>{label}</span>
     </button>
   )
 }

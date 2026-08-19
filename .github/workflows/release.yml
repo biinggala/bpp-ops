@@ -55,6 +55,17 @@ jobs:
                   "Bump package.json, src-tauri/tauri.conf.json and src-tauri/Cargo.toml together."
               )
 
+          # An app built against a placeholder key accepts no update at all, and
+          # would say so only months later when one was finally offered.
+          conf = json.loads(pathlib.Path("src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
+          pubkey = conf.get("plugins", {}).get("updater", {}).get("pubkey", "")
+          if not pubkey or "PLACEHOLDER" in pubkey:
+              raise SystemExit(
+                  "src-tauri/tauri.conf.json has no updater public key. "
+                  "Generate a key pair, put the public half here and the private half "
+                  "in the TAURI_SIGNING_PRIVATE_KEY secret — see docs/desktop-updates.md."
+              )
+
           print(f"version={version}")
           delim = "EOF_NOTES"
           print(f"body<<{delim}")
@@ -82,7 +93,68 @@ jobs:
         env:
           CRNG_OAUTH_CLIENT_ID: ${{ secrets.CRNG_OAUTH_CLIENT_ID }}
           CRNG_OAUTH_CLIENT_SECRET: ${{ secrets.CRNG_OAUTH_CLIENT_SECRET }}
+          # Signs the updater bundle. Without these the build still produces a
+          # .dmg, but no .tar.gz.sig, and the step below fails rather than
+          # publishing an update nobody's app would accept.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx tauri build --target universal-apple-darwin
+
+      # ── The update the running app will find ──────────────────────────────
+      #
+      # The .dmg attached to the release is behind the repository's own login,
+      # which a private repo requires and an app cannot pass. The updater bundle
+      # therefore ships with the web deployment, which is public: committed to
+      # public/, published by the deploy workflow, and served from the same
+      # origin the app already loads itself from.
+      #
+      # It is a binary in git, about 9MB a release. That is the price of not
+      # standing up a second host for one file.
+      - name: Publish the updater bundle
+        env:
+          VERSION: ${{ steps.notes.outputs.version }}
+        run: |
+          set -euo pipefail
+          BUNDLE=src-tauri/target/universal-apple-darwin/release/bundle/macos
+          TARBALL="$BUNDLE/bpp-ops.app.tar.gz"
+          test -f "$TARBALL"     || { echo "::error::no updater bundle — is TAURI_SIGNING_PRIVATE_KEY set?"; exit 1; }
+          test -f "$TARBALL.sig" || { echo "::error::the updater bundle is unsigned"; exit 1; }
+
+          mkdir -p public/updates
+          cp "$TARBALL" public/updates/bpp-ops.app.tar.gz
+
+          python3 - <<'PY'
+          import json, os, datetime, pathlib
+
+          version = os.environ["VERSION"].lstrip("v")
+          sig = pathlib.Path(
+              "src-tauri/target/universal-apple-darwin/release/bundle/macos/bpp-ops.app.tar.gz.sig"
+          ).read_text().strip()
+          url = "https://crng-task-manager.web.app/updates/bpp-ops.app.tar.gz"
+
+          # One universal build, listed under every key the client might ask for:
+          # which of the three it looks up depends on how it was built, and being
+          # wrong there reads as "no update available" rather than as an error.
+          entry = {"signature": sig, "url": url}
+          pathlib.Path("public/updates/latest.json").write_text(json.dumps({
+              "version": version,
+              "notes": f"bpp-ops {version}",
+              "pub_date": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+              "platforms": {
+                  "darwin-universal": entry,
+                  "darwin-aarch64": entry,
+                  "darwin-x86_64": entry,
+              },
+          }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
+
+          git config user.name "Claude"
+          git config user.email "noreply@anthropic.com"
+          git add public/updates
+          git commit -m "chore(release): publish the $VERSION updater bundle"
+          # Main may have moved while the mac build ran.
+          git pull --rebase origin main
+          git push origin HEAD:main
 
       - name: Publish release
         uses: softprops/action-gh-release@v2

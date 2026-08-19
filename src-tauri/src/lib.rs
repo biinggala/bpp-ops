@@ -464,6 +464,11 @@ fn open_external(url: String) -> Result<(), String> {
 
 pub fn run() {
     tauri::Builder::default()
+        // Updating in place, rather than sending somebody to a download page:
+        // the shell is unsigned and the repository is private, so the bundle is
+        // served from the app's own deployment and verified by its signature.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(OauthState::default())
         .invoke_handler(tauri::generate_handler![
             google_sign_in,
