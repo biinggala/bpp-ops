@@ -18,6 +18,7 @@ import { TableView } from '../components/views/table'
 import { BoardView } from '../components/views/board'
 import { CalendarView } from '../components/views/calendar'
 import { StatsView } from '../components/views/stats'
+import { FilesView } from '../components/views/files'
 import { GanttView } from '../components/views/gantt'
 import { TaskModal } from '../components/modals/TaskModal'
 import { TaskDetailModal } from '../components/modals/TaskDetailModal'
@@ -150,6 +151,7 @@ export function AppPage() {
               {view === 'c' && <CalendarView />}
               {view === 'g' && <GanttView />}
               {view === 's' && <StatsView />}
+              {view === 'f' && <FilesView />}
             </>
           )}
         </div>

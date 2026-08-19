@@ -17,6 +17,7 @@ const VIEWS: { id: ViewType; label: string; icon: string }[] = [
   { id: 'c', label: '캘린더', icon: '◪' },
   { id: 'g', label: '간트', icon: '▤' },
   { id: 's', label: '통계', icon: '◑' },
+  { id: 'f', label: '자료', icon: '🗂' },
 ]
 
 const SORT_OPTIONS = [
@@ -107,6 +108,9 @@ export function ViewBar() {
   // calendar by date); the calendar toggle only where calendar entries are drawn.
   const showSort = view === 't' || view === 'b'
   const showGroup = view === 't'
+  // The files view answers a different question and has its own search box: a
+  // status or assignee filter has nothing to say about a 계약서.
+  const showFilters = view !== 'f'
   const showGCalToggle = view === 'c'
 
   // ── Active filters, as chips ────────────────────────────────────────────────
@@ -199,6 +203,7 @@ export function ViewBar() {
           </React.Fragment>
         ))}
 
+        {showFilters && (
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           {showProjectFilter && (
             <MultiSelect label="프로젝트" options={allProjectOptions}
@@ -233,13 +238,14 @@ export function ViewBar() {
               onChange={v => setFilters({ sort: v })} />
           )}
         </div>
+        )}
       </div>
 
       {/* What is currently narrowing the view, spelled out. The dropdowns say
           how many are selected; only this says which, and it is the one place
           every active filter — including ones set elsewhere in the app — shows
           up together with a way to undo it. */}
-      {chips.length > 0 && (
+      {showFilters && chips.length > 0 && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 6,
           padding: '7px 20px', borderTop: '1px solid var(--bd)',

@@ -7,7 +7,7 @@ import { haptic } from '../../lib/haptics'
 import { MobileFilterButton } from './MobileFilterSheet'
 
 export function Topbar() {
-  const { space, projectId, myTasksOnly, openTaskModal, toggleSidebar } = useUiStore()
+  const { space, projectId, myTasksOnly, openTaskModal, toggleSidebar, view } = useUiStore()
   const projects = useProjectStore(s => s.projects)
   const isMobile = useMobile()
 
@@ -79,7 +79,7 @@ export function Topbar() {
         {/* One door to everything that narrows or reorders the view. The ✓ that
             used to sit here toggled only 완료 숨기기, and left the other six
             controls with nowhere to live on a phone. */}
-        {isMobile && <MobileFilterButton />}
+        {isMobile && view !== 'f' && <MobileFilterButton />}
         {isMobile ? (
           <button
             onClick={() => { haptic('tap'); openTaskModal() }}

@@ -2,7 +2,7 @@ export type TaskType = '상위' | '세부'
 export type Status = '진행중' | '대기' | '검토중' | '완료'
 export type Priority = '높음' | '중간' | '낮음'
 export type MemberKey = 'YL' | 'SJ' | 'HC'
-export type ViewType = 't' | 'b' | 'c' | 'g' | 's'
+export type ViewType = 't' | 'b' | 'c' | 'g' | 's' | 'f'
 
 // Category는 이제 동적 — Space의 name 값
 export type Category = string
@@ -28,6 +28,14 @@ export interface Project {
   creatorEmail?: string    // email of the user who created this project
   archived?: boolean       // completed/retired — hidden from active lists and aggregates
   driveFolderUrl?: string  // the project's folder, opened straight from the sidebar
+  /**
+   * Materials that belong to the project rather than to any one task.
+   *
+   * A 계약서 or a 브랜드 가이드 is not work anybody is doing — it is the shelf
+   * the work is done from. Before this there was nowhere to file one except a
+   * task it did not belong to.
+   */
+  links?: TaskLink[]
 }
 
 export interface Milestone {
