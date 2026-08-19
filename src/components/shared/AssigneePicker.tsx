@@ -1,4 +1,4 @@
-import { useMenu, Menu, MenuList, MenuItem, MenuNote, MenuFooter, CellTrigger } from './Menu'
+import { useMenu, useMenuKeys, Menu, MenuList, MenuItem, MenuNote, MenuFooter, CellTrigger } from './Menu'
 import { AssigneeAvatar } from './Avatar'
 import { parseAssignees } from '../../lib/utils'
 
@@ -14,10 +14,12 @@ import { parseAssignees } from '../../lib/utils'
  */
 
 
-export function AssigneePicker({ assignee, options, onChange }: {
+export function AssigneePicker({ assignee, options, onChange, tabbable = false }: {
   assignee: string
   options: { value: string; label: string }[]
   onChange: (v: string) => void
+  /** Reachable by Tab — the add row is filled without a mouse. */
+  tabbable?: boolean
 }) {
   const m = useMenu()
   const selected = parseAssignees(assignee)
@@ -29,9 +31,16 @@ export function AssigneePicker({ assignee, options, onChange }: {
     onChange(next.join(','))
   }
 
+  // Space ticks a name and leaves the menu open, because more than one person
+  // can be on a task; Enter is left alone so it still belongs to the row.
+  const { hi, onKeyDown } = useMenuKeys(
+    m, options.map(o => o.value), toggle,
+    Math.max(0, options.findIndex(o => selected.includes(o.value))), ' ',
+  )
+
   return (
-    <div ref={m.rootRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
-      <CellTrigger open={m.open} onOpen={el => m.toggleAt(el)}>
+    <div ref={m.rootRef} onKeyDown={onKeyDown} style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '100%' }}>
+      <CellTrigger open={m.open} onOpen={el => m.toggleAt(el)} tabbable={tabbable}>
         {selected.length === 0 ? (
           <span style={{ color: 'var(--t3)', fontSize: 12 }}>—</span>
         ) : (
@@ -52,8 +61,8 @@ export function AssigneePicker({ assignee, options, onChange }: {
           ) : (
             <>
               <MenuList>
-                {options.map(opt => (
-                  <MenuItem key={opt.value} multi selected={selected.includes(opt.value)} onSelect={() => toggle(opt.value)}>
+                {options.map((opt, i) => (
+                  <MenuItem key={opt.value} multi highlighted={hi === i} selected={selected.includes(opt.value)} onSelect={() => toggle(opt.value)}>
                     <AssigneeAvatar assigneeKey={opt.value} size={20} />
                     {opt.label}
                   </MenuItem>

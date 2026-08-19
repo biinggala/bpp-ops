@@ -91,6 +91,53 @@ export function useMenu() {
   return { open, setOpen, pos, rootRef, panelRef, openAt, toggleAt }
 }
 
+/**
+ * Arrow keys and Enter for a menu whose focus never leaves its trigger.
+ *
+ * These menus are opened from a cell and keep focus on it, so the panel itself
+ * never receives a keystroke — the trigger has to move the highlight and commit
+ * it. Written once here because the add row is a keyboard flow end to end: type
+ * a name, tab to the project, tab to the milestone, Enter. A picker you can tab
+ * into but not answer breaks that in the middle.
+ */
+export function useMenuKeys<T>(
+  m: { open: boolean; setOpen: (v: boolean) => void },
+  items: T[],
+  onPick: (item: T) => void,
+  startAt = 0,
+  /** Enter commits a single choice; Space ticks one of many and stays open. */
+  pickOn: 'Enter' | ' ' = 'Enter',
+) {
+  const [hi, setHi] = useState(0)
+  const startRef = useRef(startAt); startRef.current = startAt
+  const itemsRef = useRef(items);   itemsRef.current = items
+  const pickRef = useRef(onPick);   pickRef.current = onPick
+
+  useEffect(() => { if (m.open) setHi(Math.max(0, startRef.current)) }, [m.open])
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (!m.open) return
+    // Tab moves on and takes the menu with it; leaving it open would float a
+    // panel over whatever the next field is.
+    if (e.key === 'Tab' || e.key === 'Escape') {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation() }
+      m.setOpen(false)
+      return
+    }
+    const list = itemsRef.current
+    if (!list.length) return
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault(); e.stopPropagation()
+      setHi(i => (i + (e.key === 'ArrowDown' ? 1 : list.length - 1)) % list.length)
+    } else if (e.key === pickOn) {
+      e.preventDefault(); e.stopPropagation()
+      pickRef.current(list[hi])
+    }
+  }
+
+  return { hi, onKeyDown }
+}
+
 export function Menu({ pos, panelRef, width = MENU_W, maxHeight, children }: {
   pos: { top: number; left: number; maxHeight?: number }
   panelRef: React.RefObject<HTMLDivElement | null>
@@ -238,15 +285,13 @@ export function CellTrigger({ open, onOpen, children, style, tabbable = false }:
       tabIndex={tabbable ? 0 : undefined}
       onClick={e => { e.stopPropagation(); onOpen(e.currentTarget) }}
       onKeyDown={tabbable ? e => {
-        // Space and ArrowDown open the menu; Enter is left alone while it is
-        // closed so it reaches the row and saves. A trigger that answered Enter
-        // in both states could be opened and closed forever without the row
-        // this sits in ever hearing one.
-        if (e.key === ' ' || e.key === 'ArrowDown') {
-          if (!open) { e.preventDefault(); e.stopPropagation(); onOpen(e.currentTarget) }
-        } else if (e.key === 'Enter' && open) {
-          e.preventDefault(); e.stopPropagation()
-          onOpen(e.currentTarget)
+        // Space and ArrowDown open the menu. Enter is not answered here at all:
+        // closed, it belongs to the row so a filled-in line can be committed;
+        // open, it belongs to whatever is tracking the highlight — useMenuKeys,
+        // one level out. Answering it here swallowed the keystroke before the
+        // highlighted option could ever be chosen.
+        if ((e.key === ' ' || e.key === 'ArrowDown') && !open) {
+          e.preventDefault(); e.stopPropagation(); onOpen(e.currentTarget)
         }
       } : undefined}
       onMouseEnter={() => setHovered(true)}

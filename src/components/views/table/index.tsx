@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import {
   useMenu, Menu, MenuList, MenuItem, MenuCheck, MenuNote,
-  MenuDivider, MenuFooter, MENU_INPUT, CellTrigger, Dot,
+  MenuDivider, MenuFooter, MENU_INPUT, CellTrigger, Dot, useMenuKeys,
 } from '../../shared/Menu'
 import { AssigneePicker } from '../../shared/AssigneePicker'
 import { BadgeSelect } from '../../shared/BadgeSelect'
@@ -524,7 +524,7 @@ export function TableView() {
   const allTasks = useTaskStore(s => s.tasks)          // raw — only for task-tree traversal
   const accessibleTasks = useAccessibleTasks()          // for option lists (tags etc.)
   const { addTask, deleteTask, updateTask } = useTaskStore()
-  const { openTaskDetail, projectId, space, hideCompleted, listGroup } = useUiStore()
+  const { openTaskDetail, projectId, space, hideCompleted, listGroup, myTasksOnly } = useUiStore()
   const { milestones, updateMilestone, deleteMilestone, addMilestone } = useMilestoneStore()
   const allProjects = useProjectStore(s => s.projects)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
@@ -540,6 +540,10 @@ export function TableView() {
     return Array.from(s)
   }, [projects])
   const isMobile = useMobile()
+
+  // A task added to a list of one's own work is one's own work. Elsewhere the
+  // row still asks, because elsewhere the screen does not know the answer.
+  const myAssignee = myTasksOnly ? (userEmail ?? '') : ''
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [collapsedMs, setCollapsedMs] = useState<Set<string>>(new Set())
@@ -770,7 +774,7 @@ export function TableView() {
                   onDragEnd={() => { setDraggingTaskId(null); setDropTargetId(null) }}
                 />
                 {draftSubtaskParentId === child.id && (
-                  <AddTaskRow cols={visibleCols} isSubtask parentId={child.id}
+                  <AddTaskRow cols={visibleCols} defaultAssignee={myAssignee} isSubtask parentId={child.id}
                     assigneeOptions={cOpts} projectId={child.projectId} milestoneId={child.milestoneId}
                     space={space ?? ''} addTask={addTask} userEmail={userEmail}
                     onDone={another => { if (!another) setDraftSubtaskParentId(null) }}
@@ -781,7 +785,7 @@ export function TableView() {
             )
           })}
           {draftSubtaskParentId === task.id && (
-            <AddTaskRow cols={visibleCols} isSubtask parentId={task.id}
+            <AddTaskRow cols={visibleCols} defaultAssignee={myAssignee} isSubtask parentId={task.id}
               assigneeOptions={aOpts} projectId={task.projectId} milestoneId={task.milestoneId}
               space={space ?? ''} addTask={addTask} userEmail={userEmail}
               onDone={another => { if (!another) setDraftSubtaskParentId(null) }}
@@ -859,6 +863,7 @@ export function TableView() {
     const draftRow = (key: string, msId: string | undefined) => (
       <AddTaskRow
         cols={visibleCols}
+        defaultAssignee={myAssignee}
         assigneeOptions={getAssigneeOptions(pjId)}
         milestoneId={msId}
         projectId={pjId}
@@ -1034,6 +1039,7 @@ export function TableView() {
             {draftEndPjId === FLAT_DRAFT && (
               <AddTaskRow
                 cols={visibleCols}
+                defaultAssignee={myAssignee}
                 assigneeOptions={getAssigneeOptions(projectId ?? undefined)}
                 projectId={projectId ?? undefined}
                 projectOptions={projectId ? undefined : projectPickerOptions}
@@ -1106,6 +1112,7 @@ export function TableView() {
                     {draftEndPjId === proj.id && (
                       <AddTaskRow
                         cols={visibleCols}
+                        defaultAssignee={myAssignee}
                         assigneeOptions={getAssigneeOptions(proj.id)}
                         projectId={proj.id}
                         space={space ?? ''}
@@ -1147,6 +1154,7 @@ export function TableView() {
                   {draftEndPjId === '__none__' && (
                     <AddTaskRow
                       cols={visibleCols}
+                      defaultAssignee={myAssignee}
                       assigneeOptions={getAssigneeOptions(undefined)}
                       space={space ?? ''}
                       addTask={addTask}
@@ -1180,6 +1188,7 @@ export function TableView() {
           {draftEndPjId === projectId && (
             <AddTaskRow
               cols={visibleCols}
+              defaultAssignee={myAssignee}
               assigneeOptions={getAssigneeOptions(projectId)}
               projectId={projectId}
               space={space ?? ''}
@@ -1885,70 +1894,8 @@ function AddMilestoneInline({ projectId, onDone }: { projectId: string; onDone: 
   )
 }
 
-// ── AddRowAssigneeSelect — single-select for the add row ──────────────────────
-
-function AddRowAssigneeSelect({ value, options, onChange }: {
-  value: string
-  options: { value: string; label: string }[]
-  onChange: (v: string) => void
-}) {
-  const m = useMenu()
-  const current = options.find(o => o.value === value)
-
-  return (
-    <div
-      ref={m.rootRef}
-      style={{ position: 'relative', width: '100%' }}
-      onKeyDown={e => { if (e.key === 'Escape' && m.open) { e.stopPropagation(); m.setOpen(false) } }}
-    >
-      <div
-        data-addrow-popup
-        tabIndex={0}
-        onClick={e => { e.stopPropagation(); m.toggleAt(e.currentTarget) }}
-        onKeyDown={e => {
-          if (e.key === ' ' || e.key === 'ArrowDown') {
-            if (!m.open) { e.preventDefault(); e.stopPropagation(); m.openAt(e.currentTarget) }
-          } else if (e.key === 'Enter' && m.open) {
-            e.preventDefault(); e.stopPropagation(); m.setOpen(false)
-          }
-        }}
-        style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', padding: '3px 6px', borderRadius: 'var(--r1)', outline: '1px solid var(--ac)', background: 'var(--bg)', width: '100%', boxSizing: 'border-box' }}
-      >
-        {current ? <AssigneeAvatar assigneeKey={current.value} size={18} /> : null}
-        <span style={{ flex: 1, fontSize: 13, color: current ? 'var(--t1)' : 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {current ? current.label : '미배정'}
-        </span>
-        <span style={{ fontSize: 9, color: 'var(--t3)', flexShrink: 0, opacity: .6 }}>▾</span>
-      </div>
-
-      {m.open && (
-        <Menu pos={m.pos} panelRef={m.panelRef}>
-          <MenuList>
-            <MenuItem selected={!value} onSelect={() => { onChange(''); m.setOpen(false) }}>미배정</MenuItem>
-            {options.map(opt => (
-              <MenuItem key={opt.value} selected={opt.value === value} onSelect={() => { onChange(opt.value); m.setOpen(false) }}>
-                <AssigneeAvatar assigneeKey={opt.value} size={20} />
-                {opt.label}
-              </MenuItem>
-            ))}
-          </MenuList>
-          {options.length === 0 && <MenuNote>멤버가 없습니다</MenuNote>}
-        </Menu>
-      )}
-    </div>
-  )
-}
-
 // ── AddRowProjectSelect ───────────────────────────────────────────────────────
 
-/**
- * A dot the width of a colour, not a column.
- *
- * The name cell is the narrowest thing on the row and the one people type in;
- * a full project dropdown in front of it would eat the field. The dot carries
- * the answer — every project already has a colour people know — and the name
- * only appears in the menu.
- */
 function AddRowProjectSelect({ value, options, onChange }: {
   value: string | undefined
   options: { id: string; name: string; color: string }[]
@@ -1956,9 +1903,16 @@ function AddRowProjectSelect({ value, options, onChange }: {
 }) {
   const m = useMenu()
   const current = options.find(p => p.id === value)
+  // undefined leads, as 미배정 does in the panel.
+  const items: (string | undefined)[] = [undefined, ...options.map(p => p.id)]
+  const { hi, onKeyDown } = useMenuKeys(
+    m, items,
+    id => { onChange(id); m.setOpen(false) },
+    items.indexOf(value),
+  )
 
   return (
-    <div ref={m.rootRef} style={{ position: 'relative', flexShrink: 0 }}>
+    <div ref={m.rootRef} style={{ position: 'relative', flexShrink: 0, minWidth: 0 }} onKeyDown={onKeyDown}>
       <div
         data-addrow-popup
         tabIndex={0}
@@ -1967,27 +1921,28 @@ function AddRowProjectSelect({ value, options, onChange }: {
         onKeyDown={e => {
           if (e.key === ' ' || e.key === 'ArrowDown') {
             if (!m.open) { e.preventDefault(); e.stopPropagation(); m.openAt(e.currentTarget, 200) }
-          } else if (e.key === 'Enter' && m.open) {
-            e.preventDefault(); e.stopPropagation(); m.setOpen(false)
           }
         }}
         style={{
-          display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer',
-          padding: '3px 5px', borderRadius: 'var(--r1)', outline: '1px solid var(--ac)',
-          background: 'var(--bg)',
+          display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer',
+          padding: '3px 6px', borderRadius: 'var(--r1)', outline: '1px solid var(--ac)',
+          background: 'var(--bg)', maxWidth: 92, minWidth: 0,
         }}
       >
         <Dot color={current?.color ?? 'var(--bd2)'} size={8} />
-        <span style={{ fontSize: 8, color: 'var(--t3)' }}>▾</span>
+        <span style={{ fontSize: 11, color: current ? 'var(--t1)' : 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {current ? current.name : '프로젝트'}
+        </span>
+        <span style={{ fontSize: 8, color: 'var(--t3)', flexShrink: 0 }}>▾</span>
       </div>
       {m.open && (
         <Menu pos={m.pos} panelRef={m.panelRef} width={200}>
           <MenuList>
-            <MenuItem selected={!value} onSelect={() => { onChange(undefined); m.setOpen(false) }}>
+            <MenuItem selected={!value} highlighted={hi === 0} onSelect={() => { onChange(undefined); m.setOpen(false) }}>
               프로젝트 미배정
             </MenuItem>
-            {options.map(p => (
-              <MenuItem key={p.id} selected={p.id === value} onSelect={() => { onChange(p.id); m.setOpen(false) }}>
+            {options.map((p, i) => (
+              <MenuItem key={p.id} selected={p.id === value} highlighted={hi === i + 1} onSelect={() => { onChange(p.id); m.setOpen(false) }}>
                 <Dot color={p.color} />
                 {p.name}
               </MenuItem>
@@ -2076,9 +2031,17 @@ function AddRowDatePicker({ value, context, onChange }: {
 
 // ── AddTaskRow ────────────────────────────────────────────────────────────────
 
-function AddTaskRow({ cols, assigneeOptions, milestoneId, milestoneOptions, onMilestoneCreate, parentId, projectId, projectOptions, space, addTask, userEmail, isSubtask = false, onDone, onCancel }: {
+function AddTaskRow({ cols, assigneeOptions, defaultAssignee = '', milestoneId, milestoneOptions, onMilestoneCreate, parentId, projectId, projectOptions, space, addTask, userEmail, isSubtask = false, onDone, onCancel }: {
   cols: ColDef[]
   assigneeOptions: { value: string; label: string }[]
+  /**
+   * Who the row starts out assigned to.
+   *
+   * In 내 할 일 that is the person reading it: a task added to a list of one's
+   * own work is one's own work, and having to say so on every row is a question
+   * whose answer the screen already knows.
+   */
+  defaultAssignee?: string
   /** Fixed when the row sits inside a milestone's own group. */
   milestoneId?: string
   /**
@@ -2108,7 +2071,7 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, milestoneOptions, onMi
   const [pickedProject, setPickedProject] = useState<string | undefined>(projectId)
   const [pickedMs, setPickedMs] = useState<string | undefined>(milestoneId)
   const [name, setName] = useState('')
-  const [assignee, setAssignee] = useState('')
+  const [assignee, setAssignee] = useState(defaultAssignee)
   const [due, setDue] = useState('')
   const [status, setStatus] = useState<Status>('대기')
   const [priority, setPriority] = useState<Priority>('중간')
@@ -2138,7 +2101,7 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, milestoneOptions, onMi
     })
     // The milestone is deliberately kept for the next row: a run of tasks
     // typed one after another almost always belongs to the same one.
-    setName(''); setAssignee(''); setDue(''); setStatus('대기'); setPriority('중간')
+    setName(''); setAssignee(defaultAssignee); setDue(''); setStatus('대기'); setPriority('중간')
     onDone(addAnother)
     if (addAnother) setTimeout(() => nameRef.current?.focus(), 0)
   }
@@ -2168,6 +2131,16 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, milestoneOptions, onMi
         // underneath show through it.
         return (
           <div key="name" style={{ ...base, gap: 6, position: 'sticky', left: 0, zIndex: 2, background: 'linear-gradient(rgba(35,131,226,.04), rgba(35,131,226,.04)), var(--bg)', boxShadow: '2px 0 4px rgba(0,0,0,.06)', paddingLeft: isSubtask ? 88 : 14 }}>
+            {/* Name, then project, then milestone — the order they are filled
+                in, and therefore the order Tab has to visit them in. They used
+                to sit ahead of the name, where tabbing out of the field skipped
+                straight past both. */}
+            <input
+              ref={nameRef}
+              value={name} onChange={e => setName(e.target.value)}
+              placeholder="업무 이름 (Enter로 추가)"
+              style={{ ...inp, minWidth: 70 }}
+            />
             {projectOptions && (
               <AddRowProjectSelect
                 value={pickedProject}
@@ -2183,18 +2156,15 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, milestoneOptions, onMi
                 onCreate={onMilestoneCreate ? (n, d) => onMilestoneCreate(pickedProject, n, d) : undefined}
               />
             )}
-            <input
-              ref={nameRef}
-              value={name} onChange={e => setName(e.target.value)}
-              placeholder="업무 이름 입력... (Enter로 추가)"
-              style={inp}
-            />
           </div>
         )
       case 'assignee':
+        // The same picker the rows use. A single-value control here could not
+        // express two people, and it is where a default assignee has to be
+        // added to rather than replaced.
         return (
           <div key="assignee" style={base}>
-            <AddRowAssigneeSelect value={assignee} options={assigneeOptions} onChange={setAssignee} />
+            <AssigneePicker assignee={assignee} options={assigneeOptions} onChange={setAssignee} tabbable />
           </div>
         )
       case 'due':
@@ -2281,6 +2251,13 @@ function MilestonePicker({ milestoneId, milestones, onChange, onCreate }: {
   const [draftDue, setDraftDue] = useState('')
 
   const closeMenu = () => { m.setOpen(false); setDrafting(false); setDraftName(''); setDraftDue('') }
+  // undefined leads, as 미배정 does in the panel.
+  const items: (string | undefined)[] = [undefined, ...milestones.map(ms => ms.id)]
+  const { hi, onKeyDown } = useMenuKeys(
+    { open: m.open && !drafting, setOpen: m.setOpen }, items,
+    id => { onChange(id); closeMenu() },
+    items.indexOf(milestoneId),
+  )
   const create = () => {
     const name = draftName.trim()
     if (!name || !draftDue || !onCreate) return
@@ -2290,16 +2267,28 @@ function MilestonePicker({ milestoneId, milestones, onChange, onCreate }: {
   }
 
   return (
-    <div ref={m.rootRef} style={{ position: 'relative', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+    <div ref={m.rootRef} style={{ position: 'relative', flexShrink: 0, minWidth: 0 }} onClick={e => e.stopPropagation()} onKeyDown={onKeyDown}>
+      {/* Space opens; Enter belongs to the row it sits in, so a name typed and a
+          milestone chosen can still be committed without reaching for a mouse. */}
       <button
         onClick={e => { e.stopPropagation(); m.toggleAt(e.currentTarget, 220) }}
+        onKeyDown={e => {
+          if ((e.key === ' ' || e.key === 'ArrowDown') && !m.open) {
+            e.preventDefault(); e.stopPropagation(); m.openAt(e.currentTarget, 220)
+          } else if (e.key === 'Enter' && !m.open) {
+            // A focused <button> turns Enter into a click, which would open the
+            // menu instead of committing the row. Stop the click, let the key
+            // carry on up.
+            e.preventDefault()
+          }
+        }}
         style={{
           display: 'flex', alignItems: 'center', gap: 4,
           padding: '2px 7px', borderRadius: 12, fontFamily: 'var(--font)',
           fontSize: 11, cursor: 'pointer', border: 'none',
           background: current ? NOTION.purple.bg : 'var(--bg3)',
           color: current ? accent : 'var(--t3)',
-          maxWidth: 140, whiteSpace: 'nowrap',
+          maxWidth: 110, minWidth: 0, whiteSpace: 'nowrap',
         }}
       >
         <Dot color={current ? accent : 'var(--t3)'} size={5} />
@@ -2340,11 +2329,12 @@ function MilestonePicker({ milestoneId, milestones, onChange, onCreate }: {
           ) : (
             <>
               <MenuList>
-                <MenuItem selected={!milestoneId} onSelect={() => { onChange(undefined); closeMenu() }}>미배정</MenuItem>
-                {milestones.map(ms => (
+                <MenuItem selected={!milestoneId} highlighted={hi === 0} onSelect={() => { onChange(undefined); closeMenu() }}>미배정</MenuItem>
+                {milestones.map((ms, i) => (
                   <MenuItem
                     key={ms.id}
                     selected={ms.id === milestoneId}
+                    highlighted={hi === i + 1}
                     onSelect={() => { onChange(ms.id); closeMenu() }}
                     trailing={<span style={{ fontSize: 10, color: 'var(--t3)', flexShrink: 0 }}>{ms.dueDate}</span>}
                   >

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { useMenu, Menu, MenuItem, CellTrigger, Dot } from './Menu'
+import React from 'react'
+import { useMenu, useMenuKeys, Menu, MenuItem, CellTrigger, Dot } from './Menu'
 
 /**
  * The pill-shaped enum control: 상태, 우선순위.
@@ -25,20 +25,11 @@ export function BadgeSelect<T extends string>({ value, options, styleMap, onChan
 }) {
   const m = useMenu()
   const s = styleMap[value] ?? { bg: 'var(--bg3)', color: 'var(--t2)' }
-  // Focus stays on the trigger while the menu is open, so the arrows are
-  // handled there. Without this the add row could be tabbed to but not filled.
-  const [hi, setHi] = useState(0)
-  useEffect(() => { if (m.open) setHi(Math.max(0, options.indexOf(value))) }, [m.open])
-  const onKey = (e: React.KeyboardEvent) => {
-    if (!m.open) return
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault(); e.stopPropagation()
-      setHi(i => (i + (e.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length)
-    } else if (e.key === 'Enter') {
-      e.preventDefault(); e.stopPropagation()
-      onChange(options[hi]); m.setOpen(false)
-    }
-  }
+  const { hi, onKeyDown: onKey } = useMenuKeys(
+    m, options,
+    o => { onChange(o); m.setOpen(false) },
+    Math.max(0, options.indexOf(value)),
+  )
   const badge = (v: T, st: { bg: string; color: string }) => (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 5,
