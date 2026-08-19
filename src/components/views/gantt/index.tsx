@@ -9,7 +9,7 @@ import { useProjectStore } from '../../../store/projectStore'
 import { useAuthStore } from '../../../store/authStore'
 import { getCatColor } from '../../../types'
 import { CategoryBadge } from '../../shared/Badge'
-import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade } from '../../../lib/utils'
+import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade, isComposing } from '../../../lib/utils'
 import type { Task, Milestone } from '../../../types'
 
 /**
@@ -936,6 +936,10 @@ function TaskRow({
             onClick={e => e.stopPropagation()}
             onMouseDown={e => e.stopPropagation()}
             onKeyDown={e => {
+              // The Enter that closes a Korean IME's composition is still an
+              // Enter to the DOM. Taken at face value it commits a half-typed
+              // name and, when chaining, opens the next row underneath it.
+              if (isComposing(e)) return
               if (e.key === 'Enter') { e.preventDefault(); onCommitName(e.currentTarget.value, renaming.chain) }
               else if (e.key === 'Escape') { e.preventDefault(); onCommitName(task.name, false) }
             }}
