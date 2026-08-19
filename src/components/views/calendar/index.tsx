@@ -523,39 +523,40 @@ export function CalendarView() {
  * ── Scrolling through time ───────────────────────────────────────────────────
  *
  * Apple Calendar does not turn pages. Scroll a week view and the days travel
- * under your fingers one at a time — a flick runs several of them past and then
- * eases to a stop wherever the momentum ran out, which is very often the middle
- * of a week rather than the start of the next one. That is what this does: a
- * gesture is measured in pixels, and every column-width of travel moves the
- * calendar by exactly one day (one week, in the month grid, whose columns are
- * weekdays and whose rows are weeks).
+ * under your fingers — a flick runs several past and then eases to a stop
+ * wherever the momentum ran out, very often mid-week. Two halves make that up,
+ * and both are needed or it reads as chunky:
  *
- * A step is a column-width so that the content keeps pace with the gesture —
- * scroll a screenful sideways and a screenful of days has gone by. The clamp
- * only rescues the extremes: a single-day view would otherwise ask for a whole
- * window of travel per day, and a narrow one would flicker past a month.
+ *   · the whole days, which change the anchor and let React redraw the grid;
+ *   · the remainder — the part of the day currently being crossed — which is
+ *     written to --slide and moves the columns by transform alone, every frame,
+ *     without React in the loop at all.
  *
- * The trackpad is what makes this delicate. One flick produces dozens of wheel
- * events over about a second as the momentum decays, and unlike paging — where
- * they all had to be collapsed into one move — here they are the point: the
- * thinning events at the tail are exactly the "스스륵" slowdown. All that is
- * needed is to forget any leftover travel when a genuinely new gesture starts,
- * which a gap longer than QUIET_MS marks.
+ * Each grid draws one column of buffer on either side of the frame, so there is
+ * always something to see in the gap the remainder opens up. The remainder is
+ * kept inside half a column: past that, a whole step is handed over and the
+ * transform is credited back the same distance, which is why the swap is
+ * invisible. When the events stop arriving the remainder is eased to zero — the
+ * "스스륵" landing on a day boundary.
+ *
+ * A step is exactly one column, measured off the DOM rather than assumed, or
+ * the days would travel at a different rate from the gesture.
  */
 const QUIET_MS = 140
+const SETTLE_MS = 220
 /** No single wheel event may cover more than this; a stray page-sized delta
  *  would otherwise throw the calendar into next season. */
 const MAX_STEP = 4
 
-function useWheelScrub(
+function useWheelSlide(
   ref: React.RefObject<HTMLDivElement | null>,
   axis: 'x' | 'y',
   stepPx: () => number,
-  onScrub: (steps: number) => void,
+  onStep: (steps: number) => void,
   scrubbing: React.MutableRefObject<boolean>,
 ) {
-  const onScrubRef = useRef(onScrub); onScrubRef.current = onScrub
-  const stepRef = useRef(stepPx);     stepRef.current = stepPx
+  const onStepRef = useRef(onStep); onStepRef.current = onStep
+  const stepRef = useRef(stepPx);   stepRef.current = stepPx
 
   useEffect(() => {
     const el = ref.current
@@ -564,41 +565,72 @@ function useWheelScrub(
     let travelled = 0
     let lastAt = 0
     let idle: number | undefined
+    let tween: number | undefined
+
+    const paint = () => el.style.setProperty('--slide', `${-travelled}px`)
+
+    // Ease-out to the nearest day: fast at first, then barely moving.
+    const settle = () => {
+      const from = travelled
+      scrubbing.current = false
+      if (!from) return
+      const started = performance.now()
+      const tick = (t: number) => {
+        const p = Math.min(1, (t - started) / SETTLE_MS)
+        travelled = from * (1 - p) ** 3
+        paint()
+        if (p < 1) tween = requestAnimationFrame(tick)
+        else { travelled = 0; paint() }
+      }
+      tween = requestAnimationFrame(tick)
+    }
 
     const handle = (e: WheelEvent) => {
       // Lines and pages, as some mice and older browsers report them.
       const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1
-      const delta = (axis === 'y' ? e.deltaY : e.deltaX) * scale
+      const delta  = (axis === 'y' ? e.deltaY : e.deltaX) * scale
       const across = (axis === 'y' ? e.deltaX : e.deltaY) * scale
-      // A trackpad never travels on one axis alone. Whichever way the gesture
-      // is mostly going wins, so that scrolling the hours does not also drag
-      // the days sideways.
+      // A trackpad never travels on one axis alone. Whichever way the gesture is
+      // mostly going wins, so that scrolling the hours does not also drag the
+      // days sideways.
       if (delta === 0 || Math.abs(delta) <= Math.abs(across)) return
 
       // Horizontal travel has to be taken: left, the browser would read it as a
       // back-navigation swipe and the calendar would vanish mid-gesture.
       e.preventDefault()
 
+      if (tween !== undefined) { cancelAnimationFrame(tween); tween = undefined }
       const now = e.timeStamp
       if (now - lastAt > QUIET_MS) travelled = 0
       lastAt = now
 
-      // The slide-in animation belongs to the buttons; playing it on every day
-      // of a scroll would strobe.
+      // The slide-in animation belongs to the arrows; playing it on every day of
+      // a scroll would strobe.
       scrubbing.current = true
       window.clearTimeout(idle)
-      idle = window.setTimeout(() => { scrubbing.current = false }, QUIET_MS * 2)
+      idle = window.setTimeout(settle, QUIET_MS)
 
       travelled += delta
       const step = Math.max(1, stepRef.current())
-      const steps = Math.trunc(travelled / step)
-      if (!steps) return
-      travelled -= steps * step
-      onScrubRef.current(Math.max(-MAX_STEP, Math.min(MAX_STEP, steps)))
+      let steps = Math.round(travelled / step)
+      if (steps) {
+        steps = Math.max(-MAX_STEP, Math.min(MAX_STEP, steps))
+        travelled -= steps * step
+        // Only a clamped step can leave more than half a column over, and that
+        // would show past the buffer.
+        travelled = Math.max(-step / 2, Math.min(step / 2, travelled))
+        onStepRef.current(steps)
+      }
+      paint()
     }
 
     el.addEventListener('wheel', handle, { passive: false })
-    return () => { el.removeEventListener('wheel', handle); window.clearTimeout(idle) }
+    return () => {
+      el.removeEventListener('wheel', handle)
+      window.clearTimeout(idle)
+      if (tween !== undefined) cancelAnimationFrame(tween)
+      el.style.removeProperty('--slide')
+    }
   }, [ref, axis, scrubbing])
 }
 
@@ -656,8 +688,15 @@ function DesktopCalendar() {
     if (a.getDay() !== 0) setCalAnchor(fmt(addDays(a, -a.getDay())))
   }, [calRange])
 
+  // One day of buffer on either side, so a scroll parked between two days has
+  // something to show in the gap.
+  const LEAD = 1
+  const visibleDays = useMemo(
+    () => (isMonth ? [] : Array.from({ length: calRange as number }, (_, i) => fmt(addDays(anchor, i)))),
+    [calAnchor, calRange],
+  )
   const days = useMemo(
-    () => (calRange === 'month' ? [] : Array.from({ length: calRange }, (_, i) => fmt(addDays(anchor, i)))),
+    () => (isMonth ? [] : Array.from({ length: (calRange as number) + LEAD * 2 }, (_, i) => fmt(addDays(anchor, i - LEAD)))),
     [calAnchor, calRange],
   )
 
@@ -716,22 +755,28 @@ function DesktopCalendar() {
   // down.
   const bodyRef = useRef<HTMLDivElement>(null)
   const scrubbing = useRef(false)
+  // Measured, not assumed: the transform and the anchor have to agree on how
+  // far one column is, or the swap between them shows.
   const stepPx = () => {
     const el = bodyRef.current
     if (!el) return 120
-    return isMonth
-      ? Math.min(140, Math.max(56, el.clientHeight / 6))
-      : Math.min(200, Math.max(70, (el.clientWidth - HOUR_GUTTER) / (calRange as number)))
+    const cell = el.querySelector(isMonth ? '[data-month-cell]' : '[data-day-column]')
+    if (cell) {
+      const box = cell.getBoundingClientRect()
+      const size = isMonth ? box.height : box.width
+      if (size > 1) return size
+    }
+    return isMonth ? el.clientHeight / 6 : (el.clientWidth - HOUR_GUTTER) / (calRange as number)
   }
-  useWheelScrub(bodyRef, isMonth ? 'y' : 'x', stepPx, isMonth ? scrubWeeks : scrubDays, scrubbing)
+  useWheelSlide(bodyRef, isMonth ? 'y' : 'x', stepPx, isMonth ? scrubWeeks : scrubDays, scrubbing)
   useSlideOnChange(bodyRef, calAnchor, isMonth ? 'y' : 'x', scrubbing)
 
   const label = isMonth
     ? `${anchor.getFullYear()}년 ${MONTHS[anchor.getMonth()]}`
-    : days.length === 1
+    : visibleDays.length === 1
       ? `${anchor.getFullYear()}년 ${MONTHS[anchor.getMonth()]} ${anchor.getDate()}일`
       : (() => {
-          const first = toDate(days[0]); const last = toDate(days[days.length - 1])
+          const first = toDate(visibleDays[0]); const last = toDate(visibleDays[visibleDays.length - 1])
           const sameMonth = first.getMonth() === last.getMonth()
           return sameMonth
             ? `${first.getFullYear()}년 ${MONTHS[first.getMonth()]} ${first.getDate()} – ${last.getDate()}`
@@ -780,7 +825,7 @@ function DesktopCalendar() {
       <div ref={bodyRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         {isMonth
           ? <MonthGrid gridStart={fmt(gridStart)} calYear={anchor.getFullYear()} calMonth={anchor.getMonth()} />
-          : <TimelineGrid days={days} />}
+          : <TimelineGrid days={days} lead={LEAD} />}
       </div>
     </div>
   )
@@ -837,11 +882,15 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
   }, [allMilestones, projects])
   const { token, events: gcalEvents, ensureEvents } = useGCalStore()
 
+  // A buffer week above and below the six on screen, so a scroll parked between
+  // two weeks has something to show in the gap.
+  const trackStart = useMemo(() => addDays(toDate(gridStart), -7), [gridStart])
+
   // Fetch GCal events for the grid on screen, whichever weeks it happens to
   // start and end on.
   useEffect(() => {
     if (!token) return
-    ensureEvents(gridStart, fmt(addDays(toDate(gridStart), 41)))
+    ensureEvents(fmt(trackStart), fmt(addDays(trackStart, 55)))
   }, [token, gridStart])
 
   const milestoneByDate = useMemo(() => {
@@ -871,8 +920,8 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
   const today = new Date()
 
   const cells: { date: Date; isCurrentMonth: boolean }[] = []
-  for (let i = 0; i < 42; i++) {
-    const date = addDays(toDate(gridStart), i)
+  for (let i = 0; i < 56; i++) {
+    const date = addDays(trackStart, i)
     cells.push({ date, isCurrentMonth: date.getMonth() === calMonth && date.getFullYear() === calYear })
   }
 
@@ -921,12 +970,20 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
       </div>
 
       {/* Grid */}
-      <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg)' }}>
-        {/* minmax(0, 1fr) rather than 1fr: a track sized 1fr still refuses to go
+      <div style={{ flex: 1, overflow: 'hidden', background: 'var(--bg)' }}>
+        {/* Eight rows in the height of six, pulled up by one: the first and last
+            are the buffer the scroll slides into. --slide is the part of a week
+            currently being crossed; see useWheelSlide.
+
+            minmax(0, 1fr) rather than 1fr: a track sized 1fr still refuses to go
             below its content's own width, so one long entry used to widen its
             column and squeeze the rest. Paired with minWidth: 0 down the tree,
             the seven columns stay identical at any window size. */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gridTemplateRows: 'repeat(6, 1fr)', height: '100%' }}>
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+          gridTemplateRows: 'repeat(8, 1fr)', height: `${(8 / 6) * 100}%`,
+          transform: 'translateY(calc(-12.5% + var(--slide, 0px)))',
+        }}>
           {cells.map(({ date, isCurrentMonth }, i) => {
             const dateStr      = fmt(date)
             const isToday      = dateStr === fmt(today)
@@ -950,7 +1007,8 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
 
             return (
               <div
-                key={i}
+                key={dateStr}
+                data-month-cell
                 onDragOver={e => { e.preventDefault(); setDragOver(dateStr) }}
                 onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null) }}
                 onDrop={e => handleDrop(e, date)}

@@ -89,7 +89,14 @@ interface Draft {
  * second set of controls next to the first would only invite the confusion the
  * merge was meant to remove.
  */
-export function TimelineGrid({ days }: { days: string[] }) {
+/**
+ * `lead` days of each end are drawn outside the frame, so that a scroll can
+ * park the grid between two days instead of only on one. See useWheelSlide in
+ * the calendar view: it writes the sub-day remainder into --slide, which every
+ * strip below reads, so the three of them travel as one without React having to
+ * redraw a single column.
+ */
+export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number }) {
   const { token, events, calendars, createEvent, updateEvent, removeEvent, ensureEvents } = useGCalStore()
   const tasks = useFilteredTasks()
   const updateTask = useTaskStore(s => s.updateTask)
@@ -295,7 +302,9 @@ export function TimelineGrid({ days }: { days: string[] }) {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* Day headers stay put while the hours scroll. */}
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--bd)', paddingLeft: GUTTER, flexShrink: 0 }}>
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--bd)', flexShrink: 0 }}>
+        <div style={{ width: GUTTER, flexShrink: 0 }} />
+        <Track lead={lead} count={days.length}>
         {days.map(d => {
           const dt = toDate(d)
           const isToday = d === todayStr
@@ -331,14 +340,17 @@ export function TimelineGrid({ days }: { days: string[] }) {
             </div>
           )
         })}
+        </Track>
       </div>
 
       {/* All-day strip: things pinned to the day rather than to a time. */}
       <div style={{
-        display: 'flex', paddingLeft: GUTTER, flexShrink: 0,
+        display: 'flex', flexShrink: 0,
         borderBottom: '1px solid var(--bd2)', background: 'var(--bg2)',
         maxHeight: 112, overflowY: 'auto',
       }}>
+        <div style={{ width: GUTTER, flexShrink: 0 }} />
+        <Track lead={lead} count={days.length}>
         {days.map(date => (
           <div key={date} style={{ flex: 1, borderLeft: '1px solid var(--bd)', padding: '3px 4px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
             {(allDayByDate.get(date) ?? []).map(ev => (
@@ -368,6 +380,7 @@ export function TimelineGrid({ days }: { days: string[] }) {
             )}
           </div>
         ))}
+        </Track>
       </div>
 
       {naming && cardAt && (
@@ -425,6 +438,7 @@ export function TimelineGrid({ days }: { days: string[] }) {
             ))}
           </div>
 
+          <Track lead={lead} count={days.length} fill>
           {days.map(date => (
             <div
               key={date}
@@ -468,6 +482,7 @@ export function TimelineGrid({ days }: { days: string[] }) {
               )}
             </div>
           ))}
+          </Track>
         </div>
       </div>
       {planning && (
@@ -477,6 +492,34 @@ export function TimelineGrid({ days }: { days: string[] }) {
           onClose={() => setPlanning(null)}
         />
       )}
+    </div>
+  )
+}
+
+/**
+ * One horizontal strip of day columns, clipped to the frame.
+ *
+ * The track is wider than the frame by the two buffer days, and sits pulled
+ * left by exactly one of them; --slide, written by the scroll gesture, is the
+ * remainder of the day currently being crossed. Percentages do the arithmetic,
+ * so nothing here has to know how wide a column actually is.
+ */
+function Track({ lead, count, fill, children }: {
+  lead: number; count: number; fill?: boolean; children: React.ReactNode
+}) {
+  const visible = Math.max(1, count - lead * 2)
+  return (
+    <div style={{ flex: 1, minWidth: 0, overflowX: 'clip', ...(fill ? { alignSelf: 'stretch' } : null) }}>
+      <div style={{
+        display: 'flex',
+        width: `${(count / visible) * 100}%`,
+        height: fill ? '100%' : undefined,
+        transform: lead
+          ? `translateX(calc(${(-lead / count) * 100}% + var(--slide, 0px)))`
+          : undefined,
+      }}>
+        {children}
+      </div>
     </div>
   )
 }
