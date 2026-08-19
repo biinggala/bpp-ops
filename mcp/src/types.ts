@@ -29,7 +29,19 @@ export interface Task {
   blockedBy?: string[]
   order?: number
   createdBy?: string
-  links?: { id: string; title: string; url: string; driveId?: string; mimeType?: string }[]
+  links?: TaskLink[]
+}
+
+export interface TaskLink {
+  id: string
+  title: string
+  url: string
+  driveId?: string
+  mimeType?: string
+  /** The tab of a multi-tab Google Doc the URL opens on. */
+  tabTitle?: string
+  /** A line somebody wrote, to tell two links to the same file apart. */
+  note?: string
 }
 
 export interface Project {
@@ -43,6 +55,9 @@ export interface Project {
   pendingEmails?: string[]
   creatorEmail?: string
   archived?: boolean
+  driveFolderUrl?: string
+  /** Materials belonging to the project rather than to any one task. */
+  links?: TaskLink[]
 }
 
 export interface Milestone {

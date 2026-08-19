@@ -12,11 +12,32 @@ import {
   createProject, mutateMilestones, mutateTasks, newId,
   readMilestones, readProjects, readTasks, readUserProfiles, writeProjectMeta,
 } from './store.js'
-import { PRIORITIES, STATUSES, type Milestone, type Priority, type Status, type Task } from './types.js'
+import { PRIORITIES, STATUSES, type Milestone, type Priority, type Status, type Task, type TaskLink } from './types.js'
 
 const YMD = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD')
 
 const today = () => new Date().toISOString().slice(0, 10)
+
+/**
+ * Builds a link record from an address.
+ *
+ * A Drive URL is recognised as one, so the app can show the file's current name
+ * instead of whatever it was called when the link was made. Everything else is
+ * stored as typed.
+ */
+function makeLink(rawUrl: string, title?: string, note?: string): TaskLink {
+  const href = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`
+  const driveId = href.match(
+    /(?:drive|docs)\.google\.com\/(?:(?:file|document|spreadsheets|presentation|forms|drawings)\/d\/|(?:drive\/)?folders\/)([A-Za-z0-9_-]+)/
+  )?.[1]
+  return {
+    id: newId(),
+    title: title?.trim() || href.replace(/^https?:\/\//i, '').slice(0, 40),
+    url: href,
+    ...(driveId ? { driveId } : {}),
+    ...(note?.trim() ? { note: note.trim() } : {}),
+  }
+}
 
 function shiftYmd(date: string, days: number): string {
   const d = new Date(date + 'T00:00:00Z')
@@ -703,26 +724,17 @@ export function registerTools(server: McpServer, ctx: Ctx) {
         task_id: z.string(),
         url: z.string().min(1),
         title: z.string().optional().describe('defaults to the host and path'),
+        note: z.string().optional().describe('shown beside the name — how two links to one file are told apart'),
       },
     },
     async (args) => {
       const ids = accessibleProjectIds(await readProjects(), ctx.email)
-      const href = /^https?:\/\//i.test(args.url) ? args.url : `https://${args.url}`
-      const driveId = href.match(
-        /(?:drive|docs)\.google\.com\/(?:(?:file|document|spreadsheets|presentation|forms|drawings)\/d\/|(?:drive\/)?folders\/)([A-Za-z0-9_-]+)/
-      )?.[1]
-
       const link = await mutateTasks(tasks => {
         const i = tasks.findIndex(t => t.id === args.task_id)
         if (i < 0 || !isTaskVisible(tasks[i], ctx.email, ids)) {
           throw new Error('task not found or not accessible')
         }
-        const entry = {
-          id: newId(),
-          title: args.title?.trim() || href.replace(/^https?:\/\//i, '').slice(0, 40),
-          url: href,
-          ...(driveId ? { driveId } : {}),
-        }
+        const entry = makeLink(args.url, args.title, args.note)
         const next = [...tasks]
         next[i] = { ...tasks[i], links: [...(tasks[i].links ?? []), entry] }
         return { tasks: next, result: entry }
@@ -754,6 +766,83 @@ export function registerTools(server: McpServer, ctx: Ctx) {
         return { tasks: next, result: gone }
       })
       return text({ removed })
+    }
+  )
+
+  // ── Project materials ─────────────────────────────────────────────────────
+  //
+  // Distinct from a task's 자료, and stored separately. A 계약서 or a 브랜드
+  // 가이드 belongs to the project — it is the shelf the work is done from, not
+  // work anybody is doing.
+
+  server.registerTool(
+    'list_project_links',
+    {
+      title: '프로젝트 자료 목록',
+      description:
+        "Materials filed against the project itself, not against its tasks — a 계약서, a 브랜드 가이드, a reference folder. Returns each link's id, which is what remove_project_link takes. For files attached to a task, read the task.",
+      inputSchema: { project_id: z.string().optional() },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ project_id }) => {
+      const projects = (await readProjects()).filter(p => canAccessProject(p, ctx.email))
+      const scoped = project_id ? projects.filter(p => p.id === project_id) : projects
+      if (project_id && !scoped.length) throw new Error('project not found or not accessible')
+      return text(scoped.map(p => ({
+        projectId: p.id,
+        project: p.name,
+        driveFolderUrl: p.driveFolderUrl ?? null,
+        links: p.links ?? [],
+      })))
+    }
+  )
+
+  server.registerTool(
+    'add_project_link',
+    {
+      title: '프로젝트 자료 추가',
+      description:
+        'Files a link against the project. A Google Drive URL is recognised as one, so the app shows the file\'s current name rather than whatever it was called when the link was made. Use add_task_link instead for a file that belongs to one piece of work.',
+      inputSchema: {
+        project_id: z.string(),
+        url: z.string().min(1),
+        title: z.string().optional().describe('defaults to the host and path'),
+        note: z.string().optional().describe('shown beside the name — how two links to one file are told apart'),
+      },
+    },
+    async (args) => {
+      const project = (await readProjects()).find(p => p.id === args.project_id)
+      if (!project || !canAccessProject(project, ctx.email)) {
+        throw new Error('project not found or not accessible')
+      }
+      const entry = makeLink(args.url, args.title, args.note)
+      // Read-modify-write, as the app does: the list lives on one key, so two
+      // additions landing in the same instant would leave only the later one.
+      // Rare enough to accept, and the alternative is a lock this database has
+      // no use for anywhere else.
+      await writeProjectMeta(args.project_id, { links: [...(project.links ?? []), entry] })
+      return text({ added: entry })
+    }
+  )
+
+  server.registerTool(
+    'remove_project_link',
+    {
+      title: '프로젝트 자료 해제',
+      description: 'Removes one link from a project. The file itself is untouched — this server never writes to Drive.',
+      inputSchema: { project_id: z.string(), link_id: z.string() },
+      annotations: { destructiveHint: true },
+    },
+    async (args) => {
+      const project = (await readProjects()).find(p => p.id === args.project_id)
+      if (!project || !canAccessProject(project, ctx.email)) {
+        throw new Error('project not found or not accessible')
+      }
+      const links = project.links ?? []
+      const gone = links.find(l => l.id === args.link_id)
+      if (!gone) throw new Error('link not found on this project')
+      await writeProjectMeta(args.project_id, { links: links.filter(l => l.id !== args.link_id) })
+      return text({ removed: gone })
     }
   )
 }
