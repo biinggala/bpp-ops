@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { useUiStore } from '../../../store/uiStore'
 import { useProjectStore } from '../../../store/projectStore'
+import { useTaskStore } from '../../../store/taskStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useAccessibleTasks } from '../../../hooks/useAccessibleTasks'
 import { useMobile } from '../../../hooks/useMobile'
@@ -86,6 +87,7 @@ function ProjectFiles({ project, tasks, query, standalone }: {
   standalone: boolean
 }) {
   const updateProject = useProjectStore(s => s.updateProject)
+  const updateTask = useTaskStore(s => s.updateTask)
   const milestones = useMilestoneStore(s => s.milestones)
   const folderId = useProjectFolderId(project.id)
   const folderUrl = safeExternalUrl(project.driveFolderUrl)
@@ -135,6 +137,14 @@ function ProjectFiles({ project, tasks, query, standalone }: {
 
   const add = (link: TaskLink) => { haptic('toggle'); updateProject(project.id, { links: [...shelf, link] }) }
   const remove = (id: string) => updateProject(project.id, { links: shelf.filter(l => l.id !== id) })
+  const setNote = (id: string, note: string) =>
+    updateProject(project.id, { links: shelf.map(l => l.id === id ? withNote(l, note) : l) })
+
+  // The index is read-only about *which* files exist, but the note is the one
+  // thing you want to write from here — it is where you are looking when two
+  // rows turn out to be the same document.
+  const noteOnTask = (task: Task, linkId: string, note: string) =>
+    updateTask(task.id, { links: (task.links ?? []).map(l => l.id === linkId ? withNote(l, note) : l) })
 
   // With a search running, a project with no hits is noise.
   if (query && shelfShown.length === 0 && filtered.length === 0) return null
@@ -186,7 +196,11 @@ function ProjectFiles({ project, tasks, query, standalone }: {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           {shelfShown.map(l => (
-            <FileRow key={l.id} link={l} file={shelfResolved.get(driveIdOf(l) ?? '')} onRemove={() => remove(l.id)} />
+            <FileRow
+              key={l.id} link={l} file={shelfResolved.get(driveIdOf(l) ?? '')}
+              onRemove={() => remove(l.id)}
+              onNote={note => setNote(l.id, note)}
+            />
           ))}
           {shelfShown.length === 0 && !adding && (
             <div style={{ fontSize: 12, color: 'var(--t3)', padding: '4px 2px' }}>
@@ -223,7 +237,12 @@ function ProjectFiles({ project, tasks, query, standalone }: {
                   {group.items.map(({ link, task }) => (
                     <div key={link.id} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <FileRow link={link} file={attachedResolved.get(driveIdOf(link) ?? '')} compact />
+                        <FileRow
+                          link={link}
+                          file={attachedResolved.get(driveIdOf(link) ?? '')}
+                          compact
+                          onNote={note => noteOnTask(task, link.id, note)}
+                        />
                       </div>
                       {/* Which task it hangs off — the thing the list is for. */}
                       <span
@@ -243,6 +262,12 @@ function ProjectFiles({ project, tasks, query, standalone }: {
       )}
     </section>
   )
+}
+
+/** Firebase rejects undefined, so an emptied note is dropped rather than blanked. */
+function withNote(link: TaskLink, note: string): TaskLink {
+  const { note: _old, ...rest } = link
+  return note ? { ...rest, note } : rest
 }
 
 function SectionHead({ label, count, action }: { label: string; count: number; action?: React.ReactNode }) {

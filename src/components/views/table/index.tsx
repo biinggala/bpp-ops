@@ -2344,7 +2344,13 @@ function LinksCell({ links, projectId, onChange }: {
                 {links.map(l => (
                   <FileRow key={l.id} link={l} compact
                     file={resolved.get(driveIdOf(l) ?? '')}
-                    onRemove={() => remove(l.id)} />
+                    onRemove={() => remove(l.id)}
+                    onNote={note => onChange(links.map(x => {
+              if (x.id !== l.id) return x
+              // Firebase rejects undefined, so an emptied note is dropped.
+              const { note: _old, ...rest } = x
+              return note ? { ...rest, note } : rest
+            }))} />
                 ))}
               </div>
               <MenuDivider />

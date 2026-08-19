@@ -98,6 +98,15 @@ export interface TaskLink {
    * tab it opens without parsing its own link back apart.
    */
   tabTitle?: string
+  /**
+   * A line the person writes, to tell two links to the same file apart.
+   *
+   * The displayed name comes from Drive, so three links into one 출연자 미팅록
+   * — one per interviewee's tab — read as the same row three times. The tab
+   * name helps only when the tabs were named well; this is where somebody says
+   * what they actually meant.
+   */
+  note?: string
 }
 
 export interface Member {

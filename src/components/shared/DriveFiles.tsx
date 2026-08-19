@@ -88,13 +88,20 @@ export function useProjectFolderId(projectId: string | undefined): string | null
 
 // ── One attached file ─────────────────────────────────────────────────────────
 
-export function FileRow({ link, file, onRemove, compact = false }: {
+export function FileRow({ link, file, onRemove, onNote, compact = false }: {
   link: TaskLink
   /** undefined = not looked up yet, null = looked up and unavailable. */
   file?: DriveFile | null
   onRemove?: () => void
+  /** Supplied where the note may be written; omitted makes the row read-only. */
+  onNote?: (note: string) => void
   compact?: boolean
 }) {
+  const [editingNote, setEditingNote] = useState(false)
+  const [draft, setDraft] = useState(link.note ?? '')
+  const [hovered, setHovered] = useState(false)
+
+  const commitNote = () => { onNote?.(draft.trim()); setEditingNote(false) }
   const isDrive = !!driveIdOf(link)
   const kind = fileKind(file?.mimeType ?? link.mimeType)
   const name = file?.name ?? link.title
@@ -117,8 +124,8 @@ export function FileRow({ link, file, onRemove, compact = false }: {
         transition: 'background .07s, border-color .1s',
         minWidth: 0,
       }}
-      onMouseEnter={e => { e.currentTarget.style.background = compact ? 'var(--bg3)' : 'var(--bg2)'; e.currentTarget.style.borderColor = compact ? 'transparent' : 'var(--bd2)' }}
-      onMouseLeave={e => { e.currentTarget.style.background = compact ? 'transparent' : 'var(--bg2)'; e.currentTarget.style.borderColor = compact ? 'transparent' : 'var(--bd)' }}
+      onMouseEnter={e => { setHovered(true); e.currentTarget.style.background = compact ? 'var(--bg3)' : 'var(--bg2)'; e.currentTarget.style.borderColor = compact ? 'transparent' : 'var(--bd2)' }}
+      onMouseLeave={e => { setHovered(false); e.currentTarget.style.background = compact ? 'transparent' : 'var(--bg2)'; e.currentTarget.style.borderColor = compact ? 'transparent' : 'var(--bd)' }}
     >
       <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1, opacity: gone ? .4 : 1 }}>
         {isDrive ? kind.icon : '🔗'}
@@ -135,6 +142,7 @@ export function FileRow({ link, file, onRemove, compact = false }: {
           textDecoration: gone ? 'line-through' : 'none',
         }}>{name}</div>
         <div style={{ fontSize: 10, color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
+          {link.note && <span style={{ color: 'var(--t2)', fontWeight: 500 }}>{link.note} · </span>}
           {gone ? '드라이브에서 찾을 수 없음'
             : isDrive ? [
                 kind.label,
@@ -144,6 +152,43 @@ export function FileRow({ link, file, onRemove, compact = false }: {
             : hostOf(link.url)}
         </div>
       </a>
+      {onNote && !editingNote && (
+        <button
+          onClick={e => { e.stopPropagation(); setDraft(link.note ?? ''); setEditingNote(true) }}
+          title={link.note ? '메모 수정' : '메모 추가'}
+          style={{
+            flexShrink: 0, height: 20, padding: '0 6px', border: 'none',
+            background: 'transparent', cursor: 'pointer', color: 'var(--t3)',
+            fontSize: 11, borderRadius: 'var(--r1)', fontFamily: 'var(--font)',
+            // Hidden until wanted: most rows never need one, and a permanent
+            // affordance on every file is a column of clutter.
+            opacity: hovered || link.note ? 1 : 0, transition: 'opacity .1s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; e.currentTarget.style.color = 'var(--t1)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
+        >✎</button>
+      )}
+      {onNote && editingNote && (
+        <input
+          autoFocus
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commitNote}
+          onClick={e => e.stopPropagation()}
+          onKeyDown={e => {
+            e.stopPropagation()
+            if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); commitNote() }
+            if (e.key === 'Escape') { setDraft(link.note ?? ''); setEditingNote(false) }
+          }}
+          placeholder="메모 (예: 김민수 미팅)"
+          style={{
+            flexShrink: 1, minWidth: 0, width: 150,
+            border: '1px solid var(--ac)', borderRadius: 'var(--r1)',
+            padding: '3px 6px', fontSize: 11, background: 'var(--bg)',
+            color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)',
+          }}
+        />
+      )}
       {onRemove && (
         <button
           onClick={e => { e.stopPropagation(); onRemove() }}

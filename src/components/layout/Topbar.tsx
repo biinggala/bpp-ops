@@ -2,7 +2,6 @@ import React from 'react'
 import { useUiStore } from '../../store/uiStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMobile } from '../../hooks/useMobile'
-import { safeExternalUrl } from '../../lib/utils'
 import { haptic } from '../../lib/haptics'
 import { MobileFilterButton } from './MobileFilterSheet'
 
@@ -13,11 +12,6 @@ export function Topbar() {
 
   const activeProject = projectId ? projects.find(p => p.id === projectId) : null
   const title = activeProject?.name ?? space ?? (myTasksOnly ? '내 할 일' : '전체 업무')
-  // The project's folder used to be a 📁 that appeared on hover over the sidebar
-  // row — invisible until you already suspected it was there. It belongs next to
-  // the project's name, where it is on screen the whole time you are in the
-  // project. (Setting it is still the sidebar's right-click menu.)
-  const folderUrl = safeExternalUrl(activeProject?.driveFolderUrl)
 
   return (
     <header style={{
@@ -56,23 +50,6 @@ export function Topbar() {
         <h1 style={{ fontSize: isMobile ? 15 : 16, fontWeight: 600, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {title}
         </h1>
-        {folderUrl && (
-          <a
-            href={folderUrl} target="_blank" rel="noopener noreferrer"
-            title="프로젝트 드라이브 폴더 열기"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
-              padding: '3px 9px', borderRadius: 999,
-              border: '1px solid var(--bd)', background: 'transparent',
-              color: 'var(--t2)', fontSize: 12, textDecoration: 'none',
-              transition: 'background .1s, border-color .1s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; e.currentTarget.style.borderColor = 'var(--bd2)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--bd)' }}
-          >
-            📁 {isMobile ? '' : '자료 폴더'}
-          </a>
-        )}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>

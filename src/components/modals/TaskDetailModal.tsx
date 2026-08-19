@@ -99,7 +99,16 @@ function AssetsPanel({ links, projectId, onChange }: {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {links.map(l => (
-          <FileRow key={l.id} link={l} file={resolved.get(driveIdOf(l) ?? '')} onRemove={() => remove(l.id)} />
+          <FileRow
+            key={l.id} link={l} file={resolved.get(driveIdOf(l) ?? '')}
+            onRemove={() => remove(l.id)}
+            onNote={note => onChange(links.map(x => {
+              if (x.id !== l.id) return x
+              // Firebase rejects undefined, so an emptied note is dropped.
+              const { note: _old, ...rest } = x
+              return note ? { ...rest, note } : rest
+            }))}
+          />
         ))}
       </div>
 
