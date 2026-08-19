@@ -776,8 +776,12 @@ function MilestoneRow({
       <div
         onClick={() => { if (!lpActive.current) onToggle() }}
         style={{
-          width: leftW, flexShrink: 0, position: 'sticky', left: 0, zIndex: 2,
-          background: hovered ? (isNull ? 'var(--bg2)' : `${tintBg}.14)`) : 'var(--bg)',
+          width: leftW, flexShrink: 0, position: 'sticky', left: 0, zIndex: 4,
+          // Opaque, always. A tint with alpha in it lets the timeline scroll
+          // through the pinned column — which is what the column is for.
+          background: hovered
+            ? (isNull ? 'var(--bg2)' : `linear-gradient(${tintBg}.14), ${tintBg}.14)), var(--bg)`)
+            : 'var(--bg)',
           borderRight: '1px solid var(--bd)', display: 'flex', alignItems: 'center',
           paddingLeft: 4, paddingRight: 6, gap: 5, overflow: 'hidden', cursor: 'pointer',
         }}
@@ -907,7 +911,7 @@ function TaskRow({
       <div
         onClick={() => { if (!renaming) onOpen() }}
         style={{
-          width: leftW, flexShrink: 0, position: 'sticky', left: 0, zIndex: 2,
+          width: leftW, flexShrink: 0, position: 'sticky', left: 0, zIndex: 4,
           background: hovered ? 'var(--bg2)' : 'var(--bg)',
           borderRight: '1px solid var(--bd)', display: 'flex', alignItems: 'center',
           paddingLeft, paddingRight: 8, gap: 4, overflow: 'hidden', cursor: 'pointer',
@@ -1005,7 +1009,7 @@ function TaskRow({
               background: isOverdue ? 'rgba(212,76,71,.1)' : color.bg,
               border: `${child ? 1 : 1.5}px solid ${isOverdue ? '#D44C47' : color.text}`,
               display: 'flex', alignItems: 'center', paddingLeft: 6,
-              overflow: 'visible', zIndex: 2,
+              overflow: 'visible', zIndex: 1,
               cursor: dragging ? 'grabbing' : 'grab',
               opacity: isDone ? .5 : dragging ? .85 : cascading ? .75 : 1,
               boxShadow: dragging ? '0 4px 12px rgba(0,0,0,.18)' : cascading ? '0 2px 8px rgba(0,0,0,.12)' : 'none',
@@ -1048,7 +1052,7 @@ function TaskRow({
             position: 'absolute', left: col * dayW + 2, top: -2,
             transform: 'translateY(-100%)', background: 'var(--t1)', color: 'var(--bg)',
             fontSize: 10, padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap',
-            pointerEvents: 'none', zIndex: 5, fontVariantNumeric: 'tabular-nums',
+            pointerEvents: 'none', zIndex: 3, fontVariantNumeric: 'tabular-nums',
           }}>
             {fmtYMD(addDays(rangeStart, col)).slice(5)} – {fmtYMD(addDays(rangeStart, col + span - 1)).slice(5)}
           </div>
@@ -1067,7 +1071,7 @@ function DraftBar({ from, to, dayW, accent, label }: { from: number; to: number;
       top: '50%', transform: 'translateY(-50%)', height: 20, borderRadius: 5,
       border: `1.5px dashed ${accent}`, background: 'var(--ac-l)',
       display: 'flex', alignItems: 'center', paddingLeft: 6, gap: 6,
-      pointerEvents: 'none', zIndex: 4, overflow: 'hidden',
+      pointerEvents: 'none', zIndex: 2, overflow: 'hidden',
     }}>
       <span style={{ fontSize: 10, color: accent, fontWeight: 600, whiteSpace: 'nowrap' }}>
         {span}일{span * dayW > 90 ? ` · ${label}` : ''}

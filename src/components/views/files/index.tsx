@@ -1,11 +1,11 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useUiStore } from '../../../store/uiStore'
 import { useProjectStore } from '../../../store/projectStore'
 import { useTaskStore } from '../../../store/taskStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useAccessibleTasks } from '../../../hooks/useAccessibleTasks'
 import { useMobile } from '../../../hooks/useMobile'
-import { safeExternalUrl } from '../../../lib/utils'
+import { gid, safeExternalUrl } from '../../../lib/utils'
 import { haptic } from '../../../lib/haptics'
 import { NOTION } from '../../../types'
 import type { Project, Task, TaskLink } from '../../../types'
@@ -13,6 +13,9 @@ import {
   FileRow, DriveSearch, UrlAdd, AttachTabs,
   useResolvedLinks, useProjectFolderId, driveIdOf, linkFromDriveFile,
 } from '../../shared/DriveFiles'
+import { driveIdFromUrl } from '../../../lib/googleDrive'
+
+const FOLDER_MIME = 'application/vnd.google-apps.folder'
 
 /**
  * ── 자료 ─────────────────────────────────────────────────────────────────────
@@ -90,7 +93,6 @@ function ProjectFiles({ project, tasks, query, standalone }: {
   const updateTask = useTaskStore(s => s.updateTask)
   const milestones = useMilestoneStore(s => s.milestones)
   const folderId = useProjectFolderId(project.id)
-  const folderUrl = safeExternalUrl(project.driveFolderUrl)
   const [adding, setAdding] = useState(false)
   const [mode, setMode] = useState<'drive' | 'url'>('drive')
 
@@ -135,6 +137,24 @@ function ProjectFiles({ project, tasks, query, standalone }: {
     [shelf],
   )
 
+  // A project used to have a folder *and* a shelf: one row that opened Drive,
+  // and a list of files underneath it. Two places to keep the same kind of
+  // thing, and the folder could hold only one. The folder is a shelf entry now
+  // — it is still what scopes Drive search, see useProjectFolderId — so the
+  // old field is moved across the first time this project is drawn and then
+  // never read again.
+  useEffect(() => {
+    const legacy = safeExternalUrl(project.driveFolderUrl)
+    if (!legacy) return
+    const already = shelf.some(l => l.url === legacy || (driveIdOf(l) && driveIdOf(l) === driveIdFromUrl(legacy)))
+    updateProject(project.id, {
+      driveFolderUrl: undefined,
+      ...(already ? null : {
+        links: [{ id: gid(), title: `${project.name} 폴더`, url: legacy, mimeType: FOLDER_MIME }, ...shelf],
+      }),
+    })
+  }, [project.id, project.driveFolderUrl])
+
   const add = (link: TaskLink) => { haptic('toggle'); updateProject(project.id, { links: [...shelf, link] }) }
   const remove = (id: string) => updateProject(project.id, { links: shelf.filter(l => l.id !== id) })
   const setNote = (id: string, note: string) =>
@@ -156,24 +176,6 @@ function ProjectFiles({ project, tasks, query, standalone }: {
           <span style={{ width: 9, height: 9, borderRadius: 2, background: project.color, flexShrink: 0 }} />
           <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--t1)' }}>{project.name}</span>
         </div>
-      )}
-
-      {folderUrl && (
-        <a
-          href={folderUrl} target="_blank" rel="noopener noreferrer"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '10px 12px', borderRadius: 'var(--r3)',
-            border: '1px solid var(--bd)', background: 'var(--bg2)',
-            color: 'var(--t1)', fontSize: 13, textDecoration: 'none',
-          }}
-          onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--bd2)')}
-          onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--bd)')}
-        >
-          <span style={{ fontSize: 15 }}>📁</span>
-          <span style={{ flex: 1 }}>프로젝트 드라이브 폴더</span>
-          <span style={{ fontSize: 11, color: 'var(--t3)' }}>열기 ↗</span>
-        </a>
       )}
 
       {/* ── The project's own shelf ──────────────────────────────────────── */}

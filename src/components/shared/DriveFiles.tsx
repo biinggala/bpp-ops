@@ -78,13 +78,31 @@ export function linkFromDriveFile(f: DriveFile, tab?: { id: string; title: strin
 }
 
 /** The project folder's Drive id, when the project has one set. */
+/**
+ * The folder a project's Drive search should look in first.
+ *
+ * Read off the project's own shelf: a folder put there is the folder the work
+ * lives in, and there is no second place to say so. `driveFolderUrl` is the
+ * older, separate field — kept only until a project's folder has been folded
+ * into its shelf, which the 자료 view does the first time it draws one.
+ */
 export function useProjectFolderId(projectId: string | undefined): string | null {
   const projects = useProjectStore(s => s.projects)
   return useMemo(() => {
-    const url = projectId ? projects.find(p => p.id === projectId)?.driveFolderUrl : undefined
-    return url ? driveIdFromUrl(url) : null
+    const project = projectId ? projects.find(p => p.id === projectId) : undefined
+    if (!project) return null
+    const shelved = (project.links ?? []).find(isDriveFolder)
+    if (shelved) return driveIdOf(shelved) ?? null
+    return project.driveFolderUrl ? driveIdFromUrl(project.driveFolderUrl) : null
   }, [projects, projectId])
 }
+
+/** A Drive folder, whether Drive told us so or the URL says it. */
+export function isDriveFolder(link: TaskLink): boolean {
+  return link.mimeType === FOLDER_MIME || /\/drive\/folders\//.test(link.url)
+}
+
+const FOLDER_MIME = 'application/vnd.google-apps.folder'
 
 // ── One attached file ─────────────────────────────────────────────────────────
 

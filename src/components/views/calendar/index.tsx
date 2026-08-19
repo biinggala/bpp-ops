@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect, Component } from 'react'
+import React, { useState, useMemo, useRef, useEffect, useCallback, Component } from 'react'
 import { useUiStore } from '../../../store/uiStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
@@ -15,6 +15,8 @@ import { useMobile } from '../../../hooks/useMobile'
 import { getCatColor, NOTION } from '../../../types'
 import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade } from '../../../lib/utils'
 import type { Task } from '../../../types'
+
+type Chip = { kind: 'gcal'; ev: GCalEvent } | { kind: 'task'; t: Task }
 
 const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토']
 const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
@@ -566,6 +568,9 @@ function useWheelSlide(
     let lastAt = 0
     let idle: number | undefined
     let tween: number | undefined
+    // Measured once per gesture. Reading it per event puts a forced layout
+    // between two style writes, which is the shape of a stutter.
+    let step = 0
 
     const paint = () => el.style.setProperty('--slide', `${-travelled}px`)
 
@@ -601,7 +606,8 @@ function useWheelSlide(
 
       if (tween !== undefined) { cancelAnimationFrame(tween); tween = undefined }
       const now = e.timeStamp
-      if (now - lastAt > QUIET_MS) travelled = 0
+      if (now - lastAt > QUIET_MS) { travelled = 0; step = 0 }
+      if (!step) step = Math.max(1, stepRef.current())
       lastAt = now
 
       // The slide-in animation belongs to the arrows; playing it on every day of
@@ -611,7 +617,6 @@ function useWheelSlide(
       idle = window.setTimeout(settle, QUIET_MS)
 
       travelled += delta
-      const step = Math.max(1, stepRef.current())
       let steps = Math.round(travelled / step)
       if (steps) {
         steps = Math.max(-MAX_STEP, Math.min(MAX_STEP, steps))
@@ -903,21 +908,31 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
     return map
   }, [milestones, projectId])
 
-  // GCal events indexed by start date only (avoids long-span events flooding every cell)
-  const gcalByDate = useMemo(() => {
-    const map: Record<string, GCalEvent[]> = {}
-    gcalEvents.forEach(ev => {
-      if (!ev.start) return
-      if (!map[ev.start]) map[ev.start] = []
-      map[ev.start].push(ev)
-    })
+  // Everything a cell draws, indexed by day and built once.
+  //
+  // Each cell used to filter the whole task list for itself — 56 passes per
+  // render — and rebuild its own arrays, so no cell could ever be skipped on a
+  // re-render. Scrolling a month redrew all 56 for the sake of the 7 that had
+  // changed, and that is what made it stutter. Stable arrays let MonthCell's
+  // memo hold.
+  //
+  // Events are indexed by their start day only; a week-long one would otherwise
+  // flood every cell it touches.
+  const chipsByDate = useMemo(() => {
+    const map = new Map<string, Chip[]>()
+    const put = (day: string, chip: Chip) => {
+      const at = map.get(day)
+      if (at) at.push(chip); else map.set(day, [chip])
+    }
+    gcalEvents.forEach(ev => { if (ev.start) put(ev.start, { kind: 'gcal', ev }) })
+    tasks.forEach(t => { const day = t.due ?? t.start; if (day) put(day, { kind: 'task', t }) })
     return map
-  }, [gcalEvents])
+  }, [gcalEvents, tasks])
 
   const [dragOver, setDragOver]     = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
 
-  const today = new Date()
+  const todayStr = fmt(new Date())
 
   const cells: { date: Date; isCurrentMonth: boolean }[] = []
   for (let i = 0; i < 56; i++) {
@@ -925,21 +940,14 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
     cells.push({ date, isCurrentMonth: date.getMonth() === calMonth && date.getFullYear() === calYear })
   }
 
-  const tasksByDate = (date: Date): Task[] => {
-    const d = fmt(date)
-    return tasks.filter(t => {
-      const key = t.due ?? t.start
-      return key === d
-    })
-  }
-
-  const handleDrop = (e: React.DragEvent, dropDate: Date) => {
+  const handleDrop = useCallback((e: React.DragEvent, dropDay: string) => {
     e.preventDefault()
     const taskId      = e.dataTransfer.getData('taskId')
     const fromDateStr = e.dataTransfer.getData('fromDate')
     if (!taskId || !fromDateStr) return
     const task = tasks.find(t => t.id === taskId)
     if (!task) return
+    const dropDate = parseDate(dropDay)
     const offset = dayDiff(parseDate(fromDateStr), dropDate)
     if (offset === 0) { setDragOver(null); return }
     const patch: Partial<Task> = {}
@@ -956,7 +964,13 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
       updateTask(id, cp)
     })
     setDragOver(null)
-  }
+  }, [tasks, allTasks, updateTask])
+
+  const onDragOverDay   = useCallback((day: string) => setDragOver(day), [])
+  const onDragLeaveDay  = useCallback(() => setDragOver(null), [])
+  const onPlanDay       = useCallback((day: string, anchor: HTMLElement) => setPlanning({ date: day, anchor }), [])
+  const onTaskDragStart = useCallback((taskId: string) => setDraggingId(taskId), [])
+  const onTaskDragEnd   = useCallback(() => { setDraggingId(null); setDragOver(null) }, [])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
@@ -983,108 +997,30 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
           display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
           gridTemplateRows: 'repeat(8, 1fr)', height: `${(8 / 6) * 100}%`,
           transform: 'translateY(calc(-12.5% + var(--slide, 0px)))',
+          willChange: 'transform',
         }}>
           {cells.map(({ date, isCurrentMonth }, i) => {
-            const dateStr      = fmt(date)
-            const isToday      = dateStr === fmt(today)
-            const isDragTarget = dragOver === dateStr
-            const dayTasks     = tasksByDate(date)
-            const dayGCal      = gcalByDate[dateStr] ?? []
-            const dayMilestones = milestoneByDate[dateStr] ?? []
-            const hasMilestone = dayMilestones.length > 0
-            const dow = date.getDay()
-            const isWeekend = dow === 0 || dow === 6
-
-            // Combined chip list: GCal first, then tasks
-            type Chip = { kind: 'gcal'; ev: GCalEvent } | { kind: 'task'; t: Task }
-            const allChips: Chip[] = [
-              ...dayGCal.map(ev => ({ kind: 'gcal' as const, ev })),
-              ...dayTasks.map(t => ({ kind: 'task' as const, t })),
-            ]
-            const LIMIT = 5
-            const visibleChips = allChips.length <= LIMIT ? allChips : allChips.slice(0, LIMIT - 1)
-            const overflow = allChips.length - visibleChips.length
-
+            const dateStr = fmt(date)
             return (
-              <div
+              <MonthCell
                 key={dateStr}
-                data-month-cell
-                onDragOver={e => { e.preventDefault(); setDragOver(dateStr) }}
-                onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null) }}
-                onDrop={e => handleDrop(e, date)}
-                onClick={e => setPlanning({ date: dateStr, anchor: e.currentTarget })}
-                style={{
-                  cursor: 'pointer',
-                  borderRight: (i + 1) % 7 === 0 ? 'none' : '1px solid var(--bd)',
-                  borderBottom: '1px solid var(--bd)',
-                  display: 'flex', flexDirection: 'column',
-                  minHeight: 90, minWidth: 0, overflow: 'hidden',
-                  background: isDragTarget ? 'var(--ac-l)' : hasMilestone ? 'rgba(144,101,176,.05)' : !isCurrentMonth ? 'var(--bg2)' : isToday ? 'rgba(35,131,226,.03)' : isWeekend ? 'var(--bg2)' : 'transparent',
-                  outline: isDragTarget ? '2px solid var(--ac)' : hasMilestone ? '2px solid rgba(144,101,176,.30)' : 'none',
-                  outlineOffset: '-2px',
-                  transition: 'background .08s',
-                }}
-              >
-                {/* Date number + milestone diamonds */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 8px 3px', gap: 4 }}>
-                  {hasMilestone && (
-                    <div style={{ display: 'flex', gap: 3, alignItems: 'center', flex: 1, minWidth: 0, overflow: 'hidden' }}>
-                      {dayMilestones.map((ms, mi) => (
-                        <span key={mi} title={ms.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600, color: NOTION.purple.text, background: NOTION.purple.bg, borderRadius: 4, padding: '1px 5px', minWidth: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          ◆ {ms.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <span style={{ fontSize: 12, fontWeight: isToday ? 700 : 400, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: isToday ? 22 : 'auto', height: isToday ? 22 : 'auto', borderRadius: isToday ? '50%' : 0, background: isToday ? 'var(--ac)' : 'transparent', color: isToday ? '#fff' : !isCurrentMonth ? 'var(--t3)' : 'var(--t2)' }}>
-                    {date.getDate()}
-                  </span>
-                </div>
-
-                {/* Events */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 3px 4px', minWidth: 0 }}>
-                  {visibleChips.map((chip, ci) => {
-                    if (chip.kind === 'gcal') {
-                      const ev = chip.ev
-                      return (
-                        <a
-                          key={ev.id}
-                          href={ev.htmlLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title={ev.summary}
-                          style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3, background: GCAL_BG, color: GCAL_TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none', display: 'block', cursor: 'pointer', minWidth: 0 }}
-                          onClick={e => e.stopPropagation()}
-                          onMouseEnter={e => e.currentTarget.style.opacity = '.75'}
-                          onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-                        >
-                          {ev.startTime ? `${ev.startTime} ` : ''}{ev.summary}
-                        </a>
-                      )
-                    }
-                    const t = chip.t
-                    const color = getCatColor(t.cat)
-                    const isBeingDragged = draggingId === t.id
-                    return (
-                      <div
-                        key={t.id + ci}
-                        draggable
-                        onDragStart={e => { e.dataTransfer.setData('taskId', t.id); e.dataTransfer.setData('fromDate', dateStr); e.dataTransfer.effectAllowed = 'move'; setDraggingId(t.id) }}
-                        onDragEnd={() => { setDraggingId(null); setDragOver(null) }}
-                        onClick={e => { e.stopPropagation(); openTaskDetail(t.id) }}
-                        style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3, background: color.bg, color: color.text, cursor: 'grab', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: isBeingDragged ? .35 : 1, transition: 'opacity .1s', userSelect: 'none', minWidth: 0 }}
-                        onMouseEnter={e => { if (!isBeingDragged) e.currentTarget.style.opacity = '.75' }}
-                        onMouseLeave={e => { if (!isBeingDragged) e.currentTarget.style.opacity = '1' }}
-                      >
-                        {t.name}
-                      </div>
-                    )
-                  })}
-                  {overflow > 0 && (
-                    <div style={{ fontSize: 10, color: 'var(--t3)', padding: '0 6px' }}>+{overflow}개 더</div>
-                  )}
-                </div>
-              </div>
+                day={dateStr}
+                dayOfMonth={date.getDate()}
+                column={i % 7}
+                isCurrentMonth={isCurrentMonth}
+                isToday={dateStr === todayStr}
+                isDragTarget={dragOver === dateStr}
+                chips={chipsByDate.get(dateStr)}
+                milestones={milestoneByDate[dateStr]}
+                draggingId={draggingId}
+                onDragOverDay={onDragOverDay}
+                onDragLeaveDay={onDragLeaveDay}
+                onDropDay={handleDrop}
+                onPlanDay={onPlanDay}
+                onOpenTask={openTaskDetail}
+                onTaskDragStart={onTaskDragStart}
+                onTaskDragEnd={onTaskDragEnd}
+              />
             )
           })}
         </div>
@@ -1099,6 +1035,127 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
     </div>
   )
 }
+
+/**
+ * One day of the month grid.
+ *
+ * Memoised, and that is the point: scrolling a month swaps seven cells and
+ * leaves forty-nine exactly as they were. Every prop is a primitive or an array
+ * whose identity the parent holds stable, so React can compare them cheaply and
+ * skip the rest.
+ */
+const MonthCell = React.memo(function MonthCell({
+  day, dayOfMonth, column, isCurrentMonth, isToday, isDragTarget,
+  chips, milestones, draggingId,
+  onDragOverDay, onDragLeaveDay, onDropDay, onPlanDay, onOpenTask,
+  onTaskDragStart, onTaskDragEnd,
+}: {
+  day: string
+  dayOfMonth: number
+  column: number
+  isCurrentMonth: boolean
+  isToday: boolean
+  isDragTarget: boolean
+  chips?: Chip[]
+  milestones?: { name: string; color: string }[]
+  draggingId: string | null
+  onDragOverDay: (day: string) => void
+  onDragLeaveDay: () => void
+  onDropDay: (e: React.DragEvent, day: string) => void
+  onPlanDay: (day: string, anchor: HTMLElement) => void
+  onOpenTask: (id: string) => void
+  onTaskDragStart: (taskId: string) => void
+  onTaskDragEnd: () => void
+}) {
+  const all = chips ?? []
+  const hasMilestone = !!milestones?.length
+  const isWeekend = column === 0 || column === 6
+
+  const LIMIT = 5
+  const visible = all.length <= LIMIT ? all : all.slice(0, LIMIT - 1)
+  const overflow = all.length - visible.length
+
+  return (
+    <div
+      data-month-cell
+      onDragOver={e => { e.preventDefault(); onDragOverDay(day) }}
+      onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) onDragLeaveDay() }}
+      onDrop={e => onDropDay(e, day)}
+      onClick={e => onPlanDay(day, e.currentTarget)}
+      style={{
+        cursor: 'pointer',
+        borderRight: column === 6 ? 'none' : '1px solid var(--bd)',
+        borderBottom: '1px solid var(--bd)',
+        display: 'flex', flexDirection: 'column',
+        minHeight: 90, minWidth: 0, overflow: 'hidden',
+        background: isDragTarget ? 'var(--ac-l)' : hasMilestone ? 'rgba(144,101,176,.05)' : !isCurrentMonth ? 'var(--bg2)' : isToday ? 'rgba(35,131,226,.03)' : isWeekend ? 'var(--bg2)' : 'transparent',
+        outline: isDragTarget ? '2px solid var(--ac)' : hasMilestone ? '2px solid rgba(144,101,176,.30)' : 'none',
+        outlineOffset: '-2px',
+        transition: 'background .08s',
+      }}
+    >
+      {/* Date number + milestone diamonds */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 8px 3px', gap: 4 }}>
+        {hasMilestone && (
+          <div style={{ display: 'flex', gap: 3, alignItems: 'center', flex: 1, minWidth: 0, overflow: 'hidden' }}>
+            {milestones!.map((ms, mi) => (
+              <span key={mi} title={ms.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600, color: NOTION.purple.text, background: NOTION.purple.bg, borderRadius: 4, padding: '1px 5px', minWidth: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                ◆ {ms.name}
+              </span>
+            ))}
+          </div>
+        )}
+        <span style={{ fontSize: 12, fontWeight: isToday ? 700 : 400, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: isToday ? 22 : 'auto', height: isToday ? 22 : 'auto', borderRadius: isToday ? '50%' : 0, background: isToday ? 'var(--ac)' : 'transparent', color: isToday ? '#fff' : !isCurrentMonth ? 'var(--t3)' : 'var(--t2)' }}>
+          {dayOfMonth}
+        </span>
+      </div>
+
+      {/* Events */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 3px 4px', minWidth: 0 }}>
+        {visible.map((chip, ci) => {
+          if (chip.kind === 'gcal') {
+            const ev = chip.ev
+            return (
+              <a
+                key={ev.id}
+                href={ev.htmlLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={ev.summary}
+                style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3, background: GCAL_BG, color: GCAL_TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none', display: 'block', cursor: 'pointer', minWidth: 0 }}
+                onClick={e => e.stopPropagation()}
+                onMouseEnter={e => e.currentTarget.style.opacity = '.75'}
+                onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+              >
+                {ev.startTime ? `${ev.startTime} ` : ''}{ev.summary}
+              </a>
+            )
+          }
+          const t = chip.t
+          const color = getCatColor(t.cat)
+          const isBeingDragged = draggingId === t.id
+          return (
+            <div
+              key={t.id + ci}
+              draggable
+              onDragStart={e => { e.dataTransfer.setData('taskId', t.id); e.dataTransfer.setData('fromDate', day); e.dataTransfer.effectAllowed = 'move'; onTaskDragStart(t.id) }}
+              onDragEnd={onTaskDragEnd}
+              onClick={e => { e.stopPropagation(); onOpenTask(t.id) }}
+              style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3, background: color.bg, color: color.text, cursor: 'grab', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: isBeingDragged ? .35 : 1, transition: 'opacity .1s', userSelect: 'none', minWidth: 0 }}
+              onMouseEnter={e => { if (!isBeingDragged) e.currentTarget.style.opacity = '.75' }}
+              onMouseLeave={e => { if (!isBeingDragged) e.currentTarget.style.opacity = '1' }}
+            >
+              {t.name}
+            </div>
+          )
+        })}
+        {overflow > 0 && (
+          <div style={{ fontSize: 10, color: 'var(--t3)', padding: '0 6px' }}>+{overflow}개 더</div>
+        )}
+      </div>
+    </div>
+  )
+})
 
 function NavBtn({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
   return (
