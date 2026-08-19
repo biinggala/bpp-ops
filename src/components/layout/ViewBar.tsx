@@ -40,7 +40,7 @@ const GROUP_OPTIONS = [
 export function ViewBar() {
   const {
     view, setView, filters, setFilters, resetFilters,
-    showGCal, setShowGCal, hideCompleted, setHideCompleted,
+    hideCompleted, setHideCompleted,
     listGroup, setListGroup, myTasksOnly, projectId,
   } = useUiStore()
   const isMobile = useMobile()
@@ -111,7 +111,6 @@ export function ViewBar() {
   // The files view answers a different question and has its own search box: a
   // status or assignee filter has nothing to say about a 계약서.
   const showFilters = view !== 'f'
-  const showGCalToggle = view === 'c'
 
   // ── Active filters, as chips ────────────────────────────────────────────────
   // Everything narrowing the view gets a chip, including 검색 (set from the
@@ -220,11 +219,6 @@ export function ViewBar() {
               selected={filters.tags} onChange={v => setFilters({ tags: v })} />
           )}
 
-          {showGCalToggle && (
-            <Toggle active={showGCal} onClick={() => setShowGCal(!showGCal)} accent="#448361">
-              📅 일정
-            </Toggle>
-          )}
           <Toggle active={hideCompleted} onClick={() => setHideCompleted(!hideCompleted)}>
             완료 숨기기
           </Toggle>
@@ -354,10 +348,10 @@ function Divider() {
   return <div style={{ width: 1, height: 16, background: 'var(--bd)', margin: '0 4px', flexShrink: 0 }} />
 }
 
-function Toggle({ children, active, onClick, accent }: {
-  children: React.ReactNode; active: boolean; onClick: () => void; accent?: string
+function Toggle({ children, active, onClick }: {
+  children: React.ReactNode; active: boolean; onClick: () => void
 }) {
-  const c = accent ?? 'var(--ac)'
+  const c = 'var(--ac)'
   return (
     <button
       onClick={onClick}
@@ -365,7 +359,7 @@ function Toggle({ children, active, onClick, accent }: {
         display: 'flex', alignItems: 'center', gap: 4,
         padding: '4px 10px', borderRadius: 'var(--r1)',
         border: `1px solid ${active ? c : 'var(--bd)'}`,
-        background: active ? (accent ? 'rgba(68,131,97,.12)' : 'var(--ac-l)') : 'transparent',
+        background: active ? 'var(--ac-l)' : 'transparent',
         color: active ? c : 'var(--t2)',
         fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap',
       }}

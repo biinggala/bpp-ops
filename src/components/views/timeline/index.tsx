@@ -56,7 +56,7 @@ const SLOT_H = 64          // px per hour — a 30-minute block has to fit its o
 const PX_PER_MIN = SLOT_H / 60
 const SNAP = 15            // minutes
 const MIN_DURATION = 15
-const GUTTER = 52          // width of the hour labels
+export const GUTTER = 52   // width of the hour labels
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 /** The hour the grid is scrolled to on open — sits flush with the top edge. */
 const DAY_START_HOUR = 9

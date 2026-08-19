@@ -7,7 +7,7 @@ import { DayPlanner } from './DayPlanner'
 import { haptic } from '../../../lib/haptics'
 import { useProjectStore } from '../../../store/projectStore'
 import { useGCalStore } from '../../../store/gcalStore'
-import { TimelineGrid } from '../timeline'
+import { TimelineGrid, GUTTER as HOUR_GUTTER } from '../timeline'
 import { writableCalendars } from '../../../lib/googleCalendar'
 import type { CalRange } from '../../../types'
 import type { GCalEvent } from '../../../store/gcalStore'
@@ -208,7 +208,7 @@ function GoogleDot() {
 // ── Mobile calendar ───────────────────────────────────────────────────────────
 
 function MobileCalendar() {
-  const { openTaskModal, openTaskDetail, showGCal } = useUiStore()
+  const { openTaskModal, openTaskDetail } = useUiStore()
   const tasks = useFilteredTasks()
   const { token, events: gcalEvents, ensureEvents } = useGCalStore()
   const todayDate = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
@@ -336,7 +336,7 @@ function MobileCalendar() {
             const isToday    = dateStr === todayStr
             const isSelected = dateStr === selectedDate
             const hasTasks   = tasksByDate.has(dateStr)
-            const hasGCal    = showGCal && gcalByDate.has(dateStr)
+            const hasGCal    = gcalByDate.has(dateStr)
             const isSun = d.getDay() === 0
             const isSat = d.getDay() === 6
             return (
@@ -376,7 +376,7 @@ function MobileCalendar() {
         {/* Per-day sections */}
         {contentDates.map(dateStr => {
           const dayTasks = tasksByDate.get(dateStr) ?? []
-          const dayGCal  = showGCal ? (gcalByDate.get(dateStr) ?? []) : []
+          const dayGCal  = gcalByDate.get(dateStr) ?? []
           const total = dayTasks.length + dayGCal.length
           return (
             <div key={dateStr} ref={el => { if (el) sectionRefs.current.set(dateStr, el) }}>
@@ -522,78 +522,106 @@ export function CalendarView() {
 /**
  * ── Scrolling through time ───────────────────────────────────────────────────
  *
- * Apple Calendar moves vertically through months and horizontally through
- * weeks, and the content arrives from the direction you are travelling. Both of
- * those are copied here; what is not is the continuous surface — this pages,
- * because the grid is built one range at a time.
+ * Apple Calendar does not turn pages. Scroll a week view and the days travel
+ * under your fingers one at a time — a flick runs several of them past and then
+ * eases to a stop wherever the momentum ran out, which is very often the middle
+ * of a week rather than the start of the next one. That is what this does: a
+ * gesture is measured in pixels, and every column-width of travel moves the
+ * calendar by exactly one day (one week, in the month grid, whose columns are
+ * weekdays and whose rows are weeks).
  *
- * The hard part is not the paging, it is the trackpad. One flick produces
- * dozens of wheel events over about a second as the momentum decays, so
- * advancing on each of them walks a year. Firing once per *gesture* is the fix,
- * and a gesture ends where the events stop arriving: any gap longer than
- * QUIET_MS starts a new one, and the momentum tail — which never has a gap —
- * belongs to the one that already fired.
+ * A step is a column-width so that the content keeps pace with the gesture —
+ * scroll a screenful sideways and a screenful of days has gone by. The clamp
+ * only rescues the extremes: a single-day view would otherwise ask for a whole
+ * window of travel per day, and a narrow one would flicker past a month.
+ *
+ * The trackpad is what makes this delicate. One flick produces dozens of wheel
+ * events over about a second as the momentum decays, and unlike paging — where
+ * they all had to be collapsed into one move — here they are the point: the
+ * thinning events at the tail are exactly the "스스륵" slowdown. All that is
+ * needed is to forget any leftover travel when a genuinely new gesture starts,
+ * which a gap longer than QUIET_MS marks.
  */
-const WHEEL_THRESHOLD = 60
-const QUIET_MS = 120
+const QUIET_MS = 140
+/** No single wheel event may cover more than this; a stray page-sized delta
+ *  would otherwise throw the calendar into next season. */
+const MAX_STEP = 4
 
-function useWheelPaging(
+function useWheelScrub(
   ref: React.RefObject<HTMLDivElement | null>,
   axis: 'x' | 'y',
-  onPage: (direction: 1 | -1) => void,
+  stepPx: () => number,
+  onScrub: (steps: number) => void,
+  scrubbing: React.MutableRefObject<boolean>,
 ) {
-  const onPageRef = useRef(onPage)
-  onPageRef.current = onPage
+  const onScrubRef = useRef(onScrub); onScrubRef.current = onScrub
+  const stepRef = useRef(stepPx);     stepRef.current = stepPx
 
   useEffect(() => {
     const el = ref.current
     if (!el) return
 
-    let accumulated = 0
+    let travelled = 0
     let lastAt = 0
-    let firedThisGesture = false
+    let idle: number | undefined
 
     const handle = (e: WheelEvent) => {
       // Lines and pages, as some mice and older browsers report them.
       const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1
       const delta = (axis === 'y' ? e.deltaY : e.deltaX) * scale
-      if (delta === 0) return
+      const across = (axis === 'y' ? e.deltaX : e.deltaY) * scale
+      // A trackpad never travels on one axis alone. Whichever way the gesture
+      // is mostly going wins, so that scrolling the hours does not also drag
+      // the days sideways.
+      if (delta === 0 || Math.abs(delta) <= Math.abs(across)) return
 
-      // Horizontal paging has to take the event: left the browser would read it
-      // as a back-navigation swipe, and the calendar would vanish.
+      // Horizontal travel has to be taken: left, the browser would read it as a
+      // back-navigation swipe and the calendar would vanish mid-gesture.
       e.preventDefault()
 
       const now = e.timeStamp
-      if (now - lastAt > QUIET_MS) { accumulated = 0; firedThisGesture = false }
+      if (now - lastAt > QUIET_MS) travelled = 0
       lastAt = now
-      if (firedThisGesture) return
 
-      accumulated += delta
-      if (Math.abs(accumulated) < WHEEL_THRESHOLD) return
-      firedThisGesture = true
-      accumulated = 0
-      onPageRef.current(delta > 0 ? 1 : -1)
+      // The slide-in animation belongs to the buttons; playing it on every day
+      // of a scroll would strobe.
+      scrubbing.current = true
+      window.clearTimeout(idle)
+      idle = window.setTimeout(() => { scrubbing.current = false }, QUIET_MS * 2)
+
+      travelled += delta
+      const step = Math.max(1, stepRef.current())
+      const steps = Math.trunc(travelled / step)
+      if (!steps) return
+      travelled -= steps * step
+      onScrubRef.current(Math.max(-MAX_STEP, Math.min(MAX_STEP, steps)))
     }
 
     el.addEventListener('wheel', handle, { passive: false })
-    return () => el.removeEventListener('wheel', handle)
-  }, [ref, axis])
+    return () => { el.removeEventListener('wheel', handle); window.clearTimeout(idle) }
+  }, [ref, axis, scrubbing])
 }
 
 /**
  * Slides the body in from whichever way time just moved.
  *
  * Animated rather than re-keyed: remounting would reset the hour grid's own
- * scroll, so paging a week would throw you back to nine in the morning.
+ * scroll, so moving a week would throw you back to nine in the morning.
  */
-function useSlideOnChange(ref: React.RefObject<HTMLElement | null>, anchor: string, axis: 'x' | 'y') {
+function useSlideOnChange(
+  ref: React.RefObject<HTMLElement | null>,
+  anchor: string,
+  axis: 'x' | 'y',
+  suppress: React.MutableRefObject<boolean>,
+) {
   const previous = useRef(anchor)
   useEffect(() => {
     const before = previous.current
     if (before === anchor) return
     previous.current = anchor
     const el = ref.current
-    if (!el || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    if (!el || suppress.current) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
     const forward = toDate(anchor) > toDate(before)
     const offset = axis === 'y' ? 18 : 28
     const from = axis === 'y'
@@ -603,7 +631,13 @@ function useSlideOnChange(ref: React.RefObject<HTMLElement | null>, anchor: stri
       [{ opacity: 0, transform: from }, { opacity: 1, transform: 'none' }],
       { duration: 240, easing: 'cubic-bezier(.22,.61,.36,1)' },
     )
-  }, [anchor, axis, ref])
+  }, [anchor, axis, ref, suppress])
+}
+
+/** The Sunday the month grid starts on: the one on or before the 1st. */
+function monthGridStart(year: number, month: number) {
+  const first = new Date(year, month, 1)
+  return addDays(first, -first.getDay())
 }
 
 function DesktopCalendar() {
@@ -612,29 +646,85 @@ function DesktopCalendar() {
 
   const anchor = toDate(calAnchor)
   const isMonth = calRange === 'month'
-  const days = useMemo(() => {
-    if (calRange === 'month') return []
-    // A week starts on Sunday, as the month grid does; a day or three-day range
-    // starts where you are.
-    const start = calRange === 7 ? addDays(anchor, -anchor.getDay()) : anchor
-    return Array.from({ length: calRange }, (_, i) => fmt(addDays(start, i)))
-  }, [calAnchor, calRange])
+
+  // The anchor is the first day on screen, so that a scroll can move it by a
+  // single day. A week is snapped to its Sunday when it is chosen — as a week
+  // is normally read — and left wherever scrolling puts it afterwards.
+  useEffect(() => {
+    if (calRange !== 7) return
+    const a = toDate(useUiStore.getState().calAnchor)
+    if (a.getDay() !== 0) setCalAnchor(fmt(addDays(a, -a.getDay())))
+  }, [calRange])
+
+  const days = useMemo(
+    () => (calRange === 'month' ? [] : Array.from({ length: calRange }, (_, i) => fmt(addDays(anchor, i)))),
+    [calAnchor, calRange],
+  )
+
+  // The month grid keeps its own offset: scrolling it moves whole weeks, and a
+  // month that starts mid-grid is still that month until another one takes over
+  // the middle row, at which point the label — and the anchor behind it — follow.
+  const [weekOffset, setWeekOffsetState] = useState(0)
+  const weekRef = useRef(0)
+  const setWeekOffset = (n: number) => { weekRef.current = n; setWeekOffsetState(n) }
+  const gridStart = useMemo(
+    () => addDays(monthGridStart(anchor.getFullYear(), anchor.getMonth()), weekOffset * 7),
+    [calAnchor, weekOffset],
+  )
 
   const shift = (direction: number) => {
-    if (calRange === 'month') {
-      const next = new Date(anchor.getFullYear(), anchor.getMonth() + direction, 1)
-      setCalAnchor(fmt(next))
+    if (isMonth) {
+      setWeekOffset(0)
+      setCalAnchor(fmt(new Date(anchor.getFullYear(), anchor.getMonth() + direction, 1)))
     } else {
       setCalAnchor(fmt(addDays(anchor, direction * calRange)))
     }
   }
 
+  const goToday = () => {
+    setWeekOffset(0)
+    const now = new Date()
+    setCalAnchor(fmt(calRange === 7 ? addDays(now, -now.getDay()) : now))
+  }
+
+  // Scrolling reads from the store rather than from this render: a flick fires
+  // several steps before React has drawn any of them.
+  const scrubDays = (steps: number) => {
+    setCalAnchor(fmt(addDays(toDate(useUiStore.getState().calAnchor), steps)))
+  }
+  const scrubWeeks = (steps: number) => {
+    const cur = toDate(useUiStore.getState().calAnchor)
+    const nextStart = addDays(
+      addDays(monthGridStart(cur.getFullYear(), cur.getMonth()), weekRef.current * 7),
+      steps * 7,
+    )
+    // Row three is the middle of the grid, so the month it falls in is the month
+    // the grid is mostly showing.
+    const middle = addDays(nextStart, 17)
+    if (middle.getMonth() !== cur.getMonth() || middle.getFullYear() !== cur.getFullYear()) {
+      const aligned = monthGridStart(middle.getFullYear(), middle.getMonth())
+      setCalAnchor(fmt(new Date(middle.getFullYear(), middle.getMonth(), 1)))
+      setWeekOffset(Math.round(dayDiff(aligned, nextStart) / 7))
+    } else {
+      setWeekOffset(weekRef.current + steps)
+    }
+  }
+
   // Months move under a vertical scroll, days and weeks under a horizontal one —
   // the axis each range is already laid out along, so the gesture matches the
-  // grid rather than fighting it.
+  // grid rather than fighting it. One step is one column: a day sideways, a week
+  // down.
   const bodyRef = useRef<HTMLDivElement>(null)
-  useWheelPaging(bodyRef, isMonth ? 'y' : 'x', shift)
-  useSlideOnChange(bodyRef, calAnchor, isMonth ? 'y' : 'x')
+  const scrubbing = useRef(false)
+  const stepPx = () => {
+    const el = bodyRef.current
+    if (!el) return 120
+    return isMonth
+      ? Math.min(140, Math.max(56, el.clientHeight / 6))
+      : Math.min(200, Math.max(70, (el.clientWidth - HOUR_GUTTER) / (calRange as number)))
+  }
+  useWheelScrub(bodyRef, isMonth ? 'y' : 'x', stepPx, isMonth ? scrubWeeks : scrubDays, scrubbing)
+  useSlideOnChange(bodyRef, calAnchor, isMonth ? 'y' : 'x', scrubbing)
 
   const label = isMonth
     ? `${anchor.getFullYear()}년 ${MONTHS[anchor.getMonth()]}`
@@ -665,12 +755,12 @@ function DesktopCalendar() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       <div style={{ background: 'var(--bg)', borderBottom: '1px solid var(--bd)', padding: '0 16px', minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
-        <NavBtn onClick={() => setCalAnchor(fmt(new Date()))}>오늘</NavBtn>
+        <NavBtn onClick={goToday}>오늘</NavBtn>
         <NavBtn onClick={() => shift(-1)}>‹</NavBtn>
         <NavBtn onClick={() => shift(1)}>›</NavBtn>
         <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--t1)', minWidth: 130 }}>{label}</span>
 
-        <RangeSwitch value={calRange} onChange={setCalRange} />
+        <RangeSwitch value={calRange} onChange={r => { setWeekOffset(0); setCalRange(r) }} />
 
         <div style={{ flex: 1 }} />
 
@@ -689,7 +779,7 @@ function DesktopCalendar() {
 
       <div ref={bodyRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         {isMonth
-          ? <MonthGrid calYear={anchor.getFullYear()} calMonth={anchor.getMonth()} />
+          ? <MonthGrid gridStart={fmt(gridStart)} calYear={anchor.getFullYear()} calMonth={anchor.getMonth()} />
           : <TimelineGrid days={days} />}
       </div>
     </div>
@@ -732,11 +822,11 @@ function RangeSwitch({ value, onChange }: { value: CalRange; onChange: (r: CalRa
   )
 }
 
-function MonthGrid({ calYear, calMonth }: { calYear: number; calMonth: number }) {
+function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYear: number; calMonth: number }) {
   // Clicking a day opens the planner there; see DayPlanner for why both
   // "make a new one" and "place an existing one" live in the same popover.
   const [planning, setPlanning] = useState<{ date: string; anchor: HTMLElement } | null>(null)
-  const { openTaskDetail, projectId, showGCal } = useUiStore()
+  const { openTaskDetail, projectId } = useUiStore()
   const tasks = useFilteredTasks()
   const { updateTask, tasks: allTasks } = useTaskStore()
   const allMilestones = useMilestoneStore(s => s.milestones)
@@ -747,14 +837,12 @@ function MonthGrid({ calYear, calMonth }: { calYear: number; calMonth: number })
   }, [allMilestones, projects])
   const { token, events: gcalEvents, ensureEvents } = useGCalStore()
 
-  // Fetch GCal events when month changes
+  // Fetch GCal events for the grid on screen, whichever weeks it happens to
+  // start and end on.
   useEffect(() => {
     if (!token) return
-    // Cover the full 6-week grid: some days before/after the month
-    const start = new Date(calYear, calMonth, -6)
-    const end   = new Date(calYear, calMonth + 1, 14)
-    ensureEvents(fmt(start), fmt(end))
-  }, [token, calYear, calMonth])
+    ensureEvents(gridStart, fmt(addDays(toDate(gridStart), 41)))
+  }, [token, gridStart])
 
   const milestoneByDate = useMemo(() => {
     const map: Record<string, { name: string; color: string }[]> = {}
@@ -780,13 +868,12 @@ function MonthGrid({ calYear, calMonth }: { calYear: number; calMonth: number })
   const [dragOver, setDragOver]     = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
 
-  const today    = new Date()
-  const firstDay = new Date(calYear, calMonth, 1).getDay()
+  const today = new Date()
 
   const cells: { date: Date; isCurrentMonth: boolean }[] = []
   for (let i = 0; i < 42; i++) {
-    const date = new Date(calYear, calMonth, 1 + (i - firstDay))
-    cells.push({ date, isCurrentMonth: date.getMonth() === calMonth })
+    const date = addDays(toDate(gridStart), i)
+    cells.push({ date, isCurrentMonth: date.getMonth() === calMonth && date.getFullYear() === calYear })
   }
 
   const tasksByDate = (date: Date): Task[] => {
@@ -845,7 +932,7 @@ function MonthGrid({ calYear, calMonth }: { calYear: number; calMonth: number })
             const isToday      = dateStr === fmt(today)
             const isDragTarget = dragOver === dateStr
             const dayTasks     = tasksByDate(date)
-            const dayGCal      = showGCal ? (gcalByDate[dateStr] ?? []) : []
+            const dayGCal      = gcalByDate[dateStr] ?? []
             const dayMilestones = milestoneByDate[dateStr] ?? []
             const hasMilestone = dayMilestones.length > 0
             const dow = date.getDay()

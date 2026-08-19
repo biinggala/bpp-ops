@@ -46,7 +46,6 @@ export function MobileFilterSheet({ onClose }: { onClose: () => void }) {
     filters, setFilters, resetFilters,
     hideCompleted, setHideCompleted,
     listGroup, setListGroup,
-    showGCal, setShowGCal,
     view, myTasksOnly, projectId,
   } = useUiStore()
   const scoped = useScopedTasks()
@@ -177,18 +176,6 @@ export function MobileFilterSheet({ onClose }: { onClose: () => void }) {
             </Section>
           )}
 
-          {/* Calendar entries are a calendar question, so this only appears
-              where they are drawn. */}
-          {view === 'c' && (
-            <CheckRow
-              on={showGCal}
-              accent="#448361"
-              onToggle={() => { haptic('toggle'); setShowGCal(!showGCal) }}
-            >
-              📅 구글 캘린더 일정 표시
-            </CheckRow>
-          )}
-
           <button
             onClick={() => { haptic('toggle'); setHideCompleted(!hideCompleted) }}
             style={{
@@ -216,10 +203,10 @@ export function MobileFilterSheet({ onClose }: { onClose: () => void }) {
   )
 }
 
-function CheckRow({ on, accent, onToggle, children }: {
-  on: boolean; accent?: string; onToggle: () => void; children: React.ReactNode
+function CheckRow({ on, onToggle, children }: {
+  on: boolean; onToggle: () => void; children: React.ReactNode
 }) {
-  const c = accent ?? 'var(--ac)'
+  const c = 'var(--ac)'
   return (
     <button
       onClick={onToggle}
@@ -227,7 +214,7 @@ function CheckRow({ on, accent, onToggle, children }: {
         display: 'flex', alignItems: 'center', gap: 10, width: '100%',
         padding: '12px 12px', borderRadius: 'var(--r2)',
         border: `1px solid ${on ? c : 'var(--bd)'}`,
-        background: on ? (accent ? 'rgba(68,131,97,.10)' : 'var(--ac-l)') : 'transparent',
+        background: on ? 'var(--ac-l)' : 'transparent',
         color: on ? c : 'var(--t1)',
         fontSize: 14, fontFamily: 'var(--font)', cursor: 'pointer',
       }}

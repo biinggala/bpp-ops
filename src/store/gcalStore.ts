@@ -396,8 +396,19 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     const current = get().enabledCalendarIds ?? get().calendars.map(c => c.id)
     const next = on ? [...new Set([...current, id])] : current.filter(x => x !== id)
     localStorage.setItem(ENABLED_KEY, JSON.stringify(next))
-    // The window held in `events` was read for a different set of calendars.
-    set({ enabledCalendarIds: next, loadedFrom: null, loadedTo: null, fetchedAt: 0 })
+
+    // The window held in `events` was read for a different set of calendars, and
+    // a checkbox has to take effect on the grid behind it — not on whatever the
+    // next range change happens to be. Unticking is answered from memory, which
+    // is instant; ticking needs the events that were never fetched, so the same
+    // window is re-read.
+    const { loadedFrom, loadedTo } = get()
+    set({
+      enabledCalendarIds: next,
+      events: get().events.filter(e => next.includes(e.calendarId)),
+      fetchedAt: 0,
+    })
+    if (on && loadedFrom && loadedTo) get().fetchEvents(loadedFrom, loadedTo)
   },
 
   ensureEvents: async (from, to) => {

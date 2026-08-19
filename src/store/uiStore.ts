@@ -42,7 +42,6 @@ interface UiState {
   /** Calendar: how much is shown at once, and the date it starts from. */
   calRange: CalRange
   calAnchor: string
-  showGCal: boolean
 
   setView: (v: ViewType) => void
   setListGroup: (g: ListGroup) => void
@@ -62,7 +61,6 @@ interface UiState {
   closeCommandPalette: () => void
   setSidebarOpen: (v: boolean) => void
   toggleSidebar: () => void
-  setShowGCal: (v: boolean) => void
   setCalRange: (r: CalRange) => void
   setCalAnchor: (date: string) => void
 }
@@ -109,7 +107,6 @@ export const useUiStore = create<UiState>((set, get) => ({
   sidebarOpen: false,
   calRange: 7,
   calAnchor: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
-  showGCal: true,
 
   setView: (view) => set({ view }),
   setListGroup: (listGroup) => {
@@ -150,7 +147,6 @@ export const useUiStore = create<UiState>((set, get) => ({
   closeCommandPalette: () => set({ isCommandPaletteOpen: false }),
   setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
   toggleSidebar: () => set(s => ({ sidebarOpen: !s.sidebarOpen })),
-  setShowGCal: (showGCal) => set({ showGCal }),
   setCalRange: (calRange) => set({ calRange }),
   setCalAnchor: (calAnchor) => set({ calAnchor }),
 }))
