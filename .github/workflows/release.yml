@@ -84,7 +84,7 @@ jobs:
           # An absent password is legitimate: a key generated without one signs
           # with the variable empty. Only a *wrong* password fails, and that it
           # cannot know until it signs.
-          [ -n "$PASSWORD" ] || echo "::warning::TAURI_SIGNING_PRIVATE_KEY_PASSWORD is empty — fine if the key has no password, otherwise signing will fail
+          [ -n "$PASSWORD" ] || echo "::warning::TAURI_SIGNING_PRIVATE_KEY_PASSWORD is empty — fine if the key has no password, otherwise signing will fail"
 
       - uses: actions/setup-node@v4
         with:
