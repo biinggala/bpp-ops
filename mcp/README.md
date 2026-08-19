@@ -121,19 +121,55 @@ OAuth 클라이언트·인가 코드·토큰은 **최상위 `mcpAuth/`** 에 저
    Cloud Console → 사용자 인증 정보 → OAuth 클라이언트 ID → 유형 **웹 애플리케이션**.
    승인된 리디렉션 URI에 `https://<배포주소>/oauth/google/callback` 등록
 
-2. **배포** — GitHub Actions를 쓰면 아래 절은 건너뛰어도 됩니다 (다음 섹션 참고).
-   손으로 한 번 올려야 한다면:
+2. **배포**
+
+   현재 돌고 있는 서버는 이렇습니다:
+
+   | | |
+   |---|---|
+   | Cloud Run 서비스 | **`crng-task-manager`** |
+   | 리전 | `asia-northeast3` |
+   | GCP 프로젝트 | `crng-task-manager` |
+   | 커넥터 주소 | `https://crng-task-manager-1050546278891.asia-northeast3.run.app/mcp` |
+
+   서비스 이름이 앱 이름이 아니라 **프로젝트 이름과 같다는 점**이 함정입니다.
+   `bpp-ops-mcp`로 배포하면 새 서비스가 하나 더 생기고, 커넥터가 보고 있는
+   주소는 그대로 옛 코드를 서빙합니다.
+
+   **이미 올라가 있는 서버를 새 코드로 갱신할 때** — 환경변수는 서비스에 남아
+   있으므로 다시 지정하지 않습니다. `--set-env-vars`를 붙이면 기존 값 전체가
+   그 목록으로 **교체**되므로, 오히려 빼먹은 변수가 사라집니다.
 
    ```bash
    cd mcp
-   gcloud run deploy bpp-ops-mcp --source . --region asia-northeast3 \
+   gcloud run deploy crng-task-manager --source . \
+     --project crng-task-manager --region asia-northeast3
+   ```
+
+   **처음부터 새 서비스를 만들 때만** 환경변수를 함께 넘깁니다:
+
+   ```bash
+   cd mcp
+   gcloud run deploy <서비스> --source . --region asia-northeast3 \
      --allow-unauthenticated \
      --set-env-vars PUBLIC_URL=https://<배포주소> \
      --set-env-vars FIREBASE_DATABASE_URL=https://crng-task-manager-default-rtdb.firebaseio.com \
-     --set-secrets GOOGLE_OAUTH_CLIENT_ID=...,GOOGLE_OAUTH_CLIENT_SECRET=...,FIREBASE_SERVICE_ACCOUNT=...
+     --set-secrets GOOGLE_OAUTH_CLIENT_ID=...,GOOGLE_OAUTH_CLIENT_SECRET=...
    ```
 
-   `--allow-unauthenticated`는 Cloud Run 계층의 이야기입니다. 실제 접근 통제는 위의 OAuth가 담당합니다.
+   `FIREBASE_SERVICE_ACCOUNT`는 Cloud Run에서 **넣지 않습니다** — 런타임 서비스
+   계정이 그대로 쓰입니다. `--allow-unauthenticated`는 Cloud Run 계층의
+   이야기이고, 실제 접근 통제는 위의 OAuth가 담당합니다.
+
+   배포가 끝나면 새 도구가 실제로 붙었는지 확인합니다:
+
+   ```bash
+   gcloud run services describe crng-task-manager \
+     --project crng-task-manager --region asia-northeast3 \
+     --format='value(status.latestReadyRevisionName, status.url)'
+   ```
+
+   claude.ai 쪽은 커넥터를 껐다 켜면 도구 목록을 다시 읽습니다.
 
 3. **DB 규칙 배포** — `mcpAuth` 차단 규칙이 반영돼야 합니다. 웹 배포 워크플로가 `database.rules.json`을 함께 올립니다.
 
@@ -184,7 +220,7 @@ GitHub → Settings → Secrets and variables → Actions → New repository sec
 | 이름 | 값 |
 |---|---|
 | `GCP_SA_KEY` | 위에서 받은 JSON **원문 전체** |
-| `MCP_PUBLIC_URL` | 배포된 주소 (`https://bpp-ops-mcp-xxxx.a.run.app`, 끝에 `/` 없이) |
+| `MCP_PUBLIC_URL` | 배포된 주소 (`https://crng-task-manager-1050546278891.asia-northeast3.run.app`, 끝에 `/` 없이) |
 | `GOOGLE_OAUTH_CLIENT_ID` | OAuth **웹** 클라이언트 ID |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | 같은 클라이언트의 시크릿 |
 

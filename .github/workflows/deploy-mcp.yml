@@ -11,7 +11,10 @@ on:
   workflow_dispatch:
 
 env:
-  SERVICE: bpp-ops-mcp
+  # The service is named after the GCP project, not after the app. Deploying to
+  # `bpp-ops-mcp` makes a second service, and the connector keeps talking to the
+  # first one.
+  SERVICE: crng-task-manager
   REGION: asia-northeast3
   PROJECT_ID: crng-task-manager
 
