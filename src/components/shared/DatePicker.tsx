@@ -213,6 +213,7 @@ export function DatePicker({ value, anchor, context, onChange, onClose }: {
     <div
       ref={panelRef}
       data-addrow-popup
+      data-datepicker-popup
       onClick={e => e.stopPropagation()}
       style={shell}
     >

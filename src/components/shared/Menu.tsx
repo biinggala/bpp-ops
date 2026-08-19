@@ -47,6 +47,10 @@ export function useMenu() {
     const h = (e: MouseEvent) => {
       const t = e.target as Node
       if (rootRef.current?.contains(t) || panelRef.current?.contains(t)) return
+      // A date picker is always opened *from* something rather than beside it,
+      // so picking a day is not a click outside the menu that opened it — even
+      // though the calendar renders into a portal of its own.
+      if (t instanceof Element && t.closest('[data-datepicker-popup]')) return
       setOpen(false)
     }
     document.addEventListener('mousedown', h)

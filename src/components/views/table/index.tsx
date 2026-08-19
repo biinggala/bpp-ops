@@ -525,7 +525,7 @@ export function TableView() {
   const accessibleTasks = useAccessibleTasks()          // for option lists (tags etc.)
   const { addTask, deleteTask, updateTask } = useTaskStore()
   const { openTaskDetail, projectId, space, hideCompleted, listGroup } = useUiStore()
-  const { milestones, updateMilestone, deleteMilestone } = useMilestoneStore()
+  const { milestones, updateMilestone, deleteMilestone, addMilestone } = useMilestoneStore()
   const allProjects = useProjectStore(s => s.projects)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const userEmail = useAuthStore(s => s.email)
@@ -734,7 +734,8 @@ export function TableView() {
         <React.Fragment key={task.id}>
           <Row cols={visibleCols} task={task} hasChildren={hasChildren} isExpanded={isExpanded}
             childCount={children.length} doneCount={children.filter(c => c.status === '완료').length}
-            milestones={pickerMilestones} showMilestonePicker={pickerMilestones.length > 0}
+            milestones={pickerMilestones} showMilestonePicker={!!task.projectId}
+            onMilestoneCreate={task.projectId ? (n, d) => addMilestone(task.projectId!, n, d).id : undefined}
             assigneeOptions={aOpts} allTags={allTags} groupAccent={groupAccent}
             onToggle={() => toggle(task.id)} {...h}
             isDragging={draggingTaskId === task.id}
@@ -757,7 +758,8 @@ export function TableView() {
             return (
               <React.Fragment key={child.id}>
                 <Row cols={visibleCols} task={child} isChild
-                  milestones={pickerMilestones} showMilestonePicker={pickerMilestones.length > 0}
+                  milestones={pickerMilestones} showMilestonePicker={!!child.projectId}
+                  onMilestoneCreate={child.projectId ? (n, d) => addMilestone(child.projectId!, n, d).id : undefined}
                   assigneeOptions={cOpts} allTags={allTags} groupAccent={groupAccent}
                   {...ch}
                   isDragging={draggingTaskId === child.id}
@@ -806,7 +808,8 @@ export function TableView() {
       return (
         <Row
           key={task.id} cols={visibleCols} task={task}
-          milestones={ms} showMilestonePicker={ms.length > 0}
+          milestones={ms} showMilestonePicker={!!task.projectId}
+          onMilestoneCreate={task.projectId ? (n, d) => addMilestone(task.projectId!, n, d).id : undefined}
           assigneeOptions={getAssigneeOptions(task.projectId)} allTags={allTags}
           breadcrumb={crumbFor(task)}
           {...h}
@@ -1034,6 +1037,8 @@ export function TableView() {
                 assigneeOptions={getAssigneeOptions(projectId ?? undefined)}
                 projectId={projectId ?? undefined}
                 projectOptions={projectId ? undefined : projectPickerOptions}
+                milestoneOptions={milestones}
+                onMilestoneCreate={(pid, n, d) => addMilestone(pid, n, d).id}
                 space={space ?? ''}
                 addTask={addTask}
                 userEmail={userEmail}
@@ -1201,7 +1206,7 @@ function Row({
   cols, task, isChild = false,
   hasChildren = false, isExpanded = true,
   childCount = 0, doneCount = 0,
-  milestones = [], showMilestonePicker = false,
+  milestones = [], showMilestonePicker = false, onMilestoneCreate,
   assigneeOptions = [],
   allTags = [],
   groupAccent,
@@ -1215,6 +1220,7 @@ function Row({
   task: Task; isChild?: boolean
   hasChildren?: boolean; isExpanded?: boolean; childCount?: number; doneCount?: number
   milestones?: Milestone[]; showMilestonePicker?: boolean
+  onMilestoneCreate?: (name: string, dueDate: string) => string | undefined
   assigneeOptions?: { value: string; label: string }[]
   allTags?: string[]
   /** Colour of the milestone this row sits under, drawn as a rail on the left. */
@@ -1362,7 +1368,10 @@ function Row({
                 </div>
               ) : null}
               {showMilestonePicker && (hovered || task.milestoneId) && onMilestoneChange && (
-                <MilestonePicker milestoneId={task.milestoneId} milestones={milestones} onChange={onMilestoneChange} />
+                <MilestonePicker
+                  milestoneId={task.milestoneId} milestones={milestones}
+                  onChange={onMilestoneChange} onCreate={onMilestoneCreate}
+                />
               )}
             </div>
             {breadcrumb}
@@ -2067,10 +2076,18 @@ function AddRowDatePicker({ value, context, onChange }: {
 
 // ── AddTaskRow ────────────────────────────────────────────────────────────────
 
-function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, projectOptions, space, addTask, userEmail, isSubtask = false, onDone, onCancel }: {
+function AddTaskRow({ cols, assigneeOptions, milestoneId, milestoneOptions, onMilestoneCreate, parentId, projectId, projectOptions, space, addTask, userEmail, isSubtask = false, onDone, onCancel }: {
   cols: ColDef[]
   assigneeOptions: { value: string; label: string }[]
+  /** Fixed when the row sits inside a milestone's own group. */
   milestoneId?: string
+  /**
+   * Offered when it does not. Outside the project grouping a new task has no
+   * milestone to inherit, and filing it afterwards meant finding the row again
+   * in a different grouping.
+   */
+  milestoneOptions?: Milestone[]
+  onMilestoneCreate?: (projectId: string, name: string, dueDate: string) => string | undefined
   parentId?: string
   projectId?: string
   /**
@@ -2089,6 +2106,7 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, p
   onCancel: () => void
 }) {
   const [pickedProject, setPickedProject] = useState<string | undefined>(projectId)
+  const [pickedMs, setPickedMs] = useState<string | undefined>(milestoneId)
   const [name, setName] = useState('')
   const [assignee, setAssignee] = useState('')
   const [due, setDue] = useState('')
@@ -2115,9 +2133,11 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, p
     addTask({
       type: parentId ? '세부' : '상위', cat: space, name: name.trim(), assignee,
       start: '', due, priority, status,
-      progress: 0, memo: '', parentId, projectId: pickedProject, milestoneId,
+      progress: 0, memo: '', parentId, projectId: pickedProject, milestoneId: milestoneId ?? pickedMs,
       createdBy: userEmail ?? undefined,
     })
+    // The milestone is deliberately kept for the next row: a run of tasks
+    // typed one after another almost always belongs to the same one.
     setName(''); setAssignee(''); setDue(''); setStatus('대기'); setPriority('중간')
     onDone(addAnother)
     if (addAnother) setTimeout(() => nameRef.current?.focus(), 0)
@@ -2152,7 +2172,15 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, p
               <AddRowProjectSelect
                 value={pickedProject}
                 options={projectOptions}
-                onChange={setPickedProject}
+                onChange={v => { setPickedProject(v); setPickedMs(undefined) }}
+              />
+            )}
+            {!milestoneId && milestoneOptions && pickedProject && (
+              <MilestonePicker
+                milestoneId={pickedMs}
+                milestones={milestoneOptions.filter(m => m.projectId === pickedProject)}
+                onChange={setPickedMs}
+                onCreate={onMilestoneCreate ? (n, d) => onMilestoneCreate(pickedProject, n, d) : undefined}
               />
             )}
             <input
@@ -2223,12 +2251,43 @@ function AddTaskRow({ cols, assigneeOptions, milestoneId, parentId, projectId, p
 
 // ── MilestonePicker ───────────────────────────────────────────────────────────
 
-function MilestonePicker({ milestoneId, milestones, onChange }: {
-  milestoneId: string | undefined; milestones: Milestone[]; onChange: (id: string | undefined) => void
+const MS_DRAFT_BTN: React.CSSProperties = {
+  padding: '3px 10px', fontSize: 12, borderRadius: 'var(--r1)',
+  border: '1px solid var(--bd)', background: 'transparent',
+  color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)',
+}
+
+/**
+ * Picks a milestone, and makes one.
+ *
+ * Outside the project grouping there is no milestone card to hang a "마일스톤
+ * 추가" row off — and a project with none yet had a picker that did not appear
+ * at all, so the only way in was to go and group by project first. Creating one
+ * belongs in the same control that chooses one: a milestone is a name and a
+ * date, which fits in the menu that was already open.
+ */
+function MilestonePicker({ milestoneId, milestones, onChange, onCreate }: {
+  milestoneId: string | undefined
+  milestones: Milestone[]
+  onChange: (id: string | undefined) => void
+  /** Absent when there is no project to put a new milestone in. */
+  onCreate?: (name: string, dueDate: string) => string | undefined
 }) {
   const m = useMenu()
   const current = milestones.find(ms => ms.id === milestoneId)
   const accent = NOTION.purple.text
+  const [drafting, setDrafting] = useState(false)
+  const [draftName, setDraftName] = useState('')
+  const [draftDue, setDraftDue] = useState('')
+
+  const closeMenu = () => { m.setOpen(false); setDrafting(false); setDraftName(''); setDraftDue('') }
+  const create = () => {
+    const name = draftName.trim()
+    if (!name || !draftDue || !onCreate) return
+    const id = onCreate(name, draftDue)
+    if (id) onChange(id)
+    closeMenu()
+  }
 
   return (
     <div ref={m.rootRef} style={{ position: 'relative', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
@@ -2248,22 +2307,58 @@ function MilestonePicker({ milestoneId, milestones, onChange }: {
       </button>
 
       {m.open && (
-        <Menu pos={m.pos} panelRef={m.panelRef} width={220}>
-          <MenuList>
-            <MenuItem selected={!milestoneId} onSelect={() => { onChange(undefined); m.setOpen(false) }}>미배정</MenuItem>
-            {milestones.map(ms => (
-              <MenuItem
-                key={ms.id}
-                selected={ms.id === milestoneId}
-                onSelect={() => { onChange(ms.id); m.setOpen(false) }}
-                trailing={<span style={{ fontSize: 10, color: 'var(--t3)', flexShrink: 0 }}>{ms.dueDate}</span>}
-              >
-                <Dot color={accent} size={5} />
-                {ms.name}
-              </MenuItem>
-            ))}
-          </MenuList>
-          {milestones.length === 0 && <MenuNote>마일스톤이 없습니다</MenuNote>}
+        <Menu pos={m.pos} panelRef={m.panelRef} width={240}>
+          {drafting ? (
+            <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <input
+                autoFocus
+                value={draftName}
+                onChange={e => setDraftName(e.target.value)}
+                onKeyDown={e => {
+                  if (isComposing(e)) return
+                  if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); create() }
+                  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDrafting(false) }
+                }}
+                placeholder="마일스톤 이름"
+                style={MENU_INPUT}
+              />
+              <DateField value={draftDue} onChange={setDraftDue} context={{}} placeholder="마감일" />
+              <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                <button onClick={() => setDrafting(false)} style={MS_DRAFT_BTN}>취소</button>
+                <button
+                  onClick={create}
+                  disabled={!draftName.trim() || !draftDue}
+                  style={{
+                    ...MS_DRAFT_BTN,
+                    borderColor: accent,
+                    color: draftName.trim() && draftDue ? accent : 'var(--t3)',
+                    cursor: draftName.trim() && draftDue ? 'pointer' : 'default',
+                  }}
+                >추가</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <MenuList>
+                <MenuItem selected={!milestoneId} onSelect={() => { onChange(undefined); closeMenu() }}>미배정</MenuItem>
+                {milestones.map(ms => (
+                  <MenuItem
+                    key={ms.id}
+                    selected={ms.id === milestoneId}
+                    onSelect={() => { onChange(ms.id); closeMenu() }}
+                    trailing={<span style={{ fontSize: 10, color: 'var(--t3)', flexShrink: 0 }}>{ms.dueDate}</span>}
+                  >
+                    <Dot color={accent} size={5} />
+                    {ms.name}
+                  </MenuItem>
+                ))}
+              </MenuList>
+              {milestones.length === 0 && <MenuNote>아직 마일스톤이 없습니다</MenuNote>}
+              {onCreate && (
+                <MenuFooter label="+ 새 마일스톤" onSelect={() => setDrafting(true)} />
+              )}
+            </>
+          )}
         </Menu>
       )}
     </div>
