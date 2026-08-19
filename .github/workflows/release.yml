@@ -86,6 +86,20 @@ jobs:
           # cannot know until it signs.
           [ -n "$PASSWORD" ] || echo "::warning::TAURI_SIGNING_PRIVATE_KEY_PASSWORD is empty — fine if the key has no password, otherwise signing will fail"
 
+          # The key is base64 that a person copied out of a terminal once, and a
+          # copy that drops the trailing '=' is indistinguishable from a good one
+          # until the very end of a seven-minute build, where it reads as
+          # "Invalid padding". Whitespace out, padding back, masked before it is
+          # ever a variable — the repaired string is not the secret GitHub knows
+          # to hide.
+          FIXED=$(printf '%s' "$KEY" | tr -d '[:space:]')
+          while [ $(( ${#FIXED} % 4 )) -ne 0 ]; do FIXED="${FIXED}="; done
+          echo "::add-mask::$FIXED"
+          echo "SIGNING_KEY=$FIXED" >> "$GITHUB_ENV"
+          if [ "$FIXED" != "$KEY" ]; then
+            echo "::warning::the signing key needed repadding — the secret is very likely a truncated copy"
+          fi
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -109,7 +123,7 @@ jobs:
           # Signs the updater bundle. Without these the build still produces a
           # .dmg, but no .tar.gz.sig, and the step below fails rather than
           # publishing an update nobody's app would accept.
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.SIGNING_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx tauri build --target universal-apple-darwin
 
