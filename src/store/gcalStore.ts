@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import { auth } from '../lib/firebase'
 import { requestGoogleToken, AuthzError, GIS_CONFIGURED } from '../lib/googleAuthz'
+import { isDesktopShell, forgetStoredGrant } from '../lib/desktopAuth'
 import { fetchCalendarList, fetchEventsAcross, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, writableCalendars, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent, type EventAttendee } from '../lib/googleCalendar'
 
 export interface GCalEvent {
@@ -211,9 +212,14 @@ export const useGCalStore = create<GCalState>((set, get) => ({
           set({ token: granted.token, expiry, wasConnected: true, loading: false, error: null })
           return
         } catch (gisError) {
-          // GIS refuses if the site is not listed as an authorised origin on the
-          // client, among other setup problems. Connecting still has to work, so
-          // fall through to the old popup rather than leaving people stuck.
+          // In the desktop shell there is nothing to fall through to: the popup
+          // below is a Google sign-in page, and Google refuses those inside an
+          // embedded webview. Falling through only replaced the real reason with
+          // a meaningless one, which is what "다시 연동 눌러도 안 됨" looked like.
+          if (isDesktopShell()) throw gisError
+          // In a browser, GIS refuses if the site is not listed as an authorised
+          // origin on the client, among other setup problems. Connecting still
+          // has to work, so fall through to the old popup.
           console.warn('[gcal] GIS 연동 실패, 기존 방식으로 시도합니다', gisError)
         }
       }
@@ -236,6 +242,9 @@ export const useGCalStore = create<GCalState>((set, get) => ({
   },
 
   disconnect: () => {
+    // The desktop shell holds a refresh token of its own; leaving it behind
+    // would make "연동 해제" reconnect silently on the next reload.
+    if (isDesktopShell()) void forgetStoredGrant(`${CALENDAR_SCOPE} ${CALENDAR_WRITE_SCOPE}`)
     localStorage.removeItem('gcal_token')
     localStorage.removeItem('gcal_expiry')
     localStorage.removeItem('gcal_connected')

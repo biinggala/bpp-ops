@@ -8,11 +8,15 @@
 //! and hands the resulting authorization code back to the frontend, which
 //! exchanges it with PKCE and calls `signInWithCredential`.
 
+use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
+use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Mutex;
 use std::time::Duration;
+
+use tauri::Manager;
 
 const AUTH_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
@@ -183,6 +187,7 @@ fn exchange_code(
 async fn run_oauth(
     scope: &str,
     prompt: &str,
+    offline: bool,
     login_hint: Option<String>,
     code_challenge: String,
     code_verifier: String,
@@ -216,6 +221,11 @@ async fn run_oauth(
     ];
     if !prompt.is_empty() {
         params.push(("prompt", prompt));
+    }
+    // Offline access is what makes a grant outlive the browser session: Google
+    // returns a refresh token, and renewing from it needs no window at all.
+    if offline {
+        params.push(("access_type", "offline"));
     }
     // Sending the signed-in address means the API grant lands on the same
     // account as the app, rather than on whichever one the browser happens to
@@ -259,6 +269,7 @@ async fn google_sign_in(
     let tokens = run_oauth(
         "openid email profile",
         "select_account",
+        false,
         None,
         code_challenge,
         code_verifier,
@@ -280,13 +291,155 @@ async fn google_sign_in(
 /// uses: the system browser, and a loopback listener to catch the answer.
 #[tauri::command]
 async fn google_authorize(
+    app: tauri::AppHandle,
     scope: String,
     code_challenge: String,
     code_verifier: String,
     login_hint: Option<String>,
     state: tauri::State<'_, OauthState>,
 ) -> Result<serde_json::Value, String> {
-    run_oauth(&scope, "consent", login_hint, code_challenge, code_verifier, state).await
+    let tokens = run_oauth(
+        &scope,
+        "consent",
+        true,
+        login_hint,
+        code_challenge,
+        code_verifier,
+        state,
+    )
+    .await?;
+    if let Some(refresh) = tokens.get("refresh_token").and_then(|v| v.as_str()) {
+        // Best effort: a grant that cannot be remembered still works today, it
+        // just asks again tomorrow.
+        let _ = remember_refresh(&app, &scope, refresh);
+    }
+    Ok(tokens)
+}
+
+/// Renews an API token from the stored grant, with no browser and no click.
+///
+/// This is the half the browser cannot have: only a client holding the secret
+/// may redeem a refresh token, and here the secret is compiled into the binary.
+/// Without it the desktop app dropped its calendar connection every hour.
+#[tauri::command]
+async fn google_refresh(
+    app: tauri::AppHandle,
+    scope: String,
+) -> Result<serde_json::Value, String> {
+    let refresh = read_grants(&app)
+        .and_then(|grants| find_grant(&grants, &scope))
+        .ok_or_else(|| "no stored grant covers that scope".to_string())?;
+
+    let client_id = CLIENT_ID.ok_or("CRNG_OAUTH_CLIENT_ID was not set at build time")?;
+    let client_secret =
+        CLIENT_SECRET.ok_or("CRNG_OAUTH_CLIENT_SECRET was not set at build time")?;
+
+    // Off the main thread: this is a network round trip, and a synchronous
+    // command would hold the window still for the whole of it.
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let body = form_encode(&[
+            ("client_id", client_id),
+            ("client_secret", client_secret),
+            ("refresh_token", refresh.as_str()),
+            ("grant_type", "refresh_token"),
+        ]);
+        let response = ureq::post(TOKEN_ENDPOINT)
+            .set("Content-Type", "application/x-www-form-urlencoded")
+            .send_string(&body)
+            .map_err(|e| format!("refresh failed: {e}"))?;
+        response
+            .into_json::<serde_json::Value>()
+            .map_err(|e| format!("token response was not JSON: {e}"))
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // A revoked or expired grant is not worth keeping: forgetting it is what
+    // brings the connect button back rather than retrying forever.
+    if result.is_err() {
+        forget_grants(&app, &scope);
+    }
+    result
+}
+
+/// Drops the stored grant — what disconnecting means on this side.
+#[tauri::command]
+fn google_forget(app: tauri::AppHandle, scope: String) {
+    forget_grants(&app, &scope);
+}
+
+// ── Where the refresh token lives ────────────────────────────────────────────
+//
+// On disk in the app's own data directory, never in the webview: the frontend
+// asks for an access token and gets one, and the long-lived secret behind it
+// stays on this side of the bridge.
+
+fn grants_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("no app data directory: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("could not create {dir:?}: {e}"))?;
+    Ok(dir.join("google-grants.json"))
+}
+
+fn read_grants(app: &tauri::AppHandle) -> Option<serde_json::Map<String, serde_json::Value>> {
+    let path = grants_path(app).ok()?;
+    let text = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str::<serde_json::Value>(&text)
+        .ok()?
+        .as_object()
+        .cloned()
+}
+
+fn write_grants(
+    app: &tauri::AppHandle,
+    grants: &serde_json::Map<String, serde_json::Value>,
+) -> Result<(), String> {
+    let path = grants_path(app)?;
+    let body = serde_json::to_string(grants).map_err(|e| e.to_string())?;
+    std::fs::write(&path, body).map_err(|e| format!("could not write {path:?}: {e}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}
+
+fn remember_refresh(app: &tauri::AppHandle, scope: &str, refresh: &str) -> Result<(), String> {
+    let mut grants = read_grants(app).unwrap_or_default();
+    grants.insert(scope.to_string(), serde_json::Value::String(refresh.to_string()));
+    write_grants(app, &grants)
+}
+
+/// A grant covers a request when it was issued for at least those scopes.
+///
+/// The calendar is read with one scope and written with two, so an exact match
+/// on the string would miss a wider grant that already covers the narrower ask.
+fn find_grant(grants: &serde_json::Map<String, serde_json::Value>, scope: &str) -> Option<String> {
+    if let Some(exact) = grants.get(scope).and_then(|v| v.as_str()) {
+        return Some(exact.to_string());
+    }
+    let want: HashSet<&str> = scope.split_whitespace().collect();
+    grants.iter().find_map(|(granted, token)| {
+        let have: HashSet<&str> = granted.split_whitespace().collect();
+        if want.iter().all(|s| have.contains(s)) {
+            token.as_str().map(str::to_string)
+        } else {
+            None
+        }
+    })
+}
+
+fn forget_grants(app: &tauri::AppHandle, scope: &str) {
+    let Some(grants) = read_grants(app) else { return };
+    let dropping: HashSet<&str> = scope.split_whitespace().collect();
+    let kept: serde_json::Map<String, serde_json::Value> = grants
+        .into_iter()
+        .filter(|(granted, _)| !granted.split_whitespace().any(|s| dropping.contains(s)))
+        .collect();
+    let _ = write_grants(app, &kept);
 }
 
 /// The version this shell was built as, for the in-app update check.
@@ -315,6 +468,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             google_sign_in,
             google_authorize,
+            google_refresh,
+            google_forget,
             app_version,
             open_external
         ])

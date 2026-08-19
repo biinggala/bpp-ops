@@ -152,22 +152,32 @@ function GCalButton() {
   // Was connected before but token expired and silent refresh failed → compact reconnect button
   if (wasConnected) {
     return (
-      <button
-        onClick={connect}
-        disabled={loading}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 5,
-          padding: '3px 8px', borderRadius: 20,
-          border: '1px solid rgba(68,131,97,.35)',
-          background: 'rgba(68,131,97,.07)',
-          fontSize: 12, color: '#448361',
-          cursor: loading ? 'default' : 'pointer',
-          opacity: loading ? .6 : 1,
-          fontFamily: 'var(--font)', whiteSpace: 'nowrap',
-        }}
-      >
-        <GoogleDot /> {loading ? '연동 중…' : '캘린더 재연동'}
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        <button
+          onClick={connect}
+          disabled={loading}
+          title={error ?? undefined}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '3px 8px', borderRadius: 20,
+            border: `1px solid ${error ? 'rgba(212,76,71,.35)' : 'rgba(68,131,97,.35)'}`,
+            background: error ? 'rgba(212,76,71,.07)' : 'rgba(68,131,97,.07)',
+            fontSize: 12, color: error ? '#D44C47' : '#448361',
+            cursor: loading ? 'default' : 'pointer',
+            opacity: loading ? .6 : 1,
+            fontFamily: 'var(--font)', whiteSpace: 'nowrap', flexShrink: 0,
+          }}
+        >
+          <GoogleDot /> {loading ? '연동 중…' : '캘린더 재연동'}
+        </button>
+        {/* A reconnect that failed used to say nothing at all — the button
+            simply came back, which reads as the click having done nothing. */}
+        {error && !loading && (
+          <span style={{ fontSize: 11, color: '#D44C47', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }} title={error}>
+            {error}
+          </span>
+        )}
+      </div>
     )
   }
 

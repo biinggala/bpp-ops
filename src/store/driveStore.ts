@@ -7,6 +7,7 @@ import {
   type DriveFile, type DriveSearchResult, type Snippet,
 } from '../lib/googleDrive'
 import { DOCS_SCOPE, fetchDocTabs } from '../lib/googleDocs'
+import { isDesktopShell, forgetStoredGrant } from '../lib/desktopAuth'
 
 const TOKEN_KEY = 'drive_token'
 const EXPIRY_KEY = 'drive_expiry'
@@ -142,6 +143,9 @@ export const useDriveStore = create<DriveState>((set, get) => ({
   },
 
   disconnect: () => {
+    // The desktop shell remembers its own grant; leaving it would reconnect
+    // silently on the next reload.
+    if (isDesktopShell()) void forgetStoredGrant(`${DRIVE_SCOPE} ${DOCS_SCOPE}`)
     try {
       localStorage.removeItem(TOKEN_KEY)
       localStorage.removeItem(EXPIRY_KEY)

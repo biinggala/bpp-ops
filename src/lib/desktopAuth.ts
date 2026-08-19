@@ -56,6 +56,29 @@ export async function signInWithSystemBrowser(): Promise<void> {
  * opens onto a wall: the connect button appeared to do nothing. This is the same
  * loopback flow sign-in already uses.
  */
+/**
+ * Renews from a grant the shell remembered, with no browser and no click.
+ *
+ * Throws when there is nothing stored — including on shells built before this
+ * existed, where the command is simply unknown — and the caller falls back to
+ * asking properly.
+ */
+export async function refreshWithStoredGrant(
+  scope: string,
+): Promise<{ token: string; expiresIn: number }> {
+  const res = await invokeDesktop<{ access_token?: string; expires_in?: number }>(
+    'google_refresh',
+    { scope },
+  )
+  if (!res.access_token) throw new Error('저장된 연동으로 토큰을 받지 못했습니다')
+  return { token: res.access_token, expiresIn: res.expires_in ?? 3600 }
+}
+
+/** Drops the remembered grant. What disconnecting means on the native side. */
+export async function forgetStoredGrant(scope: string): Promise<void> {
+  try { await invokeDesktop('google_forget', { scope }) } catch { /* nothing to forget */ }
+}
+
 export async function authorizeWithSystemBrowser(
   scope: string,
   loginHint?: string,

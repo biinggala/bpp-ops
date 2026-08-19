@@ -14,7 +14,7 @@
 // cannot outlive that session: only a server holding the client secret can keep
 // a refresh token, which is a separate decision (see docs).
 
-import { isDesktopShell, authorizeWithSystemBrowser } from './desktopAuth'
+import { isDesktopShell, authorizeWithSystemBrowser, refreshWithStoredGrant } from './desktopAuth'
 
 /** From the Google Cloud console: APIs & Services → Credentials → Web client. */
 export const GOOGLE_CLIENT_ID = '1050546278891-elmuh3saq38q8rsj02li9d3j6q043ko7.apps.googleusercontent.com'
@@ -94,8 +94,14 @@ export async function requestGoogleToken(
   { scope, interactive, hint }: { scope: string; interactive: boolean; hint?: string }
 ): Promise<GrantedToken> {
   if (isDesktopShell()) {
-    // The native flow always opens a browser window, so there is no silent
-    // refresh to attempt: the reconnect button is the refresh path here.
+    // The shell keeps a refresh token, which the browser cannot: only a client
+    // holding the secret may redeem one, and here the secret is compiled into
+    // the binary. Try that first even when a click is available — it is instant,
+    // and it is the whole reason the connection survives past an hour.
+    try {
+      return await refreshWithStoredGrant(scope)
+    } catch { /* nothing stored, or the grant was revoked — ask properly */ }
+
     if (!interactive) throw new AuthzError('연동을 다시 시작해 주세요', true)
     try {
       return await authorizeWithSystemBrowser(scope, hint)
