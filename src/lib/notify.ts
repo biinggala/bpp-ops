@@ -4,6 +4,7 @@ import { P } from './paths'
 import { useAuthStore } from '../store/authStore'
 import { useUserProfileStore } from '../store/userProfileStore'
 import { assigneeKeyToEmail, parseAssignees } from './utils'
+import { pushNotice } from './push'
 import type { Task } from '../types'
 
 /**
@@ -76,7 +77,23 @@ function myName(): string {
   return displayName || email?.split('@')[0] || '누군가'
 }
 
-/** Writes one notice. Fire-and-forget: a failed notice must not fail the edit. */
+/** How each kind reads as a notification title. The body is the task's name. */
+const HEADLINE: Record<NoticeKind, string> = {
+  assigned:    '새 업무를 맡았습니다',
+  unassigned:  '담당에서 제외됐습니다',
+  due_changed: '마감일이 바뀌었습니다',
+  subtask:     '하위 업무가 추가됐습니다',
+  due_soon:    '마감이 다가옵니다',
+  overdue:     '마감이 지났습니다',
+}
+
+/**
+ * Writes one notice, then asks the server to buzz the phone about it.
+ *
+ * Both are fire-and-forget: a failed notice must not fail the edit that caused
+ * it, and a failed push costs a buzz rather than the information — the inbox
+ * already has it by then.
+ */
 function leave(target: Target, notice: Omit<Notice, 'id' | 'at' | 'by'>) {
   const me = useAuthStore.getState().uid
   if (!me || target.uid === me) return
@@ -86,6 +103,14 @@ function leave(target: Target, notice: Omit<Notice, 'id' | 'at' | 'by'>) {
     if (payload[key] === undefined) delete payload[key]
   }
   fbSet(node, payload).catch(e => console.warn('[notice]', e))
+
+  const detail = notice.detail ? ` · ${notice.detail}` : ''
+  void pushNotice(
+    target.uid,
+    HEADLINE[notice.kind],
+    `${notice.taskName ?? ''}${detail}`.trim() || myName(),
+    notice.taskId ? `/?task=${notice.taskId}` : '/',
+  )
 }
 
 /** 담당자가 바뀌었을 때 — 새로 들어온 사람과 빠진 사람에게. */

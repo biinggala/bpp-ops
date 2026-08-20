@@ -14,6 +14,7 @@ import { GoogleBackedProvider, googleCallbackPath } from './oauth/provider.js'
 import { registerTools } from './tools.js'
 import { canAccessProject } from './access.js'
 import { initDb, readProjects } from './store.js'
+import { pushConfigured, registerPushRoutes } from './push.js'
 
 /**
  * Every missing variable at once, not just the first.
@@ -105,7 +106,12 @@ async function main() {
     await transport.handleRequest(req, res, req.body)
   })
 
-  app.get('/healthz', (_req, res) => void res.json({ ok: true }))
+  // 알림 보내는 쪽 — the app asks for one buzz, Cloud Scheduler asks for the
+  // morning brief. Registered unconditionally so /push/health can say why it is
+  // not working; without the VAPID keys the two senders answer 503.
+  registerPushRoutes(app)
+
+  app.get('/healthz', (_req, res) => void res.json({ ok: true, push: pushConfigured() }))
 
   const port = Number(process.env.PORT ?? 8080)
   app.listen(port, () => {

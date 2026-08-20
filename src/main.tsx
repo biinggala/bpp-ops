@@ -3,6 +3,7 @@ import './index.css'
 import App from './App.tsx'
 import { installExternalLinkHandler } from './lib/desktopLinks'
 import { isDesktopShell } from './lib/desktopAuth'
+import { installServiceWorker } from './lib/push'
 
 // iOS standalone PWAs mis-report the layout viewport height, leaving a gap
 // below the app. Take the max of every height the browser reports; installed
@@ -78,5 +79,10 @@ document.addEventListener('visibilitychange', () => setTimeout(setAppHeight, 100
 // In the desktop shell, a link that leaves the app has to be handed to the
 // browser; a webview opens nothing on its own.
 installExternalLinkHandler()
+
+// The worker is what a push wakes. Registered on every load rather than when
+// somebody turns notifications on, so the one that is already subscribed keeps
+// receiving after a redeploy replaces the file.
+void installServiceWorker()
 
 createRoot(document.getElementById('root')!).render(<App />)

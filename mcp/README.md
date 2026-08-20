@@ -246,9 +246,49 @@ RTDB 주소는 기본값이 들어 있어 따로 넣지 않아도 됩니다. 바
 |  `FIREBASE_SERVICE_ACCOUNT` (로컬 전용) | 서비스 계정 JSON (원문 또는 base64) |
 | `FIREBASE_DATABASE_URL` | RTDB URL |
 | `PORT` | 기본 8080 |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | 푸시 알림 키 쌍 (아래) |
+| `VAPID_SUBJECT` | 기본 `mailto:heegun@bpp.co.kr` |
+| `PUSH_BRIEF_SECRET` | 아침 브리핑을 부를 때 쓰는 공유 암호 |
 
 `BPP_OPS_OPERATOR_EMAIL`은 HTTP 모드에서 쓰지 않습니다 — 신원이 토큰에서 나오기 때문이고, 그게 공용 서버가 안전한 이유입니다.
 
 ### 아직 실제로 붙여보지 않았습니다
 
 타입체크·빌드·접근 제어 테스트는 통과했지만, **OAuth 왕복은 배포된 URL이 있어야 검증됩니다.** 첫 연결에서 막히면 로그를 보고 잡겠습니다.
+
+## 알림 보내는 쪽 (푸시)
+
+이 서버는 MCP 말고 알림 발송도 겸합니다. 경로는 셋입니다.
+
+| 경로 | 누가 부르는가 | 무엇을 확인하는가 |
+|---|---|---|
+| `POST /push/notify` | 앱 (담당자 지정 직후 등) | 부르는 사람의 Firebase ID 토큰. 수신자는 **한 명**뿐 |
+| `POST /push/brief` | Cloud Scheduler, 평일 아침 | 헤더 `x-brief-secret`. 내용은 요청이 아니라 DB에서 나옴 |
+| `GET /push/health` | 사람 (curl) | 키가 설정됐는지만 알려줌 |
+
+키 쌍은 한 번만 만들고, **공개키는 웹에 박히고 비밀키는 이 서버에만** 둡니다:
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+공개키는 `src/lib/push.ts`의 `VAPID_PUBLIC` 값과 같아야 합니다 (지금 값이 이미
+들어 있습니다). 비밀키는 저장소에 절대 넣지 않고 Cloud Run에만 넣습니다:
+
+```bash
+gcloud run services update crng-task-manager --region asia-northeast3 \
+  --update-env-vars VAPID_PUBLIC_KEY=<공개키>,VAPID_PRIVATE_KEY=<비밀키>,PUSH_BRIEF_SECRET=<아무 긴 문자열>
+```
+
+`--update-env-vars`입니다 (`--set-env-vars`는 기존 변수를 전부 지웁니다).
+
+아침 브리핑은 스케줄러가 부릅니다 — 평일 9시:
+
+```bash
+gcloud scheduler jobs create http bpp-ops-morning-brief \
+  --location asia-northeast3 --schedule "0 9 * * 1-5" --time-zone Asia/Seoul \
+  --uri https://<배포주소>/push/brief --http-method POST \
+  --headers x-brief-secret=<위와 같은 문자열>
+```
+
+마감이 지난 일도, 오늘 마감도 없는 사람에게는 아무것도 보내지 않습니다.
