@@ -16,37 +16,21 @@ const isStandalone = () =>
     (navigator as unknown as { standalone?: boolean }).standalone === true
   )
 
-/**
- * How much of the screen iOS reserves for the home indicator, in px.
- *
- * env(safe-area-inset-bottom) is only readable from CSS, so it is measured off a
- * throwaway element. Worth the trouble: in standalone the viewport is reported
- * without it, and adding it back is what makes the app reach the bottom of the
- * screen instead of leaving a white strip there.
- */
-const bottomInset = (): number => {
-  const probe = document.createElement('div')
-  probe.style.cssText = 'position:fixed;visibility:hidden;height:env(safe-area-inset-bottom,0px)'
-  document.body.appendChild(probe)
-  const h = probe.getBoundingClientRect().height
-  probe.remove()
-  return h
-}
-
 const setAppHeight = () => {
-  let h = Math.max(
-    window.visualViewport?.height ?? 0,
-    window.innerHeight,
-    document.documentElement.clientHeight,
-  )
-  // Portrait standalone: the web view spans the full screen (status bar is
-  // translucent), and every height the browser reports leaves the home
-  // indicator's band out — so both the screen and the viewport-plus-that-band
-  // are floors. Whichever is bigger is the one that reaches the bottom edge.
-  if (isStandalone() && window.innerHeight >= window.innerWidth) {
-    h = Math.max(h, screen.height, window.innerHeight + bottomInset())
-  }
-  document.documentElement.style.setProperty('--app-h', `${h}px`)
+  // The visible area, as the browser itself defines it: visualViewport is the
+  // part of the page a person can actually see, with any browser chrome already
+  // taken off. In an installed PWA there is no chrome, so it is the whole
+  // screen — which is the number this needs and the only one that is right in
+  // both modes.
+  //
+  // Nothing is added to it. Three attempts at flooring this value — at
+  // screen.height, at the viewport plus the home indicator's band — each fixed
+  // one device and broke another: too short leaves a white strip under the app,
+  // too tall pushes the bottom bar off the screen entirely. The floor that
+  // survives is in CSS, where 100dvh catches the case of a browser that
+  // under-reports, and neither can overshoot the screen.
+  const h = window.visualViewport?.height ?? window.innerHeight
+  document.documentElement.style.setProperty('--app-h', `${Math.round(h)}px`)
 }
 setAppHeight()
 window.visualViewport?.addEventListener('resize', setAppHeight)

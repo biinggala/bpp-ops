@@ -594,6 +594,11 @@ export function Sidebar() {
             </div>
           </div>
         )}
+        {/* A readout of the numbers iOS gives us, on the phone only.
+            Three attempts at deducing the screen's height from these went wrong
+            in alternating directions; one screenshot of the actual values ends
+            the guessing. Remove once the height is settled. */}
+        {isMobile && <ViewportProbe />}
       </aside>
 
       {/* Right-click context menu */}
@@ -1311,5 +1316,45 @@ function MemberManageModal({ project, currentEmail, suggestable, onAddMember, on
         )}
       </div>
     </div>
+  )
+}
+
+/* ── ViewportProbe (temporary) ── */
+
+function ViewportProbe() {
+  const [txt, setTxt] = useState('')
+  useEffect(() => {
+    const read = () => {
+      const probe = document.createElement('div')
+      probe.style.cssText = 'position:fixed;visibility:hidden;bottom:0;height:env(safe-area-inset-bottom,0px)'
+      document.body.appendChild(probe)
+      const sb = Math.round(probe.getBoundingClientRect().height)
+      probe.style.height = 'env(safe-area-inset-top,0px)'
+      const st = Math.round(probe.getBoundingClientRect().height)
+      probe.style.height = '100dvh'
+      const dvh = Math.round(probe.getBoundingClientRect().height)
+      probe.remove()
+      const nav = navigator as unknown as { standalone?: boolean }
+      setTxt([
+        `inner ${window.innerHeight}`,
+        `vv ${Math.round(window.visualViewport?.height ?? 0)}`,
+        `dvh ${dvh}`,
+        `scr ${screen.height}`,
+        `safe ${st}/${sb}`,
+        `app ${getComputedStyle(document.body).height}`,
+        `sa ${nav.standalone === true ? '1' : '0'}${window.matchMedia('(display-mode: standalone)').matches ? 'm' : ''}`,
+      ].join(' · '))
+    }
+    read()
+    const t = setTimeout(read, 800)
+    window.visualViewport?.addEventListener('resize', read)
+    return () => { clearTimeout(t); window.visualViewport?.removeEventListener('resize', read) }
+  }, [])
+  return (
+    <div style={{
+      borderTop: '1px solid rgba(255,255,255,.06)', padding: '6px 10px',
+      fontSize: 9, lineHeight: 1.5, color: 'var(--sb-t3)', wordBreak: 'break-all',
+      fontVariantNumeric: 'tabular-nums',
+    }}>{txt}</div>
   )
 }
