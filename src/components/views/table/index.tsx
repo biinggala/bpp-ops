@@ -16,7 +16,6 @@ import { useAuthStore } from '../../../store/authStore'
 import { useMobile } from '../../../hooks/useMobile'
 import { TagBadge } from '../../shared/Badge'
 import { AssigneeAvatar } from '../../shared/Avatar'
-import { ProgressBar } from '../../shared/ProgressBar'
 import { ContextMenu } from '../../shared/ContextMenu'
 import { fmtDate, isOverdue, parseAssignees, assigneeKeyToEmail, stripHtml, isComposing } from '../../../lib/utils'
 import { NOTION, STATUS_LIST, PRIORITY_LIST } from '../../../types'
@@ -41,19 +40,24 @@ type ColDef = { key: string; label: string; width: number; hidden?: boolean }
 const FLAT_DRAFT = '__flat__'
 
 const MIN_COL_WIDTH = 60
-const COL_STORAGE_KEY = 'cringe_table_cols_v1'
+// v2: the default order changed and 진행률 left. A saved v1 layout would have
+// kept the old arrangement forever, since what is stored is the arrangement
+// itself rather than a diff from the default.
+const COL_STORAGE_KEY = 'cringe_table_cols_v2'
 /** Always shown: it is the row's identity and the sticky anchor for the rest. */
 const LOCKED_COL = 'name'
 
+// Left to right in the order somebody reads a row: what it is, where it stands,
+// whose it is, when it is due — then the things you go looking for rather than
+// scan past.
 const DEFAULT_COLS: ColDef[] = [
   { key: 'name',     label: '업무',    width: 300 },
-  { key: 'tags',     label: '태그',    width: 160 },
-  { key: 'links',    label: '링크',    width: 140 },
-  { key: 'assignee', label: '담당자',  width: 140 },
   { key: 'status',   label: '상태',    width: 110 },
+  { key: 'assignee', label: '담당자',  width: 140 },
   { key: 'due',      label: '마감일',  width: 100 },
+  { key: 'links',    label: '링크',    width: 140 },
+  { key: 'tags',     label: '태그',    width: 160 },
   { key: 'priority', label: '우선순위', width: 100 },
-  { key: 'progress', label: '진행률',  width: 120 },
   { key: 'memo',     label: '메모',    width: 180 },
 ]
 
@@ -1469,13 +1473,6 @@ function Row({
               styleMap={PRIORITY_STYLE}
               onChange={v => onUpdate({ priority: v as Priority })}
             />
-          </div>
-        )
-
-      case 'progress':
-        return (
-          <div key="progress" style={cellBase(col, isLast, true)}>
-            <ProgressBar value={task.progress} />
           </div>
         )
 
