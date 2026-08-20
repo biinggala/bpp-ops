@@ -9,6 +9,7 @@ import { useProjectStore } from '../../../store/projectStore'
 import { useAuthStore } from '../../../store/authStore'
 import { getCatColor } from '../../../types'
 import { CategoryBadge } from '../../shared/Badge'
+import { DateField } from '../../shared/DatePicker'
 import { askConfirm } from '../../shared/Confirm'
 import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade, isComposing } from '../../../lib/utils'
 import type { Task, Milestone, Project } from '../../../types'
@@ -57,7 +58,7 @@ type RowSpec =
 
 /** What a pointer drag is currently doing. */
 type Drag = {
-  mode: 'move' | 'start' | 'end' | 'create'
+  mode: 'move' | 'start' | 'end' | 'create' | 'milestone'
   taskId: string
   origStart: string
   origDue: string
@@ -70,7 +71,7 @@ type Drag = {
 }
 
 type Visual =
-  | { mode: 'move' | 'start' | 'end'; taskId: string; offset: number }
+  | { mode: 'move' | 'start' | 'end' | 'milestone'; taskId: string; offset: number }
   | { mode: 'create'; taskId: string; from: number; to: number }
 
 export function GanttView() {
@@ -79,7 +80,7 @@ export function GanttView() {
   const { updateTask, addTask, deleteTask } = useTaskStore()
   const { openTaskModal, openTaskDetail, projectId, hideCompleted, setProject } = useUiStore()
   const allMilestones = useMilestoneStore(s => s.milestones)
-  const { deleteMilestone } = useMilestoneStore()
+  const { deleteMilestone, updateMilestone } = useMilestoneStore()
   const projects = useProjectStore(s => s.projects)
   const email = useAuthStore(s => s.email)
   const isMobile = useMobile()
@@ -257,7 +258,7 @@ export function GanttView() {
     // No ghost until the pointer has actually travelled: otherwise every click
     // on a lane flashes a one-day bar that was never going to be created.
     setVisual(d.mode === 'create' ? null : { mode: d.mode, taskId: d.taskId, offset: 0 })
-    document.body.style.cursor = d.mode === 'move' ? 'grabbing' : d.mode === 'create' ? 'crosshair' : 'ew-resize'
+    document.body.style.cursor = d.mode === 'move' || d.mode === 'milestone' ? 'grabbing' : d.mode === 'create' ? 'crosshair' : 'ew-resize'
     document.body.style.userSelect = 'none'
   }, [])
 
@@ -320,6 +321,11 @@ export function GanttView() {
       haptic('tap')
       const shiftDate = (ymd: string) => fmtYMD(addDays(toDate(ymd), offset))
 
+      if (d.mode === 'milestone') {
+        updateMilestone(d.taskId, { dueDate: shiftDate(d.origDue) })
+        return
+      }
+
       if (d.mode === 'move') {
         const patch: Partial<Task> = {}
         if (d.origStart) patch.start = shiftDate(d.origStart)
@@ -356,7 +362,7 @@ export function GanttView() {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
     }
-  }, [updateTask, addTask, totalDays, rangeStart, email])
+  }, [updateTask, addTask, updateMilestone, totalDays, rangeStart, email])
 
   const laneMouseDown = (e: React.MouseEvent, opts: { taskId: string; task?: Task; newIn?: Drag['newIn'] }) => {
     if (e.button !== 0) return
@@ -367,6 +373,17 @@ export function GanttView() {
       mode: 'create', taskId: opts.taskId, lane, startX: e.clientX, anchorCol,
       origStart: opts.task?.start ?? '', origDue: opts.task?.due ?? '', cascade: [],
       newIn: opts.newIn,
+    })
+  }
+
+  const milestoneMouseDown = (e: React.MouseEvent, ms: Milestone) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    const lane = (e.currentTarget as HTMLElement).closest('[data-lane]') as HTMLElement
+    beginDrag({
+      mode: 'milestone', taskId: ms.id, lane, startX: e.clientX, anchorCol: 0,
+      origStart: ms.dueDate, origDue: ms.dueDate, cascade: [],
     })
   }
 
@@ -637,6 +654,10 @@ export function GanttView() {
                 })}
                 canDragCreate={!!projectFor(row.milestone)}
                 onContextMenu={row.milestone ? (x, y) => setMsCtxMenu({ x, y, milestone: row.milestone! }) : undefined}
+                rangeStart={rangeStart}
+                dragOffset={visual?.mode === 'milestone' && visual.taskId === row.milestone?.id ? visual.offset : null}
+                onDateMouseDown={e => { if (row.milestone) milestoneMouseDown(e, row.milestone) }}
+                onDateChange={v => { if (row.milestone) updateMilestone(row.milestone.id, { dueDate: v }) }}
               />
             ) : (
               <TaskRow
@@ -862,8 +883,14 @@ function ProjectRow({ project, expanded, onToggle, rollup, count, timelineW, lef
 function MilestoneRow({
   milestone, expanded, onToggle, rollup, timelineW, leftW, dayW,
   creating, onHoverChange, onAdd, onLaneMouseDown, canDragCreate, onContextMenu, compact, depth,
+  rangeStart, dragOffset, onDateMouseDown, onDateChange,
 }: {
   compact: boolean
+  rangeStart: Date
+  /** Days the date is being dragged by, or null when it is not. */
+  dragOffset: number | null
+  onDateMouseDown: (e: React.MouseEvent) => void
+  onDateChange: (ymd: string) => void
   /** 0 inside one project, 1 under a project band. */
   depth: number
   milestone: Milestone | null
@@ -883,6 +910,13 @@ function MilestoneRow({
   const [hovered, setHovered] = useState(false)
   const isNull = milestone === null
   const isDone = milestone?.done === true
+  const dragging = dragOffset !== null
+  const shiftedDue = milestone?.dueDate
+    ? fmtYMD(addDays(toDate(milestone.dueDate), dragOffset ?? 0))
+    : null
+  // Off the visible span it would be drawn past the end of its own lane.
+  const rawCol = shiftedDue ? dayDiff(rangeStart, toDate(shiftedDue)) : null
+  const dueCol = rawCol !== null && rawCol >= 0 && rawCol * dayW < timelineW ? rawCol : null
   const accent = isDone ? '#6b7280' : MS_COLOR
   const tintBg = isDone ? 'rgba(107,114,128,' : 'rgba(139,92,246,'
 
@@ -944,9 +978,21 @@ function MilestoneRow({
         <span style={{ fontSize: 12, fontWeight: 600, color: isNull ? 'var(--t3)' : accent, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: isDone ? .6 : 1, textDecoration: isDone ? 'line-through' : 'none' }}>
           {milestone?.name ?? '마일스톤 미지정'}
         </span>
-        {milestone?.dueDate && !hovered && (
-          <span style={{ fontSize: 10, color: accent, opacity: isDone ? .4 : .65, flexShrink: 0 }}>
-            ~{milestone.dueDate.slice(5)}
+        {/* The date you were already reading is the control that changes it.
+            Precise where dragging the diamond is quick — and the only way in on
+            a phone, where dragging a 13px handle is not a gesture. */}
+        {milestone?.dueDate && (
+          <span onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
+            <DateField
+              value={milestone.dueDate}
+              context={{ projectId: milestone.projectId }}
+              onChange={v => { if (v) onDateChange(v) }}
+              style={{
+                fontSize: 10, color: accent, opacity: isDone ? .4 : .8,
+                padding: '1px 4px', borderRadius: 'var(--r1)',
+                background: hovered ? `${tintBg}.12)` : 'transparent',
+              }}
+            />
           </span>
         )}
         {/* Adding work is the thing you come to a milestone to do, so it is a
@@ -982,6 +1028,41 @@ function MilestoneRow({
             pointerEvents: 'none', opacity: isDone ? .5 : 1,
           }} />
         )}
+        {/* The milestone's own date, where the chart says it is.
+            A milestone is a point rather than a span, so it is a handle rather
+            than a bar — small enough that dragging anywhere else in the lane
+            still means "make a task here", which is what that gesture means on
+            every other row. */}
+        {dueCol !== null && (
+          <div
+            onMouseDown={onDateMouseDown}
+            title={`${milestone?.dueDate} — 드래그해서 날짜 변경`}
+            style={{
+              position: 'absolute', left: dueCol * dayW + Math.floor(dayW / 2) - 9,
+              top: '50%', transform: 'translateY(-50%)',
+              width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'grab', zIndex: 3,
+            }}
+          >
+            <span style={{
+              fontSize: 13, lineHeight: 1, color: accent,
+              filter: dragging ? `drop-shadow(0 0 5px ${accent})` : 'none',
+              opacity: isDone ? .55 : 1,
+            }}>◆</span>
+          </div>
+        )}
+
+        {dragging && dueCol !== null && (
+          <div style={{
+            position: 'absolute', left: dueCol * dayW + Math.floor(dayW / 2) - 2, top: -2,
+            transform: 'translateY(-100%)', background: accent, color: '#fff',
+            fontSize: 10, padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap',
+            pointerEvents: 'none', zIndex: 5, fontVariantNumeric: 'tabular-nums',
+          }}>
+            {shiftedDue?.slice(5)}
+          </div>
+        )}
+
         {creating && <DraftBar from={creating.from} to={creating.to} dayW={dayW} accent={accent} label="새 업무" />}
       </div>
     </div>
