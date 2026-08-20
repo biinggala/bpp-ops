@@ -44,6 +44,8 @@ type UndoOp =
 
 const MAX_HISTORY = 50
 
+import { noticeAssigneeChange, noticeDueChange, noticeSubtask } from '../lib/notify'
+
 interface TaskState {
   tasks: Task[]
   history: UndoOp[]
@@ -122,8 +124,13 @@ export const useTaskStore = create<TaskState>((set, get) => {
 
     addTask: (input) => {
       const task: Task = { ...input, id: gid() } as Task
+      const parent = task.parentId ? get().tasks.find(t => t.id === task.parentId) : undefined
       set({ tasks: [...get().tasks, task], history: pushHistory({ kind: 'add', task }) })
       writeTask(task)
+      // Whoever is holding the parent gets told their work grew a piece.
+      if (parent) noticeSubtask(parent, task)
+      // A task created already assigned to somebody else is an assignment.
+      if (task.assignee) noticeAssigneeChange(task, '', task.assignee)
       return task
     },
 
@@ -138,6 +145,16 @@ export const useTaskStore = create<TaskState>((set, get) => {
 
       const next = { ...current, ...patch }
       set({ tasks: get().tasks.map(t => t.id === id ? next : t), history: pushHistory({ kind: 'update', id, before }) })
+
+      // Two changes are worth telling somebody about, because they are the two
+      // nobody would otherwise notice: work arriving on their plate, and the
+      // date moving under work they are already holding. See lib/notify.
+      if ('assignee' in patch && patch.assignee !== current.assignee) {
+        noticeAssigneeChange(next, current.assignee ?? '', patch.assignee ?? '')
+      }
+      if ('due' in patch && patch.due !== current.due) {
+        noticeDueChange(next, current.due ?? '', patch.due ?? '')
+      }
 
       // Moving between projects changes where the record lives, so the old copy
       // has to go rather than being patched in place.

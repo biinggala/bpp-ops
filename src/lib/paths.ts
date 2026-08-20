@@ -30,6 +30,12 @@ export const P = {
 
   space:            (sid: string) => `spaces/${sid}`,
   userProfile:      (uid: string) => `userProfiles/${uid}`,
+
+  /** One person's inbox. Anyone may leave a notice here; only the owner reads it. */
+  notices:          (uid: string) => `notices/${uid}`,
+  /** Where a device's push subscription lives, so the server can reach it. */
+  pushSubs:         (uid: string) => `pushSubs/${uid}`,
+  pushSub:          (uid: string, id: string) => `pushSubs/${uid}/${id}`,
 } as const
 
 /**
