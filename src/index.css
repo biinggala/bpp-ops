@@ -71,15 +71,28 @@ html, body {
   overflow: hidden;
   overscroll-behavior: none;
 }
-/* Size the app to the measured visible height (--app-h, set in main.tsx from
-   visualViewport) — iOS standalone PWAs mis-report % / vh heights, which left
-   a gap below the bottom nav. */
+/* The app is exactly as tall as the screen, and no taller.
+   
+   Getting this wrong is expensive in both directions: too short leaves a white
+   band under the bottom bar, too tall pushes the bar's own bottom edge — and
+   the last row of whatever is scrolling — below the fold, where it reads as
+   content being cut off.
+   
+   `100dvh` is the browser's own answer to the question and gets it right in
+   every mode this app runs in, including an installed PWA where there is no
+   browser chrome at all. --app-h (measured in main.tsx) stays as the fallback
+   for anything too old to know dvh; on everything else the rule below wins and
+   the measurement is ignored, which is the point — a number we compute
+   ourselves can be stale, and dvh cannot. */
 body {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: var(--app-h, 100%);
+}
+@supports (height: 100dvh) {
+  body { height: 100dvh; }
 }
 
 /* Scrollbar */

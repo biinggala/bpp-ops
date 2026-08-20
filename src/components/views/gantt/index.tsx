@@ -631,8 +631,11 @@ export function GanttView() {
             </svg>
           )}
 
-          {/* Rows */}
-          <div style={{ position: 'relative', zIndex: 2 }}>
+          {/* Rows.
+              The slack at the foot is deliberate: without it the last row ends
+              flush against the bottom bar, which looks like the chart has been
+              cut rather than finished. */}
+          <div style={{ position: 'relative', zIndex: 2, paddingBottom: isMobile ? 20 : 8 }}>
             {rows.map(row => row.kind === 'project' ? (
               <ProjectRow
                 key={row.key}

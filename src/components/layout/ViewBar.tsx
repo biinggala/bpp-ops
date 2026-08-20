@@ -519,6 +519,9 @@ function BottomNav({ view, onPick }: { view: ViewType; onPick: (v: ViewType) => 
       height: 'calc(var(--bottom-nav-h) + var(--safe-b))',
       paddingBottom: 'var(--safe-b)',
       borderTop: '1px solid rgba(55,53,47,.07)',
+      // A whisper of a shadow, so the bar reads as sitting over the content
+      // rather than as a white strip the content stopped short of.
+      boxShadow: '0 -1px 12px rgba(55,53,47,.05)',
       background: 'rgba(255,255,255,.86)',
       backdropFilter: 'saturate(180%) blur(20px)',
       WebkitBackdropFilter: 'saturate(180%) blur(20px)',
