@@ -1852,16 +1852,17 @@ function AddMilestoneInline({ projectId, onDone }: { projectId: string; onDone: 
   const containerRef = useRef<HTMLDivElement>(null)
   const valid = name.trim() !== '' && date !== ''
 
-  // Clicking away abandons the row, the same as the task add row — the calendar
-  // it opens is portalled to the body, so it has to be exempted by name or
-  // picking a date would count as clicking outside.
-  const onDoneRef = useRef(onDone)
-  onDoneRef.current = onDone
+  // Clicking away keeps a finished row and drops an unfinished one, the same as
+  // the task add row. A milestone needs both halves to exist, so "finished"
+  // here means a name and a date. The calendar it opens is portalled to the
+  // body, so it has to be exempted by name or picking a date would count as
+  // clicking outside.
+  const outsideRef = useRef<() => void>(() => {})
   useEffect(() => {
     const h = (e: MouseEvent) => {
       const t = e.target as HTMLElement
       if (t.closest('[data-addrow-popup]')) return
-      if (containerRef.current && !containerRef.current.contains(t)) onDoneRef.current()
+      if (containerRef.current && !containerRef.current.contains(t)) outsideRef.current()
     }
     document.addEventListener('mousedown', h)
     return () => document.removeEventListener('mousedown', h)
@@ -1874,6 +1875,7 @@ function AddMilestoneInline({ projectId, onDone }: { projectId: string; onDone: 
     if (another) setTimeout(() => nameRef.current?.focus(), 0)
     else onDone()
   }
+  outsideRef.current = () => { if (valid) submit(false); else onDone() }
 
   return (
     <div
@@ -2095,16 +2097,31 @@ function AddTaskRow({ cols, assigneeOptions, defaultAssignee = '', milestoneId, 
 
   useEffect(() => { nameRef.current?.focus() }, [])
 
+  /**
+   * Clicking away keeps a row that is ready, and drops one that is not.
+   *
+   * Filling the row is a run of clicks — project, milestone, date — and the
+   * click that ends it is usually just somewhere else on the page. Throwing the
+   * row away then meant retyping everything, so the last step became "remember
+   * to press Enter". A named task is a task; an empty row is nothing lost.
+   *
+   * The listener is registered once, so it reads the fields through a ref
+   * rather than through the closure the effect captured — otherwise it would
+   * decide with the values the row had when it opened, which are always empty.
+   */
+  const outsideRef = useRef<() => void>(() => {})
+  outsideRef.current = () => { if (name.trim()) doSave(false); else onCancel() }
+
   useEffect(() => {
     const h = (e: MouseEvent) => {
       const t = e.target as HTMLElement
       // Ignore clicks inside any fixed popup spawned by our child selects
       if (t.closest('[data-addrow-popup]')) return
-      if (containerRef.current && !containerRef.current.contains(t)) onCancel()
+      if (containerRef.current && !containerRef.current.contains(t)) outsideRef.current()
     }
     document.addEventListener('mousedown', h)
     return () => document.removeEventListener('mousedown', h)
-  }, [onCancel])
+  }, [])
 
   const doSave = (addAnother: boolean) => {
     if (!name.trim()) { nameRef.current?.focus(); return }
