@@ -7,6 +7,7 @@ import { useProjectStore } from '../../store/projectStore'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import type { Notice, NoticeKind } from '../../lib/notify'
+import { disablePush, enablePush, pushEnabledHere, pushSupport } from '../../lib/push'
 
 /**
  * ── 알림 ─────────────────────────────────────────────────────────────────────
@@ -203,6 +204,8 @@ function NoticeList({ notices, onClose }: { notices: Notice[]; onClose: () => vo
         )}
       </div>
 
+      <PushToggle />
+
       <div style={{ overflowY: 'auto', flex: 1 }}>
         {notices.length === 0 && (
           <div style={{ padding: '28px 16px', textAlign: 'center', fontSize: 13, color: 'var(--t3)' }}>
@@ -255,5 +258,66 @@ function NoticeList({ notices, onClose }: { notices: Notice[]; onClose: () => vo
         })}
       </div>
     </>
+  )
+}
+
+/**
+ * The switch for push, where the notifications already are.
+ *
+ * It has to be a tap on this device: a subscription belongs to one browser on
+ * one machine, so turning it on on the laptop says nothing about the phone. And
+ * the reason it cannot be turned on — an iPhone not yet added to the home
+ * screen, a desktop shell with no Push API — is written out rather than left as
+ * a dead switch.
+ */
+function PushToggle() {
+  const [on, setOn] = useState(pushEnabledHere())
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const support = pushSupport()
+
+  if (!support.ok) {
+    return (
+      <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--bd)', fontSize: 11, color: 'var(--t3)', lineHeight: 1.5 }}>
+        {support.reason}
+      </div>
+    )
+  }
+
+  const toggle = async () => {
+    setBusy(true); setError(null)
+    if (on) {
+      await disablePush()
+      setOn(false)
+    } else {
+      const res = await enablePush()
+      if (res.ok) setOn(true)
+      else setError(res.reason)
+    }
+    setBusy(false)
+  }
+
+  return (
+    <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--bd)', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 12, color: 'var(--t2)', flex: 1, minWidth: 0 }}>
+        이 기기에서 푸시 받기
+        {error && <span style={{ display: 'block', fontSize: 11, color: '#D44C47' }}>{error}</span>}
+      </span>
+      <button
+        onClick={() => void toggle()}
+        disabled={busy}
+        role="switch"
+        aria-checked={on}
+        style={{
+          width: 38, height: 22, borderRadius: 999, flexShrink: 0, padding: 2,
+          border: 'none', cursor: busy ? 'default' : 'pointer',
+          background: on ? 'var(--ac)' : 'var(--bd2)',
+          display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start',
+          transition: 'background .15s', opacity: busy ? .6 : 1,
+        }}
+      >
+        <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.25)', transition: 'all .15s' }} />
+      </button>
+    </div>
   )
 }
