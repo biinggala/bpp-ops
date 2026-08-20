@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react'
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import {
   useMenu, Menu, MenuList, MenuItem, MenuCheck, MenuNote,
   MenuDivider, MenuFooter, MENU_INPUT, CellTrigger, Dot, useMenuKeys,
@@ -6,6 +6,7 @@ import {
 import { AssigneePicker } from '../../shared/AssigneePicker'
 import { BadgeSelect } from '../../shared/BadgeSelect'
 import { StatusPill, PriorityLabel } from '../../shared/StatusPill'
+import { useGCalStore, type GCalEvent } from '../../../store/gcalStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useAccessibleTasks } from '../../../hooks/useAccessibleTasks'
 import { useTaskStore } from '../../../store/taskStore'
@@ -221,11 +222,84 @@ function bucketTasks(
   return order.filter(b => b.tasks.length > 0)
 }
 
+/**
+ * "이 업무에 일정 2개" — read out of the calendar already in memory.
+ *
+ * The link lives on the Google event, so the honest question "does this task
+ * have events" costs one API call per task, which a two-hundred-row list cannot
+ * pay. What it can do is look at the window the calendar views already loaded:
+ * every event in it carries its task id, so the answer is free for anything
+ * within a few months of today. The list asks for that window once when it
+ * opens, and the calendar reuses the same cache.
+ *
+ * Older or far-future events are therefore not counted. That is the price of
+ * not making the list wait on the network, and the task's own 일정 섹션 —
+ * which does ask Google — remains the complete answer.
+ */
+function EventCountChip({ events }: { events: GCalEvent[] }) {
+  const next = events.find(e => (e.startIso ?? `${e.start}T23:59:59`) >= new Date().toISOString().slice(0, 19))
+  const when = next ? (() => {
+    const d = new Date((next.startIso ?? `${next.start}T00:00:00`).slice(0, 19))
+    return `${d.getMonth() + 1}/${d.getDate()}${next.allDay ? '' : ` ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`}`
+  })() : null
+  return (
+    <span
+      title={`연결된 일정 ${events.length}개${when ? ` · 다음 ${when} ${next!.summary}` : ''}`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0,
+        fontSize: 10, lineHeight: 1.6, padding: '1px 5px', borderRadius: 3,
+        background: 'rgba(35,131,226,.09)', color: '#2E6E90',
+      }}
+    >
+      <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" style={{ display: 'block' }} aria-hidden>
+        <rect x="1.4" y="2.4" width="9.2" height="8.2" rx="1.4" />
+        <path d="M1.4 5.1h9.2M4 1.4v2M8 1.4v2" />
+      </svg>
+      {events.length}
+    </span>
+  )
+}
+
+/** The linked events for every task, keyed by task id. */
+function useTaskEvents(): Map<string, GCalEvent[]> {
+  const events = useGCalStore(s => s.events)
+  const wasConnected = useGCalStore(s => s.wasConnected)
+  const ensureEvents = useGCalStore(s => s.ensureEvents)
+
+  // Asked for once, and generously: ensureEvents pads either side and skips the
+  // request when the calendar has already loaded a window that covers it, so
+  // walking between the list and the calendar costs nothing extra.
+  useEffect(() => {
+    if (!wasConnected) return
+    const at = (days: number) => {
+      const d = new Date()
+      d.setDate(d.getDate() + days)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    }
+    void ensureEvents(at(-14), at(60))
+  }, [wasConnected, ensureEvents])
+
+  return useMemo(() => {
+    const m = new Map<string, GCalEvent[]>()
+    for (const ev of events) {
+      if (!ev.taskId) continue
+      const list = m.get(ev.taskId)
+      if (list) list.push(ev)
+      else m.set(ev.taskId, [ev])
+    }
+    for (const list of m.values()) {
+      list.sort((a, b) => (a.startIso ?? a.start).localeCompare(b.startIso ?? b.start))
+    }
+    return m
+  }, [events])
+}
+
 type CtxState = { x: number; y: number; task: Task } | null
 
 // ── MobileTableView ───────────────────────────────────────────────────────────
 
 function MobileTableView() {
+  const taskEvents = useTaskEvents()
   const filteredTasks = useFilteredTasks()
   const allTasks = useTaskStore(s => s.tasks)
   const { addTask, updateTask, deleteTask } = useTaskStore()
@@ -336,6 +410,9 @@ function MobileTableView() {
             <span style={{ fontSize: 11, color: overdue ? '#D44C47' : 'var(--t3)', flexShrink: 0, marginRight: 6 }}>
               {overdue ? '⚠ ' : ''}{fmtDate(task.due)}
             </span>
+          )}
+          {!!taskEvents.get(task.id)?.length && (
+            <span style={{ flexShrink: 0, marginRight: 4 }}><EventCountChip events={taskEvents.get(task.id)!} /></span>
           )}
           <span style={{ flexShrink: 0 }}><StatusPill status={task.status} compact /></span>
           {!isDone && (
@@ -562,6 +639,7 @@ export function TableView() {
   const projects = React.useMemo(() =>
     allProjects
   , [allProjects, userEmail])
+  const taskEvents = useTaskEvents()
   // Union of all accessible project members — used as fallback for assignee dropdowns
   const accessibleMemberEmails = React.useMemo(() => {
     const s = new Set<string>()
@@ -770,6 +848,7 @@ export function TableView() {
             milestones={pickerMilestones} showMilestonePicker={!!task.projectId}
             onMilestoneCreate={task.projectId ? (n, d) => addMilestone(task.projectId!, n, d).id : undefined}
             assigneeOptions={aOpts} allTags={allTags} groupAccent={groupAccent}
+            events={taskEvents.get(task.id)}
             onToggle={() => toggle(task.id)} {...h}
             isDragging={draggingTaskId === task.id}
             isDragTarget={dropTargetId === task.id && !!draggingTaskId && canDropOnTask(draggingTaskId, task.id)}
@@ -794,6 +873,7 @@ export function TableView() {
                   milestones={pickerMilestones} showMilestonePicker={!!child.projectId}
                   onMilestoneCreate={child.projectId ? (n, d) => addMilestone(child.projectId!, n, d).id : undefined}
                   assigneeOptions={cOpts} allTags={allTags} groupAccent={groupAccent}
+                  events={taskEvents.get(child.id)}
                   {...ch}
                   isDragging={draggingTaskId === child.id}
                   isDragTarget={false}
@@ -863,6 +943,7 @@ export function TableView() {
             milestones={milestonesOf(task.projectId)} showMilestonePicker={!!task.projectId}
             onMilestoneCreate={task.projectId ? (n, d) => addMilestone(task.projectId!, n, d).id : undefined}
             assigneeOptions={opts} allTags={allTags}
+            events={taskEvents.get(task.id)}
             // A child drawn under its parent does not need to be told who its
             // parent is; the indentation already said so.
             breadcrumb={isChild ? crumbFor({ ...task, parentId: undefined }) : crumbFor(task)}
@@ -1290,6 +1371,7 @@ function Row({
   allTags = [],
   groupAccent,
   breadcrumb,
+  events,
   onToggle, onOpen, onUpdate, onMilestoneChange, onContextMenu,
   isDragging = false, isDragTarget = false,
   canDrag = false, canBeDropTarget = false,
@@ -1304,6 +1386,8 @@ function Row({
   allTags?: string[]
   /** Colour of the milestone this row sits under, drawn as a rail on the left. */
   groupAccent?: string
+  /** Linked calendar events, if any are in the loaded window. */
+  events?: GCalEvent[]
   /**
    * Where the task lives, for flat modes where no header above the row says so.
    * Rendered as a second line under the name rather than inline, so it never
@@ -1434,6 +1518,7 @@ function Row({
               {hasChildren && !isExpanded && (
                 <span style={{ fontSize: 10, color: 'var(--t3)', background: 'var(--bg4)', borderRadius: 10, padding: '1px 6px', flexShrink: 0 }}>{doneCount}/{childCount}</span>
               )}
+              {!!events?.length && <EventCountChip events={events} />}
               {task.tags && task.tags.length > 0 && (
                 <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
                   {task.tags.slice(0, 2).map(tag => <TagBadge key={tag} tag={tag} />)}
