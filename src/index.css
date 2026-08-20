@@ -92,7 +92,18 @@ body {
   height: var(--app-h, 100%);
 }
 @supports (height: 100dvh) {
-  body { height: 100dvh; }
+  /* Whichever is taller, because each one is wrong in the opposite direction.
+     
+     iOS in standalone reports 100dvh *short by the bottom safe area* — the app
+     then ends 34pt above the screen and the page background shows through under
+     it as a white strip with the home indicator sitting on it. That is what
+     "최하단에 화면을 자르는 하얀 바" was, and it is why the measured height
+     (floored at screen.height when installed) has to stay in the picture.
+     
+     dvh is the one that is right in a browser tab, where no measurement of ours
+     can see the toolbars coming and going. max() lets each cover the other's
+     failure; going over is not a risk, because the floor is the screen. */
+  body { height: max(var(--app-h, 0px), 100dvh); }
 }
 
 /* Scrollbar */
