@@ -16,6 +16,40 @@ const isStandalone = () =>
     (navigator as unknown as { standalone?: boolean }).standalone === true
   )
 
+/** A CSS length, resolved by measuring an element. env() is not readable in JS. */
+const cssPx = (value: string): number => {
+  const probe = document.createElement('div')
+  probe.style.cssText = `position:fixed;visibility:hidden;bottom:0;height:${value}`
+  document.body.appendChild(probe)
+  const h = probe.getBoundingClientRect().height
+  probe.remove()
+  return h
+}
+
+/**
+ * Stops the bottom bar reserving room for a home indicator that is not over it.
+ *
+ * On this phone iOS hands the installed app a window 62pt shorter than the
+ * screen and leaves that band below it — outside the window, painted by the
+ * system, unreachable by us. It still reports safe-area-inset-bottom: 34px, so
+ * the bar was padding 34pt out of its own height for an indicator sitting in
+ * iOS's band rather than on top of anything of ours. That is a third of the
+ * bar's height given away.
+ *
+ * So: when there is more dead space below the window than the inset claims, the
+ * inset is somebody else's problem and --safe-b goes to zero. When the window
+ * really does reach the bottom of the screen — a correctly installed app, or any
+ * browser — nothing is overridden and the padding stays, because there the
+ * indicator genuinely is over the bar.
+ */
+const setSafeBottom = () => {
+  const inset = cssPx('env(safe-area-inset-bottom, 0px)')
+  const dead = Math.max(0, screen.height - window.innerHeight)
+  const covered = isStandalone() && inset > 0 && dead >= inset - 1
+  if (covered) document.documentElement.style.setProperty('--safe-b', '0px')
+  else document.documentElement.style.removeProperty('--safe-b')
+}
+
 const setAppHeight = () => {
   // The visible area, as the browser itself defines it: visualViewport is the
   // part of the page a person can actually see, with any browser chrome already
@@ -31,6 +65,7 @@ const setAppHeight = () => {
   // under-reports, and neither can overshoot the screen.
   const h = window.visualViewport?.height ?? window.innerHeight
   document.documentElement.style.setProperty('--app-h', `${Math.round(h)}px`)
+  setSafeBottom()
 }
 setAppHeight()
 window.visualViewport?.addEventListener('resize', setAppHeight)
