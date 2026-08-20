@@ -3,6 +3,7 @@ import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import { auth } from '../lib/firebase'
 import { requestGoogleToken, AuthzError, GIS_CONFIGURED } from '../lib/googleAuthz'
 import { isDesktopShell, forgetStoredGrant } from '../lib/desktopAuth'
+import { askConfirm } from '../components/shared/Confirm'
 import { fetchCalendarList, fetchEventsAcross, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, writableCalendars, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent, type EventAttendee } from '../lib/googleCalendar'
 
 export interface GCalEvent {
@@ -139,10 +140,20 @@ const WRITE_KEY = 'gcal_can_write'
 const TARGET_KEY = 'gcal_target_calendar'
 
 /**
- * Write access is asked for the first time somebody creates an event, not at
- * connect. Most people only ever read the calendar, and there is no reason to
- * put a broader consent screen in front of them for a thing they never do.
+ * Read and write are asked for together, at connect.
+ *
+ * They used to be split: connect asked to read, and the first event somebody
+ * created widened the grant. It read well on paper — most people only look at
+ * the calendar — but the widening lands in the middle of the one action where
+ * an interruption costs most. In the desktop shell it is not even a quiet
+ * dialog: the consent screen cannot open in the webview, so the system browser
+ * takes over the screen, sometimes asking to sign in again first, and the
+ * person who was typing an event title is suddenly somewhere else. Writing an
+ * event is the point of connecting a calendar here, so it belongs in the same
+ * consent as reading one.
  */
+const FULL_SCOPE = `${CALENDAR_SCOPE} ${CALENDAR_WRITE_SCOPE}`
+
 function loadWrite(): boolean {
   try { return localStorage.getItem(WRITE_KEY) === '1' } catch { return false }
 }
@@ -158,22 +169,54 @@ function storeToken(token: string, expiresInSeconds = 3500) {
 type Setter = (partial: Partial<GCalState>) => void
 
 /**
- * Returns a token that may write, widening the grant the first time.
+ * Returns a token that may write.
  *
- * Must be reached straight from a click: the consent screen is a window, and a
- * window with no gesture behind it is blocked.
+ * Three paths, cheapest first: the token in hand, a silent renewal, and only
+ * then a window. Any window has to be reached from a click — a popup with no
+ * gesture behind it is blocked — and it is announced before it opens.
  */
 async function ensureWriteToken(get: () => GCalState, set: Setter): Promise<string | null> {
   if (get().canWrite && get().token) return get().token
+  const hint = auth.currentUser?.email ?? undefined
+
+  // Granted already, just no live token in hand — renew without asking anyone.
+  // The desktop shell redeems its stored refresh token; in the browser GIS
+  // re-issues while the Google session lasts. No window either way.
+  //
+  // Skipping this was the other half of "갑자기 로그인 한 번 더": an hour after
+  // connecting, saving an event went straight to an interactive request, which
+  // in the browser means a consent screen and in the shell means the system
+  // browser — for permission that had already been given.
+  if (get().canWrite) {
+    try {
+      const granted = await requestGoogleToken({ scope: FULL_SCOPE, interactive: false, hint })
+      const expiry = storeToken(granted.token, granted.expiresIn)
+      set({ token: granted.token, expiry, error: null })
+      return granted.token
+    } catch { /* the Google session has lapsed — a click is the only way through */ }
+  }
+
+  // Everything past here needs a window: either the first write grant (only
+  // people who connected before the scopes were merged reach that) or a lapsed
+  // session. Say so first, rather than letting the browser take the screen
+  // mid-sentence.
+  const proceed = await askConfirm({
+    message: get().canWrite
+      ? '구글 로그인이 만료됐습니다. 다시 인증할까요?'
+      : '캘린더에 일정을 만들 권한을 한 번 허용해야 합니다',
+    detail: isDesktopShell()
+      ? '브라우저가 열립니다. 끝나면 앱으로 돌아와 그대로 저장됩니다.'
+      : '구글 창이 열립니다. 끝나면 그대로 저장됩니다.',
+    confirmLabel: get().canWrite ? '다시 인증' : '권한 허용하기',
+    danger: false,
+  })
+  if (!proceed) return null
+
   try {
-    const granted = await requestGoogleToken({
-      scope: `${CALENDAR_SCOPE} ${CALENDAR_WRITE_SCOPE}`,
-      interactive: true,
-      hint: auth.currentUser?.email ?? undefined,
-    })
-    storeToken(granted.token, granted.expiresIn)
+    const granted = await requestGoogleToken({ scope: FULL_SCOPE, interactive: true, hint })
+    const expiry = storeToken(granted.token, granted.expiresIn)
     localStorage.setItem(WRITE_KEY, '1')
-    set({ token: granted.token, expiry: Date.now() + granted.expiresIn * 1000, canWrite: true, error: null })
+    set({ token: granted.token, expiry, canWrite: true, error: null })
     return granted.token
   } catch {
     set({ error: '캘린더에 쓰려면 권한이 필요합니다' })
@@ -203,13 +246,14 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       if (GIS_CONFIGURED) {
         try {
           const granted = await requestGoogleToken({
-            scope: CALENDAR_SCOPE,
+            scope: FULL_SCOPE,
             interactive: true,
             hint: auth.currentUser?.email ?? undefined,
           })
           const expiry = storeToken(granted.token, granted.expiresIn)
           localStorage.setItem('gcal_connected', '1')
-          set({ token: granted.token, expiry, wasConnected: true, loading: false, error: null })
+          localStorage.setItem(WRITE_KEY, '1')
+          set({ token: granted.token, expiry, wasConnected: true, canWrite: true, loading: false, error: null })
           return
         } catch (gisError) {
           // In the desktop shell there is nothing to fall through to: the popup
@@ -226,6 +270,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
 
       const provider = new GoogleAuthProvider()
       provider.addScope(CALENDAR_SCOPE)
+      provider.addScope(CALENDAR_WRITE_SCOPE)
       provider.setCustomParameters({ prompt: 'consent', access_type: 'online' })
       const result = await signInWithPopup(auth, provider)
       const credential = GoogleAuthProvider.credentialFromResult(result)
@@ -233,7 +278,8 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       if (!token) throw new Error('액세스 토큰을 받지 못했습니다')
       const expiry = storeToken(token)
       localStorage.setItem('gcal_connected', '1')
-      set({ token, expiry, wasConnected: true, loading: false, error: null })
+      localStorage.setItem(WRITE_KEY, '1')
+      set({ token, expiry, wasConnected: true, canWrite: true, loading: false, error: null })
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '구글 캘린더 연동 오류'
       const isCancel = msg.includes('popup-closed') || msg.includes('cancelled') || msg.includes('취소')
@@ -244,7 +290,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
   disconnect: () => {
     // The desktop shell holds a refresh token of its own; leaving it behind
     // would make "연동 해제" reconnect silently on the next reload.
-    if (isDesktopShell()) void forgetStoredGrant(`${CALENDAR_SCOPE} ${CALENDAR_WRITE_SCOPE}`)
+    if (isDesktopShell()) void forgetStoredGrant(FULL_SCOPE)
     localStorage.removeItem('gcal_token')
     localStorage.removeItem('gcal_expiry')
     localStorage.removeItem('gcal_connected')
@@ -270,7 +316,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     try {
       if (GIS_CONFIGURED) {
         const granted = await requestGoogleToken({
-          scope: get().canWrite ? `${CALENDAR_SCOPE} ${CALENDAR_WRITE_SCOPE}` : CALENDAR_SCOPE,
+          scope: get().canWrite ? FULL_SCOPE : CALENDAR_SCOPE,
           interactive: false,
           hint: auth.currentUser.email ?? undefined,
         })
