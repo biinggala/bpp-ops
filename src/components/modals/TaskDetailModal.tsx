@@ -21,6 +21,7 @@ import {
 import { DateField } from '../shared/DatePicker'
 import { AssigneePicker } from '../shared/AssigneePicker'
 import { BadgeSelect } from '../shared/BadgeSelect'
+import { StatusPill, PriorityLabel } from '../shared/StatusPill'
 import { useMenu, Menu, MenuList, MenuItem, CellTrigger, Dot } from '../shared/Menu'
 import { STATUS_LIST, PRIORITY_LIST, NOTION } from '../../types'
 import type { Task, Status, Priority, TaskLink } from '../../types'
@@ -409,7 +410,7 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
             <>
               {/* Status */}
               <MobilePropRow icon={<IcStatus />} label="상태">
-                <BadgeSelect value={task.status} options={STATUS_LIST as Status[]} styleMap={STATUS_STYLE} onChange={v => upd({ status: v as Status })} />
+                <BadgeSelect value={task.status} options={STATUS_LIST as Status[]} styleMap={STATUS_STYLE} renderValue={v => <StatusPill status={v} />} onChange={v => upd({ status: v as Status })} />
               </MobilePropRow>
 
               {/* Assignees — the multi-select, same as everywhere else. */}
@@ -419,7 +420,7 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
 
               {/* Priority */}
               <MobilePropRow icon={<IcFlag color={priorityStyle?.color} />} label="우선순위">
-                <BadgeSelect value={task.priority} options={PRIORITY_LIST as Priority[]} styleMap={PRIORITY_STYLE} onChange={v => upd({ priority: v as Priority })} />
+                <BadgeSelect value={task.priority} options={PRIORITY_LIST as Priority[]} styleMap={PRIORITY_STYLE} renderValue={v => <PriorityLabel priority={v} />} onChange={v => upd({ priority: v as Priority })} />
               </MobilePropRow>
 
               {/* Dates */}
@@ -733,11 +734,11 @@ export function TaskDetailModal() {
             </PropRow>
 
             <PropRow label="상태">
-              <BadgeSelect value={task.status} options={STATUS_LIST as Status[]} styleMap={STATUS_STYLE} onChange={v => upd({ status: v as Status })} />
+              <BadgeSelect value={task.status} options={STATUS_LIST as Status[]} styleMap={STATUS_STYLE} renderValue={v => <StatusPill status={v} />} onChange={v => upd({ status: v as Status })} />
             </PropRow>
 
             <PropRow label="우선순위">
-              <BadgeSelect value={task.priority} options={PRIORITY_LIST as Priority[]} styleMap={PRIORITY_STYLE} onChange={v => upd({ priority: v as Priority })} />
+              <BadgeSelect value={task.priority} options={PRIORITY_LIST as Priority[]} styleMap={PRIORITY_STYLE} renderValue={v => <PriorityLabel priority={v} />} onChange={v => upd({ priority: v as Priority })} />
             </PropRow>
 
             <PropRow label="시작일">

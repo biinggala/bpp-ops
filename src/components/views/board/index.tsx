@@ -6,12 +6,10 @@ import { CategoryBadge, PriorityBadge } from '../../shared/Badge'
 import { AssigneeGroup } from '../../shared/Avatar'
 import { ProgressBar } from '../../shared/ProgressBar'
 import { fmtDate } from '../../../lib/utils'
-import { STATUS_LIST } from '../../../types'
+import { STATUS_LIST, statusAccent } from '../../../types'
+import { StatusMark } from '../../shared/StatusMark'
 import type { Task, Status } from '../../../types'
 
-const STATUS_COLOR: Record<Status, string> = {
-  진행중: '#2383E2', 대기: '#9b9a97', 검토중: '#D9730D', 완료: '#448361',
-}
 
 export function BoardView() {
   const tasks = useFilteredTasks()
@@ -46,7 +44,11 @@ export function BoardView() {
             >
               {/* Column header */}
               <div style={{ padding: '12px 14px 10px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--bd)' }}>
-                <span style={{ width: 9, height: 9, borderRadius: '50%', background: STATUS_COLOR[status], flexShrink: 0 }} />
+                {/* The same mark the list uses, so a status is one shape across
+                    the app rather than a dot here and a pill there. */}
+                <span style={{ color: statusAccent(status), display: 'flex', flexShrink: 0 }}>
+                  <StatusMark status={status} size={14} />
+                </span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--t1)' }}>{status}</span>
                 <span style={{ fontSize: 12, color: 'var(--t3)', marginLeft: 2 }}>{col.length}</span>
               </div>

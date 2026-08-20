@@ -5,6 +5,7 @@ import {
 } from '../../shared/Menu'
 import { AssigneePicker } from '../../shared/AssigneePicker'
 import { BadgeSelect } from '../../shared/BadgeSelect'
+import { StatusPill, PriorityLabel } from '../../shared/StatusPill'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useAccessibleTasks } from '../../../hooks/useAccessibleTasks'
 import { useTaskStore } from '../../../store/taskStore'
@@ -18,7 +19,7 @@ import { TagBadge } from '../../shared/Badge'
 import { AssigneeAvatar } from '../../shared/Avatar'
 import { ContextMenu } from '../../shared/ContextMenu'
 import { fmtDate, isOverdue, parseAssignees, assigneeKeyToEmail, stripHtml, isComposing } from '../../../lib/utils'
-import { NOTION, STATUS_LIST, PRIORITY_LIST, getTagColor } from '../../../types'
+import { NOTION, STATUS_LIST, PRIORITY_LIST, getTagColor, statusAccent } from '../../../types'
 import {
   FileRow, DriveSearch, UrlAdd, AttachTabs,
   useResolvedLinks, useProjectFolderId, driveIdOf, linkFromDriveFile,
@@ -170,7 +171,7 @@ function bucketTasks(
     PRIORITY_LIST.forEach(pr => bucket(`pr:${pr}`, pr, PRIORITY_STYLE[pr].color))
     for (const t of tasks) bucket(`pr:${t.priority}`, t.priority).tasks.push(t)
   } else if (group === 'status') {
-    STATUS_LIST.forEach(st => bucket(`st:${st}`, st, STATUS_STYLE[st]?.color))
+    STATUS_LIST.forEach(st => bucket(`st:${st}`, st, statusAccent(st)))
     for (const t of tasks) bucket(`st:${t.status}`, t.status).tasks.push(t)
   } else if (group === 'assignee') {
     // A task with two assignees appears under both. Picking only the first
@@ -336,9 +337,7 @@ function MobileTableView() {
               {overdue ? '⚠ ' : ''}{fmtDate(task.due)}
             </span>
           )}
-          <span style={{ fontSize: 11, fontWeight: 500, flexShrink: 0, padding: '2px 8px', borderRadius: 10, background: st.bg, color: st.color, whiteSpace: 'nowrap' }}>
-            {task.status}
-          </span>
+          <span style={{ flexShrink: 0 }}><StatusPill status={task.status} compact /></span>
           {!isDone && (
             <button
               onClick={e => { e.stopPropagation(); haptic('toggle'); const child = addTask({ type: '세부', cat: task.cat, name: '새 하위 업무', assignee: '', start: '', due: '', priority: '중간', status: '대기', progress: 0, memo: '', parentId: task.id, projectId: task.projectId, milestoneId: task.milestoneId, createdBy: userEmail ?? undefined }); openTaskDetail(child.id) }}
@@ -1444,6 +1443,7 @@ function Row({
               value={task.status}
               options={(['진행중','대기','검토중','완료'] as Status[])}
               styleMap={STATUS_STYLE}
+              renderValue={v => <StatusPill status={v} />}
               onChange={v => onUpdate({ status: v as Status })}
             />
           </div>
@@ -1488,6 +1488,7 @@ function Row({
               value={task.priority}
               options={(['높음','중간','낮음'] as Priority[])}
               styleMap={PRIORITY_STYLE}
+              renderValue={v => <PriorityLabel priority={v} />}
               onChange={v => onUpdate({ priority: v as Priority })}
             />
           </div>
@@ -1982,6 +1983,7 @@ function AddRowStatusSelect({ value, onChange }: { value: Status; onChange: (v: 
         value={value}
         options={STATUS_LIST}
         styleMap={STATUS_STYLE}
+        renderValue={v => <StatusPill status={v} />}
         onChange={v => onChange(v as Status)}
         tabbable
       />
@@ -2222,6 +2224,7 @@ function AddTaskRow({ cols, assigneeOptions, defaultAssignee = '', milestoneId, 
               value={priority}
               options={PRIORITY_LIST}
               styleMap={PRIORITY_STYLE}
+              renderValue={v => <PriorityLabel priority={v} />}
               onChange={v => setPriority(v as Priority)}
               tabbable
             />

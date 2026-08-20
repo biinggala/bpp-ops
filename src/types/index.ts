@@ -169,6 +169,52 @@ export const STATUS_COLORS: Record<Status, { bg: string; text: string }> = {
   완료:   NOTION.green,
 }
 
+/**
+ * 상태, as the filled pill it is in the list.
+ *
+ * The tints in STATUS_COLORS are for places where the status is a footnote — a
+ * dot on a calendar chip, a line in a menu. In the list it is the column people
+ * actually read the table for, and a pale tint left it indistinguishable from
+ * the four other pale tints in the same row. Filled, it is the only saturated
+ * shape on the line.
+ *
+ * 대기 is the exception, and deliberately: nothing has happened yet, so it is
+ * outlined rather than filled. What catches the eye down a long list is then
+ * exactly the rows where something is going on.
+ *
+ * The fills are the app's own accent tones rather than darker, strictly
+ * AA-compliant versions of them. Pushing the amber down to 4.5:1 against white
+ * turns it olive — it was tried, side by side, and the pill stopped looking
+ * like anything you would want on the screen. At 12px/600 on these fills the
+ * label is comfortably readable, and the mark beside it carries the same
+ * meaning without relying on colour at all.
+ */
+export const STATUS_SOLID: Record<Status, { fill: string; text: string; ring: string }> = {
+  진행중: { fill: '#2383E2', text: '#ffffff', ring: 'transparent' },
+  대기:   { fill: 'transparent', text: '#787774', ring: 'rgba(55,53,47,.22)' },
+  검토중: { fill: '#D9730D', text: '#ffffff', ring: 'transparent' },
+  완료:   { fill: '#448361', text: '#ffffff', ring: 'transparent' },
+}
+
+/**
+ * 우선순위 as a ranking: one colour, three weights, and a bar that shortens.
+ *
+ * 낮음 is grey and weightless on purpose — it is the absence of urgency, and
+ * the old pale-blue pill for it pulled more attention than the amber 중간 above
+ * it, which inverted the order the field exists to express.
+ */
+export const PRIORITY_ORDER: Record<Priority, { color: string; weight: number; bar: number }> = {
+  높음: { color: '#D44C47', weight: 600, bar: 1 },
+  중간: { color: '#D9730D', weight: 500, bar: .55 },
+  낮음: { color: 'rgba(55,53,47,.45)', weight: 400, bar: .35 },
+}
+
+/** The one colour that stands for a status, wherever a status is not a pill. */
+export function statusAccent(status: Status): string {
+  const s = STATUS_SOLID[status] ?? STATUS_SOLID['대기']
+  return s.fill === 'transparent' ? s.text : s.fill
+}
+
 // Notion's icon-strength colours: saturated enough to identify a dot at 8px,
 // still from the same family as the badge tints so nothing clashes.
 export const SPACE_PALETTE = [
