@@ -4,7 +4,7 @@ import { auth } from '../lib/firebase'
 import { requestGoogleToken, AuthzError, GIS_CONFIGURED } from '../lib/googleAuthz'
 import { isDesktopShell, forgetStoredGrant } from '../lib/desktopAuth'
 import { askConfirm } from '../components/shared/Confirm'
-import { fetchCalendarList, fetchEventsAcross, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, writableCalendars, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent, type EventAttendee } from '../lib/googleCalendar'
+import { fetchCalendarList, fetchEventsAcross, fetchEventsForTask, searchEvents, setEventTaskLink, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, writableCalendars, TASK_LINK_KEY, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent, type EventAttendee } from '../lib/googleCalendar'
 
 export interface GCalEvent {
   id: string
@@ -20,6 +20,8 @@ export interface GCalEvent {
   startIso?: string
   endIso?: string
   attendees?: EventAttendee[]
+  /** The task this event belongs to, as recorded on the event in Google. */
+  taskId?: string
 }
 
 const ENABLED_KEY = 'gcal_enabled_calendars'
@@ -82,7 +84,13 @@ interface GCalState {
   autoReconnect: () => Promise<void>
   setTargetCalendar: (id: string) => void
   /** Creates an event, asking for write permission the first time. */
-  createEvent: (input: { summary: string; startDateTime: string; endDateTime: string; attendees?: string[] }) => Promise<boolean>
+  createEvent: (input: { summary: string; startDateTime: string; endDateTime: string; attendees?: string[]; taskId?: string }) => Promise<boolean>
+  /** The events linked to a task, as this person's calendars have them. */
+  eventsForTask: (taskId: string) => Promise<GCalEvent[]>
+  /** Events to choose from when attaching one that already exists. */
+  findLinkableEvents: (query: string) => Promise<GCalEvent[]>
+  /** Attaches or detaches an event. The event itself is never touched. */
+  setEventTask: (eventId: string, taskId: string | null) => Promise<boolean>
   updateEvent: (eventId: string, patch: { summary?: string; startDateTime?: string; endDateTime?: string; attendees?: string[] }) => Promise<boolean>
   removeEvent: (eventId: string) => Promise<void>
 }
@@ -120,6 +128,7 @@ function toGCalEvent(item: RawCalendarEvent): GCalEvent | null {
     startIso: item.start?.dateTime,
     endIso: item.end?.dateTime,
     attendees: item.attendees,
+    taskId: item.extendedProperties?.private?.[TASK_LINK_KEY],
   }
 }
 
@@ -175,6 +184,34 @@ type Setter = (partial: Partial<GCalState>) => void
  * then a window. Any window has to be reached from a click — a popup with no
  * gesture behind it is blocked — and it is announced before it opens.
  */
+/**
+ * A live token for reading, renewed silently if the one in hand has lapsed.
+ *
+ * Never opens a window: every caller is a background read that a person did not
+ * ask for directly, and a consent screen appearing because a task detail was
+ * opened would be worse than the read failing.
+ */
+async function ensureReadToken(get: () => GCalState, set: Setter): Promise<string | null> {
+  const { token, expiry } = get()
+  if (token && expiry && expiry > Date.now()) return token
+  // autoReconnect refuses to run while a token is held, so the lapsed one has to
+  // go first — otherwise this hands back the very token that just expired.
+  if (token) {
+    localStorage.removeItem('gcal_token')
+    localStorage.removeItem('gcal_expiry')
+    set({ token: null, expiry: null })
+  }
+  await get().autoReconnect()
+  return get().token
+}
+
+/** The calendars this person has ticked, reading the list first if need be. */
+async function activeCalendars(get: () => GCalState): Promise<GoogleCalendar[]> {
+  if (!get().calendars.length) await get().fetchCalendars()
+  const enabled = get().enabledCalendarIds ?? get().calendars.map(c => c.id)
+  return get().calendars.filter(c => enabled.includes(c.id))
+}
+
 async function ensureWriteToken(get: () => GCalState, set: Setter): Promise<string | null> {
   if (get().canWrite && get().token) return get().token
   const hint = auth.currentUser?.email ?? undefined
@@ -353,7 +390,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
    * a consent screen is warranted — and it needs the click that triggered it, so
    * this must be called straight from the interaction.
    */
-  createEvent: async ({ summary, startDateTime, endDateTime, attendees }) => {
+  createEvent: async ({ summary, startDateTime, endDateTime, attendees, taskId }) => {
     const { calendars, targetCalendarId } = get()
     const target = targetCalendarId
       ?? calendars.find(c => c.primary)?.id
@@ -367,7 +404,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     if (!token) return false
 
     try {
-      const created = await createCalendarEvent(token, { calendarId: target, summary, startDateTime, endDateTime, attendees })
+      const created = await createCalendarEvent(token, { calendarId: target, summary, startDateTime, endDateTime, attendees, taskId })
       const colour = calendars.find(c => c.id === target)?.backgroundColor ?? '#4285f4'
       const ev = toGCalEvent({ ...created, calendarId: target, calendarColor: colour })
       // Show it straight away; the next fetch will confirm it.
@@ -479,6 +516,74 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     if (!loadedFrom || !loadedTo) return
     set({ fetchedAt: 0 })
     await get().fetchEvents(loadedFrom, loadedTo)
+  },
+
+  /**
+   * A read, so it goes through the ordinary token — no consent, no window.
+   * Returns an empty list rather than an error when the calendar is not
+   * connected: a task with no calendar behind it simply has no events.
+   */
+  eventsForTask: async (taskId) => {
+    const token = await ensureReadToken(get, set)
+    if (!token) return []
+    const active = await activeCalendars(get)
+    if (!active.length) return []
+    try {
+      const raw = await fetchEventsForTask(token, active, taskId)
+      const seen = new Set<string>()
+      const out: GCalEvent[] = []
+      for (const item of raw) {
+        const ev = toGCalEvent(item)
+        if (!ev || seen.has(ev.id)) continue
+        seen.add(ev.id); out.push(ev)
+      }
+      return out.sort((a, b) => (a.startIso ?? a.start).localeCompare(b.startIso ?? b.start))
+    } catch {
+      return []
+    }
+  },
+
+  findLinkableEvents: async (query) => {
+    const token = await ensureReadToken(get, set)
+    if (!token) return []
+    const active = await activeCalendars(get)
+    if (!active.length) return []
+    try {
+      const raw = await searchEvents(token, active, query)
+      const seen = new Set<string>()
+      const out: GCalEvent[] = []
+      for (const item of raw) {
+        const ev = toGCalEvent(item)
+        if (!ev || seen.has(ev.id)) continue
+        seen.add(ev.id); out.push(ev)
+      }
+      return out.sort((a, b) => (a.startIso ?? a.start).localeCompare(b.startIso ?? b.start))
+    } catch {
+      return []
+    }
+  },
+
+  /**
+   * Writing to the event needs the write grant, same as creating one — the
+   * link is stored on the event, which is the whole reason it survives being
+   * moved or renamed in Google.
+   */
+  setEventTask: async (eventId, taskId) => {
+    const token = await ensureWriteToken(get, set)
+    if (!token) return false
+    const sep = eventId.indexOf(':')
+    const calendarId = eventId.slice(0, sep)
+    const bare = eventId.slice(sep + 1)
+    try {
+      await setEventTaskLink(token, calendarId, bare, taskId)
+      // Keep the loaded window in step so the calendar does not have to refetch.
+      set({ events: get().events.map(e => e.id === eventId ? { ...e, taskId: taskId ?? undefined } : e) })
+      return true
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '일정 연결 실패'
+      set({ error: msg === TOKEN_EXPIRED ? '토큰이 만료됐습니다. 다시 연동해 주세요.' : msg })
+      return false
+    }
   },
 
   fetchEvents: async (from: string, to: string) => {

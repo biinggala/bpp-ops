@@ -30,7 +30,24 @@ export interface RawCalendarEvent {
   end: { dateTime?: string; date?: string }
   htmlLink?: string
   attendees?: EventAttendee[]
+  extendedProperties?: { private?: Record<string, string>; shared?: Record<string, string> }
 }
+
+/**
+ * The key an event carries to say which task it belongs to.
+ *
+ * It lives on the event, in Google, rather than as a list of event ids on the
+ * task — for two reasons. An event moved, renamed or cancelled in Google stays
+ * correct on its own, with nothing here to go stale. And access follows the
+ * calendar it sits on: a task shows the interviews *you* can see, which is what
+ * people expect of a calendar, and is not what a shared list of everyone's
+ * appointments in our own database would have been.
+ *
+ * `private` means private to this copy of the event — the app reads it back
+ * through the `privateExtendedProperty` query, which is the only reason this
+ * link is findable at all without storing anything on our side.
+ */
+export const TASK_LINK_KEY = 'bppTaskId'
 
 /** Signals that the token is no longer good, so callers can stop and reconnect. */
 export const TOKEN_EXPIRED = 'GOOGLE_TOKEN_EXPIRED'
@@ -124,6 +141,8 @@ export interface NewEvent {
   timeZone?: string
   /** Addresses to invite. Google emails each of them.  */
   attendees?: string[]
+  /** The task this event belongs to, written into the event itself. */
+  taskId?: string
 }
 
 /**
@@ -155,6 +174,7 @@ export async function createCalendarEvent(token: string, event: NewEvent): Promi
         start: { dateTime: event.startDateTime, timeZone },
         end: { dateTime: event.endDateTime, timeZone },
         ...(event.attendees?.length ? { attendees: event.attendees.map(email => ({ email })) } : {}),
+        ...(event.taskId ? { extendedProperties: { private: { [TASK_LINK_KEY]: event.taskId } } } : {}),
       }),
     }
   )
@@ -205,6 +225,117 @@ export async function deleteCalendarEvent(token: string, calendarId: string, eve
   if (res.status === 401) throw new Error(TOKEN_EXPIRED)
   // 410 means it is already gone, which is the outcome the caller wanted.
   if (!res.ok && res.status !== 410 && res.status !== 404) throw new Error(`Calendar API ${res.status}`)
+}
+
+/**
+ * The events on these calendars that carry a link to `taskId`.
+ *
+ * Asked of Google every time rather than cached anywhere: the answer depends on
+ * which calendars the person reading can see, so it is not the same answer for
+ * two people looking at the same task, and there is nowhere sensible to keep it.
+ *
+ * Bounded to the last year — an interview from three years ago is not what
+ * anyone opened the task to find, and the query would otherwise walk the whole
+ * calendar history.
+ */
+export async function fetchEventsForTask(
+  token: string,
+  calendars: GoogleCalendar[],
+  taskId: string,
+  signal?: AbortSignal,
+): Promise<RawCalendarEvent[]> {
+  const yearAgo = new Date()
+  yearAgo.setFullYear(yearAgo.getFullYear() - 1)
+
+  const one = async (calendar: GoogleCalendar) => {
+    const url = new URL(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendar.id)}/events`
+    )
+    url.searchParams.set('privateExtendedProperty', `${TASK_LINK_KEY}=${taskId}`)
+    url.searchParams.set('timeMin', yearAgo.toISOString())
+    url.searchParams.set('singleEvents', 'true')
+    url.searchParams.set('orderBy', 'startTime')
+    url.searchParams.set('maxResults', '100')
+    const data = await get(url.toString(), token, signal) as { items?: RawCalendarEvent[] }
+    return (data.items ?? []).map(item => ({
+      ...item, calendarId: calendar.id, calendarColor: calendar.backgroundColor,
+    }))
+  }
+
+  const settled = await Promise.allSettled(calendars.map(one))
+  if (settled.length && settled.every(r => r.status === 'rejected')) {
+    const expired = settled.some(r => r.status === 'rejected' && (r.reason as Error)?.message === TOKEN_EXPIRED)
+    if (expired) throw new Error(TOKEN_EXPIRED)
+  }
+  return settled
+    .filter((r): r is PromiseFulfilledResult<RawCalendarEvent[]> => r.status === 'fulfilled')
+    .flatMap(r => r.value)
+}
+
+/**
+ * Free-text search across the chosen calendars, for attaching an event that
+ * already exists — which is the common case. Nobody schedules a candidate
+ * interview from a task board; they schedule it in Gmail, from the thread.
+ */
+export async function searchEvents(
+  token: string,
+  calendars: GoogleCalendar[],
+  query: string,
+  signal?: AbortSignal,
+): Promise<RawCalendarEvent[]> {
+  const from = new Date(); from.setDate(from.getDate() - 60)
+  const to = new Date(); to.setDate(to.getDate() + 180)
+
+  const one = async (calendar: GoogleCalendar) => {
+    const url = new URL(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendar.id)}/events`
+    )
+    if (query.trim()) url.searchParams.set('q', query.trim())
+    url.searchParams.set('timeMin', from.toISOString())
+    url.searchParams.set('timeMax', to.toISOString())
+    url.searchParams.set('singleEvents', 'true')
+    url.searchParams.set('orderBy', 'startTime')
+    url.searchParams.set('maxResults', '40')
+    const data = await get(url.toString(), token, signal) as { items?: RawCalendarEvent[] }
+    return (data.items ?? []).map(item => ({
+      ...item, calendarId: calendar.id, calendarColor: calendar.backgroundColor,
+    }))
+  }
+
+  const settled = await Promise.allSettled(calendars.map(one))
+  return settled
+    .filter((r): r is PromiseFulfilledResult<RawCalendarEvent[]> => r.status === 'fulfilled')
+    .flatMap(r => r.value)
+}
+
+/**
+ * Attaches an event to a task, or detaches it — the event itself is left alone
+ * either way. Detaching a wrongly linked interview must not cancel it.
+ *
+ * Reads the event's existing private properties first and writes them back
+ * merged, because a PATCH of `extendedProperties.private` replaces the whole
+ * map: sending only our key would silently drop whatever else had been stored
+ * there by anything else.
+ */
+export async function setEventTaskLink(
+  token: string, calendarId: string, eventId: string, taskId: string | null,
+): Promise<void> {
+  const base = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`
+  const existing = await get(`${base}?fields=extendedProperties`, token) as
+    { extendedProperties?: { private?: Record<string, string> } }
+
+  const priv: Record<string, string | null> = { ...(existing.extendedProperties?.private ?? {}) }
+  // null is how Google is told to remove a key; leaving it out would keep it.
+  priv[TASK_LINK_KEY] = taskId
+
+  const res = await fetch(base, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ extendedProperties: { private: priv } }),
+  })
+  if (res.status === 401) throw new Error(TOKEN_EXPIRED)
+  if (res.status === 403) throw new Error('이 일정을 수정할 권한이 없습니다')
+  if (!res.ok) throw new Error(`Calendar API ${res.status}`)
 }
 
 /** Calendars this account may actually add events to. */

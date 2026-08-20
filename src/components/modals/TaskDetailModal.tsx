@@ -21,6 +21,7 @@ import {
 import { DateField } from '../shared/DatePicker'
 import { AssigneePicker } from '../shared/AssigneePicker'
 import { BadgeSelect } from '../shared/BadgeSelect'
+import { SchedulePanel } from './SchedulePanel'
 import { StatusPill, PriorityLabel } from '../shared/StatusPill'
 import { useMenu, Menu, MenuList, MenuItem, CellTrigger, Dot } from '../shared/Menu'
 import { STATUS_LIST, PRIORITY_LIST, NOTION } from '../../types'
@@ -480,9 +481,10 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
                 </div>
               </div>
 
-              {/* Assets */}
+              {/* Assets, then the events they are for */}
               <div style={{ padding: '0 20px 24px', borderTop: '1px solid var(--bd)' }}>
                 <AssetsPanel links={task.links ?? []} projectId={task.projectId} onChange={links => upd({ links })} />
+                <SchedulePanel task={task} memberEmails={currentProject?.memberEmails ?? []} />
               </div>
             </>
           )}
@@ -781,6 +783,8 @@ export function TaskDetailModal() {
             )}
 
             <AssetsPanel links={task.links ?? []} projectId={task.projectId} onChange={links => upd({ links })} />
+
+            <SchedulePanel task={task} memberEmails={currentProject?.memberEmails ?? []} />
 
             {/* The project and milestone that used to be repeated here are two
                 rows up, and editable there. Restating them read as a second,
