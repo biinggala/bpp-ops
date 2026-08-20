@@ -252,15 +252,21 @@ function MobileCalendar() {
     ensureEvents(from, to)
   }, [token, enabledKey])
 
-  // Group tasks by due date
+  // Group tasks by due date, finished ones at the foot of each day — the same
+  // rule the list follows, for the same reason: a day's remaining work is what
+  // is being read, and what is done is only there to be counted.
   const tasksByDate = useMemo(() => {
     const map = new Map<string, Task[]>()
     tasks.forEach(t => {
       const key = t.due ?? t.start
       if (!key) return
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(t)
+      const list = map.get(key)
+      if (list) list.push(t)
+      else map.set(key, [t])
     })
+    for (const list of map.values()) {
+      list.sort((a, b) => (a.status === '완료' ? 1 : 0) - (b.status === '완료' ? 1 : 0))
+    }
     return map
   }, [tasks])
 

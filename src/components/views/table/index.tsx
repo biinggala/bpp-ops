@@ -137,7 +137,11 @@ function bucketTasks(
   today: Date,
   nameOf: (email: string) => string,
 ): Bucket[] {
-  if (group === 'none') return [{ key: '__all__', label: '', tasks }]
+  // '없음' used to return here before the done-last pass at the bottom of this
+  // function ever ran, so finished work stayed wherever the chosen sort had put
+  // it — most visibly on the phone, which has no second sort of its own and
+  // draws these buckets exactly as they arrive.
+  if (group === 'none') return [{ key: '__all__', label: '', tasks: doneLast(tasks) }]
 
   const order: Bucket[] = []
   const byKey = new Map<string, Bucket>()
@@ -211,15 +215,20 @@ function bucketTasks(
   }
 
   // Done last, inside every bucket.
-  //
-  // The sort the list is under is about when work is due, and a finished task
-  // still has its deadline — so "마감 가까운 순" was floating things that were
-  // already done to the top of the list, which is the one place they have no
-  // business being. Stable, so the chosen order survives underneath.
-  for (const b of order) {
-    b.tasks = [...b.tasks].sort((a, c) => (a.status === '완료' ? 1 : 0) - (c.status === '완료' ? 1 : 0))
-  }
+  for (const b of order) b.tasks = doneLast(b.tasks)
   return order.filter(b => b.tasks.length > 0)
+}
+
+/**
+ * Finished work goes to the bottom.
+ *
+ * The sort the list is under is about when work is due, and a finished task
+ * still has its deadline — so "마감 가까운 순" was floating things that were
+ * already done to the top of the list, which is the one place they have no
+ * business being. Stable, so the chosen order survives underneath.
+ */
+function doneLast(tasks: Task[]): Task[] {
+  return [...tasks].sort((a, b) => (a.status === '완료' ? 1 : 0) - (b.status === '완료' ? 1 : 0))
 }
 
 /**
