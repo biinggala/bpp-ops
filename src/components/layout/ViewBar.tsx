@@ -516,13 +516,13 @@ function BottomNav({ view, onPick }: { view: ViewType; onPick: (v: ViewType) => 
   return (
     <nav style={{
       flexShrink: 0,
-      height: 'calc(var(--bottom-nav-h) + var(--safe-b))',
-      paddingBottom: 'var(--safe-b)',
+      height: 'calc(var(--bottom-nav-h) + var(--safe-b-nav))',
+      paddingBottom: 'var(--safe-b-nav)',
       borderTop: '1px solid rgba(55,53,47,.07)',
       // A whisper of a shadow, so the bar reads as sitting over the content
       // rather than as a white strip the content stopped short of.
       boxShadow: '0 -1px 12px rgba(55,53,47,.05)',
-      background: 'rgba(255,255,255,.86)',
+      background: 'rgba(252,252,251,.88)',
       backdropFilter: 'saturate(180%) blur(20px)',
       WebkitBackdropFilter: 'saturate(180%) blur(20px)',
       display: 'flex',
@@ -542,23 +542,23 @@ function BottomNav({ view, onPick }: { view: ViewType; onPick: (v: ViewType) => 
             style={{
               flex: 1, height: '100%',
               display: 'flex', flexDirection: 'column', alignItems: 'center',
-              justifyContent: 'center', gap: 2,
+              justifyContent: 'center', gap: 1,
               background: 'transparent', border: 'none', cursor: 'pointer',
               padding: 0, WebkitTapHighlightColor: 'transparent',
               color: on ? 'var(--ac)' : 'var(--t3)',
-              fontSize: 10, fontWeight: on ? 600 : 400,
+              fontSize: 10, lineHeight: 1.2, fontWeight: on ? 600 : 400,
               fontFamily: 'var(--font)', letterSpacing: '-.01em',
               transition: 'color .12s',
             }}
           >
             <span style={{
-              width: 34, height: 26, borderRadius: 999,
+              width: 32, height: 24, borderRadius: 999,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               background: on ? 'var(--ac-l)' : 'transparent',
               transform: pressed === v.id ? 'scale(.9)' : 'scale(1)',
               transition: 'background .12s, transform .12s',
             }}>
-              <NavIcon view={v.id} active={on} />
+              <NavIcon view={v.id} size={21} active={on} />
             </span>
             {v.label}
           </button>

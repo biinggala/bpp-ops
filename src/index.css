@@ -238,8 +238,18 @@ input, select, textarea, button {
   .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 }
 :root {
-  --bottom-nav-h: 56px;
+  /* Apple's own tab bar is 49pt tall in portrait; anything more reads as a
+     drawer rather than a bar. */
+  --bottom-nav-h: 50px;
   --safe-b: env(safe-area-inset-bottom, 0px);
+  /* The home indicator's reserve, trimmed.
+     
+     iOS hands out 34pt for it, and a bar that keeps all of it plus its own
+     height is 84pt of chrome at the foot of a 390pt-wide phone — which is what
+     "하단 바가 너무 두꺼움" was. What the reserve is actually for is keeping
+     controls clear of the indicator; 22pt does that, and the bar's fill still
+     runs to the bottom edge so nothing looks cut short. */
+  --safe-b-nav: max(0px, calc(env(safe-area-inset-bottom, 0px) - 12px));
 }
 
 /* Prevent iOS text drag/selection during long-press on interactive rows.
