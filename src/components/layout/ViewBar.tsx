@@ -7,17 +7,19 @@ import { useAuthStore } from '../../store/authStore'
 import { useScopedTasks } from '../../hooks/useScopedTasks'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
+import { NavIcon } from './NavIcons'
 import { MEMBERS, STATUS_COLORS } from '../../types'
 import type { ViewType, Status, MemberKey } from '../../types'
 import { STATUS_LIST } from '../../types'
 
-const VIEWS: { id: ViewType; label: string; icon: string }[] = [
-  { id: 't', label: '리스트', icon: '≡' },
-  { id: 'b', label: '보드', icon: '⊞' },
-  { id: 'c', label: '캘린더', icon: '◪' },
-  { id: 'g', label: '간트', icon: '▤' },
-  { id: 's', label: '통계', icon: '◑' },
-  { id: 'f', label: '자료', icon: '🗂' },
+// The icon each of these is drawn with lives in NavIcons, keyed by the same id.
+const VIEWS: { id: ViewType; label: string }[] = [
+  { id: 't', label: '리스트' },
+  { id: 'b', label: '보드' },
+  { id: 'c', label: '캘린더' },
+  { id: 'g', label: '간트' },
+  { id: 's', label: '통계' },
+  { id: 'f', label: '자료' },
 ]
 
 const SORT_OPTIONS = [
@@ -155,38 +157,7 @@ export function ViewBar() {
   // Mobile: in-flow bottom tab bar (rendered as the last flex child in AppPage).
   // Deliberately NOT position:fixed — iOS standalone PWAs mis-anchor fixed
   // bottom elements, leaving a gap below; in-flow is always at the true bottom.
-  if (isMobile) {
-    return (
-      <nav style={{
-        flexShrink: 0,
-        height: 'calc(var(--bottom-nav-h) + var(--safe-b))',
-        paddingBottom: 'var(--safe-b)',
-        background: 'var(--bg)', borderTop: '1px solid var(--bd)',
-        display: 'flex',
-        boxSizing: 'border-box',
-      }}>
-        {VIEWS.map(v => (
-          <button
-            key={v.id}
-            onClick={() => { haptic('tap'); setView(v.id) }}
-            style={{
-              flex: 1, height: '100%',
-              display: 'flex', flexDirection: 'column', alignItems: 'center',
-              justifyContent: 'center', gap: 3,
-              background: 'transparent', border: 'none', cursor: 'pointer',
-              color: view === v.id ? 'var(--ac)' : 'var(--t3)',
-              fontSize: 10, fontWeight: view === v.id ? 600 : 400,
-              fontFamily: 'var(--font)',
-              transition: 'color .1s',
-            }}
-          >
-            <span style={{ fontSize: 18, lineHeight: 1 }}>{v.icon}</span>
-            {v.label}
-          </button>
-        ))}
-      </nav>
-    )
-  }
+  if (isMobile) return <BottomNav view={view} onPick={v => { haptic('tap'); setView(v) }} />
 
   return (
     <div style={{ background: 'var(--bg)', borderBottom: '1px solid var(--bd)', flexShrink: 0 }}>
@@ -521,5 +492,75 @@ function MultiSelect<T extends string>({ label, options, selected, onChange }: {
         </div>
       )}
     </div>
+  )
+}
+
+/* ── BottomNav (mobile) ── */
+
+/**
+ * The phone's whole navigation, so it is worth more than six characters and a
+ * hairline.
+ *
+ * Three changes, all of them about the thing being legible at a glance while
+ * a thumb is over it: drawn icons instead of borrowed glyphs (see NavIcons), a
+ * soft pill behind the one you are on — the selected colour alone was doing all
+ * the work, and colour is the first thing to go on a phone in daylight — and a
+ * translucent bar so the content scrolling under it stays visible, which is what
+ * every native bar on the device does.
+ *
+ * In flow rather than fixed: `position: fixed` here left a gap under the bar on
+ * iOS while the address bar animated.
+ */
+function BottomNav({ view, onPick }: { view: ViewType; onPick: (v: ViewType) => void }) {
+  const [pressed, setPressed] = React.useState<ViewType | null>(null)
+  return (
+    <nav style={{
+      flexShrink: 0,
+      height: 'calc(var(--bottom-nav-h) + var(--safe-b))',
+      paddingBottom: 'var(--safe-b)',
+      borderTop: '1px solid rgba(55,53,47,.07)',
+      background: 'rgba(255,255,255,.86)',
+      backdropFilter: 'saturate(180%) blur(20px)',
+      WebkitBackdropFilter: 'saturate(180%) blur(20px)',
+      display: 'flex',
+      boxSizing: 'border-box',
+    }}>
+      {VIEWS.map(v => {
+        const on = view === v.id
+        return (
+          <button
+            key={v.id}
+            onClick={() => onPick(v.id)}
+            onPointerDown={() => setPressed(v.id)}
+            onPointerUp={() => setPressed(null)}
+            onPointerCancel={() => setPressed(null)}
+            onPointerLeave={() => setPressed(null)}
+            aria-current={on ? 'page' : undefined}
+            style={{
+              flex: 1, height: '100%',
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              justifyContent: 'center', gap: 2,
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              padding: 0, WebkitTapHighlightColor: 'transparent',
+              color: on ? 'var(--ac)' : 'var(--t3)',
+              fontSize: 10, fontWeight: on ? 600 : 400,
+              fontFamily: 'var(--font)', letterSpacing: '-.01em',
+              transition: 'color .12s',
+            }}
+          >
+            <span style={{
+              width: 34, height: 26, borderRadius: 999,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: on ? 'var(--ac-l)' : 'transparent',
+              transform: pressed === v.id ? 'scale(.9)' : 'scale(1)',
+              transition: 'background .12s, transform .12s',
+            }}>
+              <NavIcon view={v.id} active={on} />
+            </span>
+            {v.label}
+          </button>
+        )
+      })}
+    </nav>
   )
 }

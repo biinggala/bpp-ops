@@ -225,7 +225,7 @@ input, select, textarea, button {
   .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 }
 :root {
-  --bottom-nav-h: 52px;
+  --bottom-nav-h: 56px;
   --safe-b: env(safe-area-inset-bottom, 0px);
 }
 
