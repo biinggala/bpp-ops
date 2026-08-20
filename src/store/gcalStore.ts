@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import { auth } from '../lib/firebase'
-import { requestGoogleToken, AuthzError, GIS_CONFIGURED } from '../lib/googleAuthz'
+import { requestGoogleToken, prepareGoogleAuthz, AuthzError, GIS_CONFIGURED } from '../lib/googleAuthz'
 import { isDesktopShell, forgetStoredGrant } from '../lib/desktopAuth'
 import { askConfirm } from '../components/shared/Confirm'
 import { fetchCalendarList, fetchEventsAcross, fetchEventsForTask, searchEvents, setEventTaskLink, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, writableCalendars, TASK_LINK_KEY, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent, type EventAttendee } from '../lib/googleCalendar'
@@ -163,6 +163,17 @@ const TARGET_KEY = 'gcal_target_calendar'
  */
 const FULL_SCOPE = `${CALENDAR_SCOPE} ${CALENDAR_WRITE_SCOPE}`
 
+/**
+ * Gets the Google client ready before the 연동 button is pressed.
+ *
+ * Called when that button appears. Without it the first press spends its own
+ * permission to open a window on loading the script instead — which is exactly
+ * why this never worked on a phone.
+ */
+export function warmCalendarAuth(): void {
+  void prepareGoogleAuthz(FULL_SCOPE)
+}
+
 function loadWrite(): boolean {
   try { return localStorage.getItem(WRITE_KEY) === '1' } catch { return false }
 }
@@ -298,6 +309,10 @@ export const useGCalStore = create<GCalState>((set, get) => ({
           // embedded webview. Falling through only replaced the real reason with
           // a meaningless one, which is what "다시 연동 눌러도 안 됨" looked like.
           if (isDesktopShell()) throw gisError
+          // Nor is there when the browser blocked the window: the fallback is
+          // another window, which is blocked for the same reason, and the second
+          // failure is the one whose message gets shown. Say what happened.
+          if (gisError instanceof AuthzError && gisError.message.includes('막았습니다')) throw gisError
           // In a browser, GIS refuses if the site is not listed as an authorised
           // origin on the client, among other setup problems. Connecting still
           // has to work, so fall through to the old popup.

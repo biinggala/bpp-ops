@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { useDriveStore, snippetKey } from '../../store/driveStore'
+import { useDriveStore, warmDriveAuth, snippetKey } from '../../store/driveStore'
 import { useProjectStore } from '../../store/projectStore'
 import { isComposing, gid, safeExternalUrl } from '../../lib/utils'
 import { fileKind, relativeTime, driveIdFromUrl, driveUrl, type DriveFile, type DriveSearchResult } from '../../lib/googleDrive'
@@ -255,6 +255,10 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
   const [loading, setLoading] = useState(false)
   const connected = (wasConnected || !!token) && !needsReconnect
   const seq = useRef(0)
+
+  // Ready the Google client while the panel opens, not on the click — a window
+  // opened after a network round trip is blocked on iOS. Same fix as 캘린더.
+  useEffect(() => { if (!token) warmDriveAuth() }, [token])
 
   // Debounced, and every response carries the request number that asked for it —
   // otherwise a slow early query can land after a fast later one and overwrite it.

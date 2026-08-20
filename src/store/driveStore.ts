@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { auth } from '../lib/firebase'
-import { requestGoogleToken, GIS_CONFIGURED } from '../lib/googleAuthz'
+import { requestGoogleToken, prepareGoogleAuthz, GIS_CONFIGURED } from '../lib/googleAuthz'
 import {
   DRIVE_SCOPE, TOKEN_EXPIRED, searchFiles, getFile, driveIdFromUrl,
   fetchSnippet, canSnippet, passageIn,
@@ -107,6 +107,11 @@ async function docSnippet(token: string, f: DriveSearchResult, needle: string): 
 /** Latched after the first refusal; cleared when somebody reconnects. */
 let docsUnavailable = false
 export const snippetKey = (id: string, term: string) => `${id}::${term.trim().toLowerCase()}`
+
+/** Readies the Google client before the 연동 button is pressed. See warmCalendarAuth. */
+export function warmDriveAuth(): void {
+  void prepareGoogleAuthz(`${DRIVE_SCOPE} ${DOCS_SCOPE}`)
+}
 
 export const useDriveStore = create<DriveState>((set, get) => ({
   ...loadStored(),

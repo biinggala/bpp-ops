@@ -31,6 +31,23 @@ interface TokenClient {
   requestAccessToken: (overrides?: { prompt?: string; hint?: string }) => void
 }
 
+/**
+ * Token clients, kept per scope so a request can open its window without
+ * awaiting anything first.
+ *
+ * This is the whole reason the calendar could not be connected from a phone.
+ * Asking for a token opens a window, and a window is only allowed to open while
+ * the browser still considers a tap to be "active" — Safari on iOS ends that the
+ * moment a network round trip happens, and the first click was doing exactly
+ * that: loading the Google script, then asking. Desktop Chrome keeps the
+ * activation for a few seconds and never noticed.
+ *
+ * Warmed up ahead of the click (see `prepareGoogleAuthz`), the click itself does
+ * nothing but ask, in the same task the tap arrived in.
+ */
+const warmClients = new Map<string, TokenClient>()
+let pending: ((r: TokenResponse | { error: string; blocked: boolean }) => void) | null = null
+
 interface GisNamespace {
   accounts: {
     oauth2: {
@@ -83,62 +100,116 @@ export class AuthzError extends Error {
   }
 }
 
+/** One client per scope, with a callback that hands the answer to whoever asked. */
+function clientFor(scope: string, hint?: string): TokenClient | null {
+  const cached = warmClients.get(scope)
+  if (cached) return cached
+  const oauth2 = window.google?.accounts?.oauth2
+  if (!oauth2) return null
+
+  const client = oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope,
+    hint,
+    callback: (response) => {
+      const take = pending
+      pending = null
+      take?.(response)
+    },
+    error_callback: (err) => {
+      const take = pending
+      pending = null
+      take?.({
+        error: err.message ?? '인증이 취소되었습니다',
+        blocked: err.type === 'popup_failed_to_open' || err.type === 'popup_closed',
+      })
+    },
+  })
+  warmClients.set(scope, client)
+  return client
+}
+
+/**
+ * Loads the script and builds the client before anyone clicks anything.
+ *
+ * Called when the connect button appears, so that by the time it is tapped the
+ * work that used to spend the tap's permission is already done.
+ */
+export async function prepareGoogleAuthz(scope: string): Promise<void> {
+  if (isDesktopShell()) return
+  if (!GIS_CONFIGURED || warmClients.has(scope)) return
+  try {
+    await loadGis()
+    clientFor(scope)
+  } catch { /* offline, or the script is blocked — the click will say so */ }
+}
+
+/** The half that must not await: asking, with the tap still warm. */
+function askWarmClient(
+  client: TokenClient,
+  { interactive, hint }: { interactive: boolean; hint?: string },
+): Promise<GrantedToken> {
+  return new Promise<GrantedToken>((resolve, reject) => {
+    pending = (r) => {
+      if ('access_token' in r && r.access_token) {
+        resolve({ token: r.access_token, expiresIn: r.expires_in ?? 3600 })
+      } else if ('blocked' in r) {
+        reject(new AuthzError(
+          r.blocked ? '브라우저가 구글 창을 막았습니다. 다시 눌러 주세요.' : r.error,
+          true,
+        ))
+      } else {
+        reject(new AuthzError(r.error ?? '토큰을 받지 못했습니다', true))
+      }
+    }
+    // An empty prompt reuses an existing grant without showing anything; the
+    // consent screen only appears on a first connect.
+    client.requestAccessToken({ prompt: interactive ? 'consent' : '', hint })
+  })
+}
+
 /**
  * Asks Google for an API token covering `scope`.
+ *
+ * Not `async`, deliberately: when the client is already warm the request has to
+ * reach `requestAccessToken` in the same task as the click that caused it, and
+ * an `async` function's first `await` ends that task. See `warmClients`.
  *
  * `interactive: false` is the refresh path — it must be allowed to fail quietly,
  * because that is what happens when the Google session has gone and the only
  * remedy is for the person to click.
  */
-export async function requestGoogleToken(
+export function requestGoogleToken(
   { scope, interactive, hint }: { scope: string; interactive: boolean; hint?: string }
 ): Promise<GrantedToken> {
-  if (isDesktopShell()) {
-    // The shell keeps a refresh token, which the browser cannot: only a client
-    // holding the secret may redeem one, and here the secret is compiled into
-    // the binary. Try that first even when a click is available — it is instant,
-    // and it is the whole reason the connection survives past an hour.
-    try {
-      return await refreshWithStoredGrant(scope)
-    } catch { /* nothing stored, or the grant was revoked — ask properly */ }
+  if (isDesktopShell()) return desktopToken({ scope, interactive, hint })
 
-    if (!interactive) throw new AuthzError('연동을 다시 시작해 주세요', true)
-    try {
-      return await authorizeWithSystemBrowser(scope, hint)
-    } catch (e) {
-      throw new AuthzError(e instanceof Error ? e.message : '인증이 취소되었습니다', true)
-    }
+  const warm = warmClients.get(scope)
+  if (warm) return askWarmClient(warm, { interactive, hint })
+
+  return (async () => {
+    await loadGis()
+    const client = clientFor(scope, hint)
+    if (!client) throw new AuthzError('구글 인증을 사용할 수 없습니다', true)
+    return askWarmClient(client, { interactive, hint })
+  })()
+}
+
+async function desktopToken(
+  { scope, interactive, hint }: { scope: string; interactive: boolean; hint?: string }
+): Promise<GrantedToken> {
+  // The shell keeps a refresh token, which the browser cannot: only a client
+  // holding the secret may redeem one, and here the secret is compiled into
+  // the binary. Try that first even when a click is available — it is instant,
+  // and it is the whole reason the connection survives past an hour.
+  try {
+    return await refreshWithStoredGrant(scope)
+  } catch { /* nothing stored, or the grant was revoked — ask properly */ }
+
+  if (!interactive) throw new AuthzError('연동을 다시 시작해 주세요', true)
+  try {
+    return await authorizeWithSystemBrowser(scope, hint)
+  } catch (e) {
+    throw new AuthzError(e instanceof Error ? e.message : '인증이 취소되었습니다', true)
   }
-
-  await loadGis()
-  const oauth2 = window.google?.accounts?.oauth2
-  if (!oauth2) throw new AuthzError('구글 인증을 사용할 수 없습니다', true)
-
-  return new Promise<GrantedToken>((resolve, reject) => {
-    let settled = false
-    const finish = (fn: () => void) => { if (!settled) { settled = true; fn() } }
-
-    const client = oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope,
-      hint,
-      callback: (response) => finish(() => {
-        if (response.access_token) {
-          resolve({ token: response.access_token, expiresIn: response.expires_in ?? 3600 })
-        } else {
-          reject(new AuthzError(response.error ?? '토큰을 받지 못했습니다', true))
-        }
-      }),
-      error_callback: (err) => finish(() => {
-        // A refresh that would have needed a window is not an error worth
-        // showing — it just means the reconnect button has to come back.
-        const blocked = err.type === 'popup_failed_to_open' || err.type === 'popup_closed'
-        reject(new AuthzError(err.message ?? '인증이 취소되었습니다', blocked || !interactive))
-      }),
-    })
-
-    // An empty prompt reuses an existing grant without showing anything; the
-    // consent screen only appears on a first connect.
-    client.requestAccessToken({ prompt: interactive ? 'consent' : '', hint })
-  })
 }

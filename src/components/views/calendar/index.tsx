@@ -6,7 +6,7 @@ import { useMilestoneStore } from '../../../store/milestoneStore'
 import { DayPlanner } from './DayPlanner'
 import { haptic } from '../../../lib/haptics'
 import { useProjectStore } from '../../../store/projectStore'
-import { useGCalStore } from '../../../store/gcalStore'
+import { useGCalStore, warmCalendarAuth } from '../../../store/gcalStore'
 import { TimelineGrid, GUTTER as HOUR_GUTTER } from '../timeline'
 import { writableCalendars } from '../../../lib/googleCalendar'
 import type { CalRange } from '../../../types'
@@ -55,6 +55,11 @@ function GCalButton() {
     if (wasConnected && !token && !loading && !autoRefreshing) autoReconnect()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // And get the Google client ready, so pressing 연동 opens its window in the
+  // same instant as the tap. On a phone that is the difference between working
+  // and doing nothing at all.
+  React.useEffect(() => { if (!token) warmCalendarAuth() }, [token])
 
   if (token) {
     // One control for the whole integration. A chip announcing "연동됨" states
@@ -182,27 +187,35 @@ function GCalButton() {
   }
 
   return (
-    <button
-      onClick={connect}
-      disabled={loading}
-      title={error ?? undefined}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 5,
-        padding: '4px 10px', borderRadius: 'var(--r1)',
-        border: `1px solid ${error ? '#fca5a5' : 'var(--bd)'}`,
-        background: error ? 'rgba(212,76,71,.07)' : 'transparent',
-        fontSize: 12, color: error ? '#D44C47' : 'var(--t2)',
-        cursor: loading ? 'default' : 'pointer',
-        opacity: loading ? .6 : 1,
-        fontFamily: 'var(--font)',
-        whiteSpace: 'nowrap',
-      }}
-      onMouseEnter={e => { if (!loading) e.currentTarget.style.background = 'var(--bg2)' }}
-      onMouseLeave={e => { e.currentTarget.style.background = error ? 'rgba(212,76,71,.07)' : 'transparent' }}
-    >
-      <GoogleDot />
-      {loading ? '연동 중…' : error ? '다시 연동' : '구글 캘린더 연동'}
-    </button>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, justifyContent: 'flex-end' }}>
+      <button
+        onClick={connect}
+        disabled={loading}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 5,
+          padding: '4px 10px', borderRadius: 'var(--r1)',
+          border: `1px solid ${error ? '#fca5a5' : 'var(--bd)'}`,
+          background: error ? 'rgba(212,76,71,.07)' : 'transparent',
+          fontSize: 12, color: error ? '#D44C47' : 'var(--t2)',
+          cursor: loading ? 'default' : 'pointer',
+          opacity: loading ? .6 : 1,
+          fontFamily: 'var(--font)',
+          whiteSpace: 'nowrap', flexShrink: 0,
+        }}
+        onMouseEnter={e => { if (!loading) e.currentTarget.style.background = 'var(--bg2)' }}
+        onMouseLeave={e => { e.currentTarget.style.background = error ? 'rgba(212,76,71,.07)' : 'transparent' }}
+      >
+        <GoogleDot />
+        {loading ? '연동 중…' : error ? '다시 연동' : '구글 캘린더 연동'}
+      </button>
+      {/* Written out, not a tooltip: a phone has nothing to hover with, so a
+          failed first connect there said nothing whatsoever. */}
+      {error && !loading && (
+        <span style={{ fontSize: 11, color: '#D44C47', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }} title={error}>
+          {error}
+        </span>
+      )}
+    </div>
   )
 }
 
