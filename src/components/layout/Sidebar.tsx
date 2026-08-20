@@ -935,7 +935,17 @@ function ProjectItem({
         boxShadow: dropAt === 'above' ? 'inset 0 2px 0 var(--ac)' : dropAt === 'below' ? 'inset 0 -2px 0 var(--ac)' : 'none',
       }}
     >
-      <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flexShrink: 0, opacity: dimmed ? .5 : 1 }} />
+      {/* The dot's slot holds the grip while you are over the row. A row that
+          can be dragged and never says so is a row nobody drags — which is how
+          this shipped the first time. */}
+      {hovered && onDragStart ? (
+        <span
+          title="드래그해서 순서 변경 · 그룹 헤더에 놓으면 그룹 이동"
+          style={{ width: 8, flexShrink: 0, display: 'flex', justifyContent: 'center', fontSize: 10, lineHeight: 1, color: 'var(--sb-t3)', cursor: 'grab' }}
+        >⠿</span>
+      ) : (
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flexShrink: 0, opacity: dimmed ? .5 : 1 }} />
+      )}
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
 
       {hovered && inviteCode ? (
