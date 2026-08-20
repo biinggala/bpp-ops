@@ -1,8 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useGCalStore, type GCalEvent } from '../../store/gcalStore'
 import { useAuthStore } from '../../store/authStore'
 import { openExternal } from '../../lib/desktopLinks'
-import { DateField } from '../shared/DatePicker'
 import { isComposing, parseAssignees } from '../../lib/utils'
 import { NOTION } from '../../types'
 import type { Task } from '../../types'
@@ -10,20 +9,20 @@ import type { Task } from '../../types'
 /**
  * ── The events a task is made of ─────────────────────────────────────────────
  *
- * 자료 has been attachable for a while; 일정 was not, and the two are the same
- * kind of thing. "스태프 모집" is one row in the list and fourteen interviews in
- * a calendar, and until now nothing tied the fourteen to the one: opening the
- * task told you a deadline and a status, and the actual work — who is coming in,
- * when — lived somewhere the task could not see.
+ * "스태프 모집" is one row in the list and fourteen interviews in a calendar.
+ * This is where the fourteen are tied to the one — created from here so Google
+ * sends the invitations, or attached after the fact because the interview was
+ * agreed in a mail thread.
  *
- * Two ways in, because two things happen in practice:
+ * Both ways in used to be a form: two dropdowns for the time, a text box for
+ * the search. Both asked a question the answer to which was on the calendar the
+ * whole time — *is 2pm free*, *which interview do I mean* — and neither showed
+ * the calendar. So both now start from the same week strip: pick a day, then
+ * either drag a slot in that day's hours (with everything already booked drawn
+ * behind you) or click one of the events already sitting there.
  *
- * - **새 일정** — the interview is being arranged now. Title, day, time, and the
- *   people to invite, in one small form; Google sends the invitations, which is
- *   the entire reason to create it from here rather than write it down twice.
- * - **기존 일정 연결** — the interview was already booked, from the mail thread
- *   it was agreed in. Nothing is sent to anyone: the guests were invited when
- *   the event was made, and re-inviting them from a task board would be noise.
+ * The days come out of the window the calendar views already hold in memory, so
+ * moving between weeks costs nothing until you leave that window.
  *
  * What is shown is what *this person's* calendars hold. The link lives on the
  * event in Google, so a teammate who cannot see that calendar does not see the
@@ -33,32 +32,46 @@ import type { Task } from '../../types'
 
 const DOW = ['일', '월', '화', '수', '목', '금', '토']
 
-/** 09:00 → 21:30, the half hours anything gets scheduled at. */
-const TIMES = Array.from({ length: 26 }, (_, i) => {
-  const m = 9 * 60 + i * 30
-  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
-})
-const LENGTHS = [30, 60, 90, 120]
+/** The hours a working day is picked from. Anything outside is typed, not dragged. */
+const HOUR_FROM = 7
+const HOUR_TO = 23
+const HOUR_H = 26
+const SNAP = 15
+const GUTTER = 34
 
-function todayYmd(): string {
-  const d = new Date()
+function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
-
-/** "8/22 (금) 14:00" — the day first, because that is what is being scanned. */
+function shift(date: string, days: number): string {
+  const d = new Date(date + 'T00:00:00')
+  d.setDate(d.getDate() + days)
+  return ymd(d)
+}
+/** Sunday of the week `date` falls in — the calendar view starts weeks there too. */
+function weekStartOf(date: string): string {
+  const d = new Date(date + 'T00:00:00')
+  return shift(date, -d.getDay())
+}
+function hhmm(minutes: number): string {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+}
+function localIso(date: string, minutes: number): string {
+  return `${date}T${hhmm(minutes)}:00`
+}
+function durationLabel(minutes: number): string {
+  if (minutes < 60) return `${minutes}분`
+  const h = Math.floor(minutes / 60), m = minutes % 60
+  return m ? `${h}시간 ${m}분` : `${h}시간`
+}
+function minutesOfIso(iso: string): number {
+  const d = new Date(iso.slice(0, 19))
+  return d.getHours() * 60 + d.getMinutes()
+}
 function whenLabel(ev: GCalEvent): string {
   const d = new Date((ev.startIso ?? `${ev.start}T00:00:00`).slice(0, 19))
   const head = `${d.getMonth() + 1}/${d.getDate()} (${DOW[d.getDay()]})`
   if (ev.allDay) return `${head} 종일`
   return `${head} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
-function addMinutes(date: string, time: string, minutes: number): string {
-  const [h, m] = time.split(':').map(Number)
-  const d = new Date(`${date}T00:00:00`)
-  d.setHours(h, m + minutes, 0, 0)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-    + `T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:00`
 }
 
 const CHIP: React.CSSProperties = {
@@ -76,14 +89,23 @@ export function SchedulePanel({ task, memberEmails }: {
   /** The project's people — who an interview is likely to be with. */
   memberEmails: string[]
 }) {
-  const { wasConnected, eventsForTask, findLinkableEvents, setEventTask, createEvent } = useGCalStore()
+  const wasConnected = useGCalStore(s => s.wasConnected)
+  const windowEvents = useGCalStore(s => s.events)
+  const ensureEvents = useGCalStore(s => s.ensureEvents)
+  const eventsForTask = useGCalStore(s => s.eventsForTask)
+  const setEventTask = useGCalStore(s => s.setEventTask)
+  const createEvent = useGCalStore(s => s.createEvent)
   const myEmail = useAuthStore(s => s.email)
+
   const [events, setEvents] = useState<GCalEvent[] | null>(null)
   const [adding, setAdding] = useState<null | 'new' | 'link'>(null)
   const [busy, setBusy] = useState(false)
 
-  // Project members first, then whoever the task is assigned to, without me —
-  // I am the organiser, and inviting yourself reads as a mistake.
+  // The week opens on the task's deadline — the day the work is actually being
+  // arranged around — and falls back to this week when it has none.
+  const [day, setDay] = useState(() => task.due || ymd(new Date()))
+  const [weekStart, setWeekStart] = useState(() => weekStartOf(task.due || ymd(new Date())))
+
   const candidates = useMemo(() => {
     const set = new Set<string>([...memberEmails, ...parseAssignees(task.assignee)])
     if (myEmail) set.delete(myEmail)
@@ -97,6 +119,25 @@ export function SchedulePanel({ task, memberEmails }: {
 
   useEffect(() => { void reload() }, [reload])
 
+  // Whatever week is on screen has to be loaded for its events to be drawn.
+  useEffect(() => {
+    if (!wasConnected || !adding) return
+    void ensureEvents(weekStart, shift(weekStart, 6))
+  }, [wasConnected, adding, weekStart, ensureEvents])
+
+  const byDay = useMemo(() => {
+    const m = new Map<string, GCalEvent[]>()
+    for (const ev of windowEvents) {
+      const list = m.get(ev.start)
+      if (list) list.push(ev)
+      else m.set(ev.start, [ev])
+    }
+    for (const list of m.values()) {
+      list.sort((a, b) => (a.startIso ?? a.start).localeCompare(b.startIso ?? b.start))
+    }
+    return m
+  }, [windowEvents])
+
   const upcoming = useMemo(() => {
     const now = new Date().toISOString().slice(0, 19)
     return (events ?? []).filter(e => (e.startIso ?? `${e.start}T23:59:59`) >= now)
@@ -109,6 +150,20 @@ export function SchedulePanel({ task, memberEmails }: {
     if (ok) setEvents(prev => (prev ?? []).filter(e => e.id !== ev.id))
   }
 
+  const openAdd = (mode: 'new' | 'link') => {
+    const start = task.due || ymd(new Date())
+    setDay(start)
+    setWeekStart(weekStartOf(start))
+    setAdding(mode)
+  }
+
+  const goWeek = (delta: number) => {
+    const next = shift(weekStart, delta * 7)
+    setWeekStart(next)
+    // Keep the same weekday selected, so paging feels like moving the whole week.
+    setDay(shift(day, delta * 7))
+  }
+
   return (
     <div style={{ borderTop: '1px solid var(--bd)', paddingTop: 12, marginTop: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -117,7 +172,7 @@ export function SchedulePanel({ task, memberEmails }: {
         </span>
         {wasConnected && (
           <button
-            onClick={() => setAdding(a => (a ? null : 'new'))}
+            onClick={() => (adding ? setAdding(null) : openAdd('new'))}
             title={adding ? '닫기' : '일정 추가'}
             style={{ width: 20, height: 20, borderRadius: 3, border: 'none', background: 'transparent', cursor: 'pointer', color: adding ? 'var(--ac)' : 'var(--t3)', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, fontFamily: 'var(--font)' }}
             onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; e.currentTarget.style.color = 'var(--t1)' }}
@@ -129,11 +184,9 @@ export function SchedulePanel({ task, memberEmails }: {
       {!wasConnected && (
         <div style={{ fontSize: 12, color: 'var(--t3)' }}>캘린더를 연동하면 이 업무에 일정을 붙일 수 있습니다</div>
       )}
-
       {wasConnected && events === null && (
         <div style={{ fontSize: 12, color: 'var(--t3)' }}>불러오는 중...</div>
       )}
-
       {wasConnected && events?.length === 0 && !adding && (
         <div style={{ fontSize: 12, color: 'var(--t3)' }}>일정 없음</div>
       )}
@@ -154,7 +207,7 @@ export function SchedulePanel({ task, memberEmails }: {
       {adding && (
         <div style={{ marginTop: 8, borderRadius: 'var(--r3)', border: '1px solid var(--bd)', background: 'var(--bg)', overflow: 'hidden' }}>
           <div style={{ display: 'flex', borderBottom: '1px solid var(--bd)' }}>
-            {([['new', '새 일정'], ['link', '기존 일정 연결']] as const).map(([key, label]) => (
+            {([['new', '새 일정'], ['link', '있는 일정에서 고르기']] as const).map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setAdding(key)}
@@ -169,11 +222,23 @@ export function SchedulePanel({ task, memberEmails }: {
             ))}
           </div>
 
+          {/* One week strip for both tabs: the day is the question they share. */}
+          <WeekStrip
+            weekStart={weekStart}
+            selected={day}
+            due={task.due}
+            countFor={d => (byDay.get(d)?.length ?? 0)}
+            onSelect={setDay}
+            onShift={goWeek}
+          />
+
           {adding === 'new' ? (
-            <NewEventForm
+            <NewEventBody
               task={task}
+              day={day}
+              dayEvents={byDay.get(day) ?? []}
               candidates={candidates}
-              onDone={async (input) => {
+              onCreate={async (input) => {
                 setBusy(true)
                 const ok = await createEvent({ ...input, taskId: task.id })
                 setBusy(false)
@@ -182,10 +247,11 @@ export function SchedulePanel({ task, memberEmails }: {
               }}
             />
           ) : (
-            <LinkExisting
-              defaultQuery={task.name}
+            <PickExisting
+              day={day}
+              dayEvents={byDay.get(day) ?? []}
               linkedIds={new Set((events ?? []).map(e => e.id))}
-              search={findLinkableEvents}
+              taskId={task.id}
               onPick={async (ev) => {
                 setBusy(true)
                 const ok = await setEventTask(ev.id, task.id)
@@ -199,6 +265,405 @@ export function SchedulePanel({ task, memberEmails }: {
     </div>
   )
 }
+
+/* ── WeekStrip ── */
+
+/**
+ * Seven days, with a dot under the ones that already have something on them.
+ *
+ * The dots are the point: they are why picking a day here beats typing one into
+ * a field. A week where Thursday is solid and Friday is empty is visible before
+ * any day is clicked.
+ */
+function WeekStrip({ weekStart, selected, due, countFor, onSelect, onShift }: {
+  weekStart: string
+  selected: string
+  /** The task's deadline, marked so the week reads against the work. */
+  due?: string
+  countFor: (day: string) => number
+  onSelect: (day: string) => void
+  onShift: (delta: number) => void
+}) {
+  const today = ymd(new Date())
+  const days = Array.from({ length: 7 }, (_, i) => shift(weekStart, i))
+  const first = new Date(weekStart + 'T00:00:00')
+
+  const arrow = (delta: number, glyph: string) => (
+    <button
+      onClick={() => onShift(delta)}
+      style={{ width: 20, height: 20, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--t3)', fontSize: 11, borderRadius: 3, fontFamily: 'var(--font)', flexShrink: 0 }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; e.currentTarget.style.color = 'var(--t1)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
+    >{glyph}</button>
+  )
+
+  return (
+    <div style={{ padding: '8px 8px 6px', borderBottom: '1px solid var(--bd)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+        {arrow(-1, '‹')}
+        <span style={{ fontSize: 11, color: 'var(--t3)' }}>{first.getFullYear()}. {first.getMonth() + 1}월</span>
+        {arrow(1, '›')}
+      </div>
+      <div style={{ display: 'flex', gap: 2 }}>
+        {days.map(d => {
+          const on = d === selected
+          const isToday = d === today
+          const n = countFor(d)
+          const dow = new Date(d + 'T00:00:00').getDay()
+          return (
+            <button
+              key={d}
+              onClick={() => onSelect(d)}
+              title={`${n ? `${n}개 일정` : '일정 없음'}${d === due ? ' · 이 업무 마감일' : ''}`}
+              style={{
+                flex: 1, minWidth: 0, padding: '4px 0 3px', borderRadius: 'var(--r1)',
+                border: '1px solid ' + (on ? 'var(--ac)' : 'transparent'),
+                background: on ? 'var(--ac-l)' : 'transparent',
+                cursor: 'pointer', fontFamily: 'var(--font)',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+              }}
+              onMouseEnter={e => { if (!on) e.currentTarget.style.background = 'var(--bg3)' }}
+              onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}
+            >
+              <span style={{ fontSize: 9, color: dow === 0 ? '#D44C47' : dow === 6 ? '#487CA5' : 'var(--t3)' }}>{DOW[dow]}</span>
+              <span style={{
+                fontSize: 12, fontWeight: on || isToday ? 700 : 400,
+                color: on ? 'var(--ac)' : isToday ? 'var(--t1)' : 'var(--t2)',
+                borderBottom: d === due ? '1.5px solid #9065B0' : '1.5px solid transparent',
+                lineHeight: 1.15,
+              }}>{new Date(d + 'T00:00:00').getDate()}</span>
+              <span style={{
+                width: 4, height: 4, borderRadius: '50%', flexShrink: 0,
+                background: n ? (on ? 'var(--ac)' : 'var(--bd2)') : 'transparent',
+              }} />
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/* ── 새 일정 ── */
+
+function NewEventBody({ task, day, dayEvents, candidates, onCreate }: {
+  task: Task
+  day: string
+  dayEvents: GCalEvent[]
+  candidates: string[]
+  onCreate: (input: { summary: string; startDateTime: string; endDateTime: string; attendees?: string[] }) => Promise<boolean>
+}) {
+  const [summary, setSummary] = useState(task.name)
+  const [startMin, setStartMin] = useState(14 * 60)
+  const [minutes, setMinutes] = useState(60)
+  const [invited, setInvited] = useState<string[]>([])
+  const [extra, setExtra] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const toggle = (email: string) =>
+    setInvited(prev => prev.includes(email) ? prev.filter(e => e !== email) : [...prev, email])
+
+  const clash = dayEvents.some(ev => {
+    if (ev.allDay || !ev.startIso || !ev.endIso) return false
+    const s = minutesOfIso(ev.startIso), e = minutesOfIso(ev.endIso)
+    return startMin < e && s < startMin + minutes
+  })
+
+  const submit = async () => {
+    const title = summary.trim()
+    if (!title || saving) return
+    const typed = extra.split(/[,\s]+/).map(s => s.trim()).filter(s => s.includes('@'))
+    setSaving(true)
+    await onCreate({
+      summary: title,
+      startDateTime: localIso(day, startMin),
+      endDateTime: localIso(day, startMin + minutes),
+      attendees: [...new Set([...invited, ...typed])],
+    })
+    setSaving(false)
+  }
+
+  return (
+    <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}
+      onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); void submit() } }}>
+      <input
+        autoFocus value={summary} onChange={e => setSummary(e.target.value)}
+        placeholder="일정 제목"
+        style={{ ...FIELD, width: '100%' }}
+      />
+
+      <DayTimeGrid
+        day={day} dayEvents={dayEvents}
+        startMin={startMin} minutes={minutes}
+        onChange={(s, m) => { setStartMin(s); setMinutes(m) }}
+      />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--t1)' }}>
+          {hhmm(startMin)}–{hhmm(startMin + minutes)}
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--t3)' }}>{durationLabel(minutes)}</span>
+        {[30, 60, 90].map(m => (
+          <button key={m} onClick={() => setMinutes(m)}
+            style={{ ...CHIP, padding: '1px 7px', fontSize: 11, borderColor: minutes === m ? 'var(--ac)' : 'var(--bd)', color: minutes === m ? 'var(--ac)' : 'var(--t3)' }}
+          >{m < 60 ? `${m}분` : `${m / 60}시간`}</button>
+        ))}
+        {clash && <span style={{ fontSize: 11, color: '#D9730D' }}>겹치는 일정 있음</span>}
+      </div>
+
+      {candidates.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+          {candidates.slice(0, 8).map(email => {
+            const on = invited.includes(email)
+            return (
+              <button
+                key={email} onClick={() => toggle(email)} title={email}
+                style={{
+                  ...CHIP,
+                  background: on ? 'var(--ac-l)' : 'transparent',
+                  borderColor: on ? 'var(--ac)' : 'var(--bd)',
+                  color: on ? 'var(--ac)' : 'var(--t2)',
+                }}
+              >{on ? '✓ ' : ''}{email.split('@')[0]}</button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Anyone outside the project — a candidate, a client — by address. */}
+      <input
+        value={extra} onChange={e => setExtra(e.target.value)}
+        placeholder="초대할 다른 이메일 (쉼표로 구분)"
+        style={{ ...FIELD, width: '100%' }}
+      />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button
+          onClick={() => void submit()}
+          disabled={!summary.trim() || saving}
+          style={{
+            padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 'var(--r1)',
+            border: 'none', background: 'var(--ac)', color: '#fff',
+            cursor: summary.trim() && !saving ? 'pointer' : 'default',
+            opacity: summary.trim() && !saving ? 1 : .5, fontFamily: 'var(--font)',
+          }}
+        >{saving ? '만드는 중...' : invited.length || extra.trim() ? '만들고 초대' : '일정 만들기'}</button>
+        <span style={{ fontSize: 11, color: 'var(--t3)' }}>
+          {invited.length || extra.trim() ? '초대 메일이 발송됩니다' : '초대 없이 내 캘린더에만'}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The day's hours, with what is already booked drawn in — drag to take a slot.
+ *
+ * This replaces a 시작 시간 dropdown and a 길이 dropdown. Two dropdowns can
+ * express the same slot, but they cannot answer the question anybody actually
+ * has at that moment, which is whether the slot is free.
+ */
+function DayTimeGrid({ day, dayEvents, startMin, minutes, onChange }: {
+  day: string
+  dayEvents: GCalEvent[]
+  startMin: number
+  minutes: number
+  onChange: (startMin: number, minutes: number) => void
+}) {
+  const trackRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const hours = Array.from({ length: HOUR_TO - HOUR_FROM }, (_, i) => HOUR_FROM + i)
+  const timed = dayEvents.filter(ev => !ev.allDay && ev.startIso && ev.endIso)
+  const allDay = dayEvents.filter(ev => ev.allDay)
+
+  const top = (min: number) => ((min - HOUR_FROM * 60) / 60) * HOUR_H
+
+  // Open on the chosen slot rather than at 07:00, so the thing being edited is
+  // the thing on screen.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el) el.scrollTop = Math.max(0, top(startMin) - 40)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [day])
+
+  const minutesAt = (clientY: number): number => {
+    const el = trackRef.current
+    if (!el) return startMin
+    const rect = el.getBoundingClientRect()
+    const raw = HOUR_FROM * 60 + ((clientY - rect.top) / HOUR_H) * 60
+    const snapped = Math.round(raw / SNAP) * SNAP
+    return Math.max(HOUR_FROM * 60, Math.min(HOUR_TO * 60, snapped))
+  }
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return
+    const anchor = minutesAt(e.clientY)
+    let dragged = false
+    onChange(anchor, Math.min(60, HOUR_TO * 60 - anchor))
+
+    const move = (ev: PointerEvent) => {
+      const to = minutesAt(ev.clientY)
+      if (Math.abs(to - anchor) >= SNAP) dragged = true
+      const from = Math.min(anchor, to)
+      const until = Math.max(anchor, to)
+      if (dragged) onChange(from, Math.max(SNAP, until - from))
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
+  return (
+    <div>
+      {allDay.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 4 }}>
+          {allDay.map(ev => (
+            <span key={ev.id} title={ev.summary} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: 'var(--bg3)', color: 'var(--t2)', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              종일 · {ev.summary}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div
+        ref={scrollRef}
+        style={{ maxHeight: 186, overflowY: 'auto', border: '1px solid var(--bd)', borderRadius: 'var(--r1)', background: 'var(--bg)' }}
+      >
+        <div style={{ position: 'relative', height: hours.length * HOUR_H }}>
+          {/* Hours */}
+          {hours.map((h, i) => (
+            <div key={h} style={{ position: 'absolute', top: i * HOUR_H, left: 0, right: 0, height: HOUR_H, borderTop: i === 0 ? 'none' : '1px solid var(--bd)' }}>
+              <span style={{ position: 'absolute', left: 5, top: -1, fontSize: 9, color: 'var(--t3)', lineHeight: '12px' }}>{h}시</span>
+            </div>
+          ))}
+
+          {/* What is already there */}
+          {timed.map(ev => {
+            const s = minutesOfIso(ev.startIso!)
+            const e = Math.max(s + SNAP, minutesOfIso(ev.endIso!))
+            return (
+              <div
+                key={ev.id}
+                title={`${hhmm(s)} ${ev.summary}`}
+                style={{
+                  position: 'absolute', left: GUTTER, right: 4,
+                  top: top(s), height: Math.max(12, ((e - s) / 60) * HOUR_H),
+                  borderRadius: 3, background: 'var(--bg3)',
+                  borderLeft: `2px solid ${ev.calendarColor || 'var(--bd2)'}`,
+                  fontSize: 10, color: 'var(--t2)', padding: '0 4px',
+                  overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+                  pointerEvents: 'none', lineHeight: '12px',
+                }}
+              >{ev.summary}</div>
+            )
+          })}
+
+          {/* The slot being taken */}
+          <div
+            style={{
+              position: 'absolute', left: GUTTER, right: 4,
+              top: top(startMin), height: Math.max(12, (minutes / 60) * HOUR_H),
+              borderRadius: 3, background: 'var(--ac)', color: '#fff',
+              fontSize: 10, fontWeight: 600, padding: '0 4px', lineHeight: '12px',
+              overflow: 'hidden', whiteSpace: 'nowrap', pointerEvents: 'none',
+              boxShadow: '0 1px 4px rgba(35,131,226,.35)',
+            }}
+          >{hhmm(startMin)}</div>
+
+          {/* The surface that takes the drag. Above the hour lines, below nothing. */}
+          <div
+            ref={trackRef}
+            onPointerDown={onPointerDown}
+            style={{ position: 'absolute', inset: 0, left: GUTTER, cursor: 'crosshair', touchAction: 'none' }}
+          />
+        </div>
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--t3)', marginTop: 3 }}>비어 있는 시간을 끌어서 고르세요</div>
+    </div>
+  )
+}
+
+/* ── 있는 일정에서 고르기 ── */
+
+function PickExisting({ day, dayEvents, linkedIds, taskId, onPick }: {
+  day: string
+  dayEvents: GCalEvent[]
+  linkedIds: Set<string>
+  taskId: string
+  onPick: (ev: GCalEvent) => void
+}) {
+  const search = useGCalStore(s => s.findLinkableEvents)
+  const [query, setQuery] = useState('')
+  const [found, setFound] = useState<GCalEvent[] | null>(null)
+  const shown = (found ?? dayEvents).filter(e => !linkedIds.has(e.id))
+
+  const run = async () => {
+    if (!query.trim()) { setFound(null); return }
+    setFound(null)
+    setFound(await search(query))
+  }
+
+  return (
+    <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 220, overflowY: 'auto' }}>
+        {shown.length === 0 && (
+          <div style={{ fontSize: 12, color: 'var(--t3)' }}>
+            {found ? '찾지 못했습니다' : '이 날에는 일정이 없습니다 — 위에서 다른 날을 고르세요'}
+          </div>
+        )}
+        {shown.map(ev => {
+          const other = ev.taskId && ev.taskId !== taskId
+          return (
+            <button
+              key={ev.id}
+              onClick={() => onPick(ev)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '6px 7px', textAlign: 'left',
+                border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: 'var(--r1)',
+                fontFamily: 'var(--font)', minWidth: 0,
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <span style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, background: ev.calendarColor || NOTION.blue.text, flexShrink: 0 }} />
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: 'block', fontSize: 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.summary}</span>
+                <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)' }}>
+                  {found ? whenLabel(ev) : ev.allDay ? '종일' : `${hhmm(minutesOfIso(ev.startIso!))}${ev.endIso ? `–${hhmm(minutesOfIso(ev.endIso))}` : ''}`}
+                  {ev.attendees?.length ? ` · 참석 ${ev.attendees.length}명` : ''}
+                </span>
+              </span>
+              {other && <span style={{ fontSize: 10, color: 'var(--t3)', flexShrink: 0 }}>다른 업무</span>}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* The day list covers the usual case — the interview was booked this week.
+          Search is for the one that was not, so it sits underneath rather than
+          in front of it. */}
+      <div style={{ display: 'flex', gap: 6, borderTop: '1px solid var(--bd)', paddingTop: 8 }}>
+        <input
+          value={query} onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); void run() } }}
+          placeholder="멀리 있는 일정 검색"
+          style={{ ...FIELD, flex: 1, fontSize: 12 }}
+        />
+        <button onClick={() => void run()} style={{ ...CHIP, borderRadius: 'var(--r1)', fontSize: 12 }}>검색</button>
+        {found && (
+          <button onClick={() => { setFound(null); setQuery('') }} style={{ ...CHIP, borderRadius: 'var(--r1)', fontSize: 12 }}>
+            {new Date(day + 'T00:00:00').getDate()}일로
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ── 연결된 일정 한 줄 ── */
 
 function EventRow({ ev, busy, onDetach }: { ev: GCalEvent; busy: boolean; onDetach: () => void }) {
   const [hovered, setHovered] = useState(false)
@@ -235,161 +700,6 @@ function EventRow({ ev, busy, onDetach }: { ev: GCalEvent; busy: boolean; onDeta
         title="연결 해제 (일정은 지우지 않습니다)"
         style={{ ...CHIP, padding: '2px 7px', color: '#D44C47', borderColor: 'rgba(212,76,71,.35)', opacity: hovered ? 1 : 0, transition: 'opacity .1s' }}
       >해제</button>
-    </div>
-  )
-}
-
-function NewEventForm({ task, candidates, onDone }: {
-  task: Task
-  candidates: string[]
-  onDone: (input: { summary: string; startDateTime: string; endDateTime: string; attendees?: string[] }) => Promise<boolean>
-}) {
-  const [summary, setSummary] = useState(task.name)
-  const [date, setDate] = useState(task.due || todayYmd())
-  const [time, setTime] = useState('14:00')
-  const [minutes, setMinutes] = useState(60)
-  const [invited, setInvited] = useState<string[]>([])
-  const [extra, setExtra] = useState('')
-  const [saving, setSaving] = useState(false)
-  const nameOf = (email: string) => email.split('@')[0]
-
-  const toggle = (email: string) =>
-    setInvited(prev => prev.includes(email) ? prev.filter(e => e !== email) : [...prev, email])
-
-  const submit = async () => {
-    const title = summary.trim()
-    if (!title || !date || saving) return
-    const typed = extra.split(/[,\s]+/).map(s => s.trim()).filter(s => s.includes('@'))
-    setSaving(true)
-    const ok = await onDone({
-      summary: title,
-      startDateTime: addMinutes(date, time, 0),
-      endDateTime: addMinutes(date, time, minutes),
-      attendees: [...new Set([...invited, ...typed])],
-    })
-    setSaving(false)
-    if (!ok) return
-  }
-
-  return (
-    <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}
-      onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); void submit() } }}>
-      <input
-        autoFocus value={summary} onChange={e => setSummary(e.target.value)}
-        placeholder="일정 제목"
-        style={{ ...FIELD, width: '100%' }}
-      />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-        <span style={{ ...FIELD, display: 'inline-flex', padding: '3px 7px' }}>
-          <DateField value={date} format="full" context={{ projectId: task.projectId, taskId: task.id }} onChange={setDate} />
-        </span>
-        <select value={time} onChange={e => setTime(e.target.value)} style={{ ...FIELD, cursor: 'pointer' }}>
-          {TIMES.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <select value={minutes} onChange={e => setMinutes(Number(e.target.value))} style={{ ...FIELD, cursor: 'pointer' }}>
-          {LENGTHS.map(m => <option key={m} value={m}>{m < 60 ? `${m}분` : `${m / 60}시간`}</option>)}
-        </select>
-      </div>
-
-      {candidates.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-          {candidates.slice(0, 8).map(email => {
-            const on = invited.includes(email)
-            return (
-              <button
-                key={email} onClick={() => toggle(email)} title={email}
-                style={{
-                  ...CHIP,
-                  background: on ? 'var(--ac-l)' : 'transparent',
-                  borderColor: on ? 'var(--ac)' : 'var(--bd)',
-                  color: on ? 'var(--ac)' : 'var(--t2)',
-                }}
-              >{on ? '✓ ' : ''}{nameOf(email)}</button>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Anyone outside the project — a candidate, a client — by address. */}
-      <input
-        value={extra} onChange={e => setExtra(e.target.value)}
-        placeholder="초대할 다른 이메일 (쉼표로 구분)"
-        style={{ ...FIELD, width: '100%' }}
-      />
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button
-          onClick={() => void submit()}
-          disabled={!summary.trim() || saving}
-          style={{
-            padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 'var(--r1)',
-            border: 'none', background: 'var(--ac)', color: '#fff',
-            cursor: summary.trim() && !saving ? 'pointer' : 'default',
-            opacity: summary.trim() && !saving ? 1 : .5, fontFamily: 'var(--font)',
-          }}
-        >{saving ? '만드는 중...' : '만들고 초대'}</button>
-        <span style={{ fontSize: 11, color: 'var(--t3)' }}>
-          {invited.length || extra.trim() ? '초대 메일이 발송됩니다' : '초대 없이 내 캘린더에만'}
-        </span>
-      </div>
-    </div>
-  )
-}
-
-function LinkExisting({ defaultQuery, linkedIds, search, onPick }: {
-  defaultQuery: string
-  linkedIds: Set<string>
-  search: (query: string) => Promise<GCalEvent[]>
-  onPick: (ev: GCalEvent) => void
-}) {
-  const [query, setQuery] = useState(defaultQuery)
-  const [results, setResults] = useState<GCalEvent[] | null>(null)
-
-  // Typed, not live: each keystroke would be one request per calendar.
-  const run = async (q: string) => { setResults(null); setResults(await search(q)) }
-  useEffect(() => { void run(defaultQuery) }, [])  // eslint-disable-line react-hooks/exhaustive-deps
-
-  const shown = (results ?? []).filter(e => !linkedIds.has(e.id))
-
-  return (
-    <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <input
-          autoFocus value={query} onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); void run(query) } }}
-          placeholder="일정 검색 (Enter)"
-          style={{ ...FIELD, flex: 1 }}
-        />
-        <button onClick={() => void run(query)} style={{ ...CHIP, borderRadius: 'var(--r1)' }}>검색</button>
-      </div>
-
-      {results === null && <div style={{ fontSize: 12, color: 'var(--t3)' }}>찾는 중...</div>}
-      {results !== null && shown.length === 0 && (
-        <div style={{ fontSize: 12, color: 'var(--t3)' }}>최근 2개월 ~ 앞으로 6개월에서 찾지 못했습니다</div>
-      )}
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 220, overflowY: 'auto' }}>
-        {shown.map(ev => (
-          <button
-            key={ev.id}
-            onClick={() => onPick(ev)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '5px 7px', textAlign: 'left',
-              border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: 'var(--r1)',
-              fontFamily: 'var(--font)', minWidth: 0,
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-          >
-            <span style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, background: ev.calendarColor || NOTION.blue.text, flexShrink: 0 }} />
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: 'block', fontSize: 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.summary}</span>
-              <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)' }}>{whenLabel(ev)}</span>
-            </span>
-            {ev.taskId && <span style={{ fontSize: 10, color: 'var(--t3)', flexShrink: 0 }}>다른 업무에 연결됨</span>}
-          </button>
-        ))}
-      </div>
     </div>
   )
 }
