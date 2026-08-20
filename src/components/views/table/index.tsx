@@ -443,6 +443,14 @@ function MobileTableView() {
   // laptop the same person set it on.
   if (listGroup !== 'project') {
     const buckets = bucketTasks(filteredTasks, listGroup, todayDate, getNameByEmail)
+    // A subtask whose parent is in the same section is drawn under it, so it
+    // must not also be drawn as a row of its own — it was appearing twice.
+    // When the parent is in another section the child stands alone, which is
+    // the point of the flat modes.
+    const tops = (list: Task[]) => {
+      const here = new Set(list.map(t => t.id))
+      return list.filter(t => !t.parentId || !here.has(t.parentId))
+    }
     return (
       <>
         <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -453,7 +461,7 @@ function MobileTableView() {
           )}
           {buckets.map(b => {
             if (b.key === '__all__') {
-              return <React.Fragment key={b.key}>{b.tasks.map(t => renderTask(t, false, undefined, crumbFor(t)))}</React.Fragment>
+              return <React.Fragment key={b.key}>{tops(b.tasks).map(t => renderTask(t, false, undefined, crumbFor(t)))}</React.Fragment>
             }
             const isCollapsed = collapsedMs.has(b.key)
             return (
@@ -466,7 +474,7 @@ function MobileTableView() {
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: b.accent ?? 'var(--t1)' }}>{b.label}</span>
                   <span style={{ fontSize: 11, color: 'var(--t3)' }}>{b.tasks.length}</span>
                 </div>
-                {!isCollapsed && b.tasks.map(t => renderTask(t, false, undefined, crumbFor(t)))}
+                {!isCollapsed && tops(b.tasks).map(t => renderTask(t, false, undefined, crumbFor(t)))}
               </React.Fragment>
             )
           })}
@@ -818,29 +826,65 @@ export function TableView() {
     })
 
   /**
-   * One row per task, no nesting — ClickUp's "subtasks as separate tasks".
+   * Flat rows, with the hierarchy still readable inside each group.
    *
-   * In a flat mode a subtask due today has to be visible on its own merit; if
-   * it only appeared nested under its parent it would be filed under the
-   * parent's due date and effectively hidden, which defeats the whole point of
-   * asking "what is urgent right now". Each row carries its own breadcrumb,
-   * parent task included, so nothing is lost by dropping the indentation.
+   * A subtask due today has to be visible on its own merit — that is the whole
+   * point of the flat modes — so nothing is hidden behind a parent. But it was
+   * *only* ever a loose row, and two things followed: the parent never showed
+   * that it had subtasks at all, and 하위 업무 추가 quietly did nothing here,
+   * because the add row it opens was only ever drawn in the project layout.
+   *
+   * So: a child sits under its parent when the parent is in the same group, and
+   * stands on its own — breadcrumb and all — when it is not. Nothing appears
+   * twice, and nothing appears that the filters excluded: the children drawn
+   * under a parent are only the ones this group already contains.
    */
-  const renderFlatRows = (tasks: Task[]) =>
-    sortDoneLast(tasks).map(task => {
+  const renderFlatRows = (tasks: Task[]) => {
+    const here = new Map(tasks.map(t => [t.id, t]))
+    const childrenHere = new Map<string, Task[]>()
+    for (const t of tasks) {
+      if (!t.parentId || !here.has(t.parentId)) continue
+      const list = childrenHere.get(t.parentId) ?? []
+      list.push(t)
+      childrenHere.set(t.parentId, list)
+    }
+
+    const flatRow = (task: Task, isChild: boolean) => {
       const h = makeHandlers(task)
-      const ms = milestonesOf(task.projectId)
+      const kids = sortDoneLast(childrenHere.get(task.id) ?? [])
+      const isExpanded = !collapsed.has(task.id)
+      const opts = getAssigneeOptions(task.projectId)
       return (
-        <Row
-          key={task.id} cols={visibleCols} task={task}
-          milestones={ms} showMilestonePicker={!!task.projectId}
-          onMilestoneCreate={task.projectId ? (n, d) => addMilestone(task.projectId!, n, d).id : undefined}
-          assigneeOptions={getAssigneeOptions(task.projectId)} allTags={allTags}
-          breadcrumb={crumbFor(task)}
-          {...h}
-        />
+        <React.Fragment key={task.id}>
+          <Row
+            cols={visibleCols} task={task} isChild={isChild}
+            hasChildren={kids.length > 0} isExpanded={isExpanded}
+            childCount={kids.length} doneCount={kids.filter(c => c.status === '완료').length}
+            milestones={milestonesOf(task.projectId)} showMilestonePicker={!!task.projectId}
+            onMilestoneCreate={task.projectId ? (n, d) => addMilestone(task.projectId!, n, d).id : undefined}
+            assigneeOptions={opts} allTags={allTags}
+            // A child drawn under its parent does not need to be told who its
+            // parent is; the indentation already said so.
+            breadcrumb={isChild ? crumbFor({ ...task, parentId: undefined }) : crumbFor(task)}
+            onToggle={() => toggle(task.id)}
+            {...h}
+          />
+          {kids.length > 0 && isExpanded && kids.map(child => flatRow(child, true))}
+          {draftSubtaskParentId === task.id && (
+            <AddTaskRow cols={visibleCols} defaultAssignee={myAssignee} isSubtask parentId={task.id}
+              assigneeOptions={opts} projectId={task.projectId} milestoneId={task.milestoneId}
+              space={space ?? ''} addTask={addTask} userEmail={userEmail}
+              onDone={another => { if (!another) setDraftSubtaskParentId(null) }}
+              onCancel={() => setDraftSubtaskParentId(null)}
+            />
+          )}
+        </React.Fragment>
       )
-    })
+    }
+
+    const roots = sortDoneLast(tasks.filter(t => !t.parentId || !here.has(t.parentId)))
+    return roots.map(task => flatRow(task, false))
+  }
 
   /**
    * The quiet "one more" at the end of a group's rows.
