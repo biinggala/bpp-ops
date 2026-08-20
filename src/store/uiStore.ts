@@ -19,7 +19,7 @@ interface Filters {
  * urgent right now" across projects. Flat rows carry their project/milestone
  * as a breadcrumb instead of getting it from the header they sit under.
  */
-export type ListGroup = 'project' | 'none' | 'due' | 'priority' | 'assignee' | 'status'
+export type ListGroup = 'project' | 'none' | 'due' | 'priority' | 'assignee' | 'status' | 'tag'
 
 interface UiState {
   view: ViewType
@@ -66,7 +66,7 @@ interface UiState {
 }
 
 const LIST_GROUP_KEY = 'cringe_list_group_v1'
-const LIST_GROUPS: ListGroup[] = ['project', 'none', 'due', 'priority', 'assignee', 'status']
+const LIST_GROUPS: ListGroup[] = ['project', 'none', 'due', 'priority', 'assignee', 'status', 'tag']
 
 function loadListGroup(): ListGroup {
   try {

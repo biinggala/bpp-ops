@@ -18,7 +18,7 @@ import { TagBadge } from '../../shared/Badge'
 import { AssigneeAvatar } from '../../shared/Avatar'
 import { ContextMenu } from '../../shared/ContextMenu'
 import { fmtDate, isOverdue, parseAssignees, assigneeKeyToEmail, stripHtml, isComposing } from '../../../lib/utils'
-import { NOTION, STATUS_LIST, PRIORITY_LIST } from '../../../types'
+import { NOTION, STATUS_LIST, PRIORITY_LIST, getTagColor } from '../../../types'
 import {
   FileRow, DriveSearch, UrlAdd, AttachTabs,
   useResolvedLinks, useProjectFolderId, driveIdOf, linkFromDriveFile,
@@ -188,6 +188,23 @@ function bucketTasks(
     }
     order.sort((a, b) =>
       (a.key === 'as:__none__' ? 1 : 0) - (b.key === 'as:__none__' ? 1 : 0) ||
+      a.label.localeCompare(b.label, 'ko'))
+  } else if (group === 'tag') {
+    // Same rule as 담당자: a task with three tags shows up under all three.
+    // Tags are a label, not a bucket the task belongs to exclusively, so
+    // picking one would hide the task from the other two lists.
+    //
+    // The buckets are ordered by how many tasks carry the tag, because the tag
+    // list is open — anyone can type a new one — and an alphabetical list of
+    // fifty tags buries the three people actually use.
+    for (const t of tasks) {
+      const tags = t.tags ?? []
+      if (!tags.length) { bucket('tag:__none__', '태그 없음', NOTION.gray.text).tasks.push(t); continue }
+      for (const tag of tags) bucket(`tag:${tag}`, `#${tag}`, getTagColor(tag).text).tasks.push(t)
+    }
+    order.sort((a, b) =>
+      (a.key === 'tag:__none__' ? 1 : 0) - (b.key === 'tag:__none__' ? 1 : 0) ||
+      b.tasks.length - a.tasks.length ||
       a.label.localeCompare(b.label, 'ko'))
   }
 
@@ -1555,9 +1572,7 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
 }) {
   const [hovered, setHovered] = useState(false)
   const [editingName, setEditingName] = useState(false)
-  const [editingDate, setEditingDate] = useState(false)
   const [tempName, setTempName] = useState(milestone.name)
-  const [tempDate, setTempDate] = useState(milestone.dueDate)
   const isDone = !!milestone.done
   const overdue = !isDone && diff < 0
   const close = !isDone && diff >= 0 && diff <= 7
@@ -1625,32 +1640,26 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
         </span>
       )}
 
-      {editingDate ? (
-        <span onClick={e => e.stopPropagation()}>
-          <DateField
-            value={tempDate}
-            context={{ projectId: milestone.projectId }}
-            onChange={v => { onUpdate({ dueDate: v }); setTempDate(v); setEditingDate(false) }}
-            style={{ fontSize: 11, color: 'var(--t2)', outline: '1px solid var(--ac)', borderRadius: 3, padding: '2px 6px' }}
-          />
-        </span>
-      ) : (
-        <span
-          onClick={e => { e.stopPropagation(); setTempDate(milestone.dueDate); setEditingDate(true) }}
-          title="클릭해서 날짜 수정"
-          style={{ fontSize: 11, color: 'var(--t3)', cursor: 'pointer', borderBottom: '1px dashed transparent', transition: 'border-color .1s' }}
-          onMouseEnter={e => e.currentTarget.style.borderBottomColor = 'var(--bd)'}
-          onMouseLeave={e => e.currentTarget.style.borderBottomColor = 'transparent'}
-        >
-          {milestone.dueDate}
-        </span>
-      )}
+      {/* The date opens its picker on the first click. There used to be an
+          in-between state — click once to turn the text into a field, click
+          again to open the calendar — which bought nothing and cost a click. */}
+      <span
+        onClick={e => e.stopPropagation()}
+        title="클릭해서 날짜 수정"
+        style={{ display: 'inline-flex', flexShrink: 0 }}
+      >
+        <DateField
+          value={milestone.dueDate}
+          format="full"
+          context={{ projectId: milestone.projectId }}
+          onChange={v => onUpdate({ dueDate: v })}
+          style={{ fontSize: 11, color: 'var(--t3)', padding: '1px 4px', borderRadius: 3, borderBottom: '1px dashed transparent', transition: 'background .1s, border-color .1s' }}
+        />
+      </span>
 
-      {!editingDate && (
-        <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--r1)', flexShrink: 0, background: overdue ? 'rgba(212,76,71,.1)' : close ? 'rgba(217,115,13,.1)' : 'rgba(139,92,246,.1)', color: accent }}>
-          {overdue ? `D+${Math.abs(diff)}` : `D-${diff}`}
-        </span>
-      )}
+      <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--r1)', flexShrink: 0, background: overdue ? 'rgba(212,76,71,.1)' : close ? 'rgba(217,115,13,.1)' : 'rgba(139,92,246,.1)', color: accent }}>
+        {overdue ? `D+${Math.abs(diff)}` : `D-${diff}`}
+      </span>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 4, flexShrink: 0 }}>
         <div style={{ width: 72, height: 4, background: 'var(--bd)', borderRadius: 2, overflow: 'hidden' }}>
@@ -1660,7 +1669,7 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
       </div>
       </div>
 
-      {!editingName && !editingDate && (
+      {!editingName && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, position: 'sticky', right: 12, marginLeft: 'auto', flexShrink: 0, opacity: hovered ? 1 : 0, pointerEvents: hovered ? 'auto' : 'none', transition: 'opacity .12s' }}>
           {onDelete && (
             <button

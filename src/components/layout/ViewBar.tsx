@@ -35,6 +35,7 @@ const GROUP_OPTIONS = [
   { value: 'priority' as const, label: '우선순위' },
   { value: 'assignee' as const, label: '담당자' },
   { value: 'status' as const, label: '상태' },
+  { value: 'tag' as const, label: '태그' },
 ]
 
 export function ViewBar() {

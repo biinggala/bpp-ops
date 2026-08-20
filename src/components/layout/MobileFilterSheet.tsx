@@ -39,6 +39,7 @@ const GROUPS: { value: ListGroup; label: string }[] = [
   { value: 'priority', label: '우선순위' },
   { value: 'assignee', label: '담당자' },
   { value: 'status', label: '상태' },
+  { value: 'tag', label: '태그' },
 ]
 
 export function MobileFilterSheet({ onClose }: { onClose: () => void }) {

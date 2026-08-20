@@ -890,6 +890,7 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
   const tasks = useFilteredTasks()
   const { updateTask, tasks: allTasks } = useTaskStore()
   const allMilestones = useMilestoneStore(s => s.milestones)
+  const updateMilestone = useMilestoneStore(s => s.updateMilestone)
   const projects = useProjectStore(s => s.projects)
   const milestones = useMemo(() => {
     const ids = new Set(projects.map(p => p.id))
@@ -909,11 +910,11 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
   }, [token, gridStart])
 
   const milestoneByDate = useMemo(() => {
-    const map: Record<string, { name: string; color: string }[]> = {}
+    const map: Record<string, { id: string; name: string; color: string }[]> = {}
     const filtered = projectId ? milestones.filter(m => m.projectId === projectId) : milestones
     filtered.forEach(m => {
       if (!map[m.dueDate]) map[m.dueDate] = []
-      map[m.dueDate].push({ name: m.name, color: '#9065B0' })
+      map[m.dueDate].push({ id: m.id, name: m.name, color: '#9065B0' })
     })
     return map
   }, [milestones, projectId])
@@ -952,6 +953,17 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
 
   const handleDrop = useCallback((e: React.DragEvent, dropDay: string) => {
     e.preventDefault()
+
+    // A milestone is a single date, so there is nothing to shift relative to —
+    // it simply lands where it was dropped, and its tasks stay where they are.
+    const milestoneId = e.dataTransfer.getData('milestoneId')
+    if (milestoneId) {
+      updateMilestone(milestoneId, { dueDate: dropDay })
+      setDragOver(null)
+      setDraggingId(null)
+      return
+    }
+
     const taskId      = e.dataTransfer.getData('taskId')
     const fromDateStr = e.dataTransfer.getData('fromDate')
     if (!taskId || !fromDateStr) return
@@ -974,7 +986,7 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
       updateTask(id, cp)
     })
     setDragOver(null)
-  }, [tasks, allTasks, updateTask])
+  }, [tasks, allTasks, updateTask, updateMilestone])
 
   const onDragOverDay   = useCallback((day: string) => setDragOver(day), [])
   const onDragLeaveDay  = useCallback(() => setDragOver(null), [])
@@ -1067,7 +1079,7 @@ const MonthCell = React.memo(function MonthCell({
   isToday: boolean
   isDragTarget: boolean
   chips?: Chip[]
-  milestones?: { name: string; color: string }[]
+  milestones?: { id: string; name: string; color: string }[]
   draggingId: string | null
   onDragOverDay: (day: string) => void
   onDragLeaveDay: () => void
@@ -1108,8 +1120,30 @@ const MonthCell = React.memo(function MonthCell({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 8px 3px', gap: 4 }}>
         {hasMilestone && (
           <div style={{ display: 'flex', gap: 3, alignItems: 'center', flex: 1, minWidth: 0, overflow: 'hidden' }}>
-            {milestones!.map((ms, mi) => (
-              <span key={mi} title={ms.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600, color: NOTION.purple.text, background: NOTION.purple.bg, borderRadius: 4, padding: '1px 5px', minWidth: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {/* Draggable, like the tasks below: a milestone's date is the one
+                thing about it this view shows, so this is where it should be
+                possible to change it. */}
+            {milestones!.map(ms => (
+              <span
+                key={ms.id}
+                draggable
+                title={`${ms.name} — 끌어서 날짜 변경`}
+                onDragStart={e => {
+                  e.stopPropagation()
+                  e.dataTransfer.setData('milestoneId', ms.id)
+                  e.dataTransfer.effectAllowed = 'move'
+                  onTaskDragStart(ms.id)
+                }}
+                onDragEnd={onTaskDragEnd}
+                onClick={e => e.stopPropagation()}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600,
+                  color: NOTION.purple.text, background: NOTION.purple.bg, borderRadius: 4, padding: '1px 5px',
+                  minWidth: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  cursor: 'grab', userSelect: 'none',
+                  opacity: draggingId === ms.id ? .35 : 1, transition: 'opacity .1s',
+                }}
+              >
                 ◆ {ms.name}
               </span>
             ))}
