@@ -94,19 +94,9 @@ export function DayPlanner({ date, anchor, onClose }: {
   useEffect(() => { if (!isMobile) inputRef.current?.focus() }, [isMobile])
 
   useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (panelRef.current?.contains(e.target as Node)) return
-      onClose()
-    }
     const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    // A frame's delay: the click that opened this is still on its way up.
-    const id = window.setTimeout(() => document.addEventListener('mousedown', h), 0)
     document.addEventListener('keydown', k)
-    return () => {
-      clearTimeout(id)
-      document.removeEventListener('mousedown', h)
-      document.removeEventListener('keydown', k)
-    }
+    return () => document.removeEventListener('keydown', k)
   }, [onClose])
 
   const create = () => {
@@ -147,9 +137,21 @@ export function DayPlanner({ date, anchor, onClose }: {
 
   return createPortal(
     <>
-    {isMobile && (
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9099, background: 'rgba(15,15,15,.32)' }} />
-    )}
+    {/*
+      A sheet on a phone needs something behind it to catch the tap that
+      dismisses it. On a desktop the same layer earns its place differently: a
+      document listener would close this and then let the click through to
+      whatever it landed on, so clicking another day dismissed one planner and
+      opened the next in a single motion — which reads as a popover that cannot
+      be closed at all. The click that dismisses it stops here.
+    */}
+    <div
+      onMouseDown={e => { e.stopPropagation(); onClose() }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9099,
+        background: isMobile ? 'rgba(15,15,15,.32)' : 'transparent',
+      }}
+    />
     <div
       ref={panelRef}
       onClick={e => e.stopPropagation()}
