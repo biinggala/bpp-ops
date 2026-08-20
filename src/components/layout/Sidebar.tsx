@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { isComposing, authorizedEmails, isAssignedTo, copyText } from '../../lib/utils'
 import { askConfirm } from '../shared/Confirm'
 import { useUiStore } from '../../store/uiStore'
@@ -13,6 +13,30 @@ import { haptic } from '../../lib/haptics'
 import { MEMBERS } from '../../types'
 import { buildInviteToken } from '../../lib/paths'
 import type { MemberKey, Project } from '../../types'
+
+const ORDER_KEY = 'sidebar_project_order'
+const GROUPS_KEY = 'sidebar_collapsed_groups'
+
+/**
+ * The sidebar's arrangement is this machine's business.
+ *
+ * A shared order would mean any of fifty people could rearrange everyone else's
+ * list by dragging one row, and nobody could trust the shape of their own
+ * screen. The shelves themselves are shared; where they sit is not.
+ */
+function loadOrder(): string[] {
+  try { return JSON.parse(localStorage.getItem(ORDER_KEY) ?? '[]') as string[] } catch { return [] }
+}
+function saveOrder(next: string[]): string[] {
+  try { localStorage.setItem(ORDER_KEY, JSON.stringify(next)) } catch { /* ignore */ }
+  return next
+}
+function loadCollapsedGroups(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(GROUPS_KEY) ?? '[]') as string[]) } catch { return new Set() }
+}
+function saveCollapsedGroups(next: Set<string>) {
+  try { localStorage.setItem(GROUPS_KEY, JSON.stringify([...next])) } catch { /* ignore */ }
+}
 
 export function Sidebar() {
   const { filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly, sidebarOpen, setSidebarOpen } = useUiStore()
@@ -181,6 +205,93 @@ export function Sidebar() {
   const accessibleProjects = projects
   const visibleProjects = accessibleProjects.filter(p => !p.archived)
   const archivedProjects = accessibleProjects.filter(p => p.archived)
+
+  // ── Shelves ───────────────────────────────────────────────────────────────
+  //
+  // Two different kinds of thing, kept apart on purpose.
+  //
+  // The *group* is a fact about the project — 프로덕션 work is 프로덕션 work for
+  // everyone — so it lives on the project and everybody sees the same shelves.
+  // The *order* is a preference, and with fifty people sharing one list a drag
+  // by any of them would rearrange everyone else's sidebar. That one stays here,
+  // on this machine.
+  const [order, setOrder] = useState<string[]>(loadOrder)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(loadCollapsedGroups)
+  const [dragging, setDragging] = useState<string | null>(null)
+  const [dropAt, setDropAt] = useState<{ id: string; below: boolean } | null>(null)
+  const [groupFor, setGroupFor] = useState<{ id: string; name: string; group: string } | null>(null)
+
+  const rank = useCallback((id: string) => {
+    const at = order.indexOf(id)
+    return at === -1 ? Number.MAX_SAFE_INTEGER : at
+  }, [order])
+
+  const shelves = useMemo(() => {
+    const byGroup = new Map<string, Project[]>()
+    for (const p of visibleProjects) {
+      const key = p.group?.trim() || ''
+      const at = byGroup.get(key)
+      if (at) at.push(p); else byGroup.set(key, [p])
+    }
+    const out = [...byGroup.entries()].map(([name, list]) => ({
+      name,
+      projects: [...list].sort((a, b) => rank(a.id) - rank(b.id)),
+    }))
+    // Loose projects lead — they are the ones still looking for a shelf. The
+    // shelves themselves follow whatever their first project's position says.
+    return out.sort((a, b) => {
+      if (!a.name !== !b.name) return a.name ? 1 : -1
+      return rank(a.projects[0]?.id ?? '') - rank(b.projects[0]?.id ?? '')
+    })
+  }, [visibleProjects, rank])
+
+  const groupNames = useMemo(
+    () => [...new Set(accessibleProjects.map(p => p.group?.trim()).filter((g): g is string => !!g))].sort(),
+    [accessibleProjects],
+  )
+
+  /** Writes the new arrangement, and files the dragged project on the shelf it landed on. */
+  const dropProject = (draggedId: string, target: { id: string; below: boolean } | { group: string }) => {
+    const flat = shelves.flatMap(sh => sh.projects.map(p => p.id))
+    const without = flat.filter(id => id !== draggedId)
+
+    let next: string[]
+    let group: string
+    if ('group' in target) {
+      // Dropped on a shelf's own header: it goes to the end of that shelf.
+      group = target.group
+      const last = shelves.find(sh => sh.name === target.group)?.projects.slice(-1)[0]?.id
+      const at = last ? without.indexOf(last) + 1 : without.length
+      next = [...without.slice(0, at), draggedId, ...without.slice(at)]
+      } else {
+      const onto = visibleProjects.find(p => p.id === target.id)
+      group = onto?.group?.trim() || ''
+      const at = without.indexOf(target.id) + (target.below ? 1 : 0)
+      next = [...without.slice(0, at), draggedId, ...without.slice(at)]
+    }
+
+    setOrder(saveOrder(next))
+    const dragged = visibleProjects.find(p => p.id === draggedId)
+    if (dragged && (dragged.group?.trim() || '') !== group) {
+      updateProject(draggedId, { group: group || undefined })
+    }
+  }
+
+  const renameGroup = (from: string, to: string) => {
+    const name = to.trim()
+    if (name === from) return
+    visibleProjects
+      .filter(p => (p.group?.trim() || '') === from)
+      .forEach(p => updateProject(p.id, { group: name || undefined }))
+  }
+
+  const toggleGroup = (name: string) =>
+    setCollapsedGroups(prev => {
+      const next = new Set(prev)
+      next.has(name) ? next.delete(name) : next.add(name)
+      saveCollapsedGroups(next)
+      return next
+    })
   const onlineUsers = Object.values(presences).filter(p => p.online)
 
   const closeSidebar = () => { if (isMobile) { haptic('tap'); setSidebarOpen(false) } }
@@ -326,42 +437,75 @@ export function Sidebar() {
           {/* Projects section */}
           <SectionLabel>Projects</SectionLabel>
 
-          {visibleProjects.map(p => {
-            const daysInfo = p.dueDate ? getDaysRemaining(p.dueDate) : null
-
-            if (editingProjectId === p.id) {
-              return (
-                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px 4px 14px', margin: '1px 0' }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
-                  <input
-                    ref={projectEditRef}
-                    style={{ flex: 1, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)', borderRadius: 'var(--r1)', padding: '2px 6px', fontSize: 12, color: 'var(--sb-t1)', outline: 'none' }}
-                    value={editProjectName}
-                    onChange={e => setEditProjectName(e.target.value)}
-                    onBlur={() => handleRenameProject(p.id)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && !isComposing(e)) handleRenameProject(p.id)
-                      if (e.key === 'Escape') setEditingProjectId(null)
-                    }}
-                  />
-                </div>
-              )
-            }
-
+          {shelves.map(shelf => {
+            const collapsed = collapsedGroups.has(shelf.name)
             return (
-              <ProjectItem
-                key={p.id}
-                active={projectId === p.id}
-                dot={p.color}
-                overdue={overdueByProject.get(p.id) ?? 0}
-                daysInfo={daysInfo}
-                projectId={p.id}
-                inviteCode={p.inviteCode}
-                onClick={() => { setProject(p.id); setMyTasksOnly(false); closeSidebar() }}
-                onContextMenu={e => handleContextMenu(e, p.id, p.name, false)}
-              >
-                {p.name}
-              </ProjectItem>
+              <div key={shelf.name || '__loose__'} style={{ marginBottom: shelf.name ? 2 : 0 }}>
+                {/* A shelf with no name is not a shelf — those projects are just
+                    the list, and a header over them would name nothing. */}
+                {shelf.name && (
+                  <GroupHeader
+                    name={shelf.name}
+                    count={shelf.projects.length}
+                    collapsed={collapsed}
+                    onToggle={() => toggleGroup(shelf.name)}
+                    onRename={to => renameGroup(shelf.name, to)}
+                    onDropProject={() => {
+                      if (dragging) dropProject(dragging, { group: shelf.name })
+                      setDragging(null); setDropAt(null)
+                    }}
+                    dragging={!!dragging}
+                  />
+                )}
+                {!collapsed && shelf.projects.map(p => {
+                  const daysInfo = p.dueDate ? getDaysRemaining(p.dueDate) : null
+
+                  if (editingProjectId === p.id) {
+                    return (
+                      <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px 4px 14px', margin: '1px 0' }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                        <input
+                          ref={projectEditRef}
+                          style={{ flex: 1, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)', borderRadius: 'var(--r1)', padding: '2px 6px', fontSize: 12, color: 'var(--sb-t1)', outline: 'none' }}
+                          value={editProjectName}
+                          onChange={e => setEditProjectName(e.target.value)}
+                          onBlur={() => handleRenameProject(p.id)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && !isComposing(e)) handleRenameProject(p.id)
+                            if (e.key === 'Escape') setEditingProjectId(null)
+                          }}
+                        />
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <ProjectItem
+                      key={p.id}
+                      active={projectId === p.id}
+                      dot={p.color}
+                      overdue={overdueByProject.get(p.id) ?? 0}
+                      daysInfo={daysInfo}
+                      projectId={p.id}
+                      inviteCode={p.inviteCode}
+                      indented={!!shelf.name}
+                      dragging={dragging === p.id}
+                      dropAt={dropAt?.id === p.id ? (dropAt.below ? 'below' : 'above') : null}
+                      onDragStart={() => setDragging(p.id)}
+                      onDragEnd={() => { setDragging(null); setDropAt(null) }}
+                      onDragOver={below => setDropAt({ id: p.id, below })}
+                      onDrop={() => {
+                        if (dragging && dragging !== p.id) dropProject(dragging, { id: p.id, below: !!dropAt?.below })
+                        setDragging(null); setDropAt(null)
+                      }}
+                      onClick={() => { setProject(p.id); setMyTasksOnly(false); closeSidebar() }}
+                      onContextMenu={e => handleContextMenu(e, p.id, p.name, false)}
+                    >
+                      {p.name}
+                    </ProjectItem>
+                  )
+                })}
+              </div>
             )
           })}
 
@@ -478,6 +622,13 @@ export function Sidebar() {
               <ContextMenuItem onClick={() => { setMemberModal({ id: contextMenu.id, name: contextMenu.name }); setContextMenu(null) }}>
                 👥&nbsp;&nbsp;멤버 관리
               </ContextMenuItem>
+              <ContextMenuItem onClick={() => {
+                const project = projects.find(p => p.id === contextMenu.id)
+                setGroupFor({ id: contextMenu.id, name: contextMenu.name, group: project?.group ?? '' })
+                setContextMenu(null)
+              }}>
+                ▤&nbsp;&nbsp;그룹 지정
+              </ContextMenuItem>
               <ContextMenuItem onClick={() => handleArchiveProject(contextMenu.id, !contextMenu.archived)}>
                 {contextMenu.archived ? '↩  아카이브 해제' : '📦  아카이브'}
               </ContextMenuItem>
@@ -500,6 +651,18 @@ export function Sidebar() {
           name={deleteConfirm.name}
           onConfirm={() => handleDeleteProject(deleteConfirm.id)}
           onCancel={() => setDeleteConfirm(null)}
+        />
+      )}
+
+      {/* Which shelf a project sits on — the one thing a drag cannot say, because
+          a shelf that does not exist yet has nothing to drop onto. */}
+      {groupFor && (
+        <GroupPicker
+          name={groupFor.name}
+          value={groupFor.group}
+          options={groupNames}
+          onSave={g => { updateProject(groupFor.id, { group: g || undefined }); setGroupFor(null) }}
+          onCancel={() => setGroupFor(null)}
         />
       )}
 
@@ -576,7 +739,143 @@ function NavItem({ children, active, onClick, count, emphasis, icon }: {
   )
 }
 
-function ProjectItem({ children, active, dot, overdue, daysInfo, projectId, inviteCode, dimmed, onClick, onContextMenu }: {
+/**
+ * The head of one shelf.
+ *
+ * Quiet by design: it is a divider that happens to have a name, not a row that
+ * competes with the projects under it. Dropping a project on it files it here,
+ * which is the only way to put something on a shelf it is not next to.
+ */
+function GroupPicker({ name, value, options, onSave, onCancel }: {
+  name: string
+  value: string
+  options: string[]
+  onSave: (group: string) => void
+  onCancel: () => void
+}) {
+  const [draft, setDraft] = useState(value)
+
+  return (
+    <div onClick={onCancel} style={{ position: 'fixed', inset: 0, background: 'rgba(15,15,15,.45)', zIndex: 9500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-lg)', width: '100%', maxWidth: 420, padding: '22px 24px' }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--t1)' }}>그룹 지정</div>
+        <div style={{ fontSize: 12, color: 'var(--t3)', marginTop: 4, marginBottom: 14, lineHeight: 1.6 }}>
+          {name} 을(를) 어떤 묶음에 둘까요. 이 이름은 <b>모두에게 같게 보입니다</b> — 사이드바 순서는 각자 정하지만, 무슨 종류의 일인지는 팀이 함께 쓰는 말이니까요.
+        </div>
+
+        {options.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+            {options.map(g => (
+              <button
+                key={g}
+                onClick={() => setDraft(g)}
+                style={{
+                  padding: '3px 10px', fontSize: 12, borderRadius: 999, cursor: 'pointer', fontFamily: 'var(--font)',
+                  border: `1px solid ${draft === g ? 'var(--ac)' : 'var(--bd)'}`,
+                  background: draft === g ? 'var(--ac-l)' : 'transparent',
+                  color: draft === g ? 'var(--ac)' : 'var(--t2)',
+                }}
+              >{g}</button>
+            ))}
+          </div>
+        )}
+
+        <input
+          autoFocus
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) onSave(draft.trim()); if (e.key === 'Escape') onCancel() }}
+          placeholder="예: 프로덕션, 앱개발"
+          style={{ width: '100%', padding: '9px 11px', borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'var(--bg)', fontSize: 13, color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)' }}
+        />
+
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 18 }}>
+          {value && (
+            <button onClick={() => onSave('')} style={{ marginRight: 'auto', padding: '6px 12px', fontSize: 13, borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', color: '#D44C47', cursor: 'pointer', fontFamily: 'var(--font)' }}>
+              그룹에서 빼기
+            </button>
+          )}
+          <button onClick={onCancel} style={{ padding: '6px 14px', fontSize: 13, borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)' }}>취소</button>
+          <button onClick={() => onSave(draft.trim())} style={{ padding: '6px 14px', fontSize: 13, fontWeight: 500, borderRadius: 'var(--r1)', border: '1px solid var(--ac)', background: 'var(--ac)', color: '#fff', cursor: 'pointer', fontFamily: 'var(--font)' }}>저장</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function GroupHeader({ name, count, collapsed, onToggle, onRename, onDropProject, dragging }: {
+  name: string
+  count: number
+  collapsed: boolean
+  onToggle: () => void
+  onRename: (to: string) => void
+  onDropProject: () => void
+  dragging: boolean
+}) {
+  const [hovered, setHovered] = useState(false)
+  const [over, setOver] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(name)
+
+  const commit = () => { setEditing(false); onRename(draft) }
+
+  return (
+    <div
+      onDragOver={e => { if (dragging) { e.preventDefault(); setOver(true) } }}
+      onDragLeave={() => setOver(false)}
+      onDrop={e => {
+        if (!dragging) return
+        e.preventDefault(); e.stopPropagation()
+        setOver(false)
+        onDropProject()
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 5,
+        padding: '6px 8px 4px 10px', margin: '6px 0 0', borderRadius: 'var(--r1)',
+        cursor: 'pointer', userSelect: 'none',
+        background: over ? 'var(--sb-hover)' : 'transparent',
+        boxShadow: over ? 'inset 0 0 0 1px var(--ac)' : 'none',
+      }}
+      onClick={() => { if (!editing) onToggle() }}
+    >
+      <span style={{ fontSize: 8, color: 'var(--sb-t3)', width: 8, flexShrink: 0 }}>{collapsed ? '▶' : '▼'}</span>
+      {editing ? (
+        <input
+          autoFocus
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onClick={e => e.stopPropagation()}
+          onBlur={commit}
+          onKeyDown={e => {
+            if (isComposing(e)) return
+            if (e.key === 'Enter') { e.preventDefault(); commit() }
+            if (e.key === 'Escape') { setDraft(name); setEditing(false) }
+          }}
+          style={{ flex: 1, minWidth: 0, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)', borderRadius: 'var(--r1)', padding: '1px 5px', fontSize: 11, color: 'var(--sb-t1)', outline: 'none' }}
+        />
+      ) : (
+        <span style={{
+          flex: 1, fontSize: 10, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase',
+          color: 'var(--sb-t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {name}
+        </span>
+      )}
+      {!editing && (
+        hovered
+          ? <ActionIcon onClick={e => { e.stopPropagation(); setDraft(name); setEditing(true) }} title="그룹 이름 수정">✎</ActionIcon>
+          : <span style={{ fontSize: 10, color: 'var(--sb-t3)', opacity: .7, flexShrink: 0 }}>{count}</span>
+      )}
+    </div>
+  )
+}
+
+function ProjectItem({
+  children, active, dot, overdue, daysInfo, projectId, inviteCode, dimmed, indented,
+  dragging, dropAt, onDragStart, onDragEnd, onDragOver, onDrop, onClick, onContextMenu,
+}: {
   children: React.ReactNode; active: boolean; dot: string
   /** Tasks past their due date. Nothing is drawn at zero. */
   overdue: number
@@ -584,6 +883,15 @@ function ProjectItem({ children, active, dot, overdue, daysInfo, projectId, invi
   projectId: string
   inviteCode?: string
   dimmed?: boolean
+  /** Sitting on a named shelf, which is a step in from the loose ones. */
+  indented?: boolean
+  dragging?: boolean
+  /** Where the row being dragged would land relative to this one. */
+  dropAt?: 'above' | 'below' | null
+  onDragStart?: () => void
+  onDragEnd?: () => void
+  onDragOver?: (below: boolean) => void
+  onDrop?: () => void
   onClick: () => void
   onContextMenu: (e: React.MouseEvent) => void
 }) {
@@ -601,17 +909,30 @@ function ProjectItem({ children, active, dot, overdue, daysInfo, projectId, invi
 
   return (
     <div
+      draggable={!!onDragStart}
+      onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; onDragStart?.() }}
+      onDragEnd={onDragEnd}
+      onDragOver={e => {
+        if (!onDragOver) return
+        e.preventDefault()
+        const box = e.currentTarget.getBoundingClientRect()
+        onDragOver(e.clientY > box.top + box.height / 2)
+      }}
+      onDrop={e => { if (onDrop) { e.preventDefault(); onDrop() } }}
       onClick={onClick}
       onContextMenu={onContextMenu}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
-        padding: '5px 8px 5px 14px', borderRadius: 'var(--r2)', cursor: 'pointer',
+        padding: `5px 8px 5px ${indented ? 24 : 14}px`, borderRadius: 'var(--r2)', cursor: 'pointer',
         fontSize: 13, fontWeight: active ? 500 : 400, margin: '1px 0',
         color: active ? 'var(--sb-t1)' : dimmed ? 'var(--sb-t3)' : 'var(--sb-t2)',
         background: active ? 'var(--sb-active)' : hovered ? 'var(--sb-hover)' : 'transparent',
         transition: 'background .1s',
+        opacity: dragging ? .4 : 1,
+        // The line is where it would land, drawn on the edge it would land on.
+        boxShadow: dropAt === 'above' ? 'inset 0 2px 0 var(--ac)' : dropAt === 'below' ? 'inset 0 -2px 0 var(--ac)' : 'none',
       }}
     >
       <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flexShrink: 0, opacity: dimmed ? .5 : 1 }} />

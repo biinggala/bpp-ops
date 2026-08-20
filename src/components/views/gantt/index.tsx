@@ -11,7 +11,7 @@ import { getCatColor } from '../../../types'
 import { CategoryBadge } from '../../shared/Badge'
 import { askConfirm } from '../../shared/Confirm'
 import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade, isComposing } from '../../../lib/utils'
-import type { Task, Milestone } from '../../../types'
+import type { Task, Milestone, Project } from '../../../types'
 
 /**
  * ── The Gantt ────────────────────────────────────────────────────────────────
@@ -33,6 +33,7 @@ const ZOOM_W:        Record<Zoom, number> = { day: 28, week: 11, month: 4.4 }
 const ZOOM_W_MOBILE: Record<Zoom, number> = { day: 22, week: 9,  month: 4   }
 const ZOOM_LABEL:    Record<Zoom, string> = { day: '일', week: '주', month: '월' }
 
+const PROJECT_H = 36
 const GROUP_H = 38
 const ROW_H   = 34
 const CHILD_H = 30
@@ -50,8 +51,9 @@ const MS_COLOR = '#9065B0'
 type NoY<T> = T extends unknown ? Omit<T, 'y'> : never
 
 type RowSpec =
-  | { kind: 'group'; key: string; groupId: string; milestone: Milestone | null; tasks: Task[]; y: number; h: number }
-  | { kind: 'task';  key: string; task: Task; child: boolean; y: number; h: number }
+  | { kind: 'project'; key: string; groupId: string; project: Project | null; tasks: Task[]; y: number; h: number }
+  | { kind: 'group'; key: string; groupId: string; milestone: Milestone | null; tasks: Task[]; depth: number; y: number; h: number }
+  | { kind: 'task';  key: string; task: Task; child: boolean; depth: number; y: number; h: number }
 
 /** What a pointer drag is currently doing. */
 type Drag = {
@@ -75,7 +77,7 @@ export function GanttView() {
   const filteredTasks = useFilteredTasks()
   const allTasks = useTaskStore(s => s.tasks)
   const { updateTask, addTask, deleteTask } = useTaskStore()
-  const { openTaskModal, openTaskDetail, projectId, hideCompleted } = useUiStore()
+  const { openTaskModal, openTaskDetail, projectId, hideCompleted, setProject } = useUiStore()
   const allMilestones = useMilestoneStore(s => s.milestones)
   const { deleteMilestone } = useMilestoneStore()
   const projects = useProjectStore(s => s.projects)
@@ -153,48 +155,87 @@ export function GanttView() {
   // ── Rows, flattened ───────────────────────────────────────────────────────
   // One list with a y for each row, so bars, arrows and the drag ghost can all
   // be placed from the same arithmetic instead of three separate nestings.
-  const { rows, contentH, hasMilestones } = useMemo(() => {
-    const all = milestones.filter(m => !projectId || m.projectId === projectId)
-    const active = all.filter(m => !m.done).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-    const done   = all.filter(m =>  m.done).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-
-    const byMilestone = new Map<string, Task[]>()
-    for (const m of all) byMilestone.set(m.id, [])
-    const unassigned: Task[] = []
-    for (const task of rootTasks) {
-      if (task.milestoneId && byMilestone.has(task.milestoneId)) byMilestone.get(task.milestoneId)!.push(task)
-      else unassigned.push(task)
-    }
-
-    const groups: { milestone: Milestone | null; tasks: Task[] }[] = [
-      ...active.map(m => ({ milestone: m, tasks: byMilestone.get(m.id)! })),
-      { milestone: null, tasks: unassigned },
-      ...done.map(m => ({ milestone: m, tasks: byMilestone.get(m.id)! })),
-    ]
-    const anyMilestone = groups.some(g => g.milestone !== null)
-
+  const { rows, contentH } = useMemo(() => {
     const out: RowSpec[] = []
     let y = 0
     const push = (r: NoY<RowSpec>) => { out.push({ ...r, y } as RowSpec); y += r.h }
 
-    for (const g of groups) {
-      const groupId = g.milestone?.id ?? '__unassigned__'
-      // The catch-all group only earns a header once there is something to
-      // catch tasks from.
-      if (g.milestone !== null || anyMilestone) {
-        push({ kind: 'group', key: `g:${groupId}`, groupId, milestone: g.milestone, tasks: g.tasks, h: GROUP_H })
+    /**
+     * One project's milestones, and the tasks filed under each.
+     *
+     * `depth` is how far in the rows sit: with a project band above them they
+     * are one step further right than they are inside a single project's view.
+     */
+    const pushMilestones = (pid: string | undefined, tasks: Task[], depth: number) => {
+      const all = milestones.filter(m => m.projectId === pid)
+      const active = all.filter(m => !m.done).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+      const done   = all.filter(m =>  m.done).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+
+      const byMilestone = new Map<string, Task[]>()
+      for (const m of all) byMilestone.set(m.id, [])
+      const unassigned: Task[] = []
+      for (const task of tasks) {
+        if (task.milestoneId && byMilestone.has(task.milestoneId)) byMilestone.get(task.milestoneId)!.push(task)
+        else unassigned.push(task)
       }
-      if (collapsed.has(groupId)) continue
-      for (const task of g.tasks) {
-        push({ kind: 'task', key: task.id, task, child: false, h: ROW_H })
-        if (collapsed.has(task.id)) continue
-        for (const c of getChildren(task.id)) {
-          push({ kind: 'task', key: c.id, task: c, child: true, h: CHILD_H })
+
+      const groups: { milestone: Milestone | null; tasks: Task[] }[] = [
+        ...active.map(m => ({ milestone: m, tasks: byMilestone.get(m.id)! })),
+        { milestone: null, tasks: unassigned },
+        ...done.map(m => ({ milestone: m, tasks: byMilestone.get(m.id)! })),
+      ]
+      const anyMilestone = groups.some(g => g.milestone !== null)
+
+      for (const g of groups) {
+        const groupId = g.milestone?.id ?? `__unassigned__:${pid ?? 'none'}`
+        // The catch-all group only earns a header once there is something to
+        // catch tasks from.
+        const headed = g.milestone !== null || anyMilestone
+        if (headed) {
+          push({ kind: 'group', key: `g:${groupId}`, groupId, milestone: g.milestone, tasks: g.tasks, depth, h: GROUP_H })
+          if (collapsed.has(groupId)) continue
+        }
+        for (const task of g.tasks) {
+          push({ kind: 'task', key: task.id, task, child: false, depth: depth + (headed ? 1 : 0), h: ROW_H })
+          if (collapsed.has(task.id)) continue
+          for (const c of getChildren(task.id)) {
+            push({ kind: 'task', key: c.id, task: c, child: true, depth: depth + (headed ? 1 : 0), h: CHILD_H })
+          }
         }
       }
     }
-    return { rows: out, contentH: y, hasMilestones: anyMilestone }
-  }, [rootTasks, milestones, projectId, collapsed, getChildren])
+
+    // Inside one project there is nothing to separate; across all of them the
+    // milestones of five projects otherwise read as one list of ten.
+    if (projectId) {
+      pushMilestones(projectId, rootTasks, 0)
+      return { rows: out, contentH: y }
+    }
+
+    const byProject = new Map<string, Task[]>()
+    for (const task of rootTasks) {
+      const key = task.projectId ?? '__none__'
+      const at = byProject.get(key)
+      if (at) at.push(task); else byProject.set(key, [task])
+    }
+
+    for (const project of projects) {
+      const tasks = byProject.get(project.id) ?? []
+      const hasWork = tasks.length > 0 || milestones.some(m => m.projectId === project.id)
+      if (!hasWork) continue
+      push({ kind: 'project', key: `p:${project.id}`, groupId: `p:${project.id}`, project, tasks, h: PROJECT_H })
+      if (collapsed.has(`p:${project.id}`)) continue
+      pushMilestones(project.id, tasks, 1)
+    }
+
+    const orphans = byProject.get('__none__') ?? []
+    if (orphans.length) {
+      push({ kind: 'project', key: 'p:none', groupId: 'p:none', project: null, tasks: orphans, h: PROJECT_H })
+      if (!collapsed.has('p:none')) pushMilestones(undefined, orphans, 1)
+    }
+
+    return { rows: out, contentH: y }
+  }, [rootTasks, milestones, projects, projectId, collapsed, getChildren])
 
   const unplacedCount = useMemo(
     () => rows.filter(r => r.kind === 'task' && !r.task.start && !r.task.due).length,
@@ -536,7 +577,9 @@ export function GanttView() {
           <Backdrop
             left={leftW} width={timelineW} height={contentH}
             dayW={dayW} zoom={zoom} ticks={ticks} todayCol={todayCol}
-            markers={milestoneMarkers} hoveredMilestoneId={hoveredMilestoneId}
+            // Full-height lines belong to one project's plan. Across several
+            // they stack into a barcode nobody can read a date off.
+            markers={projectId ? milestoneMarkers : []} hoveredMilestoneId={hoveredMilestoneId}
           />
 
           {/* Dependencies, tucked behind the bars they connect. */}
@@ -559,11 +602,26 @@ export function GanttView() {
 
           {/* Rows */}
           <div style={{ position: 'relative', zIndex: 2 }}>
-            {rows.map(row => row.kind === 'group' ? (
+            {rows.map(row => row.kind === 'project' ? (
+              <ProjectRow
+                key={row.key}
+                project={row.project}
+                expanded={!collapsed.has(row.groupId)}
+                onToggle={() => toggle(row.groupId)}
+                rollup={groupRollup(row.tasks, getChildren, rangeStart)}
+                count={row.tasks.length}
+                timelineW={timelineW}
+                leftW={leftW}
+                dayW={dayW}
+                compact={isMobile}
+                onOpen={() => row.project && setProject(row.project.id)}
+              />
+            ) : row.kind === 'group' ? (
               <MilestoneRow
                 key={row.key}
                 milestone={row.milestone}
                 compact={isMobile}
+                depth={row.depth}
                 expanded={!collapsed.has(row.groupId)}
                 onToggle={() => toggle(row.groupId)}
                 rollup={groupRollup(row.tasks, getChildren, rangeStart)}
@@ -586,7 +644,7 @@ export function GanttView() {
                 task={row.task}
                 child={row.child}
                 height={row.h}
-                indent={hasMilestones}
+                depth={row.depth}
                 compact={isMobile}
                 leftW={leftW}
                 dayW={dayW}
@@ -717,13 +775,97 @@ function Backdrop({ left, width, height, dayW, zoom, ticks, todayCol, markers, h
   )
 }
 
+/** One step in from whatever contains you. */
+function INDENT(depth: number, compact: boolean): number {
+  return (compact ? 4 : 6) + depth * (compact ? 10 : 16)
+}
+
+// ── Project band ─────────────────────────────────────────────────────────────
+
+/**
+ * The band above a project's milestones, drawn only when several projects share
+ * the chart.
+ *
+ * Without it the milestones of five projects read as one list of fifteen, in an
+ * order nobody chose — the dates interleave and the names do not say whose they
+ * are. The band carries the project's colour, its whole span as one bar, and
+ * collapses everything under it.
+ */
+function ProjectRow({ project, expanded, onToggle, rollup, count, timelineW, leftW, dayW, compact, onOpen }: {
+  project: Project | null
+  expanded: boolean
+  onToggle: () => void
+  rollup: { col: number; span: number } | null
+  count: number
+  timelineW: number
+  leftW: number
+  dayW: number
+  compact: boolean
+  onOpen: () => void
+}) {
+  const [hovered, setHovered] = useState(false)
+  const color = project?.color ?? 'var(--t3)'
+
+  return (
+    <div
+      style={{ display: 'flex', height: PROJECT_H, borderBottom: '1px solid var(--bd2)', background: hovered ? 'var(--bg2)' : 'var(--bg3)' }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div
+        onClick={onToggle}
+        style={{
+          width: leftW, flexShrink: 0, position: 'sticky', left: 0, zIndex: 4,
+          background: hovered ? 'var(--bg2)' : 'var(--bg3)',
+          borderRight: '1px solid var(--bd)', display: 'flex', alignItems: 'center',
+          paddingLeft: 4, paddingRight: 8, gap: 6, overflow: 'hidden', cursor: 'pointer',
+        }}
+      >
+        <button
+          onClick={e => { e.stopPropagation(); onToggle() }}
+          style={{ width: 18, height: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: 9 }}
+        >
+          {expanded ? '▼' : '▶'}
+        </button>
+        <span style={{ width: 9, height: 9, borderRadius: 2, background: color, flexShrink: 0 }} />
+        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--t1)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-.01em' }}>
+          {project?.name ?? '프로젝트 미지정'}
+        </span>
+        {hovered && project && !compact ? (
+          <button
+            onClick={e => { e.stopPropagation(); haptic('tap'); onOpen() }}
+            title="이 프로젝트만 보기"
+            style={{ flexShrink: 0, fontSize: 10, padding: '2px 7px', borderRadius: 'var(--r1)', border: '1px solid var(--bd2)', background: 'var(--bg)', color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)' }}
+          >
+            열기
+          </button>
+        ) : (
+          <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{count}</span>
+        )}
+      </div>
+
+      <div style={{ width: timelineW, flexShrink: 0, position: 'relative', height: PROJECT_H }}>
+        {rollup && (
+          <div style={{
+            position: 'absolute', left: rollup.col * dayW + 2, width: Math.max(rollup.span * dayW - 4, 4),
+            top: '50%', transform: 'translateY(-50%)', height: 10, borderRadius: 5,
+            background: color, opacity: .22, pointerEvents: 'none',
+          }} />
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Milestone row ────────────────────────────────────────────────────────────
 
 function MilestoneRow({
   milestone, expanded, onToggle, rollup, timelineW, leftW, dayW,
-  creating, onHoverChange, onAdd, onLaneMouseDown, canDragCreate, onContextMenu, compact,
+  creating, onHoverChange, onAdd, onLaneMouseDown, canDragCreate, onContextMenu, compact, depth,
 }: {
   compact: boolean
+  /** 0 inside one project, 1 under a project band. */
+  depth: number
   milestone: Milestone | null
   expanded: boolean
   onToggle: () => void
@@ -789,7 +931,7 @@ function MilestoneRow({
             ? (isNull ? 'var(--bg2)' : `linear-gradient(${tintBg}.14), ${tintBg}.14)), var(--bg)`)
             : 'var(--bg)',
           borderRight: '1px solid var(--bd)', display: 'flex', alignItems: 'center',
-          paddingLeft: 4, paddingRight: 6, gap: 5, overflow: 'hidden', cursor: 'pointer',
+          paddingLeft: INDENT(depth, compact), paddingRight: 6, gap: 5, overflow: 'hidden', cursor: 'pointer',
         }}
       >
         <button
@@ -849,14 +991,15 @@ function MilestoneRow({
 // ── Task row ─────────────────────────────────────────────────────────────────
 
 function TaskRow({
-  task, child, height, indent, compact, leftW, dayW, timelineW, today, rangeStart,
+  task, child, height, depth, compact, leftW, dayW, timelineW, today, rangeStart,
   rollup, hasChildren, expanded, visual, cascading, cascadeOffset, markUnplaced, renaming,
   onCommitName, onHover, onOpen, onToggle, onAddSubtask, onLaneMouseDown, onBarMouseDown, onOpenGuard,
 }: {
   task: Task
   child: boolean
   height: number
-  indent: boolean
+  /** How many containers this row sits inside: project, milestone, both. */
+  depth: number
   compact: boolean
   leftW: number
   dayW: number
@@ -899,9 +1042,7 @@ function TaskRow({
     span = Math.abs((e + de) - (s + ds)) + 1
   }
 
-  const paddingLeft = child
-    ? (compact ? (indent ? 26 : 18) : (indent ? 44 : 30))
-    : (compact ? (indent ? 8 : 4)  : (indent ? 20 : 6))
+  const paddingLeft = INDENT(depth, compact) + (child ? (compact ? 14 : 24) : 0)
 
   const barH = child ? 15 : 20
   const dragging = !!visual && visual.mode !== 'create'

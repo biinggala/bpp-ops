@@ -620,7 +620,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
     'update_project',
     {
       title: '프로젝트 수정',
-      description: 'Renames a project, sets its colour or deadline, or archives it. Membership is not editable here.',
+      description: 'Renames a project, sets its colour, deadline or sidebar group, or archives it. Membership is not editable here.',
       inputSchema: {
         project_id: z.string(),
         name: z.string().optional(),
@@ -628,6 +628,9 @@ export function registerTools(server: McpServer, ctx: Ctx) {
         due_date: YMD.optional(),
         client_name: z.string().optional(),
         archived: z.boolean().optional(),
+        // The sidebar shelf this project sits on, shared by everyone who can
+        // see it. An empty string takes it off its shelf.
+        group: z.string().optional(),
       },
     },
     async (args) => {
@@ -639,6 +642,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
         ...(args.due_date !== undefined ? { dueDate: args.due_date } : {}),
         ...(args.client_name !== undefined ? { clientName: args.client_name } : {}),
         ...(args.archived !== undefined ? { archived: args.archived } : {}),
+        ...(args.group !== undefined ? { group: args.group || null } : {}),
       })
       return text({ updated: args.project_id })
     }

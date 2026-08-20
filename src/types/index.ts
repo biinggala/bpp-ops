@@ -36,6 +36,19 @@ export interface Project {
    * task it did not belong to.
    */
   links?: TaskLink[]
+  /**
+   * Which shelf of the sidebar this project sits on — 프로덕션, 앱개발, and so on.
+   *
+   * Shared, and deliberately so: it says what kind of work the project is, which
+   * is a fact about the project rather than a preference of whoever is looking.
+   * Fifty people need one name for the same thing. It is a label and not a
+   * boundary — access is still project membership alone, so a shelf simply has
+   * fewer projects on it for someone who cannot see them all.
+   *
+   * The *order* of the sidebar is the opposite kind of thing and is kept per
+   * person, in localStorage. See Sidebar.
+   */
+  group?: string
 }
 
 export interface Milestone {
