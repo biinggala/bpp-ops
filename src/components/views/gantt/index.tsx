@@ -34,10 +34,24 @@ const ZOOM_W:        Record<Zoom, number> = { day: 28, week: 11, month: 4.4 }
 const ZOOM_W_MOBILE: Record<Zoom, number> = { day: 22, week: 9,  month: 4   }
 const ZOOM_LABEL:    Record<Zoom, string> = { day: '일', week: '주', month: '월' }
 
-const PROJECT_H = 36
-const GROUP_H = 38
-const ROW_H   = 34
-const CHILD_H = 30
+// Tallest at the top of the hierarchy. The milestone row used to be taller than
+// the project band above it, which said the wrong thing about which contains
+// which.
+const PROJECT_H = 38
+const GROUP_H   = 34
+const ROW_H     = 32
+const CHILD_H   = 28
+
+/**
+ * The project band's fill.
+ *
+ * Composited over the page rather than left as an alpha: --bg3 is translucent,
+ * and a pinned column with alpha in it is a window onto the timeline scrolling
+ * behind it. That is what put a rollup bar and the today line inside the name
+ * column.
+ */
+const BAND       = 'linear-gradient(rgba(55,53,47,.055), rgba(55,53,47,.055)), var(--bg)'
+const BAND_HOVER = 'linear-gradient(rgba(55,53,47,.10), rgba(55,53,47,.10)), var(--bg)'
 const LEFT_W  = 248
 const MONTH_H = 26
 const DAY_H   = 24
@@ -829,7 +843,7 @@ function ProjectRow({ project, expanded, onToggle, rollup, count, timelineW, lef
 
   return (
     <div
-      style={{ display: 'flex', height: PROJECT_H, borderBottom: '1px solid var(--bd2)', background: hovered ? 'var(--bg2)' : 'var(--bg3)' }}
+      style={{ display: 'flex', height: PROJECT_H, borderBottom: '1px solid var(--bd2)' }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -837,7 +851,7 @@ function ProjectRow({ project, expanded, onToggle, rollup, count, timelineW, lef
         onClick={onToggle}
         style={{
           width: leftW, flexShrink: 0, position: 'sticky', left: 0, zIndex: 4,
-          background: hovered ? 'var(--bg2)' : 'var(--bg3)',
+          background: hovered ? BAND_HOVER : BAND,
           borderRight: '1px solid var(--bd)', display: 'flex', alignItems: 'center',
           paddingLeft: 4, paddingRight: 8, gap: 6, overflow: 'hidden', cursor: 'pointer',
         }}
@@ -865,7 +879,13 @@ function ProjectRow({ project, expanded, onToggle, rollup, count, timelineW, lef
         )}
       </div>
 
-      <div style={{ width: timelineW, flexShrink: 0, position: 'relative', height: PROJECT_H }}>
+      {/* A tint rather than a fill: the today line and the weekends have to keep
+          running down the chart through this band, or the vertical read breaks
+          at every project. */}
+      <div style={{
+        width: timelineW, flexShrink: 0, position: 'relative', height: PROJECT_H,
+        background: hovered ? 'rgba(55,53,47,.05)' : 'rgba(55,53,47,.028)',
+      }}>
         {rollup && (
           <div style={{
             position: 'absolute', left: rollup.col * dayW + 2, width: Math.max(rollup.span * dayW - 4, 4),
