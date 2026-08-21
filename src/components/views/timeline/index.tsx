@@ -698,6 +698,10 @@ function DueTask({ task, overdue, onToggle, onOpen }: {
   )
 }
 
+/** The chip's own height and the gap between rows — so four rows is a number. */
+const CHIP_H = 24
+const CHIP_GAP = 6
+
 /**
  * Picks who to invite from the people this account shares a project with.
  *
@@ -715,7 +719,16 @@ function AttendeePicker({ teammates, chosen, nameOf, onToggle }: {
   }
   return (
     <div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxHeight: 96, overflowY: 'auto' }}>
+      {/* Whole rows only.
+          The box scrolled at a height that was not a multiple of the row pitch,
+          so it always ended on a chip sliced through the middle — which reads as
+          a broken panel rather than as a list that continues. Fixing the chip's
+          height makes the pitch knowable, and the cap is an exact four rows.
+          The scrollbar is what says there is more; a half-eaten name is not. */}
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', gap: CHIP_GAP,
+        maxHeight: CHIP_H * 4 + CHIP_GAP * 3, overflowY: 'auto',
+      }}>
         {teammates.map(email => {
           const on = chosen.includes(email)
           return (
@@ -725,11 +738,12 @@ function AttendeePicker({ teammates, chosen, nameOf, onToggle }: {
               title={email}
               style={{
                 display: 'flex', alignItems: 'center', gap: 4,
-                padding: '3px 8px', borderRadius: 999, cursor: 'pointer',
+                height: CHIP_H, boxSizing: 'border-box',
+                padding: '0 8px', borderRadius: 999, cursor: 'pointer',
                 border: `1px solid ${on ? 'var(--ac)' : 'var(--bd)'}`,
                 background: on ? 'var(--ac-l)' : 'transparent',
                 color: on ? 'var(--ac)' : 'var(--t2)',
-                fontSize: 11, fontFamily: 'var(--font)', whiteSpace: 'nowrap',
+                fontSize: 11, lineHeight: 1, fontFamily: 'var(--font)', whiteSpace: 'nowrap',
               }}
             >
               {on && <span style={{ fontSize: 9 }}>✓</span>}
