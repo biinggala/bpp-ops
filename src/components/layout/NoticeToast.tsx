@@ -30,19 +30,24 @@ interface ToastState {
   notice: Notice | null
   /** True while the bell's own list is open. */
   panelOpen: boolean
+  /** The bell hands over its own closer; nothing else can shut that list. */
+  closePanel: (() => void) | null
   show: (n: Notice) => void
   hide: () => void
   setPanelOpen: (open: boolean) => void
+  registerClose: (close: (() => void) | null) => void
 }
 
 export const useNoticeToast = create<ToastState>(set => ({
   notice: null,
   panelOpen: false,
+  closePanel: null,
   show: notice => set({ notice }),
   hide: () => set({ notice: null }),
   // A banner over the open list is two copies of the same sentence, and they
   // land on top of each other — the list is in the same corner.
   setPanelOpen: panelOpen => set(panelOpen ? { panelOpen, notice: null } : { panelOpen }),
+  registerClose: closePanel => set({ closePanel }),
 }))
 
 /** How long a banner stays. Long enough to read two lines, not long enough to nag. */
@@ -130,7 +135,10 @@ export function NoticeToast() {
         style={{
           display: 'flex', gap: 10, alignItems: 'flex-start',
           padding: '11px 12px',
-          background: 'var(--bg1)', border: '1px solid var(--bd)', borderRadius: 10,
+          // Opaque on purpose. `--bg1` was never a token, so this drew with no fill at
+          // all and the panel behind it read straight through — the same mistake the
+          // Gantt's pinned column made with the translucent `--bg3`.
+          background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 10,
           boxShadow: '0 8px 28px rgba(15,15,15,.16)',
           cursor: notice.taskId ? 'pointer' : 'default',
         }}
@@ -181,15 +189,19 @@ export function NoticeToast() {
  * suppressed while the list is open, and the list is where the button lives.
  */
 export function showTestNotice(by: string) {
-  const { setPanelOpen, show } = useNoticeToast.getState()
-  setPanelOpen(false)
-  show({
-    id: `test:${Date.now()}`,
-    kind: 'assigned',
-    by,
-    taskName: '테스트 알림 — 이렇게 보입니다',
-    at: Date.now(),
-    read: true,
-  })
-  if (chimeEnabled()) playChime()
+  const { closePanel } = useNoticeToast.getState()
+  closePanel?.()
+  // A tick, so the list is gone before the banner slides in. Showing it in the
+  // same frame drew both at once, on top of each other.
+  setTimeout(() => {
+    useNoticeToast.getState().show({
+      id: `test:${Date.now()}`,
+      kind: 'assigned',
+      by,
+      taskName: '테스트 알림 — 이렇게 보입니다',
+      at: Date.now(),
+      read: true,
+    })
+    if (chimeEnabled()) playChime()
+  }, 140)
 }

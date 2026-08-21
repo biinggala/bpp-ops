@@ -56,10 +56,16 @@ export function NoticeBell() {
     return subscribe(uid)
   }, [uid, subscribe])
 
-  // The banner hides itself while this list is open; it has to be told.
+  // The banner hides itself while this list is open, and the test button has to
+  // be able to close it — so the bell reports the state and lends its closer.
   useEffect(() => {
-    useNoticeToast.getState().setPanelOpen(open)
-    return () => useNoticeToast.getState().setPanelOpen(false)
+    const store = useNoticeToast.getState()
+    store.setPanelOpen(open)
+    store.registerClose(() => setOpen(false))
+    return () => {
+      useNoticeToast.getState().setPanelOpen(false)
+      useNoticeToast.getState().registerClose(null)
+    }
   }, [open])
 
   // The unread count belongs on the app's icon too — iOS and macOS both draw it,
