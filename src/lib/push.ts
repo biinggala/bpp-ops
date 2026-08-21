@@ -44,12 +44,17 @@ function isIOS(): boolean {
  * that arrives with `standalone=0` is a different bug from one with
  * `standalone=1`, and nobody can tell them apart from the word "denied".
  */
-function context(): string {
+function context(reg?: ServiceWorkerRegistration | null): string {
   const version = /(?:iPhone )?OS (\d+)[._](\d+)/.exec(navigator.userAgent)
+  const worker = reg
+    ? (reg.active ? 'active' : reg.waiting ? 'waiting' : reg.installing ? 'installing' : 'none')
+    : 'no-reg'
   return [
     `standalone=${isInstalled() ? 1 : 0}`,
     version ? `iOS ${version[1]}.${version[2]}` : null,
     `perm=${Notification.permission}`,
+    `sw=${worker}`,
+    reg ? `scope=${new URL(reg.scope).pathname}` : null,
     'PushManager' in window ? null : 'PushManager 없음',
   ].filter(Boolean).join(' · ')
 }
@@ -154,8 +159,12 @@ export async function enablePush(): Promise<{ ok: true } | { ok: false; reason: 
   const uid = auth.currentUser?.uid
   if (!uid) return { ok: false, reason: '로그인이 필요합니다' }
 
+  // Held outside the try so a failure can report the worker's actual state —
+  // 'permission denied' with a worker that never activated is a different bug
+  // from the same words with a live one.
+  let reg: ServiceWorkerRegistration | null = null
   try {
-    const reg = await readyRegistration()
+    reg = await readyRegistration()
     const sub = await reg.pushManager.getSubscription() ?? await subscribe(reg)
     const json = sub.toJSON() as { endpoint?: string; keys?: Record<string, string> }
     await fbSet(ref(db, P.pushSub(uid, deviceId())), {
@@ -167,12 +176,12 @@ export async function enablePush(): Promise<{ ok: true } | { ok: false; reason: 
     localStorage.setItem('bpp_push_on', '1')
     return { ok: true }
   } catch (e) {
-    if (Notification.permission === 'denied') return { ok: false, reason: `${deniedHelp()} (${context()})` }
+    if (Notification.permission === 'denied') return { ok: false, reason: `${deniedHelp()} (${context(reg)})` }
     // The name is the half that identifies the failure, and a bare message like
     // "permission denied" identifies nothing — so both are shown. Somebody has
     // to be able to report this from a phone.
     const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e)
-    return { ok: false, reason: `${detail || '구독 실패'} (${context()})` }
+    return { ok: false, reason: `${detail || '구독 실패'} (${context(reg)})` }
   }
 }
 
