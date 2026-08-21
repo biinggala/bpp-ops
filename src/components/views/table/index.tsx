@@ -4,6 +4,7 @@ import {
   MenuDivider, MenuFooter, MENU_INPUT, CellTrigger, Dot, useMenuKeys,
 } from '../../shared/Menu'
 import { AssigneePicker } from '../../shared/AssigneePicker'
+import { useToast } from '../../shared/Toast'
 import { BadgeSelect } from '../../shared/BadgeSelect'
 import { StatusPill, PriorityLabel } from '../../shared/StatusPill'
 import { useGCalStore, type GCalEvent } from '../../../store/gcalStore'
@@ -2052,27 +2053,41 @@ function AddMilestoneInline({ projectId, onDone }: { projectId: string; onDone: 
 
 // ── AddRowProjectSelect ───────────────────────────────────────────────────────
 
+/**
+ * Which project(s) the new task goes into.
+ *
+ * More than one is allowed, and it means **one task per project** rather than
+ * one task in two places. A task lives at its project's path and access is
+ * project membership, so a record spanning two projects would need a new answer
+ * to 'who can see this' — which is exactly the kind of thing this app declines
+ * to invent. What people actually want here is not to type the same row twice
+ * (스텝 취합, for 승원 and 릴서 both), and copies deliver that: each one then
+ * lives its own life, which is also correct — finishing 승원's does not finish
+ * 릴서's.
+ */
 function AddRowProjectSelect({ value, options, onChange }: {
-  value: string | undefined
+  value: string[]
   options: { id: string; name: string; color: string }[]
-  onChange: (v: string | undefined) => void
+  onChange: (v: string[]) => void
 }) {
   const m = useMenu()
-  const current = options.find(p => p.id === value)
+  const picked = options.filter(p => value.includes(p.id))
   // undefined leads, as 미배정 does in the panel.
   const items: (string | undefined)[] = [undefined, ...options.map(p => p.id)]
-  const { hi, onKeyDown } = useMenuKeys(
-    m, items,
-    id => { onChange(id); m.setOpen(false) },
-    items.indexOf(value),
-  )
+  // Picking does not close the menu — the whole point is to pick more than one.
+  // 미배정 is the exception: it clears, and clearing is a finished thought.
+  const toggle = (id: string | undefined) => {
+    if (!id) { onChange([]); m.setOpen(false); return }
+    onChange(value.includes(id) ? value.filter(v => v !== id) : [...value, id])
+  }
+  const { hi, onKeyDown } = useMenuKeys(m, items, toggle, Math.max(0, items.indexOf(picked[0]?.id)))
 
   return (
     <div ref={m.rootRef} style={{ position: 'relative', flexShrink: 0, minWidth: 0 }} onKeyDown={onKeyDown}>
       <div
         data-addrow-popup
         tabIndex={0}
-        title={current ? current.name : '프로젝트 미배정'}
+        title={picked.length ? picked.map(p => p.name).join(', ') : '프로젝트 미배정'}
         onClick={e => { e.stopPropagation(); m.toggleAt(e.currentTarget, 200) }}
         onKeyDown={e => {
           if (e.key === ' ' || e.key === 'ArrowDown') {
@@ -2085,20 +2100,22 @@ function AddRowProjectSelect({ value, options, onChange }: {
           background: 'var(--bg)', maxWidth: 92, minWidth: 0,
         }}
       >
-        <Dot color={current?.color ?? 'var(--bd2)'} size={8} />
-        <span style={{ fontSize: 11, color: current ? 'var(--t1)' : 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {current ? current.name : '프로젝트'}
+        <Dot color={picked[0]?.color ?? 'var(--bd2)'} size={8} />
+        <span style={{ fontSize: 11, color: picked.length ? 'var(--t1)' : 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {picked.length === 0 ? '프로젝트'
+            : picked.length === 1 ? picked[0].name
+            : `${picked[0].name} +${picked.length - 1}`}
         </span>
         <span style={{ fontSize: 8, color: 'var(--t3)', flexShrink: 0 }}>▾</span>
       </div>
       {m.open && (
         <Menu pos={m.pos} panelRef={m.panelRef} width={200}>
           <MenuList>
-            <MenuItem selected={!value} highlighted={hi === 0} onSelect={() => { onChange(undefined); m.setOpen(false) }}>
+            <MenuItem selected={!value.length} highlighted={hi === 0} onSelect={() => toggle(undefined)}>
               프로젝트 미배정
             </MenuItem>
             {options.map((p, i) => (
-              <MenuItem key={p.id} selected={p.id === value} highlighted={hi === i + 1} onSelect={() => { onChange(p.id); m.setOpen(false) }}>
+              <MenuItem key={p.id} multi selected={value.includes(p.id)} highlighted={hi === i + 1} onSelect={() => toggle(p.id)}>
                 <Dot color={p.color} />
                 {p.name}
               </MenuItem>
@@ -2225,7 +2242,8 @@ function AddTaskRow({ cols, assigneeOptions, defaultAssignee = '', milestoneId, 
   onDone: (addAnother: boolean) => void
   onCancel: () => void
 }) {
-  const [pickedProject, setPickedProject] = useState<string | undefined>(projectId)
+  // Plural: more than one project means one copy of the task in each.
+  const [pickedProjects, setPickedProjects] = useState<string[]>(projectId ? [projectId] : [])
   const [pickedMs, setPickedMs] = useState<string | undefined>(milestoneId)
   const [name, setName] = useState('')
   const [assignee, setAssignee] = useState(defaultAssignee)
@@ -2263,14 +2281,24 @@ function AddTaskRow({ cols, assigneeOptions, defaultAssignee = '', milestoneId, 
     return () => document.removeEventListener('mousedown', h)
   }, [])
 
+  // A milestone belongs to exactly one project, so it is only offered — and
+  // only applied — when exactly one project is picked.
+  const soleProject = pickedProjects.length === 1 ? pickedProjects[0] : undefined
+
   const doSave = (addAnother: boolean) => {
     if (!name.trim()) { nameRef.current?.focus(); return }
-    addTask({
-      type: parentId ? '세부' : '상위', cat: space, name: name.trim(), assignee,
-      start: '', due, priority, status,
-      progress: 0, memo: '', parentId, projectId: pickedProject, milestoneId: milestoneId ?? pickedMs,
-      createdBy: userEmail ?? undefined,
-    })
+    // No project picked is still one task, filed under nothing.
+    const targets: (string | undefined)[] = pickedProjects.length ? pickedProjects : [undefined]
+    for (const pid of targets) {
+      addTask({
+        type: parentId ? '세부' : '상위', cat: space, name: name.trim(), assignee,
+        start: '', due, priority, status,
+        progress: 0, memo: '', parentId, projectId: pid,
+        milestoneId: milestoneId ?? (pid && pid === soleProject ? pickedMs : undefined),
+        createdBy: userEmail ?? undefined,
+      })
+    }
+    if (targets.length > 1) useToast.getState().show(`${targets.length}개 프로젝트에 추가했습니다`)
     // The milestone is deliberately kept for the next row: a run of tasks
     // typed one after another almost always belongs to the same one.
     setName(''); setAssignee(defaultAssignee); setDue(''); setStatus('대기'); setPriority('중간')
@@ -2315,17 +2343,17 @@ function AddTaskRow({ cols, assigneeOptions, defaultAssignee = '', milestoneId, 
             />
             {projectOptions && (
               <AddRowProjectSelect
-                value={pickedProject}
+                value={pickedProjects}
                 options={projectOptions}
-                onChange={v => { setPickedProject(v); setPickedMs(undefined) }}
+                onChange={v => { setPickedProjects(v); setPickedMs(undefined) }}
               />
             )}
-            {!milestoneId && milestoneOptions && pickedProject && (
+            {!milestoneId && milestoneOptions && soleProject && (
               <MilestonePicker
                 milestoneId={pickedMs}
-                milestones={milestoneOptions.filter(m => m.projectId === pickedProject)}
+                milestones={milestoneOptions.filter(m => m.projectId === soleProject)}
                 onChange={setPickedMs}
-                onCreate={onMilestoneCreate ? (n, d) => onMilestoneCreate(pickedProject, n, d) : undefined}
+                onCreate={onMilestoneCreate ? (n, d) => onMilestoneCreate(soleProject, n, d) : undefined}
               />
             )}
           </div>

@@ -139,6 +139,7 @@ export function NoticeToast() {
     >
       <div
         onClick={open}
+        data-notice-banner
         style={{
           display: 'flex', gap: 10, alignItems: 'flex-start',
           padding: '11px 12px',
