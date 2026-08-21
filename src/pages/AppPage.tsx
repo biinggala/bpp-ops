@@ -25,6 +25,7 @@ import { TaskDetailModal } from '../components/modals/TaskDetailModal'
 import { CommandPalette } from '../components/modals/CommandPalette'
 import { EmptyState } from '../components/shared/EmptyState'
 import { Toast } from '../components/shared/Toast'
+import { NoticeToast } from '../components/layout/NoticeToast'
 
 class TaskDetailErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -166,6 +167,7 @@ export function AppPage() {
       </TaskDetailErrorBoundary>
       <CommandPalette />
       <Toast />
+      <NoticeToast />
 
       {invitePending && (
         <InviteAcceptModal

@@ -6,10 +6,11 @@ import { useUiStore } from '../../store/uiStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
-import type { Notice, NoticeKind } from '../../lib/notify'
+import { NOTICE_LABEL as LABEL, NOTICE_TONE as TONE, type Notice } from '../../lib/notify'
 import { StatusMark } from '../shared/StatusMark'
 import { statusAccent } from '../../types'
 import { disablePush, enablePush, pushEnabledHere, pushSupport } from '../../lib/push'
+import { showTestNotice } from './NoticeToast'
 
 /**
  * ── 알림 ─────────────────────────────────────────────────────────────────────
@@ -25,27 +26,6 @@ import { disablePush, enablePush, pushEnabledHere, pushSupport } from '../../lib
  * thinks — "did I miss something today" is a different question from "what
  * happened this week".
  */
-
-const LABEL: Record<NoticeKind, string> = {
-  assigned:    '담당자로 지정',
-  unassigned:  '담당에서 제외',
-  due_changed: '마감일 변경',
-  status_changed: '상태 변경',
-  subtask:     '하위 업무 추가',
-  due_soon:    '마감 임박',
-  overdue:     '마감 지남',
-}
-
-/** Colour carries the kind at a glance; the dot is the only colour in the row. */
-const TONE: Record<NoticeKind, string> = {
-  assigned:    '#2383E2',
-  unassigned:  '#787774',
-  due_changed: '#D9730D',
-  status_changed: '#2383E2',
-  subtask:     '#9065B0',
-  due_soon:    '#D9730D',
-  overdue:     '#D44C47',
-}
 
 function dayBucket(at: number): '오늘' | '어제' | '이전' {
   const d = new Date(at)
@@ -286,12 +266,31 @@ function PushToggle() {
   const [on, setOn] = useState(pushEnabledHere())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const me = useAuthStore(s => s.displayName || s.email?.split('@')[0] || '나')
   const support = pushSupport()
+
+  // Raising a banner takes no server and no second person, so it is offered
+  // even where push cannot work at all — on the desktop app that banner *is*
+  // the notification, and this is the only way to see it without waiting for a
+  // colleague to assign something.
+  const test = (
+    <button
+      onClick={() => showTestNotice(me)}
+      style={{
+        fontSize: 11, color: 'var(--ac)', background: 'transparent', border: 'none',
+        cursor: 'pointer', fontFamily: 'var(--font)', padding: 0, flexShrink: 0,
+      }}
+    >테스트</button>
+  )
 
   if (!support.ok) {
     return (
-      <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--bd)', fontSize: 11, color: 'var(--t3)', lineHeight: 1.5 }}>
-        {support.reason}
+      <div style={{
+        padding: '8px 14px', borderBottom: '1px solid var(--bd)', fontSize: 11,
+        color: 'var(--t3)', lineHeight: 1.5, display: 'flex', gap: 10, alignItems: 'flex-start',
+      }}>
+        <span style={{ flex: 1, minWidth: 0 }}>{support.reason}</span>
+        {test}
       </div>
     )
   }
@@ -315,6 +314,7 @@ function PushToggle() {
         이 기기에서 푸시 받기
         {error && <span style={{ display: 'block', fontSize: 11, color: '#D44C47' }}>{error}</span>}
       </span>
+      {test}
       <button
         onClick={() => void toggle()}
         disabled={busy}
