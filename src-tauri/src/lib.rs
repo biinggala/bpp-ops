@@ -234,10 +234,7 @@ async fn run_oauth(
         params.push(("login_hint", hint));
     }
     let query = form_encode(&params);
-    std::process::Command::new("open")
-        .arg(format!("{AUTH_ENDPOINT}?{query}"))
-        .spawn()
-        .map_err(|e| format!("could not open the browser: {e}"))?;
+    open_url(&format!("{AUTH_ENDPOINT}?{query}"))?;
 
     let rx = {
         let mut pending = state
@@ -448,20 +445,49 @@ fn app_version(app: tauri::AppHandle) -> String {
     app.package_info().version.to_string()
 }
 
+/// Hands a URL to whatever the operating system calls a browser.
+///
+/// `open` is macOS's launcher and nothing else's. On Windows the launcher is a
+/// shell builtin rather than a program, so it has to be reached through `cmd`,
+/// and the empty `""` argument is not decoration: `start` reads its first
+/// quoted argument as the *window title*, so a quoted URL without it would be
+/// consumed as a title and nothing would open.
+fn open_url(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut c = std::process::Command::new("open");
+        c.arg(url);
+        c
+    };
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut c = std::process::Command::new("cmd");
+        c.args(["/C", "start", "", url]);
+        c
+    };
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let mut command = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(url);
+        c
+    };
+
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("could not open the browser: {e}"))
+}
+
 /// Hands a URL to the real browser. A webview cannot sign in to GitHub, and the
 /// download lives behind that sign-in.
 #[tauri::command]
 fn open_external(url: String) -> Result<(), String> {
-    // Web addresses only: `open` will happily launch anything, and this command
-    // is reachable from the remotely loaded frontend.
+    // Web addresses only: the platform launchers will happily start anything,
+    // and this command is reachable from the remotely loaded frontend.
     if !(url.starts_with("https://") || url.starts_with("http://")) {
         return Err("http 또는 https 주소만 열 수 있습니다".into());
     }
-    std::process::Command::new("open")
-        .arg(url)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("could not open the browser: {e}"))
+    open_url(&url)
 }
 
 pub fn run() {
