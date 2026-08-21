@@ -32,7 +32,12 @@ export const P = {
   userProfile:      (uid: string) => `userProfiles/${uid}`,
 
   /** One person's inbox. Anyone may leave a notice here; only the owner reads it. */
-  notices:          (uid: string) => `notices/${uid}`,
+  // Addressed by **email**, not uid. The sender knows the assignee's email —
+  // it is what `assignee` stores — and would have to resolve a uid through the
+  // project's member list to do anything else, which silently fails whenever
+  // that list is thin. Rules check `auth.token.email`, so the key is one the
+  // recipient can prove without anybody looking anything up.
+  notices:          (email: string) => `notices/${emailKey(email)}`,
   /** Where a device's push subscription lives, so the server can reach it. */
   pushSubs:         (uid: string) => `pushSubs/${uid}`,
   pushSub:          (uid: string, id: string) => `pushSubs/${uid}/${id}`,

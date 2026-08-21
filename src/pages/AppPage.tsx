@@ -26,6 +26,8 @@ import { CommandPalette } from '../components/modals/CommandPalette'
 import { EmptyState } from '../components/shared/EmptyState'
 import { Toast } from '../components/shared/Toast'
 import { NoticeToast } from '../components/layout/NoticeToast'
+import { setNoticeFailureReporter } from '../lib/notify'
+import { useToast } from '../components/shared/Toast'
 
 class TaskDetailErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -133,6 +135,12 @@ export function AppPage() {
   }, [isTaskModalOpen, openCommandPalette, undo])
 
   const isEmpty = tasks.length === 0 && view !== 's' && view !== 'g'
+
+  // A notice that cannot be written is invisible to the person it was for, so
+  // it is reported to the person whose edit caused it.
+  useEffect(() => {
+    setNoticeFailureReporter(message => useToast.getState().show(message))
+  }, [])
 
   return (
     <div className="flex h-full overflow-hidden">

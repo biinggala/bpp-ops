@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { create } from 'zustand'
 import { useNoticeStore } from '../../store/noticeStore'
 import { useUiStore } from '../../store/uiStore'
@@ -103,7 +104,10 @@ export function NoticeToast() {
     return () => { cancelAnimationFrame(enter); clearTimeout(leave); clearTimeout(gone) }
   }, [notice, hide])
 
-  if (!notice || panelOpen) return null
+  // The desktop popover sits in this exact corner, so a banner over it is the
+  // collision. The phone's sheet is at the bottom and never overlaps — and
+  // keeping the sheet open there is what lets its own error text stay readable.
+  if (!notice || (panelOpen && !isMobile)) return null
 
   const open = () => {
     if (!notice.read && !notice.id.startsWith('test:')) markRead(notice.id)
@@ -114,7 +118,10 @@ export function NoticeToast() {
   const detail = [NOTICE_LABEL[notice.kind] ?? notice.kind, notice.detail, notice.by]
     .filter(Boolean).join(' · ')
 
-  return (
+  // Portalled to the body, like every other fixed overlay in the app: a
+  // transformed ancestor anywhere above would otherwise become this element's
+  // containing block and move it somewhere nobody can see.
+  return createPortal(
     <div
       style={{
         position: 'fixed', zIndex: 9800,
@@ -178,7 +185,8 @@ export function NoticeToast() {
           }}
         >×</button>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -188,9 +196,9 @@ export function NoticeToast() {
  * Closing the list first is the point rather than a detail: the banner is
  * suppressed while the list is open, and the list is where the button lives.
  */
-export function showTestNotice(by: string) {
+export function showTestNotice(by: string, closeList = true) {
   const { closePanel } = useNoticeToast.getState()
-  closePanel?.()
+  if (closeList) closePanel?.()
   // A tick, so the list is gone before the banner slides in. Showing it in the
   // same frame drew both at once, on top of each other.
   setTimeout(() => {
