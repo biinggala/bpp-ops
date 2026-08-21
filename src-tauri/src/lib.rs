@@ -447,35 +447,42 @@ fn app_version(app: tauri::AppHandle) -> String {
 
 /// Hands a URL to whatever the operating system calls a browser.
 ///
-/// `open` is macOS's launcher and nothing else's. On Windows the launcher is a
-/// shell builtin rather than a program, so it has to be reached through `cmd`,
-/// and the empty `""` argument is not decoration: `start` reads its first
-/// quoted argument as the *window title*, so a quoted URL without it would be
-/// consumed as a title and nothing would open.
+/// `open` is macOS's launcher and nothing else's.
+///
+/// **Windows must not go through `cmd`.** `start` is a shell builtin, and the
+/// shell that hosts it reads `&` as a command separator — so the first attempt,
+/// `cmd /C start "" <url>`, delivered an authorization URL truncated at its
+/// first parameter and Google answered "Required parameter is missing:
+/// response_type". Nothing in the failure pointed at a shell.
+///
+/// `rundll32 url.dll,FileProtocolHandler` is a real executable and exists for
+/// exactly this: one argument, no shell to reinterpret it. `explorer` is the
+/// spare, for the same reason and by the same route.
 fn open_url(url: &str) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    let mut command = {
-        let mut c = std::process::Command::new("open");
-        c.arg(url);
-        c
-    };
     #[cfg(target_os = "windows")]
-    let mut command = {
-        let mut c = std::process::Command::new("cmd");
-        c.args(["/C", "start", "", url]);
-        c
-    };
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let mut command = {
-        let mut c = std::process::Command::new("xdg-open");
-        c.arg(url);
-        c
-    };
+    {
+        let launched = std::process::Command::new("rundll32.exe")
+            .args(["url.dll,FileProtocolHandler", url])
+            .spawn()
+            .or_else(|_| std::process::Command::new("explorer.exe").arg(url).spawn());
+        return launched
+            .map(|_| ())
+            .map_err(|e| format!("could not open the browser: {e}"));
+    }
 
-    command
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("could not open the browser: {e}"))
+    #[cfg(not(target_os = "windows"))]
+    {
+        #[cfg(target_os = "macos")]
+        let program = "open";
+        #[cfg(not(target_os = "macos"))]
+        let program = "xdg-open";
+
+        std::process::Command::new(program)
+            .arg(url)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| format!("could not open the browser: {e}"))
+    }
 }
 
 /// Hands a URL to the real browser. A webview cannot sign in to GitHub, and the
