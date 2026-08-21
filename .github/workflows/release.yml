@@ -216,3 +216,126 @@ jobs:
             1. `.dmg`를 열고 앱을 `응용 프로그램`으로 드래그
             2. 터미널에서 `xattr -cr "/Applications/bpp-ops.app"` 실행
             3. 앱 실행
+
+  # ── Windows ─────────────────────────────────────────────────────────────────
+  #
+  # A job of its own rather than a matrix leg, and deliberately downstream of the
+  # mac one. The release, the updater manifest and the deploy are all created up
+  # there; this appends to them. A matrix would put two runners in a race to
+  # create the same release and to push the same manifest.
+  #
+  # The shell is the whole of the Windows work — there is no Windows frontend to
+  # write, because this window loads the same deployed web app the mac one does.
+  windows:
+    needs: release
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      # main has moved: the mac job pushed the updater manifest to it.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Read the version from CHANGELOG.md
+        id: notes
+        run: |
+          VERSION=$(python -c "import re,pathlib; print(re.split(r'^## +', pathlib.Path('CHANGELOG.md').read_text(encoding='utf-8'), flags=re.M)[1].splitlines()[0].strip())")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Repad the signing key
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          FIXED=$(printf '%s' "$KEY" | tr -d '[:space:]')
+          while [ $(( ${#FIXED} % 4 )) -ne 0 ]; do FIXED="${FIXED}="; done
+          echo "::add-mask::$FIXED"
+          echo "SIGNING_KEY=$FIXED" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # NSIS rather than MSI: it is the one that produces an updater artifact,
+      # and one .exe is what a person can be handed.
+      - name: Build the installer
+        env:
+          CRNG_OAUTH_CLIENT_ID: ${{ secrets.CRNG_OAUTH_CLIENT_ID }}
+          CRNG_OAUTH_CLIENT_SECRET: ${{ secrets.CRNG_OAUTH_CLIENT_SECRET }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.SIGNING_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build --bundles nsis
+
+      # The banner that offers an update reads latest.json's top-level version,
+      # which the mac job already wrote — so a Windows app would be told an
+      # update exists and then find no bundle for its own platform. This entry is
+      # what keeps that promise honest.
+      - name: Publish the Windows updater bundle
+        env:
+          VERSION: ${{ steps.notes.outputs.version }}
+        run: |
+          set -euo pipefail
+          NSIS=src-tauri/target/release/bundle/nsis
+          ZIP=$(ls "$NSIS"/*-setup.nsis.zip)
+          test -f "$ZIP.sig" || { echo "::error::the Windows updater bundle is unsigned"; exit 1; }
+
+          mkdir -p public/updates
+          cp "$ZIP" public/updates/bpp-ops-setup.nsis.zip
+
+          SIG=$(cat "$ZIP.sig") python - <<'PY'
+          import json, os, pathlib
+
+          manifest = pathlib.Path("public/updates/latest.json")
+          data = json.loads(manifest.read_text(encoding="utf-8"))
+          data["platforms"]["windows-x86_64"] = {
+              "signature": os.environ["SIG"].strip(),
+              "url": "https://crng-task-manager.web.app/updates/bpp-ops-setup.nsis.zip",
+          }
+          manifest.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
+
+          git config user.name "Claude"
+          git config user.email "noreply@anthropic.com"
+          git add public/updates
+          git commit -m "chore(release): publish the $VERSION Windows updater bundle"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      # Same reason as the mac job: a push made with GITHUB_TOKEN starts no
+      # workflow, so this deploys the file it just committed itself.
+      - name: Put the bundle live
+        run: npm run build
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: crng-task-manager
+
+      # Appended rather than written: the note should exist only if the build
+      # that backs it did.
+      - name: Attach the installer to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.notes.outputs.version }}
+          files: src-tauri/target/release/bundle/nsis/*-setup.exe
+          append_body: true
+          body: |
+
+            **Windows 데스크톱 앱** (64비트)
+
+            `-setup.exe`를 실행하세요. 서명되지 않은 빌드라 처음에 SmartScreen이 막습니다:
+            **추가 정보 → 실행**을 누르면 설치됩니다.
