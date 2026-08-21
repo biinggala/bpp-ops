@@ -7,6 +7,7 @@ import { useMilestoneStore } from '../../store/milestoneStore'
 import { useAccessibleTasks } from '../../hooks/useAccessibleTasks'
 import { useAuthStore } from '../../store/authStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
+import { useToast } from '../shared/Toast'
 import { useMobile } from '../../hooks/useMobile'
 import { DateField } from '../shared/DatePicker'
 import { STATUS_LIST, PRIORITY_LIST, getTagColor } from '../../types'
@@ -25,6 +26,8 @@ export function TaskModal() {
   const email = useAuthStore(s => s.email)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const isMobile = useMobile()
+  /** Extra projects to file a copy of this new task into. */
+  const [alsoProjects, setAlsoProjects] = useState<string[]>([])
 
   const projects = allProjects.filter(p =>
     true
@@ -58,6 +61,8 @@ export function TaskModal() {
 
   useEffect(() => {
     if (!isTaskModalOpen) return
+    // A previous row's extra projects must not follow the next one in.
+    setAlsoProjects([])
     if (editing) {
       setForm({ ...editing })
     } else {
@@ -82,8 +87,20 @@ export function TaskModal() {
 
   const submit = () => {
     if (!form.name.trim()) return
-    if (editing) updateTask(editing.id, form)
-    else addTask({ ...form, createdBy: email ?? undefined })
+    if (editing) { updateTask(editing.id, form); closeTaskModal(); return }
+
+    addTask({ ...form, createdBy: email ?? undefined })
+    // One copy per extra project. A single record cannot sit in two projects —
+    // it lives at its project's path and access is that project's membership —
+    // and copies are what people are after anyway: 스텝 취합 for 승원 and for
+    // 릴서, each finishing on its own schedule. The milestone does not travel;
+    // it belongs to the project it was picked in.
+    for (const pid of alsoProjects) {
+      addTask({ ...form, projectId: pid, milestoneId: undefined, createdBy: email ?? undefined })
+    }
+    if (alsoProjects.length) {
+      useToast.getState().show(`${alsoProjects.length + 1}개 프로젝트에 추가했습니다`)
+    }
     closeTaskModal()
   }
 
@@ -143,12 +160,50 @@ export function TaskModal() {
                 onChange={e => {
                   upd('projectId', e.target.value || undefined)
                   upd('milestoneId', undefined)
+                  setAlsoProjects([])
                 }}
               >
                 <option value="">선택 안 함</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </Field>
+
+            {/* Only when creating, and only once a project is chosen: 'the same
+                task, in these too'. Editing has nothing to duplicate. */}
+            {!editing && form.projectId && projects.length > 1 && (
+              <div style={{ gridColumn: '1 / -1' }}>
+                <div style={{ fontSize: 11, color: 'var(--t3)', marginBottom: 6 }}>
+                  같은 업무를 다른 프로젝트에도 추가
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {projects.filter(p => p.id !== form.projectId).map(p => {
+                    const on = alsoProjects.includes(p.id)
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setAlsoProjects(prev =>
+                          on ? prev.filter(id => id !== p.id) : [...prev, p.id])}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 5,
+                          padding: '4px 9px', borderRadius: 999, cursor: 'pointer',
+                          fontFamily: 'var(--font)', fontSize: 12,
+                          color: on ? '#fff' : 'var(--t2)',
+                          background: on ? 'var(--ac)' : 'transparent',
+                          border: `1px solid ${on ? 'var(--ac)' : 'var(--bd2)'}`,
+                        }}
+                      >
+                        <span style={{
+                          width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                          background: on ? '#fff' : p.color,
+                        }} />
+                        {p.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {form.projectId && milestones.some(m => m.projectId === form.projectId) && (
               <Field label="마일스톤">

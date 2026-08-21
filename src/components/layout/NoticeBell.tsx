@@ -350,7 +350,18 @@ function PushToggle() {
     // top, and the note below has to remain readable while both happen.
     showTestNotice(me, !isMobile)
     const res = await showLocalNotice('테스트 알림', '이게 보이면 폰 알림은 정상입니다')
-    setError(`배너 요청 · OS 알림 ${res.ok ? 'ok' : `실패 — ${res.reason}`}`)
+
+    // Measured rather than assumed. Four wrong guesses about the bottom bar
+    // ended with one screenshot of real numbers; 'it does not appear' is the
+    // same kind of claim and deserves the same treatment. If the card is in the
+    // document at a sane y and still invisible, the fault is not our layout.
+    await new Promise(r => setTimeout(r, 300))
+    const card = document.querySelector('[data-notice-banner]')
+    const box = card?.getBoundingClientRect()
+    const where = box
+      ? `배너 y=${Math.round(box.top)} h=${Math.round(box.height)} w=${Math.round(box.width)}`
+      : '배너 없음(DOM에 안 그려짐)'
+    setError(`${where} · OS 알림 ${res.ok ? 'ok' : `실패 — ${res.reason}`}`)
   }
 
   // Offered even where push cannot work at all — on the desktop app the banner
