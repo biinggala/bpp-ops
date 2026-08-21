@@ -91,6 +91,7 @@ https://crng-task-manager.web.app/updates/bpp-ops.app.tar.gz   ← 실제 파일
 | GIS 토큰 자동 갱신 | 창을 띄우지 않고는 갱신할 수 없습니다 | 셸이 보관하는 refresh token (`google_refresh`) |
 | `navigator.clipboard` | 거부될 수 있습니다 | `copyText()` — 실패하면 옛 방식으로 재시도하고, 그것도 실패하면 **실패를 표시** |
 | `display-mode: standalone` 로 PWA 판별 | 데스크톱 셸도 standalone으로 보고합니다 | `isDesktopShell()` 로 먼저 걸러내기 |
+| 없는 CSS 변수 이름 (`var(--bg1)`) | 정의되지 않은 변수는 **선언 전체를 조용히 버립니다.** 배경이 안 칠해진 게 아니라 배경 선언이 없어진 것이고, 화면에서는 '반투명해 보인다'로 나타납니다. 이 저장소에서 세 번 반복된 실수입니다 | 배경은 `--bg`(불투명) / `--bg2`. `--bg3`은 **반투명**이라 겹치는 요소의 배경으로 쓰면 안 됩니다 |
 
 **공통 원칙:** 브라우저 기능에 기대는 코드는 실패했을 때 **보이게** 만들어야 합니다.
 조용히 아무 일도 안 하는 것이 이 셸의 기본 실패 모드입니다.
