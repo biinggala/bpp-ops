@@ -44,7 +44,7 @@ type UndoOp =
 
 const MAX_HISTORY = 50
 
-import { noticeAssigneeChange, noticeDueChange, noticeSubtask } from '../lib/notify'
+import { noticeAssigneeChange, noticeDueChange, noticeStatusChange, noticeSubtask } from '../lib/notify'
 
 interface TaskState {
   tasks: Task[]
@@ -146,14 +146,18 @@ export const useTaskStore = create<TaskState>((set, get) => {
       const next = { ...current, ...patch }
       set({ tasks: get().tasks.map(t => t.id === id ? next : t), history: pushHistory({ kind: 'update', id, before }) })
 
-      // Two changes are worth telling somebody about, because they are the two
-      // nobody would otherwise notice: work arriving on their plate, and the
-      // date moving under work they are already holding. See lib/notify.
+      // Three changes are worth telling somebody about, because they are the
+      // ones nobody would otherwise notice: work arriving on their plate, the
+      // date moving under work they are already holding, and somebody else
+      // moving the state of it. See lib/notify.
       if ('assignee' in patch && patch.assignee !== current.assignee) {
         noticeAssigneeChange(next, current.assignee ?? '', patch.assignee ?? '')
       }
       if ('due' in patch && patch.due !== current.due) {
         noticeDueChange(next, current.due ?? '', patch.due ?? '')
+      }
+      if ('status' in patch && patch.status && patch.status !== current.status) {
+        noticeStatusChange(next, current.status, patch.status)
       }
 
       // Moving between projects changes where the record lives, so the old copy

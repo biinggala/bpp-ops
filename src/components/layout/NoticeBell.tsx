@@ -7,6 +7,8 @@ import { useProjectStore } from '../../store/projectStore'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import type { Notice, NoticeKind } from '../../lib/notify'
+import { StatusMark } from '../shared/StatusMark'
+import { statusAccent } from '../../types'
 import { disablePush, enablePush, pushEnabledHere, pushSupport } from '../../lib/push'
 
 /**
@@ -28,6 +30,7 @@ const LABEL: Record<NoticeKind, string> = {
   assigned:    '담당자로 지정',
   unassigned:  '담당에서 제외',
   due_changed: '마감일 변경',
+  status_changed: '상태 변경',
   subtask:     '하위 업무 추가',
   due_soon:    '마감 임박',
   overdue:     '마감 지남',
@@ -38,6 +41,7 @@ const TONE: Record<NoticeKind, string> = {
   assigned:    '#2383E2',
   unassigned:  '#787774',
   due_changed: '#D9730D',
+  status_changed: '#2383E2',
   subtask:     '#9065B0',
   due_soon:    '#D9730D',
   overdue:     '#D44C47',
@@ -234,7 +238,15 @@ function NoticeList({ notices, onClose }: { notices: Notice[]; onClose: () => vo
                 onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
                 onMouseLeave={e => e.currentTarget.style.background = n.read ? 'transparent' : 'rgba(35,131,226,.05)'}
               >
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: TONE[n.kind] ?? 'var(--t3)', flexShrink: 0, marginTop: 5 }} />
+                {n.status ? (
+                  // The state it moved to, drawn the way the list draws it — so
+                  // the row says '검토중' without spending a word on it.
+                  <span style={{ color: statusAccent(n.status), flexShrink: 0, marginTop: 2, display: 'flex' }}>
+                    <StatusMark status={n.status} size={13} />
+                  </span>
+                ) : (
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: TONE[n.kind] ?? 'var(--t3)', flexShrink: 0, marginTop: 5 }} />
+                )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, color: 'var(--t1)', fontWeight: n.read ? 400 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {n.taskName || '(이름 없음)'}

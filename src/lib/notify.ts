@@ -5,7 +5,7 @@ import { useAuthStore } from '../store/authStore'
 import { useUserProfileStore } from '../store/userProfileStore'
 import { assigneeKeyToEmail, parseAssignees } from './utils'
 import { pushNotice } from './push'
-import type { Task } from '../types'
+import type { Status, Task } from '../types'
 
 /**
  * ── 알림 ─────────────────────────────────────────────────────────────────────
@@ -31,6 +31,7 @@ export type NoticeKind =
   | 'assigned'      // 이 업무 담당자가 되셨습니다
   | 'unassigned'    // 담당에서 빠졌습니다
   | 'due_changed'   // 내가 담당인 업무의 마감일이 바뀜
+  | 'status_changed' // 내가 담당인 업무의 상태를 남이 바꿈
   | 'subtask'       // 내 업무 아래 하위 업무가 생김
   | 'due_soon'      // 아침 브리핑이 남기는 것 (서버가 씀)
   | 'overdue'
@@ -46,6 +47,8 @@ export interface Notice {
   projectId?: string
   /** Extra detail, already worded: "8/22 → 8/25". */
   detail?: string
+  /** For a status change: the status it moved *to*, so the row can draw it. */
+  status?: Status
   at: number
   read?: boolean
 }
@@ -82,6 +85,7 @@ const HEADLINE: Record<NoticeKind, string> = {
   assigned:    '새 업무를 맡았습니다',
   unassigned:  '담당에서 제외됐습니다',
   due_changed: '마감일이 바뀌었습니다',
+  status_changed: '상태가 바뀌었습니다',
   subtask:     '하위 업무가 추가됐습니다',
   due_soon:    '마감이 다가옵니다',
   overdue:     '마감이 지났습니다',
@@ -139,6 +143,31 @@ export function noticeDueChange(task: Task, before: string, after: string) {
     if (target) {
       leave(target, {
         kind: 'due_changed', detail,
+        taskId: task.id, taskName: task.name, projectId: task.projectId,
+      })
+    }
+  }
+}
+
+/**
+ * 상태가 바뀌었을 때 — 그 일을 들고 있는 사람들에게.
+ *
+ * 상태 changes are the one kind of edit that is worth telling an assignee about
+ * even though it is "just a field". Somebody else moving my task to 검토중 means
+ * it is waiting on me; moving it to 완료 means it is not mine any more. Both are
+ * facts about my day that I would otherwise learn by accident.
+ *
+ * In practice this stays quiet: the person who moves a status is usually the
+ * assignee doing their own work, and `leave()` never notifies the person who
+ * made the change. What is left is exactly the case worth a buzz — somebody
+ * *else* moved my task.
+ */
+export function noticeStatusChange(task: Task, before: Status, after: Status) {
+  for (const person of parseAssignees(task.assignee)) {
+    const target = targetFor(person)
+    if (target) {
+      leave(target, {
+        kind: 'status_changed', detail: `${before} → ${after}`, status: after,
         taskId: task.id, taskName: task.name, projectId: task.projectId,
       })
     }
