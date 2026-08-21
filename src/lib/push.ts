@@ -208,6 +208,40 @@ async function subscribe(reg: ServiceWorkerRegistration): Promise<PushSubscripti
   }
 }
 
+/**
+ * A real OS notification, drawn without any push at all.
+ *
+ * `showNotification()` on a live service worker is a local call — no server, no
+ * subscription, no VAPID. On an installed iPhone app it draws the same banner a
+ * push would, which means **the phone can have proper notifications while the
+ * app is running even if push never works**. Push earns its keep only for the
+ * app that is closed.
+ *
+ * It is also the sharpest test of whether the granted permission is real: this
+ * uses the notification permission and nothing else, so a failure here says the
+ * permission is a lie, and a success says the problem is the push service.
+ */
+export async function showLocalNotice(
+  title: string, body: string, url = '/', tag = 'bpp-ops',
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (isDesktopShell() || !('serviceWorker' in navigator)) {
+    return { ok: false, reason: '이 앱에서는 OS 알림을 띄울 수 없습니다' }
+  }
+  if (Notification.permission !== 'granted') {
+    return { ok: false, reason: `알림 권한이 없습니다 (perm=${Notification.permission})` }
+  }
+  try {
+    const reg = await readyRegistration()
+    await reg.showNotification(title, {
+      body, tag, icon: '/icon-192.png', badge: '/icon-192.png', data: { url },
+    })
+    return { ok: true }
+  } catch (e) {
+    const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e)
+    return { ok: false, reason: `${detail} (${context()})` }
+  }
+}
+
 export async function disablePush(): Promise<void> {
   const uid = auth.currentUser?.uid
   localStorage.removeItem('bpp_push_on')

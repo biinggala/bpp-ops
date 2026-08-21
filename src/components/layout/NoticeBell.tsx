@@ -9,7 +9,7 @@ import { haptic } from '../../lib/haptics'
 import { NOTICE_LABEL as LABEL, NOTICE_TONE as TONE, type Notice } from '../../lib/notify'
 import { StatusMark } from '../shared/StatusMark'
 import { statusAccent } from '../../types'
-import { disablePush, enablePush, pushEnabledHere, pushSupport } from '../../lib/push'
+import { disablePush, enablePush, pushEnabledHere, pushSupport, showLocalNotice } from '../../lib/push'
 import { showTestNotice, useNoticeToast } from './NoticeToast'
 import { chimeEnabled, playChime, setChimeEnabled } from '../../lib/chime'
 
@@ -329,13 +329,26 @@ function PushToggle() {
   const me = useAuthStore(s => s.displayName || s.email?.split('@')[0] || '나')
   const support = pushSupport()
 
-  // Raising a banner takes no server and no second person, so it is offered
-  // even where push cannot work at all — on the desktop app that banner *is*
-  // the notification, and this is the only way to see it without waiting for a
-  // colleague to assign something.
+  /**
+   * Two notifications from one press, because they can fail separately.
+   *
+   * The banner is drawn by the app and always works. The OS notification needs
+   * a real notification permission and a live worker — and *not* a push — so
+   * when it fails it says which of the two is broken, which is the question
+   * 'permission denied' on its own never answered.
+   */
+  const runTest = async () => {
+    showTestNotice(me)
+    const res = await showLocalNotice('테스트 알림', '이게 보이면 폰 알림은 정상입니다')
+    setError(res.ok ? null : `OS 알림 실패 — ${res.reason}`)
+  }
+
+  // Offered even where push cannot work at all — on the desktop app the banner
+  // *is* the notification, and this is the only way to see it without waiting
+  // for a colleague to assign something.
   const test = (
     <button
-      onClick={() => showTestNotice(me)}
+      onClick={() => void runTest()}
       style={{
         fontSize: 11, color: 'var(--ac)', background: 'transparent', border: 'none',
         cursor: 'pointer', fontFamily: 'var(--font)', padding: 0, flexShrink: 0,
@@ -349,7 +362,10 @@ function PushToggle() {
         padding: '8px 14px', borderBottom: '1px solid var(--bd)', fontSize: 11,
         color: 'var(--t3)', lineHeight: 1.5, display: 'flex', gap: 10, alignItems: 'flex-start',
       }}>
-        <span style={{ flex: 1, minWidth: 0 }}>{support.reason}</span>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          {support.reason}
+          {error && <span style={{ display: 'block', color: '#D44C47', marginTop: 3 }}>{error}</span>}
+        </span>
         {test}
       </div>
     )
