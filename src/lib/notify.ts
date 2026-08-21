@@ -103,7 +103,7 @@ export const NOTICE_TONE: Record<NoticeKind, string> = {
 }
 
 /** How each kind reads as a notification title. The body is the task's name. */
-const HEADLINE: Record<NoticeKind, string> = {
+export const NOTICE_HEADLINE: Record<NoticeKind, string> = {
   assigned:    '새 업무를 맡았습니다',
   unassigned:  '담당에서 제외됐습니다',
   due_changed: '마감일이 바뀌었습니다',
@@ -133,7 +133,7 @@ function leave(target: Target, notice: Omit<Notice, 'id' | 'at' | 'by'>) {
   const detail = notice.detail ? ` · ${notice.detail}` : ''
   void pushNotice(
     target.uid,
-    HEADLINE[notice.kind],
+    NOTICE_HEADLINE[notice.kind],
     `${notice.taskName ?? ''}${detail}`.trim() || myName(),
     notice.taskId ? `/?task=${notice.taskId}` : '/',
   )

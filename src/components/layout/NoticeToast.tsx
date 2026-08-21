@@ -3,10 +3,11 @@ import { create } from 'zustand'
 import { useNoticeStore } from '../../store/noticeStore'
 import { useUiStore } from '../../store/uiStore'
 import { useMobile } from '../../hooks/useMobile'
-import { NOTICE_LABEL, NOTICE_TONE, type Notice } from '../../lib/notify'
+import { NOTICE_HEADLINE, NOTICE_LABEL, NOTICE_TONE, type Notice } from '../../lib/notify'
 import { StatusMark } from '../shared/StatusMark'
 import { statusAccent } from '../../types'
 import { chimeEnabled, playChime } from '../../lib/chime'
+import { showLocalNotice } from '../../lib/push'
 
 /**
  * ── 앱이 열려 있을 때 오는 알림 ───────────────────────────────────────────────
@@ -70,6 +71,19 @@ export function NoticeToast() {
     seen.current.add(fresh.id)
     // Marked seen either way: once the list has been open past it, it is read.
     if (useNoticeToast.getState().panelOpen) return
+
+    // Out of sight — the phone's own notification is the right instrument, and
+    // it needs no push because the app is still running to make the call.
+    if (document.hidden) {
+      void showLocalNotice(
+        NOTICE_HEADLINE[fresh.kind] ?? '알림',
+        [fresh.taskName, fresh.detail].filter(Boolean).join(' · '),
+        fresh.taskId ? `/?task=${fresh.taskId}` : '/',
+        `notice:${fresh.id}`,
+      )
+      return
+    }
+
     useNoticeToast.getState().show(fresh)
     if (chimeEnabled()) playChime()
   }, [notices])
