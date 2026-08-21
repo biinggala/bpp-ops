@@ -788,18 +788,54 @@ function EventCard({
   responses?: { email: string; responseStatus?: string }[]
 }) {
   const WIDTH = 280
-  const left = Math.min(Math.max(8, at.x - WIDTH / 2), window.innerWidth - WIDTH - 8)
-  const top = Math.min(Math.max(8, at.y + 8), window.innerHeight - 280)
+  const MARGIN = 8
+
+  /**
+   * The card's height, measured rather than assumed.
+   *
+   * This used to clamp against a hard-coded 280 — the height of an empty card.
+   * With four rows of attendees, a list of replies and the buttons, the real
+   * card is closer to 500, so the bottom of it ran past the window and was cut
+   * off. It looks like the webview clipping something, and it is not: the same
+   * arithmetic cuts it in a browser.
+   *
+   * Observed rather than measured once, because the content grows after the
+   * first paint — chips wrap, replies arrive.
+   */
+  const cardRef = useRef<HTMLDivElement>(null)
+  const [height, setHeight] = useState(0)
+  useEffect(() => {
+    const el = cardRef.current
+    if (!el) return
+    const measure = () => setHeight(el.offsetHeight)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const left = Math.min(Math.max(MARGIN, at.x - WIDTH / 2), window.innerWidth - WIDTH - MARGIN)
+  // Below the pointer when it fits, pushed up when it does not, and never above
+  // the top edge — the last clamp matters on a card taller than the window.
+  const top = Math.max(
+    MARGIN,
+    Math.min(at.y + 8, window.innerHeight - (height || 280) - MARGIN),
+  )
 
   return (
     <>
       <div style={{ position: 'fixed', inset: 0, zIndex: 9600 }} onMouseDown={onClose} />
       <div
+        ref={cardRef}
         onMouseDown={e => e.stopPropagation()}
         style={{
           position: 'fixed', left, top, width: WIDTH, zIndex: 9601,
           background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
           boxShadow: 'var(--sh-lg)', padding: 12,
+          // A card with more attendees than the window is tall scrolls itself
+          // rather than running off the bottom.
+          maxHeight: `calc(100vh - ${MARGIN * 2}px)`,
+          overflowY: 'auto', boxSizing: 'border-box',
         }}
       >
         <div style={{ fontSize: 11, color: 'var(--t3)', marginBottom: 4 }}>{heading}</div>
