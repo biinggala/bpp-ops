@@ -53,26 +53,36 @@ export interface Notice {
   read?: boolean
 }
 
-/** Everything the app needs to address a notice at somebody. */
-type Target = { uid: string }
+/**
+ * Everything the app needs to address a notice at somebody.
+ *
+ * The email is what addresses it and is always available. The uid is optional
+ * and only buys the extra buzz: the push sender stores subscriptions by uid, so
+ * without it the notice still lands in the inbox and simply does not ring.
+ */
+type Target = { email: string; uid?: string }
 
 /**
- * The uid behind an assignee token, or null.
+ * Who an assignee token refers to.
  *
- * Assignees are stored as emails (and, from before, as legacy member keys),
- * while notices are addressed by uid — the only key the security rules can
- * check. Profiles for everyone sharing a project are already loaded, so this is
- * a lookup rather than a fetch; somebody outside every shared project cannot be
- * resolved, and gets no notice rather than a broken one.
+ * This used to return null unless the person's uid could be found among the
+ * loaded profiles, and the whole feature turned on that: profiles are only
+ * loaded for uids listed in a shared project's member node, so anybody missing
+ * from that list got **no notice at all**, silently, while their name still
+ * rendered fine from the email. That is why a status change reached nobody.
+ *
+ * Now the email addresses the notice and always resolves. The uid is looked up
+ * as a bonus for the push sender, and its absence costs a buzz rather than the
+ * message.
  */
 function targetFor(assignee: string): Target | null {
   const email = assigneeKeyToEmail(assignee)
   if (!email) return null
   const profiles = useUserProfileStore.getState().profiles
   for (const [uid, profile] of Object.entries(profiles)) {
-    if (profile.email?.toLowerCase() === email.toLowerCase()) return { uid }
+    if (profile.email?.toLowerCase() === email) return { email, uid }
   }
-  return null
+  return { email }
 }
 
 function myName(): string {
@@ -121,15 +131,27 @@ export const NOTICE_HEADLINE: Record<NoticeKind, string> = {
  * already has it by then.
  */
 function leave(target: Target, notice: Omit<Notice, 'id' | 'at' | 'by'>) {
-  const me = useAuthStore.getState().uid
-  if (!me || target.uid === me) return
-  const node = push(ref(db, P.notices(target.uid)))
+  const { uid: me, email: myEmail } = useAuthStore.getState()
+  if (!me) return
+  // Never for one's own doing, by either name for the same person.
+  if (target.uid === me || target.email === myEmail?.toLowerCase()) return
+
+  const node = push(ref(db, P.notices(target.email)))
   const payload: Record<string, unknown> = { ...notice, by: myName(), at: Date.now() }
   for (const key of Object.keys(payload)) {
     if (payload[key] === undefined) delete payload[key]
   }
-  fbSet(node, payload).catch(e => console.warn('[notice]', e))
+  // A rejected write used to go to the console, and on a phone the console is
+  // nowhere. The person who made the change is the only one in a position to
+  // notice — the recipient by definition never learns of it.
+  fbSet(node, payload).catch(e => {
+    console.warn('[notice]', e)
+    onNoticeFailed?.(`${target.email}에게 알림 전달 실패`)
+  })
 
+  // Push is addressed by uid, because that is how subscriptions are stored.
+  // No uid, no buzz; the notice above is delivered either way.
+  if (!target.uid) return
   const detail = notice.detail ? ` · ${notice.detail}` : ''
   void pushNotice(
     target.uid,
@@ -209,16 +231,27 @@ export function noticeSubtask(parent: Task, child: Task) {
   }
 }
 
-export function markNoticeRead(uid: string, id: string) {
-  fbUpdate(ref(db, `${P.notices(uid)}/${id}`), { read: true }).catch(() => {})
+export function markNoticeRead(email: string, id: string) {
+  fbUpdate(ref(db, `${P.notices(email)}/${id}`), { read: true }).catch(() => {})
 }
 
-export function markAllNoticesRead(uid: string, ids: string[]) {
+export function markAllNoticesRead(email: string, ids: string[]) {
   const patch: Record<string, unknown> = {}
   for (const id of ids) patch[`${id}/read`] = true
-  if (Object.keys(patch).length) fbUpdate(ref(db, P.notices(uid)), patch).catch(() => {})
+  if (Object.keys(patch).length) fbUpdate(ref(db, P.notices(email)), patch).catch(() => {})
 }
 
-export function removeNotice(uid: string, id: string) {
-  remove(ref(db, `${P.notices(uid)}/${id}`)).catch(() => {})
+export function removeNotice(email: string, id: string) {
+  remove(ref(db, `${P.notices(email)}/${id}`)).catch(() => {})
+}
+
+/**
+ * Where a failed write goes so somebody sees it.
+ *
+ * Set once by the app; a notice that cannot be written is the sender's problem
+ * to report, because the recipient by definition never learns of it.
+ */
+let onNoticeFailed: ((message: string) => void) | null = null
+export function setNoticeFailureReporter(report: (message: string) => void) {
+  onNoticeFailed = report
 }

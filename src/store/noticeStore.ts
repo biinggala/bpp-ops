@@ -7,16 +7,17 @@ import { markAllNoticesRead, markNoticeRead, removeNotice, type Notice } from '.
 /**
  * The inbox, for the person signed in.
  *
- * Only ever their own branch — the rules allow nothing else — and only the last
- * 100, because an inbox is a place you glance at rather than an archive. Old
- * notices simply fall off the end; nothing about the work is stored here that is
- * not also in the task itself.
+ * Keyed by their **email**, which is the one name a sender always has and the
+ * rules can verify against `auth.token.email`. Only ever their own branch, and
+ * only the last 100 — an inbox is a place you glance at rather than an archive.
+ * Old notices fall off the end; nothing is stored here that is not also in the
+ * task itself.
  */
 interface NoticeState {
   notices: Notice[]
   unread: number
-  /** Starts listening for `uid`; returns the unsubscribe. */
-  subscribe: (uid: string) => () => void
+  /** Starts listening for this email's inbox; returns the unsubscribe. */
+  subscribe: (email: string) => () => void
   markRead: (id: string) => void
   markAllRead: () => void
   dismiss: (id: string) => void
@@ -25,15 +26,15 @@ interface NoticeState {
 const LIMIT = 100
 
 export const useNoticeStore = create<NoticeState>((set, get) => {
-  let owner: string | null = null
+  let owner: string | null = null   // the email this inbox belongs to
 
   return {
     notices: [],
     unread: 0,
 
-    subscribe: (uid) => {
-      owner = uid
-      const q = query(ref(db, P.notices(uid)), limitToLast(LIMIT))
+    subscribe: (email) => {
+      owner = email
+      const q = query(ref(db, P.notices(email)), limitToLast(LIMIT))
       const unsub = onValue(q, snap => {
         const raw = (snap.val() ?? {}) as Record<string, Omit<Notice, 'id'>>
         const notices = Object.entries(raw)

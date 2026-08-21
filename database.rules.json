@@ -2,40 +2,35 @@
   "rules": {
     ".read": false,
     ".write": false,
-
     "teams": {
       "$tid": {
         ".read": "auth != null && data.child('members').hasChild(auth.uid)",
         ".write": "auth != null && ((!data.exists() && newData.child('members').hasChild(auth.uid)) || data.child('members').hasChild(auth.uid))"
       }
     },
-
     "projects": {
       "$pid": {
         ".read": "auth != null && data.child('members').hasChild(auth.uid)",
-
         ".write": "auth != null && ((!data.exists() && newData.child('members').hasChild(auth.uid) && newData.child('meta').child('inviteCode').isString()) || data.child('members').hasChild(auth.uid))",
-
         "members": {
           "$uid": {
             ".write": "auth != null && auth.uid === $uid && !data.exists() && newData.val() === root.child('projects').child($pid).child('meta').child('inviteCode').val()",
             ".validate": "newData.isString()"
           }
         },
-
         "meta": {
-          "inviteCode": { ".validate": "newData.isString() && newData.val().length >= 6" }
+          "inviteCode": {
+            ".validate": "newData.isString() && newData.val().length >= 6"
+          }
         }
       }
     },
-
     "userIndex": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
         ".write": "auth != null && auth.uid === $uid"
       }
     },
-
     "invitesByEmail": {
       "$emailKey": {
         ".read": "auth != null && auth.token.email != null && $emailKey === auth.token.email.replace('.', ',')",
@@ -44,37 +39,33 @@
         }
       }
     },
-
     "personalTasks": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
         ".write": "auth != null && auth.uid === $uid"
       }
     },
-
     "spaces": {
       ".read": "auth != null",
       ".write": "auth != null"
     },
-
     "userProfiles": {
       "$uid": {
         ".read": "auth != null",
         ".write": "auth != null && auth.uid === $uid"
       }
     },
-
     "notices": {
-      "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
+      "$mail": {
+        "//": "Addressed by email rather than uid. A sender knows the assignee's email — it is what the task stores — and needed the project's member list to turn it into a uid, so anybody thin in that list silently received nothing. auth.token.email is what the recipient can prove, so it is the key.",
+        ".read": "auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $mail",
         "$nid": {
           "//": "Leaving a notice is what assigning work to somebody is, so anyone signed in may create one — but only ever a new one. Changing or removing it is the owner's alone: that is what 'read' and 'dismiss' mean.",
-          ".write": "auth != null && (auth.uid === $uid || !data.exists())",
+          ".write": "auth != null && (!data.exists() || (auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $mail))",
           ".validate": "newData.hasChildren(['kind', 'by', 'at']) && newData.child('kind').isString() && newData.child('by').isString() && newData.child('at').isNumber() && (!newData.hasChild('taskName') || newData.child('taskName').val().length <= 200) && (!newData.hasChild('detail') || newData.child('detail').val().length <= 200)"
         }
       }
     },
-
     "pushSubs": {
       "$uid": {
         "//": "A device's own subscription. Nobody but its owner writes it; the sender reads it with admin credentials, which the rules do not apply to.",
@@ -82,14 +73,15 @@
         ".write": "auth != null && auth.uid === $uid"
       }
     },
-
     "presence": {
       "$uid": {
         ".read": "auth != null",
         ".write": "auth != null && auth.uid === $uid"
       }
     },
-
-    "mcpAuth": { ".read": false, ".write": false }
+    "mcpAuth": {
+      ".read": false,
+      ".write": false
+    }
   }
 }

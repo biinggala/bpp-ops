@@ -44,6 +44,7 @@ function clock(at: number): string {
 
 export function NoticeBell() {
   const uid = useAuthStore(s => s.uid)
+  const email = useAuthStore(s => s.email)
   const notices = useNoticeStore(s => s.notices)
   const unread = useNoticeStore(s => s.unread)
   const subscribe = useNoticeStore(s => s.subscribe)
@@ -52,9 +53,9 @@ export function NoticeBell() {
   const isMobile = useMobile()
 
   useEffect(() => {
-    if (!uid) return
-    return subscribe(uid)
-  }, [uid, subscribe])
+    if (!email) return
+    return subscribe(email)
+  }, [email, subscribe])
 
   // The banner hides itself while this list is open, and the test button has to
   // be able to close it — so the bell reports the state and lends its closer.
@@ -329,6 +330,7 @@ function ChimeToggle() {
 }
 
 function PushToggle() {
+  const isMobile = useMobile()
   const [on, setOn] = useState(pushEnabledHere())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -344,9 +346,11 @@ function PushToggle() {
    * 'permission denied' on its own never answered.
    */
   const runTest = async () => {
-    showTestNotice(me)
+    // The sheet stays put on a phone: it is at the bottom, the banner is at the
+    // top, and the note below has to remain readable while both happen.
+    showTestNotice(me, !isMobile)
     const res = await showLocalNotice('테스트 알림', '이게 보이면 폰 알림은 정상입니다')
-    setError(res.ok ? null : `OS 알림 실패 — ${res.reason}`)
+    setError(`배너 요청 · OS 알림 ${res.ok ? 'ok' : `실패 — ${res.reason}`}`)
   }
 
   // Offered even where push cannot work at all — on the desktop app the banner
@@ -370,7 +374,7 @@ function PushToggle() {
       }}>
         <span style={{ flex: 1, minWidth: 0 }}>
           {support.reason}
-          {error && <span style={{ display: 'block', color: '#D44C47', marginTop: 3 }}>{error}</span>}
+          {error && <span style={{ display: 'block', color: error.includes('실패') ? '#D44C47' : 'var(--t3)', marginTop: 3 }}>{error}</span>}
         </span>
         {test}
       </div>
@@ -394,7 +398,7 @@ function PushToggle() {
     <div style={ROW}>
       <span style={{ fontSize: 12, color: 'var(--t2)', flex: 1, minWidth: 0 }}>
         이 기기에서 푸시 받기
-        {error && <span style={{ display: 'block', fontSize: 11, color: '#D44C47' }}>{error}</span>}
+        {error && <span style={{ display: 'block', fontSize: 11, color: error.includes('실패') ? '#D44C47' : 'var(--t3)', lineHeight: 1.45 }}>{error}</span>}
       </span>
       {test}
       <MiniSwitch on={on} busy={busy} onClick={() => void toggle()} />
