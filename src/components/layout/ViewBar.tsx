@@ -22,6 +22,17 @@ const VIEWS: { id: ViewType; label: string }[] = [
   { id: 'f', label: '자료' },
 ]
 
+/**
+ * What the phone gets. Fewer, on purpose.
+ *
+ * 보드 wants columns side by side and 통계 wants a wide canvas; both are things
+ * people open at a desk. Six tabs across 390pt leaves each one a thumb-width
+ * with no room for its label, so the two that are worst on a phone give up
+ * their slots to make the other four legible. Nothing is lost — the desktop
+ * bar still has all six, and a link into either still opens.
+ */
+const MOBILE_VIEWS = VIEWS.filter(v => v.id !== 'b' && v.id !== 's')
+
 const SORT_OPTIONS = [
   { value: 'due_asc' as const, label: '마감 가까운 순' },
   { value: 'due_desc' as const, label: '마감 먼 순' },
@@ -513,6 +524,13 @@ function MultiSelect<T extends string>({ label, options, selected, onChange }: {
  */
 function BottomNav({ view, onPick }: { view: ViewType; onPick: (v: ViewType) => void }) {
   const [pressed, setPressed] = React.useState<ViewType | null>(null)
+
+  // The view is remembered across devices, so somebody who left the desktop on
+  // 보드 would arrive here with no tab lit and no way to tell where they are.
+  React.useEffect(() => {
+    if (!MOBILE_VIEWS.some(v => v.id === view)) onPick('t')
+  }, [view, onPick])
+
   return (
     <nav style={{
       flexShrink: 0,
@@ -528,7 +546,7 @@ function BottomNav({ view, onPick }: { view: ViewType; onPick: (v: ViewType) => 
       display: 'flex',
       boxSizing: 'border-box',
     }}>
-      {VIEWS.map(v => {
+      {MOBILE_VIEWS.map(v => {
         const on = view === v.id
         return (
           <button

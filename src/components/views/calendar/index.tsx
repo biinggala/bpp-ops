@@ -494,9 +494,9 @@ function MobGCalRow({ event }: { event: GCalEvent }) {
         {event.startTime && <span style={{ color: event.calendarColor || GCAL_TEXT, fontWeight: 500, marginRight: 5 }}>{event.startTime}</span>}
         {event.summary}
       </span>
-      <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: GCAL_BG, color: GCAL_TEXT, flexShrink: 0 }}>
-        구글
-      </span>
+      {/* The badge said '구글' next to a coloured dot, a coloured time and an
+          arrow that leaves the app — four ways of saying the same thing on a
+          390pt row. The dot and the arrow carry it. */}
       <span style={{ fontSize: 12, color: 'var(--t3)', flexShrink: 0 }}>↗</span>
     </a>
   )
