@@ -282,11 +282,11 @@ gcloud run services update crng-task-manager --region asia-northeast3 \
 
 `--update-env-vars`입니다 (`--set-env-vars`는 기존 변수를 전부 지웁니다).
 
-아침 브리핑은 스케줄러가 부릅니다 — 평일 9시:
+아침 브리핑은 스케줄러가 부릅니다 — 평일 10시:
 
 ```bash
 gcloud scheduler jobs create http bpp-ops-morning-brief \
-  --location asia-northeast3 --schedule "0 9 * * 1-5" --time-zone Asia/Seoul \
+  --location asia-northeast3 --schedule "0 10 * * 1-5" --time-zone Asia/Seoul \
   --uri https://<배포주소>/push/brief --http-method POST \
   --headers x-brief-secret=<위와 같은 문자열>
 ```
