@@ -14,6 +14,10 @@
     "darwin-x86_64": {
       "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRb0N6Q0M3U1RFQ0p1T2FnMFI4NWxicldneTR5c2VFVldYSjRWK1hJMTRIeERMT2hzck11US9VdGpibEM3azM3ejE0cUtNbndReSswaHRlajBNTXJkSCtmYmVBbmh4dUE4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MzA0MDE3CWZpbGU6YnBwLW9wcy5hcHAudGFyLmd6CmxaVFN4S3ZreDJUMHMwUGVuZWlGWmZlbzZjWVNscFRTb3IrcGlUTktVQTNCWE5OeHJTMCtvRWhTZndxQWdGRTl1K2VtR3FGbjM0WFBvcEFONHB5RUFBPT0K",
       "url": "https://crng-task-manager.web.app/updates/bpp-ops.app.tar.gz"
+    },
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRb0N6Q0M3U1RFQ1B3dWFIcGI5cFJxRzlsdGJtUGdIaTNvb1JIczFPelRVSzZYZHlOeUI1K0JKcVhxdUxEL2VSZHppUGMrZkVoVW45ZlFKaXRYeEFUV2F3ZTZLcjAxeHdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MzA0MjY3CWZpbGU6YnBwLW9wc18xLjQuMV94NjQtc2V0dXAuZXhlCnJxeTBWK2hjdy80dTNGWml2OGdFWk1rSEFyOGZqU1ZHdXBZVUQyZHQ2ZG9JS3B5Tjd6dXVXT2k4cFY5ZlJMV1RSQ0JuaU5oQUFEOFZSM0Y0UndoU0JRPT0K",
+      "url": "https://crng-task-manager.web.app/updates/bpp-ops-setup.exe"
     }
   }
 }
