@@ -80,6 +80,28 @@ function myName(): string {
   return displayName || email?.split('@')[0] || '누군가'
 }
 
+/** How each kind reads in the inbox — a phrase, where the push gets a sentence. */
+export const NOTICE_LABEL: Record<NoticeKind, string> = {
+  assigned:       '담당자로 지정',
+  unassigned:     '담당에서 제외',
+  due_changed:    '마감일 변경',
+  status_changed: '상태 변경',
+  subtask:        '하위 업무 추가',
+  due_soon:       '마감 임박',
+  overdue:        '마감 지남',
+}
+
+/** Colour carries the kind at a glance; the dot is the only colour in the row. */
+export const NOTICE_TONE: Record<NoticeKind, string> = {
+  assigned:       '#2383E2',
+  unassigned:     '#787774',
+  due_changed:    '#D9730D',
+  status_changed: '#2383E2',
+  subtask:        '#9065B0',
+  due_soon:       '#D9730D',
+  overdue:        '#D44C47',
+}
+
 /** How each kind reads as a notification title. The body is the task's name. */
 const HEADLINE: Record<NoticeKind, string> = {
   assigned:    '새 업무를 맡았습니다',

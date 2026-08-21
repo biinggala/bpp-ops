@@ -36,6 +36,24 @@ function isIOS(): boolean {
     || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 }
 
+/**
+ * The facts iOS decides on, printed next to a failure.
+ *
+ * Guessing at what iOS is doing cost this project four wrong attempts on the
+ * bottom bar; measuring ended it in one screenshot. Same trick here — a refusal
+ * that arrives with `standalone=0` is a different bug from one with
+ * `standalone=1`, and nobody can tell them apart from the word "denied".
+ */
+function context(): string {
+  const version = /(?:iPhone )?OS (\d+)[._](\d+)/.exec(navigator.userAgent)
+  return [
+    `standalone=${isInstalled() ? 1 : 0}`,
+    version ? `iOS ${version[1]}.${version[2]}` : null,
+    `perm=${Notification.permission}`,
+    'PushManager' in window ? null : 'PushManager 없음',
+  ].filter(Boolean).join(' · ')
+}
+
 function isInstalled(): boolean {
   return window.matchMedia('(display-mode: standalone)').matches
     || (navigator as unknown as { standalone?: boolean }).standalone === true
@@ -58,7 +76,7 @@ function deniedHelp(): string {
 
 export function pushSupport(): PushSupport {
   if (isDesktopShell()) {
-    return { ok: false, reason: '데스크톱 앱은 열려 있는 동안 알림을 받습니다. 닫혀 있을 때는 폰으로 옵니다.' }
+    return { ok: false, reason: '데스크톱 앱은 푸시를 받을 수 없습니다 (웹뷰에 Push 기능이 없음). 앱이 열려 있는 동안은 화면 위에 알림이 뜨고, 닫혀 있을 때는 폰으로 옵니다.' }
   }
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     return { ok: false, reason: '이 브라우저는 푸시를 지원하지 않습니다' }
@@ -68,7 +86,7 @@ export function pushSupport(): PushSupport {
     return { ok: false, reason: '아이폰은 홈 화면에 추가한 뒤에만 알림을 받을 수 있습니다 (공유 → 홈 화면에 추가)' }
   }
   if (Notification.permission === 'denied') {
-    return { ok: false, reason: deniedHelp() }
+    return { ok: false, reason: `${deniedHelp()} (${context()})` }
   }
   return { ok: true }
 }
@@ -149,12 +167,12 @@ export async function enablePush(): Promise<{ ok: true } | { ok: false; reason: 
     localStorage.setItem('bpp_push_on', '1')
     return { ok: true }
   } catch (e) {
-    if (Notification.permission === 'denied') return { ok: false, reason: deniedHelp() }
+    if (Notification.permission === 'denied') return { ok: false, reason: `${deniedHelp()} (${context()})` }
     // The name is the half that identifies the failure, and a bare message like
     // "permission denied" identifies nothing — so both are shown. Somebody has
     // to be able to report this from a phone.
     const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e)
-    return { ok: false, reason: detail || '구독에 실패했습니다' }
+    return { ok: false, reason: `${detail || '구독 실패'} (${context()})` }
   }
 }
 
