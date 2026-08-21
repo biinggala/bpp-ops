@@ -181,8 +181,9 @@ jobs:
           # A re-run rebuilds the same bundle; nothing to commit is a fine
           # outcome, and `set -e` would otherwise read it as a failed release.
           git commit -m "chore(release): publish the $VERSION updater bundle" || echo "nothing new to commit"
-          # Main may have moved while the mac build ran.
-          git pull --rebase origin main
+          # Main may have moved while the mac build ran. autostash for the same
+          # reason as the Windows job: the build leaves the tree dirty.
+          git -c rebase.autoStash=true pull --rebase origin main
           git push origin HEAD:main
 
       # The commit above lands on main but publishes nothing: a push made with
@@ -280,6 +281,21 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx tauri build --bundles nsis
 
+      # Appended rather than written: the note should exist only if the build
+      # that backs it did.
+      - name: Attach the installer to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.notes.outputs.version }}
+          files: src-tauri/target/release/bundle/nsis/*-setup.exe
+          append_body: true
+          body: |
+
+            **Windows 데스크톱 앱** (64비트)
+
+            `-setup.exe`를 실행하세요. 서명되지 않은 빌드라 처음에 SmartScreen이 막습니다:
+            **추가 정보 → 실행**을 누르면 설치됩니다.
+
       # The banner that offers an update reads latest.json's top-level version,
       # which the mac job already wrote — so a Windows app would be told an
       # update exists and then find no bundle for its own platform. This entry is
@@ -341,7 +357,11 @@ jobs:
           # Re-running a release rebuilds identical bytes; nothing to commit is
           # a fine outcome and not a failure.
           git commit -m "chore(release): publish the $VERSION Windows updater bundle" || echo "nothing new to commit"
-          git pull --rebase origin main || exit 1
+          # A Windows build rewrites tracked files of its own (Cargo.lock among
+          # them), and `pull --rebase` refuses to run over an unstaged change.
+          # autostash puts them aside for the rebase and back afterwards —
+          # nothing is discarded, and nothing has to be enumerated.
+          git -c rebase.autoStash=true pull --rebase origin main || exit 1
           git push origin HEAD:main || exit 1
 
       # Same reason as the mac job: a push made with GITHUB_TOKEN starts no
@@ -356,17 +376,3 @@ jobs:
           channelId: live
           projectId: crng-task-manager
 
-      # Appended rather than written: the note should exist only if the build
-      # that backs it did.
-      - name: Attach the installer to the release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.notes.outputs.version }}
-          files: src-tauri/target/release/bundle/nsis/*-setup.exe
-          append_body: true
-          body: |
-
-            **Windows 데스크톱 앱** (64비트)
-
-            `-setup.exe`를 실행하세요. 서명되지 않은 빌드라 처음에 SmartScreen이 막습니다:
-            **추가 정보 → 실행**을 누르면 설치됩니다.
