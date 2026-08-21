@@ -6,6 +6,7 @@ import { useMobile } from '../../hooks/useMobile'
 import { NOTICE_LABEL, NOTICE_TONE, type Notice } from '../../lib/notify'
 import { StatusMark } from '../shared/StatusMark'
 import { statusAccent } from '../../types'
+import { chimeEnabled, playChime } from '../../lib/chime'
 
 /**
  * ── 앱이 열려 있을 때 오는 알림 ───────────────────────────────────────────────
@@ -26,21 +27,32 @@ import { statusAccent } from '../../types'
 
 interface ToastState {
   notice: Notice | null
+  /** True while the bell's own list is open. */
+  panelOpen: boolean
   show: (n: Notice) => void
   hide: () => void
+  setPanelOpen: (open: boolean) => void
 }
 
 export const useNoticeToast = create<ToastState>(set => ({
   notice: null,
+  panelOpen: false,
   show: notice => set({ notice }),
   hide: () => set({ notice: null }),
+  // A banner over the open list is two copies of the same sentence, and they
+  // land on top of each other — the list is in the same corner.
+  setPanelOpen: panelOpen => set(panelOpen ? { panelOpen, notice: null } : { panelOpen }),
 }))
 
 /** How long a banner stays. Long enough to read two lines, not long enough to nag. */
 const LINGER = 6000
 
+/** Topbar.tsx's own height. Kept in step by hand; it has not moved in months. */
+const TOPBAR_H = 52
+
 export function NoticeToast() {
   const notice = useNoticeToast(s => s.notice)
+  const panelOpen = useNoticeToast(s => s.panelOpen)
   const hide = useNoticeToast(s => s.hide)
   const notices = useNoticeStore(s => s.notices)
   const markRead = useNoticeStore(s => s.markRead)
@@ -56,7 +68,10 @@ export function NoticeToast() {
     const fresh = notices.find(n => n.at > openedAt.current && !seen.current.has(n.id))
     if (!fresh) return
     seen.current.add(fresh.id)
+    // Marked seen either way: once the list has been open past it, it is read.
+    if (useNoticeToast.getState().panelOpen) return
     useNoticeToast.getState().show(fresh)
+    if (chimeEnabled()) playChime()
   }, [notices])
 
   // Two effects rather than one: the entrance has to be a second frame, or the
@@ -69,7 +84,7 @@ export function NoticeToast() {
     return () => { cancelAnimationFrame(enter); clearTimeout(leave); clearTimeout(gone) }
   }, [notice, hide])
 
-  if (!notice) return null
+  if (!notice || panelOpen) return null
 
   const open = () => {
     if (!notice.read && !notice.id.startsWith('test:')) markRead(notice.id)
@@ -84,7 +99,9 @@ export function NoticeToast() {
     <div
       style={{
         position: 'fixed', zIndex: 9800,
-        top: isMobile ? 'calc(env(safe-area-inset-top, 0px) + 8px)' : 14,
+        // Under the top bar rather than over it — the bar holds the bell and
+        // the '새 업무' button, and a card across them reads as a broken layout.
+        top: `calc(env(safe-area-inset-top, 0px) + ${TOPBAR_H + 8}px)`,
         right: isMobile ? 8 : 14,
         left: isMobile ? 8 : 'auto',
         width: isMobile ? 'auto' : 330,
@@ -143,9 +160,16 @@ export function NoticeToast() {
   )
 }
 
-/** The banner a person can raise themselves, to see whether this works at all. */
+/**
+ * The banner a person can raise themselves, to see whether this works at all.
+ *
+ * Closing the list first is the point rather than a detail: the banner is
+ * suppressed while the list is open, and the list is where the button lives.
+ */
 export function showTestNotice(by: string) {
-  useNoticeToast.getState().show({
+  const { setPanelOpen, show } = useNoticeToast.getState()
+  setPanelOpen(false)
+  show({
     id: `test:${Date.now()}`,
     kind: 'assigned',
     by,
@@ -153,4 +177,5 @@ export function showTestNotice(by: string) {
     at: Date.now(),
     read: true,
   })
+  if (chimeEnabled()) playChime()
 }

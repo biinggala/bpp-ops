@@ -10,7 +10,8 @@ import { NOTICE_LABEL as LABEL, NOTICE_TONE as TONE, type Notice } from '../../l
 import { StatusMark } from '../shared/StatusMark'
 import { statusAccent } from '../../types'
 import { disablePush, enablePush, pushEnabledHere, pushSupport } from '../../lib/push'
-import { showTestNotice } from './NoticeToast'
+import { showTestNotice, useNoticeToast } from './NoticeToast'
+import { chimeEnabled, playChime, setChimeEnabled } from '../../lib/chime'
 
 /**
  * ── 알림 ─────────────────────────────────────────────────────────────────────
@@ -54,6 +55,12 @@ export function NoticeBell() {
     if (!uid) return
     return subscribe(uid)
   }, [uid, subscribe])
+
+  // The banner hides itself while this list is open; it has to be told.
+  useEffect(() => {
+    useNoticeToast.getState().setPanelOpen(open)
+    return () => useNoticeToast.getState().setPanelOpen(false)
+  }, [open])
 
   // The unread count belongs on the app's icon too — iOS and macOS both draw it,
   // and on a phone that badge is the only part of this anybody sees at a glance.
@@ -189,6 +196,7 @@ function NoticeList({ notices, onClose }: { notices: Notice[]; onClose: () => vo
       </div>
 
       <PushToggle />
+      <ChimeToggle />
 
       <div style={{ overflowY: 'auto', flex: 1 }}>
         {notices.length === 0 && (
@@ -262,6 +270,58 @@ function NoticeList({ notices, onClose }: { notices: Notice[]; onClose: () => vo
  * screen, a desktop shell with no Push API — is written out rather than left as
  * a dead switch.
  */
+/** The switch used by both rows below, so they cannot drift apart. */
+function MiniSwitch({ on, busy, onClick }: { on: boolean; busy?: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy}
+      role="switch"
+      aria-checked={on}
+      style={{
+        width: 38, height: 22, borderRadius: 999, flexShrink: 0, padding: 2,
+        border: 'none', cursor: busy ? 'default' : 'pointer',
+        background: on ? 'var(--ac)' : 'var(--bd2)',
+        display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start',
+        transition: 'background .15s', opacity: busy ? .6 : 1,
+      }}
+    >
+      <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.25)', transition: 'all .15s' }} />
+    </button>
+  )
+}
+
+const ROW: React.CSSProperties = {
+  padding: '8px 14px', borderBottom: '1px solid var(--bd)',
+  display: 'flex', alignItems: 'center', gap: 8,
+}
+
+/**
+ * 알림 소리 — 배너가 뜰 때만.
+ *
+ * A push that arrives with the app closed uses the phone's own notification
+ * sound; nothing here reaches that, and no web app can choose it. So this is
+ * about the banner, and it is a per-device choice like the push switch: the
+ * laptop in a shared room and the phone in a pocket do not want the same answer.
+ */
+function ChimeToggle() {
+  const [on, setOn] = useState(chimeEnabled())
+  return (
+    <div style={ROW}>
+      <span style={{ fontSize: 12, color: 'var(--t2)', flex: 1, minWidth: 0 }}>알림 소리</span>
+      <MiniSwitch
+        on={on}
+        onClick={() => {
+          const next = !on
+          setChimeEnabled(next); setOn(next)
+          // Hearing it is the only way to judge it.
+          if (next) playChime()
+        }}
+      />
+    </div>
+  )
+}
+
 function PushToggle() {
   const [on, setOn] = useState(pushEnabledHere())
   const [busy, setBusy] = useState(false)
@@ -309,27 +369,13 @@ function PushToggle() {
   }
 
   return (
-    <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--bd)', display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div style={ROW}>
       <span style={{ fontSize: 12, color: 'var(--t2)', flex: 1, minWidth: 0 }}>
         이 기기에서 푸시 받기
         {error && <span style={{ display: 'block', fontSize: 11, color: '#D44C47' }}>{error}</span>}
       </span>
       {test}
-      <button
-        onClick={() => void toggle()}
-        disabled={busy}
-        role="switch"
-        aria-checked={on}
-        style={{
-          width: 38, height: 22, borderRadius: 999, flexShrink: 0, padding: 2,
-          border: 'none', cursor: busy ? 'default' : 'pointer',
-          background: on ? 'var(--ac)' : 'var(--bd2)',
-          display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start',
-          transition: 'background .15s', opacity: busy ? .6 : 1,
-        }}
-      >
-        <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.25)', transition: 'all .15s' }} />
-      </button>
+      <MiniSwitch on={on} busy={busy} onClick={() => void toggle()} />
     </div>
   )
 }
