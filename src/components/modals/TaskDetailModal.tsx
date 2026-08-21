@@ -25,12 +25,10 @@ import { SchedulePanel } from './SchedulePanel'
 import { StatusPill, PriorityLabel } from '../shared/StatusPill'
 import { useMenu, Menu, MenuList, MenuItem, CellTrigger, Dot } from '../shared/Menu'
 import { STATUS_LIST, PRIORITY_LIST, NOTION } from '../../types'
+import { openExternal } from '../../lib/desktopLinks'
 import type { Task, Status, Priority, TaskLink } from '../../types'
 import { isComposing } from '../../lib/utils'
 
-const SIDEBAR_KEY = 'cringe_detail_sidebar_w'
-const MIN_SIDEBAR = 200
-const MAX_SIDEBAR = 480
 
 // The same pairs the list and the board use. This panel predated the shared
 // palette and had grown its own approximations of it — close enough to look
@@ -49,11 +47,29 @@ const PRIORITY_STYLE: Record<Priority, { bg: string; color: string }> = {
 
 /* ── Shared helpers ── */
 
-/** One line of the properties panel: a quiet label, then the control. */
-function PropRow({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * A click on a link inside the editor opens it, in a real browser.
+ *
+ * Returns true when it handled the click, so the caller does not also put the
+ * cursor there. In the desktop shell a global capture-phase listener may have
+ * taken the same click already — hence the `defaultPrevented` check, without
+ * which one click would open two windows.
+ */
+function openLinkFrom(e: React.MouseEvent): boolean {
+  const anchor = (e.target as HTMLElement).closest?.('a[href]') as HTMLAnchorElement | null
+  if (!anchor) return false
+  if (!e.defaultPrevented) {
+    e.preventDefault()
+    void openExternal(anchor.href)
+  }
+  return true
+}
+
+/** One property in the grid: a quiet label above nothing, beside its control. */
+function PropCell({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 0', borderBottom: '1px solid var(--bd)' }}>
-      <span style={{ width: 72, fontSize: 12, color: 'var(--t3)', fontWeight: 500, flexShrink: 0 }}>{label}</span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, minHeight: 30 }}>
+      <span style={{ width: 62, fontSize: 12, color: 'var(--t3)', fontWeight: 500, flexShrink: 0 }}>{label}</span>
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>{children}</div>
     </div>
   )
@@ -199,6 +215,71 @@ function ToolDivider() {
   return <div style={{ width: 1, height: 16, background: 'var(--bd2)', margin: '0 3px' }} />
 }
 
+/**
+ * The link control.
+ *
+ * An address has to be typed somewhere, and `prompt()` is one of the browser
+ * dialogs the desktop webview swallows without drawing anything — the same trap
+ * `confirm()` set for the delete buttons. So the field is part of the toolbar:
+ * it opens under the caret, it is a real input, and it works in both shells.
+ */
+function LinkButton({ editor }: { editor: NonNullable<ReturnType<typeof useEditor>> }) {
+  const [open, setOpen] = useState(false)
+  const [url, setUrl] = useState('')
+  const active = editor.isActive('link')
+
+  const commit = () => {
+    const value = url.trim()
+    if (!value) {
+      editor.chain().focus().extendMarkRange('link').unsetLink().run()
+    } else {
+      const href = /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}`
+      editor.chain().focus().extendMarkRange('link').setLink({ href }).run()
+    }
+    setOpen(false); setUrl('')
+  }
+
+  return (
+    <div style={{ position: 'relative', display: 'flex' }}>
+      <ToolBtn
+        active={active}
+        title={active ? '링크 편집 · 지우기' : '링크 넣기'}
+        onClick={() => {
+          if (open) { setOpen(false); return }
+          setUrl(active ? (editor.getAttributes('link').href ?? '') : '')
+          setOpen(true)
+        }}
+      >🔗</ToolBtn>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 10,
+          display: 'flex', gap: 4, padding: 6, borderRadius: 'var(--r2)',
+          background: 'var(--bg)', border: '1px solid var(--bd)', boxShadow: 'var(--sh-lg)',
+        }}>
+          <input
+            autoFocus
+            value={url}
+            onChange={ev => setUrl(ev.target.value)}
+            onKeyDown={ev => {
+              if (ev.key === 'Enter' && !isComposing(ev)) { ev.preventDefault(); commit() }
+              if (ev.key === 'Escape') { ev.stopPropagation(); setOpen(false) }
+            }}
+            placeholder="https://…"
+            style={{
+              width: 240, padding: '5px 8px', borderRadius: 'var(--r1)',
+              border: '1px solid var(--bd)', background: 'var(--bg)',
+              fontSize: 12, color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)',
+            }}
+          />
+          {/* Empty and confirm is how a link is removed — one control, and the
+              placeholder says what the field wants. */}
+          <ToolBtn active onClick={commit} title="적용">확인</ToolBtn>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function EditorToolbar({ editor }: { editor: ReturnType<typeof useEditor> | null }) {
   if (!editor) return null
   const e = editor
@@ -208,6 +289,7 @@ function EditorToolbar({ editor }: { editor: ReturnType<typeof useEditor> | null
       <ToolBtn active={e.isActive('italic')} onClick={() => e.chain().focus().toggleItalic().run()} title="기울임 (⌘I)"><i>I</i></ToolBtn>
       <ToolBtn active={e.isActive('strike')} onClick={() => e.chain().focus().toggleStrike().run()} title="취소선"><s>S</s></ToolBtn>
       <ToolBtn active={e.isActive('highlight')} onClick={() => e.chain().focus().toggleHighlight().run()} title="형광펜">Mark</ToolBtn>
+      <LinkButton editor={e} />
       <ToolDivider />
       <ToolBtn active={e.isActive('heading', { level: 1 })} onClick={() => e.chain().focus().toggleHeading({ level: 1 }).run()} title="제목 1">H1</ToolBtn>
       <ToolBtn active={e.isActive('heading', { level: 2 })} onClick={() => e.chain().focus().toggleHeading({ level: 2 }).run()} title="제목 2">H2</ToolBtn>
@@ -524,7 +606,7 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
           <EditorToolbar editor={editor} />
 
           <div
-            onClick={() => editor?.commands.focus()}
+            onClick={e => { if (!openLinkFrom(e)) editor?.commands.focus() }}
             style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '20px', cursor: 'text' }}
             className="task-editor-area"
           >
@@ -558,29 +640,6 @@ export function TaskDetailModal() {
   const [titleValue, setTitleValue] = useState('')
   const saveTimer = useRef<number | null>(null)
 
-  const [sidebarW, setSidebarW] = useState<number>(() => {
-    const v = parseInt(localStorage.getItem(SIDEBAR_KEY) || '0')
-    return v >= MIN_SIDEBAR && v <= MAX_SIDEBAR ? v : 320
-  })
-
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    const startX = e.clientX
-    const startW = sidebarW
-    let latestW = startW
-    const onMove = (ev: MouseEvent) => {
-      latestW = Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, startW + ev.clientX - startX))
-      setSidebarW(latestW)
-    }
-    const onUp = () => {
-      localStorage.setItem(SIDEBAR_KEY, String(latestW))
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-    }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-  }, [sidebarW])
-
   useEffect(() => {
     if (!uid || !detailTaskId) return
     setCurrentTask(uid, detailTaskId)
@@ -608,7 +667,22 @@ export function TaskDetailModal() {
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
-      StarterKit,
+      // Link ships inside StarterKit v3. Two things have to be said about it.
+      //
+      // `openOnClick` calls `window.open`, and a webview opens nothing at all —
+      // silently, as ever. So it is off, and the click is handled below by the
+      // one function in this app that knows how to reach a real browser.
+      //
+      // `autolink` is what turns a pasted or typed address into a link without
+      // anybody reaching for a toolbar.
+      StarterKit.configure({
+        link: {
+          openOnClick: false,
+          autolink: true,
+          defaultProtocol: 'https',
+          HTMLAttributes: { target: '_blank', rel: 'noopener noreferrer' },
+        },
+      }),
       Placeholder.configure({ placeholder: '내용을 자유롭게 작성하세요...' }),
       TaskList,
       TaskItem.configure({ nested: true }),
@@ -665,7 +739,7 @@ export function TaskDetailModal() {
       onClick={e => { if (e.target === e.currentTarget) close() }}
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(6px)', padding: '20px' }}
     >
-      <div style={{ width: '100%', maxWidth: 1080, height: '88vh', background: 'var(--bg)', borderRadius: 'var(--r4)', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: 'var(--sh-lg)' }}>
+      <div style={{ width: '100%', maxWidth: 880, height: '88vh', background: 'var(--bg)', borderRadius: 'var(--r4)', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: 'var(--sh-lg)' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--bd)', flexShrink: 0 }}>
@@ -710,6 +784,11 @@ export function TaskDetailModal() {
             )}
           </div>
 
+          <div style={{ fontSize: 11, color: saveStatus === 'saving' ? 'var(--ac)' : 'var(--t3)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ color: saveStatus === 'saving' ? 'var(--ac)' : NOTION.green.text }}>●</span>
+            {saveStatus === 'saving' ? '저장 중' : '저장됨'}
+          </div>
+
           {viewers.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
               <span style={{ fontSize: 11, color: 'var(--t3)' }}>함께 보는 중</span>
@@ -724,96 +803,93 @@ export function TaskDetailModal() {
           )}
         </div>
 
-        {/* Body */}
-        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        {/* Body — one column, scrolled as a whole */}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
 
-          {/* Properties panel */}
-          <div style={{ width: sidebarW, borderRight: '1px solid var(--bd)', padding: '16px 20px', overflowY: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>속성</div>
-
-            <PropRow label="담당자">
-              <AssigneePicker assignee={task.assignee} options={assigneeOptions} onChange={v => upd({ assignee: v })} />
-            </PropRow>
-
-            <PropRow label="상태">
+          {/* Properties. Two columns of short rows rather than one tall stack:
+              eight rows down the side of a wide modal is a lot of vertical
+              travel for facts that each fit in half a line. */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr 1fr',
+            columnGap: 28, rowGap: 2, padding: '16px 28px 18px',
+          }}>
+            <PropCell label="상태">
               <BadgeSelect value={task.status} options={STATUS_LIST as Status[]} styleMap={STATUS_STYLE} renderValue={v => <StatusPill status={v} />} onChange={v => upd({ status: v as Status })} />
-            </PropRow>
+            </PropCell>
 
-            <PropRow label="우선순위">
-              <BadgeSelect value={task.priority} options={PRIORITY_LIST as Priority[]} styleMap={PRIORITY_STYLE} renderValue={v => <PriorityLabel priority={v} />} onChange={v => upd({ priority: v as Priority })} />
-            </PropRow>
+            <PropCell label="담당자">
+              <AssigneePicker assignee={task.assignee} options={assigneeOptions} onChange={v => upd({ assignee: v })} />
+            </PropCell>
 
-            <PropRow label="시작일">
+            <PropCell label="시작일">
               <DateField value={task.start || ''} context={{ taskId: task.id, projectId: task.projectId, milestoneId: task.milestoneId, parentId: task.parentId, assignee: task.assignee, blockedBy: task.blockedBy }}
                 onChange={v => upd({ start: v })} placeholder="—" format="full" style={{ fontSize: 13 }} />
-            </PropRow>
+            </PropCell>
 
-            <PropRow label="마감일">
+            <PropCell label="마감일">
               <DateField value={task.due || ''} context={{ taskId: task.id, projectId: task.projectId, milestoneId: task.milestoneId, parentId: task.parentId, assignee: task.assignee, blockedBy: task.blockedBy }}
                 onChange={v => upd({ due: v })} placeholder="—" format="full" style={{ fontSize: 13 }} />
-            </PropRow>
+            </PropCell>
 
-            <PropRow label="진행률">
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="range" min={0} max={100} step={5} value={task.progress}
-                  onChange={e => upd({ progress: Number(e.target.value) })}
-                  style={{ flex: 1, accentColor: 'var(--ac)', cursor: 'pointer' }} />
-                <span style={{ fontSize: 12, color: 'var(--t2)', minWidth: 32, textAlign: 'right' }}>{task.progress}%</span>
-              </div>
-            </PropRow>
+            <PropCell label="우선순위">
+              <BadgeSelect value={task.priority} options={PRIORITY_LIST as Priority[]} styleMap={PRIORITY_STYLE} renderValue={v => <PriorityLabel priority={v} />} onChange={v => upd({ priority: v as Priority })} />
+            </PropCell>
 
-            <PropRow label="프로젝트">
+            <PropCell label="진행률">
+              <input type="range" min={0} max={100} step={5} value={task.progress}
+                onChange={e => upd({ progress: Number(e.target.value) })}
+                style={{ flex: 1, minWidth: 0, accentColor: 'var(--ac)', cursor: 'pointer' }} />
+              <span style={{ fontSize: 12, color: 'var(--t2)', minWidth: 34, textAlign: 'right' }}>{task.progress}%</span>
+            </PropCell>
+
+            <PropCell label="프로젝트">
               <OptionPicker
                 value={task.projectId}
                 empty="없음"
                 options={projects.map(p => ({ value: p.id, label: p.name, dot: p.color }))}
                 onChange={v => upd({ projectId: v })}
               />
-            </PropRow>
+            </PropCell>
 
             {currentProject && (
-              <PropRow label="마일스톤">
+              <PropCell label="마일스톤">
                 <OptionPicker
                   value={task.milestoneId}
                   empty="없음"
                   options={taskMilestones.map(m => ({ value: m.id, label: m.name, dot: NOTION.purple.text, sub: m.dueDate }))}
                   onChange={v => upd({ milestoneId: v })}
                 />
-              </PropRow>
+              </PropCell>
             )}
+          </div>
 
-            <AssetsPanel links={task.links ?? []} projectId={task.projectId} onChange={links => upd({ links })} />
-
-            <SchedulePanel task={task} memberEmails={currentProject?.memberEmails ?? []} />
-
-            {/* The project and milestone that used to be repeated here are two
-                rows up, and editable there. Restating them read as a second,
-                weaker copy of the same facts. */}
-            <div style={{ marginTop: 'auto', paddingTop: 14, fontSize: 11, color: 'var(--t3)', display: 'flex', alignItems: 'center', gap: 5 }}>
-              {saveStatus === 'saving' ? (
-                <><span style={{ animation: 'pulse 1s infinite', display: 'inline-block' }}>●</span> 저장 중...</>
-              ) : (
-                <><span style={{ color: NOTION.green.text }}>●</span> 저장됨</>
-              )}
+          {/* The document. Full width now, but the text itself is capped —
+              fifteen-pixel type across 840px is a line nobody's eye tracks
+              back from. */}
+          <div style={{ borderTop: '1px solid var(--bd)' }}>
+            <div style={{ position: 'sticky', top: 0, zIndex: 3 }}>
+              <EditorToolbar editor={editor} />
+            </div>
+            <div
+              onClick={e => { if (!openLinkFrom(e)) editor?.commands.focus() }}
+              style={{ padding: '20px 28px 8px', cursor: 'text', minHeight: 260 }}
+              className="task-editor-area"
+            >
+              <div style={{ maxWidth: 720 }}>
+                <EditorContent editor={editor} />
+              </div>
             </div>
           </div>
 
-          {/* Resize handle */}
-          <div onMouseDown={handleResizeStart}
-            style={{ width: 5, cursor: 'col-resize', flexShrink: 0, position: 'relative', zIndex: 1, background: 'transparent', transition: 'background .15s' }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--ac)'; e.currentTarget.style.opacity = '.35' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.opacity = '1' }}
-          />
+          {/* Both panels draw their own heading, so they get the rule and the
+              padding and nothing else — a second title above theirs would be
+              the same word twice. */}
+          <div style={{ borderTop: '1px solid var(--bd)', padding: '18px 28px' }}>
+            <AssetsPanel links={task.links ?? []} projectId={task.projectId} onChange={links => upd({ links })} />
+          </div>
 
-          {/* Editor */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-            <EditorToolbar editor={editor} />
-            <div onClick={() => editor?.commands.focus()}
-              style={{ flex: 1, overflowY: 'auto', padding: '28px 40px', cursor: 'text' }}
-              className="task-editor-area"
-            >
-              <EditorContent editor={editor} />
-            </div>
+          <div style={{ borderTop: '1px solid var(--bd)', padding: '18px 28px 28px' }}>
+            <SchedulePanel task={task} memberEmails={currentProject?.memberEmails ?? []} />
           </div>
         </div>
       </div>

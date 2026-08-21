@@ -147,6 +147,19 @@ input, select, textarea, button {
 
 .ProseMirror p { margin: 0; }
 
+/* Links have to look like links.
+   Tailwind's preflight resets anchors to `color: inherit; text-decoration:
+   inherit`, so a real <a> inside the editor rendered exactly like the sentence
+   around it — the mark was there, and nothing on screen said so. */
+.ProseMirror a {
+  color: var(--ac);
+  text-decoration: underline;
+  text-decoration-color: rgba(35, 131, 226, .35);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.ProseMirror a:hover { text-decoration-color: var(--ac); }
+
 .ProseMirror h1 { font-size: 1.75em; font-weight: 700; line-height: 1.2; margin: 1.1em 0 0.3em; color: var(--t1); }
 .ProseMirror h2 { font-size: 1.375em; font-weight: 600; line-height: 1.3; margin: 1em 0 0.25em; color: var(--t1); }
 .ProseMirror h3 { font-size: 1.125em; font-weight: 600; line-height: 1.4; margin: 0.9em 0 0.2em; color: var(--t1); }
