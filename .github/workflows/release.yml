@@ -178,7 +178,9 @@ jobs:
           git config user.name "Claude"
           git config user.email "noreply@anthropic.com"
           git add public/updates
-          git commit -m "chore(release): publish the $VERSION updater bundle"
+          # A re-run rebuilds the same bundle; nothing to commit is a fine
+          # outcome, and `set -e` would otherwise read it as a failed release.
+          git commit -m "chore(release): publish the $VERSION updater bundle" || echo "nothing new to commit"
           # Main may have moved while the mac build ran.
           git pull --rebase origin main
           git push origin HEAD:main
@@ -282,26 +284,53 @@ jobs:
       # which the mac job already wrote — so a Windows app would be told an
       # update exists and then find no bundle for its own platform. This entry is
       # what keeps that promise honest.
+      # The banner that offers an update reads latest.json's top-level version,
+      # which the mac job already wrote — so a Windows app would be told an
+      # update exists and then find no bundle for its own platform. This entry is
+      # what keeps that promise honest.
+      #
+      # The artifact is the installer itself. Tauri v2 signs the .exe and puts
+      # the .sig beside it; the .zip this first looked for is v1's layout, and
+      # looking for the wrong name is how the build succeeded and the step after
+      # it died. Both are accepted now, and the directory is listed either way so
+      # a third naming scheme names itself rather than being guessed at.
       - name: Publish the Windows updater bundle
         env:
           VERSION: ${{ steps.notes.outputs.version }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           NSIS=src-tauri/target/release/bundle/nsis
-          ZIP=$(ls "$NSIS"/*-setup.nsis.zip)
-          test -f "$ZIP.sig" || { echo "::error::the Windows updater bundle is unsigned"; exit 1; }
+          echo "── $NSIS ──"
+          ls -l "$NSIS" || { echo "::error::no nsis bundle directory at all"; exit 1; }
 
+          # v2: the installer is the artifact. v1: a zip beside it.
+          ARTIFACT=""
+          for candidate in "$NSIS"/*-setup.exe "$NSIS"/*-setup.nsis.zip; do
+            if [ -f "$candidate" ] && [ -f "$candidate.sig" ]; then ARTIFACT="$candidate"; break; fi
+          done
+          if [ -z "$ARTIFACT" ]; then
+            echo "::error::found no signed updater artifact above — is TAURI_SIGNING_PRIVATE_KEY set?"
+            exit 1
+          fi
+          echo "updater artifact: $ARTIFACT"
+
+          # Served under a stable name, so latest.json does not carry a version
+          # in its URL and the previous release's file is simply replaced.
+          case "$ARTIFACT" in
+            *.zip) NAME=bpp-ops-setup.nsis.zip ;;
+            *)     NAME=bpp-ops-setup.exe ;;
+          esac
           mkdir -p public/updates
-          cp "$ZIP" public/updates/bpp-ops-setup.nsis.zip
+          cp "$ARTIFACT" "public/updates/$NAME"
 
-          SIG=$(cat "$ZIP.sig") python - <<'PY'
+          SIG=$(cat "$ARTIFACT.sig") NAME="$NAME" python - <<'PY'
           import json, os, pathlib
 
           manifest = pathlib.Path("public/updates/latest.json")
           data = json.loads(manifest.read_text(encoding="utf-8"))
           data["platforms"]["windows-x86_64"] = {
               "signature": os.environ["SIG"].strip(),
-              "url": "https://crng-task-manager.web.app/updates/bpp-ops-setup.nsis.zip",
+              "url": f"https://crng-task-manager.web.app/updates/{os.environ['NAME']}",
           }
           manifest.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
           PY
@@ -309,9 +338,11 @@ jobs:
           git config user.name "Claude"
           git config user.email "noreply@anthropic.com"
           git add public/updates
-          git commit -m "chore(release): publish the $VERSION Windows updater bundle"
-          git pull --rebase origin main
-          git push origin HEAD:main
+          # Re-running a release rebuilds identical bytes; nothing to commit is
+          # a fine outcome and not a failure.
+          git commit -m "chore(release): publish the $VERSION Windows updater bundle" || echo "nothing new to commit"
+          git pull --rebase origin main || exit 1
+          git push origin HEAD:main || exit 1
 
       # Same reason as the mac job: a push made with GITHUB_TOKEN starts no
       # workflow, so this deploys the file it just committed itself.
