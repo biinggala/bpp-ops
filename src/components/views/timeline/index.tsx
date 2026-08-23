@@ -13,7 +13,7 @@ import type { Rsvp } from '../../../lib/googleCalendar'
 import { Icon } from '../../shared/Icon'
 import { RsvpPicker } from '../../shared/RsvpPicker'
 import { useToast } from '../../shared/Toast'
-import { useOrgStore, clashesFor, type Room, type Booking } from '../../../store/orgStore'
+import { useOrgStore, clashesFor, NO_BOOKINGS, type Room, type Booking } from '../../../store/orgStore'
 import { addDays, toDate, fmtYMD, isComposing } from '../../../lib/utils'
 import type { GCalEvent } from '../../../store/gcalStore'
 
@@ -274,7 +274,7 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
 
   // 보고 있는 날짜의 예약만 구독합니다.
   useEffect(() => {
-    if (orgId) watchDates(days)
+    if (orgId) watchDates('timeline', days)
   }, [orgId, days.join(','), watchDates])
 
   const bookingFor = (date: string, eventId: string): Booking | null =>
@@ -1385,7 +1385,8 @@ function RoomRow({ slot, booking, onPick }: {
   onPick: (roomId: string | null) => void
 }) {
   const rooms = useOrgStore(s => s.rooms)
-  const bookings = useOrgStore(s => s.bookings[slot.date] ?? [])
+  // 없는 날짜에 매번 새 빈 배열을 돌려주면 무한 렌더입니다 — NO_BOOKINGS 참고.
+  const bookings = useOrgStore(s => s.bookings[slot.date] ?? NO_BOOKINGS)
   const orgId = useOrgStore(s => s.orgId)
   const watchDates = useOrgStore(s => s.watchDates)
   const [open, setOpen] = useState(false)
@@ -1393,7 +1394,11 @@ function RoomRow({ slot, booking, onPick }: {
   // 이 카드가 보는 날짜의 예약을 확보합니다. 타임라인이 보는 날짜와 같을
   // 때가 대부분이지만, 주 경계에서 카드만 다른 날을 볼 수 있습니다.
   useEffect(() => {
-    if (orgId) watchDates([slot.date])
+    if (!orgId) return
+    watchDates('card', [slot.date])
+    // 카드가 닫히면 이 몫을 놓습니다. 안 그러면 한 번 열어 본 날짜의
+    // 리스너가 앱이 살아 있는 동안 계속 남습니다.
+    return () => watchDates('card', [])
   }, [orgId, slot.date, watchDates])
 
   const usable = rooms.filter(r => r.active !== false)
