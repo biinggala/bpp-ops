@@ -10,6 +10,9 @@ import { statusAccent } from '../../types'
 import { useNoticeToast } from './NoticeToast'
 import { useSyncStore } from '../../store/syncStore'
 import { pollDriveChanges, POLL_MS } from '../../lib/driveWatch'
+import { useMailStore, MAIL_POLL_MS, warmMailAuth } from '../../store/mailStore'
+import { threadUrl } from '../../lib/gmail'
+import { openExternal } from '../../lib/desktopLinks'
 
 /**
  * ── 알림 ─────────────────────────────────────────────────────────────────────
@@ -77,8 +80,30 @@ export function useNoticeInbox() {
     return () => clearInterval(timer)
   }, [email, ready])
 
+  /**
+   * 메일. 연동 안 했으면 refresh가 조용히 아무것도 안 합니다.
+   *
+   * 저장하지 않으므로 앱이 떠 있는 동안만 최신입니다 — 그래서 목록을 여는
+   * 순간이 아니라 앱이 사는 내내 물어봅니다. 배지가 목록을 열어야 맞는
+   * 숫자가 되면 배지가 아닙니다.
+   */
+  const refreshMail = useMailStore(s => s.refresh)
+  useEffect(() => {
+    if (!email) return
+    void refreshMail()
+    const timer = window.setInterval(() => { void refreshMail() }, MAIL_POLL_MS)
+    return () => clearInterval(timer)
+  }, [email, refreshMail])
+
   // The unread count belongs on the app's icon too — iOS and macOS both draw it,
   // and on a phone that badge is the only part of this anybody sees at a glance.
+  /**
+   * 운영체제 배지는 **업무 알림만** 셉니다.
+   *
+   * 안에 있는 탭 배지는 그 목록에 있는 걸 다 세는 게 맞지만, 홈 화면의 배지는
+   * 다릅니다 — 같은 폰에 지메일 앱이 이미 그 메일을 세고 있습니다. 한 통을 두
+   * 아이콘이 같이 세면 둘 다 못 믿게 됩니다. 이 앱만 아는 것만 여기 올립니다.
+   */
   useEffect(() => {
     const nav = navigator as Navigator & {
       setAppBadge?: (n?: number) => Promise<void>
@@ -88,7 +113,11 @@ export function useNoticeInbox() {
     else void nav.clearAppBadge?.().catch(() => {})
   }, [unread])
 
-  return { notices, unread, signedIn: !!uid }
+  // 밖에서 온 것도 배지에 셉니다. 답할 메일 세 통이 있는데 배지가 0이면,
+  // 그 배지는 '받은 알림'이 아니라 '업무 알림'의 배지입니다.
+  const mailCount = useMailStore(s => s.threads.length)
+
+  return { notices, unread, external: mailCount, signedIn: !!uid }
 }
 
 /**
@@ -107,6 +136,7 @@ export function NoticeList({ onClose }: { onClose: () => void }) {
   const openTaskDetail = useUiStore(s => s.openTaskDetail)
   const projects = useProjectStore(s => s.projects)
   const unread = useNoticeStore(s => s.unread)
+  const mailCount = useMailStore(s => s.threads.length)
 
   const openNotice = (n: Notice) => {
     if (!n.read) markRead(n.id)
@@ -127,7 +157,15 @@ export function NoticeList({ onClose }: { onClose: () => void }) {
       )}
 
       <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
-        {notices.length === 0 && (
+        {/* 밖에서 온 것이 위입니다. 여섯 줄로 끝나는 목록이고, 아래의 업무
+            알림은 끝이 없습니다 — 길이를 모르는 목록 밑에 짧은 목록을 두면
+            아무도 못 봅니다. */}
+        <MailSection />
+
+        {notices.length > 0 && (
+          <SectionHead>업무</SectionHead>
+        )}
+        {notices.length === 0 && mailCount === 0 && (
           <div style={{ padding: '28px 16px', textAlign: 'center', fontSize: 12, color: 'var(--sb-t3)', lineHeight: 1.6 }}>
             새 알림이 없습니다
           </div>
@@ -194,6 +232,114 @@ export function NoticeList({ onClose }: { onClose: () => void }) {
             </React.Fragment>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+/* ── 밖에서 온 것 ────────────────────────────────────────────────────────── */
+
+function SectionHead({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      padding: '10px 10px 4px', fontSize: 10, fontWeight: 700,
+      letterSpacing: '.06em', color: 'var(--sb-t3)',
+    }}>
+      <span>{children}</span>
+      {right && <span style={{ marginLeft: 'auto' }}>{right}</span>}
+    </div>
+  )
+}
+
+/**
+ * ── 답할 메일 ────────────────────────────────────────────────────────────────
+ *
+ * '안 읽은 메일'이 아닙니다. 그건 지메일이 훨씬 잘합니다. 여기 오는 건 **나에게
+ * 물어 왔고 내가 아직 답 안 한** 대화뿐이고, 그래서 보통 서너 줄입니다.
+ *
+ * 읽음 표시가 여기 없는 것도 같은 이유입니다. 누르면 지메일이 열리고, 거기서
+ * 읽으면 다음 새로고침에 사라집니다. 우리 쪽에 '읽음'을 하나 더 만들면 두
+ * 군데가 어긋나고, 그때부터 어느 쪽도 못 믿습니다.
+ */
+function MailSection() {
+  const threads = useMailStore(s => s.threads)
+  const wasConnected = useMailStore(s => s.wasConnected)
+  const needsReconnect = useMailStore(s => s.needsReconnect)
+  const connecting = useMailStore(s => s.connecting)
+  const connect = useMailStore(s => s.connect)
+  const error = useMailStore(s => s.error)
+
+  // 연동 버튼을 누른 다음이 아니라 목록이 그려질 때 준비합니다. 네트워크를
+  // 한 번 다녀온 뒤에 여는 창은 iOS가 막습니다 — 드라이브와 같은 처방.
+  useEffect(() => { if (!wasConnected) warmMailAuth() }, [wasConnected])
+
+  if (!wasConnected || needsReconnect) {
+    return (
+      <>
+        <SectionHead>메일</SectionHead>
+        <div style={{ padding: '2px 10px 8px' }}>
+          <div style={{ fontSize: 11, color: 'var(--sb-t3)', lineHeight: 1.6, marginBottom: 7 }}>
+            {needsReconnect
+              ? '구글 로그인이 만료됐습니다'
+              : '답장을 기다리는 메일만 여기 모입니다'}
+          </div>
+          <button
+            onClick={() => void connect()}
+            disabled={connecting}
+            style={{
+              padding: '4px 10px', borderRadius: 'var(--r1)', border: '1px solid var(--bd)',
+              background: 'transparent', color: 'var(--ac)', fontSize: 11,
+              cursor: connecting ? 'default' : 'pointer', fontFamily: 'var(--font)',
+              opacity: connecting ? .6 : 1,
+            }}
+          >{connecting ? '연결 중…' : needsReconnect ? '다시 연결' : '메일 연동'}</button>
+          {error && <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 6, lineHeight: 1.5 }}>{error}</div>}
+        </div>
+      </>
+    )
+  }
+
+  if (!threads.length) return null
+
+  return (
+    <>
+      <SectionHead right={<span style={{ opacity: .7 }}>{threads.length}</span>}>메일</SectionHead>
+      {threads.map(t => <MailRow key={t.threadId} thread={t} />)}
+    </>
+  )
+}
+
+function MailRow({ thread }: { thread: { threadId: string; subject: string; from: string; snippet: string; at: number; count: number } }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <div
+      onClick={() => void openExternal(threadUrl(thread.threadId))}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      title={thread.snippet}
+      style={{
+        display: 'flex', gap: 8, padding: '7px 8px 7px 10px', margin: '0 4px',
+        borderRadius: 'var(--r2)', cursor: 'pointer',
+        background: hovered ? 'var(--sb-hover)' : 'transparent',
+      }}
+    >
+      <span style={{ color: '#D9730D', flexShrink: 0, marginTop: 2, display: 'flex' }}>
+        <Icon name="mail" size={12} />
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 12.5, color: 'var(--sb-t1)', fontWeight: 500,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{thread.subject}</div>
+        <div style={{
+          fontSize: 11, color: 'var(--sb-t3)', marginTop: 1,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {thread.from}
+          {thread.count > 1 ? ` · ${thread.count}개` : ''}
+          {' · '}{clock(thread.at)}
+        </div>
       </div>
     </div>
   )
