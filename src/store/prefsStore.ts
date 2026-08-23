@@ -1,0 +1,73 @@
+import { create } from 'zustand'
+import { onValue, ref, update as fbUpdate, off } from 'firebase/database'
+import { db } from '../lib/firebase'
+import { P } from '../lib/paths'
+
+/**
+ * ── 이 사람이 이미 본 것들 ───────────────────────────────────────────────────
+ *
+ * 두 가지를 기억합니다: 소개를 봤는가, 어느 버전의 업데이트 노트까지 봤는가.
+ *
+ * **기기가 아니라 계정에 붙습니다.** 노트북에서 소개를 읽었는데 폰에서 또
+ * 읽으라고 하면 그건 소개가 아니라 방해입니다. localStorage로 두면 정확히
+ * 그렇게 됩니다.
+ *
+ * 반대로 **드라이브·캘린더 연결은 기기 것입니다** — 토큰이 그 브라우저에
+ * 살기 때문에, 폰에서는 폰에서 한 번 더 눌러야 실제로 됩니다. 그래서 소개
+ * 마지막 장의 연결 버튼은 '봤음'으로 처리하지 않습니다. 언제든 설정에서
+ * 다시 할 수 있어야 하고, 실제로 그 자리에 있습니다.
+ */
+
+interface PrefsState {
+  /** 소개를 끝까지(또는 건너뛰기로) 본 시각. 없으면 아직 안 봤습니다. */
+  onboardedAt: number | null
+  /** 마지막으로 읽은 업데이트 노트의 id. */
+  seenVersion: string | null
+  /**
+   * 첫 조회가 끝났는가.
+   *
+   * 이게 없으면 앱을 켤 때마다 소개가 한 번 번쩍합니다 — 아직 안 읽은
+   * `onboardedAt`은 null이고, null은 '안 봤다'와 똑같이 생겼습니다.
+   */
+  ready: boolean
+
+  subscribe: (email: string) => () => void
+  markOnboarded: (email: string) => void
+  markSeenVersion: (email: string, id: string) => void
+  /** 설정에서 '다시 보기'를 눌렀을 때. 저장된 값은 그대로 두고 이번만 엽니다. */
+  replay: 'intro' | 'whatsNew' | null
+  setReplay: (v: 'intro' | 'whatsNew' | null) => void
+}
+
+export const usePrefsStore = create<PrefsState>((set) => ({
+  onboardedAt: null,
+  seenVersion: null,
+  ready: false,
+  replay: null,
+
+  subscribe: (email) => {
+    const node = ref(db, P.userPrefs(email))
+    const handler = onValue(node, snap => {
+      const v = (snap.val() ?? {}) as { onboardedAt?: number; seenVersion?: string }
+      set({ onboardedAt: v.onboardedAt ?? null, seenVersion: v.seenVersion ?? null, ready: true })
+    }, () => set({ ready: true }))
+    return () => {
+      off(node, 'value', handler)
+      set({ onboardedAt: null, seenVersion: null, ready: false, replay: null })
+    }
+  },
+
+  markOnboarded: (email) => {
+    const at = Date.now()
+    // 화면을 먼저 닫습니다. 왕복을 기다리면 닫기를 두 번 누릅니다.
+    set({ onboardedAt: at })
+    void fbUpdate(ref(db, P.userPrefs(email)), { onboardedAt: at }).catch(() => {})
+  },
+
+  markSeenVersion: (email, id) => {
+    set({ seenVersion: id })
+    void fbUpdate(ref(db, P.userPrefs(email)), { seenVersion: id }).catch(() => {})
+  },
+
+  setReplay: (replay) => set({ replay }),
+}))
