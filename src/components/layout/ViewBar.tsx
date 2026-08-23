@@ -306,21 +306,32 @@ function FilterChip({ chip }: { chip: Chip }) {
 
 // ── Controls ──────────────────────────────────────────────────────────────────
 
+/**
+ * Selected is a filled rounded rectangle, not an underline.
+ *
+ * The app had two ways of saying "this one": a blue rule under the view tabs,
+ * and a soft filled rectangle behind the sidebar's current item. Two marks for
+ * one idea, and the underline was the weaker of them — a hairline that reads as
+ * a shadow at a glance and disappears entirely on a laptop in daylight.
+ *
+ * The rectangle wins because it is already what the sidebar, the phone's bottom
+ * bar and every menu row use. One shape, everywhere.
+ */
 function ViewTab({ children, active, onClick }: { children: React.ReactNode; active: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
       style={{
-        display: 'flex', alignItems: 'center', padding: '4px 12px',
-        borderRadius: 'var(--r1)', fontSize: 14, fontWeight: active ? 500 : 400,
+        display: 'flex', alignItems: 'center', padding: '5px 12px',
+        borderRadius: 'var(--r2)', fontSize: 14, fontWeight: active ? 500 : 400,
         cursor: 'pointer', border: 'none', whiteSpace: 'nowrap',
-        background: 'transparent', fontFamily: 'var(--font)',
-        color: active ? 'var(--ac)' : 'var(--t2)',
-        borderBottom: active ? '2px solid var(--ac)' : '2px solid transparent',
-        transition: 'color .1s',
+        background: active ? 'var(--bg3)' : 'transparent',
+        fontFamily: 'var(--font)',
+        color: active ? 'var(--t1)' : 'var(--t2)',
+        transition: 'background .1s, color .1s',
       }}
-      onMouseEnter={e => { if (!active) e.currentTarget.style.color = 'var(--t1)' }}
-      onMouseLeave={e => { if (!active) e.currentTarget.style.color = 'var(--t2)' }}
+      onMouseEnter={e => { if (!active) { e.currentTarget.style.color = 'var(--t1)'; e.currentTarget.style.background = 'var(--bg3)' } }}
+      onMouseLeave={e => { if (!active) { e.currentTarget.style.color = 'var(--t2)'; e.currentTarget.style.background = 'transparent' } }}
     >
       {children}
     </button>
@@ -536,10 +547,10 @@ function BottomNav({ view, onPick }: { view: ViewType; onPick: (v: ViewType) => 
       flexShrink: 0,
       height: 'calc(var(--bottom-nav-h) + var(--safe-b-nav))',
       paddingBottom: 'var(--safe-b-nav)',
-      borderTop: '1px solid rgba(55,53,47,.07)',
+      borderTop: '1px solid var(--bd)',
       // A whisper of a shadow, so the bar reads as sitting over the content
       // rather than as a white strip the content stopped short of.
-      boxShadow: '0 -1px 12px rgba(55,53,47,.05)',
+      boxShadow: 'var(--sh-sm)',
       background: 'rgba(252,252,251,.88)',
       backdropFilter: 'saturate(180%) blur(20px)',
       WebkitBackdropFilter: 'saturate(180%) blur(20px)',

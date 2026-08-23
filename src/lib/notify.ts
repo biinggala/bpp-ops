@@ -109,7 +109,7 @@ export const NOTICE_TONE: Record<NoticeKind, string> = {
   status_changed: '#2383E2',
   subtask:        '#9065B0',
   due_soon:       '#D9730D',
-  overdue:        '#D44C47',
+  overdue:        'var(--danger)',
 }
 
 /** How each kind reads as a notification title. The body is the task's name. */

@@ -64,7 +64,7 @@ export function ActivityList({ taskId, projectId, compact = false }: {
           <span style={{
             width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
             marginTop: compact ? 6 : 7,
-            background: entry.kind === 'deleted' ? '#D44C47'
+            background: entry.kind === 'deleted' ? 'var(--danger)'
               : entry.kind === 'created' ? 'var(--ac)' : 'var(--bd2)',
           }} />
           <div style={{ flex: 1, minWidth: 0 }}>

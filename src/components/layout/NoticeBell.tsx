@@ -112,7 +112,7 @@ export function NoticeBell() {
           <span style={{
             position: 'absolute', top: 4, right: 3,
             minWidth: 16, height: 16, padding: '0 4px',
-            borderRadius: 999, background: '#D44C47', color: '#fff',
+            borderRadius: 999, background: 'var(--danger)', color: '#fff',
             fontSize: 10, fontWeight: 700, lineHeight: '16px', textAlign: 'center',
             boxShadow: '0 0 0 2px var(--bg)',
           }}>{unread > 99 ? '99+' : unread}</span>
@@ -385,7 +385,7 @@ function PushToggle() {
       }}>
         <span style={{ flex: 1, minWidth: 0 }}>
           {support.reason}
-          {error && <span style={{ display: 'block', color: error.includes('실패') ? '#D44C47' : 'var(--t3)', marginTop: 3 }}>{error}</span>}
+          {error && <span style={{ display: 'block', color: error.includes('실패') ? 'var(--danger)' : 'var(--t3)', marginTop: 3 }}>{error}</span>}
         </span>
         {test}
       </div>
@@ -409,7 +409,7 @@ function PushToggle() {
     <div style={ROW}>
       <span style={{ fontSize: 12, color: 'var(--t2)', flex: 1, minWidth: 0 }}>
         이 기기에서 푸시 받기
-        {error && <span style={{ display: 'block', fontSize: 11, color: error.includes('실패') ? '#D44C47' : 'var(--t3)', lineHeight: 1.45 }}>{error}</span>}
+        {error && <span style={{ display: 'block', fontSize: 11, color: error.includes('실패') ? 'var(--danger)' : 'var(--t3)', lineHeight: 1.45 }}>{error}</span>}
       </span>
       {test}
       <MiniSwitch on={on} busy={busy} onClick={() => void toggle()} />

@@ -50,8 +50,8 @@ const CHILD_H   = 28
  * behind it. That is what put a rollup bar and the today line inside the name
  * column.
  */
-const BAND       = 'linear-gradient(rgba(55,53,47,.055), rgba(55,53,47,.055)), var(--bg)'
-const BAND_HOVER = 'linear-gradient(rgba(55,53,47,.10), rgba(55,53,47,.10)), var(--bg)'
+const BAND       = 'linear-gradient(var(--bg3), var(--bg3)), var(--bg)'
+const BAND_HOVER = 'linear-gradient(var(--bg4), var(--bg4)), var(--bg)'
 const LEFT_W  = 248
 const MONTH_H = 26
 const DAY_H   = 24
@@ -887,7 +887,7 @@ function ProjectRow({ project, expanded, onToggle, rollup, count, timelineW, lef
           at every project. */}
       <div style={{
         width: timelineW, flexShrink: 0, position: 'relative', height: PROJECT_H,
-        background: hovered ? 'rgba(55,53,47,.05)' : 'rgba(55,53,47,.028)',
+        background: hovered ? 'var(--bg3)' : 'var(--bg2)',
       }}>
         {rollup && (
           <div style={{
@@ -1232,7 +1232,7 @@ function TaskRow({
         onMouseDown={onLaneMouseDown}
         style={{
           width: timelineW, flexShrink: 0, position: 'relative', height,
-          background: hovered ? 'rgba(55,53,47,.02)' : 'transparent',
+          background: hovered ? 'var(--bg3)' : 'transparent',
           cursor: 'crosshair',
         }}
       >
@@ -1258,7 +1258,7 @@ function TaskRow({
               top: '50%', transform: 'translateY(-50%)', height: barH,
               borderRadius: child ? 3 : 5,
               background: isOverdue ? 'rgba(212,76,71,.1)' : color.bg,
-              border: `${child ? 1 : 1.5}px solid ${isOverdue ? '#D44C47' : color.text}`,
+              border: `${child ? 1 : 1.5}px solid ${isOverdue ? 'var(--danger)' : color.text}`,
               display: 'flex', alignItems: 'center', paddingLeft: 6,
               overflow: 'visible', zIndex: 1,
               cursor: dragging ? 'grabbing' : 'grab',
@@ -1282,17 +1282,17 @@ function TaskRow({
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
               >
-                <span style={{ width: 3, height: barH - 6, borderRadius: 2, background: isOverdue ? '#D44C47' : color.text, opacity: .85 }} />
+                <span style={{ width: 3, height: barH - 6, borderRadius: 2, background: isOverdue ? 'var(--danger)' : color.text, opacity: .85 }} />
               </div>
             ))}
 
             {span * dayW > 54 && !compact && (
-              <span style={{ fontSize: 10, fontWeight: 500, color: isOverdue ? '#D44C47' : color.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none', minWidth: 0, maxWidth: '100%' }}>
+              <span style={{ fontSize: 10, fontWeight: 500, color: isOverdue ? 'var(--danger)' : color.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none', minWidth: 0, maxWidth: '100%' }}>
                 {task.name}
               </span>
             )}
             {task.progress > 0 && (
-              <div style={{ position: 'absolute', bottom: 0, left: 0, height: 3, width: `${task.progress}%`, opacity: .5, background: isOverdue ? '#D44C47' : color.text, borderRadius: '0 0 0 5px', pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', bottom: 0, left: 0, height: 3, width: `${task.progress}%`, opacity: .5, background: isOverdue ? 'var(--danger)' : color.text, borderRadius: '0 0 0 5px', pointerEvents: 'none' }} />
             )}
           </div>
         )}
@@ -1435,7 +1435,7 @@ function CtxItem({ icon, label, onClick, danger }: { icon: string; label: string
   const [hovered, setHovered] = useState(false)
   return (
     <div onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', cursor: 'pointer', fontSize: 13, color: danger ? '#D44C47' : 'var(--t1)', background: hovered ? 'var(--bg3)' : 'transparent', transition: 'background .06s' }}>
+      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', cursor: 'pointer', fontSize: 13, color: danger ? 'var(--danger)' : 'var(--t1)', background: hovered ? 'var(--bg3)' : 'transparent', transition: 'background .06s' }}>
       <span style={{ fontSize: 12, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>
       {label}
     </div>

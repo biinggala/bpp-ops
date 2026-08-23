@@ -169,9 +169,9 @@ function UpdateButton() {
         padding: '5px 11px', borderRadius: 'var(--r2)',
         fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap',
         cursor: busy ? 'default' : 'pointer',
-        border: `1px solid ${failed ? '#D44C47' : '#448361'}`,
+        border: `1px solid ${failed ? 'var(--danger)' : '#448361'}`,
         background: failed ? 'rgba(212,76,71,.1)' : 'rgba(68,131,97,.12)',
-        color: failed ? '#D44C47' : '#448361',
+        color: failed ? 'var(--danger)' : '#448361',
         fontFamily: 'var(--font)',
       }}
       onMouseEnter={e => { if (!busy) e.currentTarget.style.background = failed ? 'rgba(212,76,71,.18)' : 'rgba(68,131,97,.2)' }}

@@ -64,7 +64,7 @@ function ConfirmDialog({ message, detail, confirmLabel, danger, onAnswer }: {
     return () => document.removeEventListener('keydown', onKey, true)
   }, [onAnswer])
 
-  const accent = danger ? '#D44C47' : 'var(--ac)'
+  const accent = danger ? 'var(--danger)' : 'var(--ac)'
 
   return (
     <div

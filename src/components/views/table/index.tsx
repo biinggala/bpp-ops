@@ -417,7 +417,7 @@ function MobileTableView() {
             {crumb}
           </span>
           {task.due && !isDone && (
-            <span style={{ fontSize: 11, color: overdue ? '#D44C47' : 'var(--t3)', flexShrink: 0, marginRight: 6 }}>
+            <span style={{ fontSize: 11, color: overdue ? 'var(--danger)' : 'var(--t3)', flexShrink: 0, marginRight: 6 }}>
               {overdue ? '⚠ ' : ''}{fmtDate(task.due)}
             </span>
           )}
@@ -457,7 +457,7 @@ function MobileTableView() {
           const diff = daysFrom(ms.dueDate, today)
           const overdue = !ms.done && diff < 0
           const dLabel = overdue ? `D+${Math.abs(diff)}` : diff === 0 ? 'D-Day' : `D-${diff}`
-          const dColor = ms.done ? 'var(--t3)' : overdue ? '#D44C47' : diff <= 7 ? '#D9730D' : 'var(--t3)'
+          const dColor = ms.done ? 'var(--t3)' : overdue ? 'var(--danger)' : diff <= 7 ? '#D9730D' : 'var(--t3)'
           const accent = milestoneAccent(!!ms.done, diff)
           const d = new Date(ms.dueDate + 'T00:00:00')
           const dateLabel = `${d.getMonth() + 1}/${d.getDate()}`
@@ -1537,7 +1537,7 @@ function Row({
               )}
               {(task.blockedBy?.length || task.blocking?.length) ? (
                 <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                  {!!task.blockedBy?.length && <span title={`선행 ${task.blockedBy.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(212,76,71,.1)', color: '#D44C47', lineHeight: 1.6 }}>⛔ {task.blockedBy.length}</span>}
+                  {!!task.blockedBy?.length && <span title={`선행 ${task.blockedBy.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(212,76,71,.1)', color: 'var(--danger)', lineHeight: 1.6 }}>⛔ {task.blockedBy.length}</span>}
                   {!!task.blocking?.length && <span title={`후행 ${task.blocking.length}개`} style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'rgba(217,115,13,.1)', color: '#D9730D', lineHeight: 1.6 }}>⚡ {task.blocking.length}</span>}
                 </div>
               ) : null}
@@ -1602,7 +1602,7 @@ function Row({
               setEditing(editing === 'due' ? null : 'due')
             }}
           >
-            <span style={{ fontSize: 13, color: overdue ? '#D44C47' : task.due ? 'var(--t2)' : 'var(--t3)', fontWeight: overdue ? 500 : 400, cursor: 'pointer' }}>
+            <span style={{ fontSize: 13, color: overdue ? 'var(--danger)' : task.due ? 'var(--t2)' : 'var(--t3)', fontWeight: overdue ? 500 : 400, cursor: 'pointer' }}>
               {task.due ? (overdue ? '⚠ ' : '') + fmtDate(task.due) : '—'}
             </span>
             {editing === 'due' && (

@@ -73,7 +73,7 @@ function GCalButton() {
           title="표시할 캘린더 선택"
           style={{
             display: 'flex', alignItems: 'center', gap: 5,
-            fontSize: 12, color: error ? '#D44C47' : 'var(--t2)',
+            fontSize: 12, color: error ? 'var(--danger)' : 'var(--t2)',
             background: 'transparent',
             border: `1px solid ${error ? 'rgba(212,76,71,.35)' : 'var(--bd2)'}`,
             cursor: 'pointer', padding: '3px 9px', borderRadius: 'var(--r2)',
@@ -94,7 +94,7 @@ function GCalButton() {
               boxShadow: 'var(--sh-md)', minWidth: 230, maxHeight: 320, overflowY: 'auto', padding: '4px 0',
             }}>
               {error && (
-                <div style={{ padding: '6px 12px', fontSize: 11, color: '#D44C47', lineHeight: 1.5 }}>{error}</div>
+                <div style={{ padding: '6px 12px', fontSize: 11, color: 'var(--danger)', lineHeight: 1.5 }}>{error}</div>
               )}
               {calendars.length === 0 && (
                 <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--t3)' }}>캘린더를 불러오는 중…</div>
@@ -130,7 +130,7 @@ function GCalButton() {
                 onClick={() => { setPickerOpen(false); disconnect() }}
                 style={{
                   width: '100%', textAlign: 'left', padding: '6px 12px', fontSize: 12,
-                  color: '#D44C47', background: 'transparent', border: 'none',
+                  color: 'var(--danger)', background: 'transparent', border: 'none',
                   cursor: 'pointer', fontFamily: 'var(--font)',
                 }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
@@ -167,7 +167,7 @@ function GCalButton() {
             padding: '3px 8px', borderRadius: 20,
             border: `1px solid ${error ? 'rgba(212,76,71,.35)' : 'rgba(68,131,97,.35)'}`,
             background: error ? 'rgba(212,76,71,.07)' : 'rgba(68,131,97,.07)',
-            fontSize: 12, color: error ? '#D44C47' : '#448361',
+            fontSize: 12, color: error ? 'var(--danger)' : '#448361',
             cursor: loading ? 'default' : 'pointer',
             opacity: loading ? .6 : 1,
             fontFamily: 'var(--font)', whiteSpace: 'nowrap', flexShrink: 0,
@@ -178,7 +178,7 @@ function GCalButton() {
         {/* A reconnect that failed used to say nothing at all — the button
             simply came back, which reads as the click having done nothing. */}
         {error && !loading && (
-          <span style={{ fontSize: 11, color: '#D44C47', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }} title={error}>
+          <span style={{ fontSize: 11, color: 'var(--danger)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }} title={error}>
             {error}
           </span>
         )}
@@ -196,7 +196,7 @@ function GCalButton() {
           padding: '4px 10px', borderRadius: 'var(--r1)',
           border: `1px solid ${error ? '#fca5a5' : 'var(--bd)'}`,
           background: error ? 'rgba(212,76,71,.07)' : 'transparent',
-          fontSize: 12, color: error ? '#D44C47' : 'var(--t2)',
+          fontSize: 12, color: error ? 'var(--danger)' : 'var(--t2)',
           cursor: loading ? 'default' : 'pointer',
           opacity: loading ? .6 : 1,
           fontFamily: 'var(--font)',
@@ -211,7 +211,7 @@ function GCalButton() {
       {/* Written out, not a tooltip: a phone has nothing to hover with, so a
           failed first connect there said nothing whatsoever. */}
       {error && !loading && (
-        <span style={{ fontSize: 11, color: '#D44C47', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }} title={error}>
+        <span style={{ fontSize: 11, color: 'var(--danger)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }} title={error}>
           {error}
         </span>
       )}
@@ -346,7 +346,7 @@ function MobileCalendar() {
                 const el = sectionRefs.current.get('__overdue__')
                 if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
               }}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(212,76,71,.12)', color: '#D44C47', borderRadius: 20, padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(212,76,71,.12)', color: 'var(--danger)', borderRadius: 20, padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
             >
               <span>⚠</span> 기한 초과 {overdueTasks.length}개
             </div>
@@ -377,7 +377,7 @@ function MobileCalendar() {
                 onClick={() => handleDateSelect(dateStr)}
                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 44, padding: '6px 4px', border: 'none', borderRadius: 10, background: isSelected ? 'var(--ac)' : 'transparent', cursor: 'pointer', flexShrink: 0 }}
               >
-                <span style={{ fontSize: 10, fontWeight: 500, color: isSelected ? 'rgba(255,255,255,.8)' : isSun ? '#D44C47' : isSat ? '#3b82f6' : 'var(--t3)' }}>
+                <span style={{ fontSize: 10, fontWeight: 500, color: isSelected ? 'rgba(255,255,255,.8)' : isSun ? 'var(--danger)' : isSat ? '#3b82f6' : 'var(--t3)' }}>
                   {isToday ? '오늘' : dow}
                 </span>
                 <span style={{ fontSize: 16, fontWeight: isToday || isSelected ? 700 : 400, color: isSelected ? '#fff' : isToday ? 'var(--ac)' : 'var(--t1)', lineHeight: 1 }}>
@@ -399,7 +399,7 @@ function MobileCalendar() {
         {/* Overdue */}
         {overdueTasks.length > 0 && (
           <div ref={el => { if (el) sectionRefs.current.set('__overdue__', el) }}>
-            <SectionHeader label="기한 초과" count={overdueTasks.length} color="#D44C47" />
+            <SectionHeader label="기한 초과" count={overdueTasks.length} color="var(--danger)" />
             {overdueTasks.map(t => <MobCalTaskRow key={t.id} task={t} onOpen={() => openTaskDetail(t.id)} overdue />)}
           </div>
         )}
@@ -469,7 +469,7 @@ function MobCalTaskRow({ task, onOpen, overdue }: { task: Task; onOpen: () => vo
       onClick={onOpen}
       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--bd)', cursor: 'pointer', opacity: isDone ? 0.55 : 1 }}
     >
-      <span style={{ width: 7, height: 7, borderRadius: '50%', background: overdue ? '#D44C47' : 'var(--ac)', flexShrink: 0 }} />
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: overdue ? 'var(--danger)' : 'var(--ac)', flexShrink: 0 }} />
       <span style={{ flex: 1, fontSize: 14, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: isDone ? 'line-through' : 'none' }}>
         {task.name}
       </span>
@@ -516,7 +516,7 @@ class CalendarErrorBoundary extends Component<{ children: React.ReactNode }, { e
     if (this.state.error) {
       return (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24, color: 'var(--t2)' }}>
-          <div style={{ fontSize: 13, color: '#D44C47' }}>캘린더 로드 오류</div>
+          <div style={{ fontSize: 13, color: 'var(--danger)' }}>캘린더 로드 오류</div>
           <div style={{ fontSize: 12, color: 'var(--t3)', textAlign: 'center', maxWidth: 280 }}>{this.state.error}</div>
           <button
             onClick={() => this.setState({ error: null })}
@@ -1018,7 +1018,7 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
       {/* Day-of-week labels */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', borderBottom: '1px solid var(--bd)', background: 'var(--bg2)', flexShrink: 0 }}>
         {DAY_LABELS.map((d, i) => (
-          <div key={d} style={{ padding: '7px 10px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: i === 0 || i === 6 ? 'rgba(55,53,47,.35)' : 'var(--t3)' }}>
+          <div key={d} style={{ padding: '7px 10px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: 'var(--t3)', opacity: i === 0 || i === 6 ? .75 : 1 }}>
             {d}
           </div>
         ))}
