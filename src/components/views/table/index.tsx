@@ -313,7 +313,7 @@ function MobileTableView() {
   const filteredTasks = useFilteredTasks()
   const allTasks = useTaskStore(s => s.tasks)
   const { addTask, updateTask, deleteTask } = useTaskStore()
-  const { openTaskModal: _openTaskModal, openTaskDetail, projectId, hideCompleted, listGroup } = useUiStore()
+  const { openTaskModal: _openTaskModal, openTaskDetail, projectId, hideCompleted, listGroup, myTasksOnly } = useUiStore()
   const { milestones, updateMilestone } = useMilestoneStore()
   const projects = useProjectStore(s => s.projects)
   const userEmail = useAuthStore(s => s.email)
@@ -447,7 +447,17 @@ function MobileTableView() {
       if (task.milestoneId && grouped[task.milestoneId] !== undefined) grouped[task.milestoneId].push(task)
       else unassigned.push(task)
     }
-    const sortedMs = [...pjMilestones].sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0))
+    /**
+     * 내 할 일에서는 빈 마일스톤을 접지 않고 아예 내립니다.
+     *
+     * 프로젝트를 펼쳐 보고 있을 때 비어 있는 마일스톤은 정보입니다 — 아직
+     * 아무도 손대지 않은 구간이고, 그 헤더의 추가 행이 거기에 일을 넣는
+     * 방법입니다. 하지만 내 할 일은 정의상 '나에게 배정된 것'만 남긴 화면이고,
+     * 거기 남은 빈 마일스톤은 '내 일이 없는 구간'이라는 뜻뿐입니다. 프로젝트가
+     * 수십 개인 사람에게 그건 스크롤 몇 화면입니다.
+     */
+    const shown = myTasksOnly ? pjMilestones.filter(ms => grouped[ms.id]?.length) : pjMilestones
+    const sortedMs = [...shown].sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0))
     return (
       <>
         {sortedMs.map(ms => {
@@ -1014,7 +1024,17 @@ export function TableView() {
       if (task.milestoneId && grouped[task.milestoneId] !== undefined) grouped[task.milestoneId].push(task)
       else unassigned.push(task)
     }
-    const sortedMs = [...pjMilestones].sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0))
+    /**
+     * 내 할 일에서는 빈 마일스톤을 접지 않고 아예 내립니다.
+     *
+     * 프로젝트를 펼쳐 보고 있을 때 비어 있는 마일스톤은 정보입니다 — 아직
+     * 아무도 손대지 않은 구간이고, 그 헤더의 추가 행이 거기에 일을 넣는
+     * 방법입니다. 하지만 내 할 일은 정의상 '나에게 배정된 것'만 남긴 화면이고,
+     * 거기 남은 빈 마일스톤은 '내 일이 없는 구간'이라는 뜻뿐입니다. 프로젝트가
+     * 수십 개인 사람에게 그건 스크롤 몇 화면입니다.
+     */
+    const shown = myTasksOnly ? pjMilestones.filter(ms => grouped[ms.id]?.length) : pjMilestones
+    const sortedMs = [...shown].sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0))
 
     const draftRow = (key: string, msId: string | undefined) => (
       <AddTaskRow

@@ -15,6 +15,7 @@
 export type IconName =
   | 'pencil' | 'users' | 'layers' | 'archive' | 'unarchive' | 'trash'
   | 'exit' | 'settings' | 'plus' | 'external' | 'unlink' | 'sun' | 'moon' | 'monitor'
+  | 'inbox'
 
 /** The ones a single path can say. */
 const PATHS: Partial<Record<IconName, string>> = {
@@ -60,6 +61,15 @@ export function Icon({ name, size = 15, strokeWidth = 1.7 }: {
         {name === 'archive'
           ? <path d="M12 11.6v4.6M9.6 13.8 12 16.2l2.4-2.4" />
           : <path d="M12 16.2v-4.6M9.6 14l2.4-2.4 2.4 2.4" />}
+      </svg>
+    )
+  }
+  // A tray with its mouth open — what arrives lands here.
+  if (name === 'inbox') {
+    return (
+      <svg {...common}>
+        <path d="M3.6 13.2h4l1.2 2.4h6.4l1.2-2.4h4" />
+        <path d="M6.1 5.2h11.8a1.8 1.8 0 0 1 1.7 1.2l2 6.1v4.3a1.8 1.8 0 0 1-1.8 1.8H4.2a1.8 1.8 0 0 1-1.8-1.8v-4.3l2-6.1a1.8 1.8 0 0 1 1.7-1.2z" />
       </svg>
     )
   }

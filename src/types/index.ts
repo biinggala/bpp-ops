@@ -141,7 +141,13 @@ export const ALLOWED_EMAILS: Record<string, MemberKey> = {
   'biinggala@crngfriends.com': 'HC',
 }
 
-export const STATUS_LIST: Status[] = ['진행중', '대기', '검토중', '완료']
+/**
+ * 일이 실제로 지나가는 순서 그대로: 대기 → 진행중 → 검토중 → 완료.
+ *
+ * 이 한 줄이 보드의 열 순서, 상태 메뉴, 필터, 그룹 순서를 전부 정합니다.
+ * 진행중이 맨 앞이던 시절에는 보드가 두 번째 칸에서 시작했습니다.
+ */
+export const STATUS_LIST: Status[] = ['대기', '진행중', '검토중', '완료']
 export const PRIORITY_LIST: Priority[] = ['높음', '중간', '낮음']
 
 /**
