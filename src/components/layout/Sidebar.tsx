@@ -955,7 +955,7 @@ function GroupHeader({ name, count, collapsed, onToggle, onRename, onDropProject
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: 'flex', alignItems: 'center', gap: 5,
+        display: 'flex', alignItems: 'center', gap: 5, minHeight: 28, boxSizing: 'border-box',
         padding: '6px 8px 4px 10px', margin: '6px 0 0', borderRadius: 'var(--r1)',
         cursor: 'pointer', userSelect: 'none',
         background: over ? 'var(--sb-hover)' : 'transparent',
@@ -986,10 +986,23 @@ function GroupHeader({ name, count, collapsed, onToggle, onRename, onDropProject
           {name}
         </span>
       )}
+      {/*
+        갯수와 ✎가 **같은 크기의 칸**을 씁니다.
+
+        예전에는 둘을 그냥 바꿔 놨는데, 갯수는 10px 글자(12px 높이)고 ✎는
+        18px 상자라 마우스를 올릴 때마다 줄이 6px 자랐습니다. 그룹을 지나가는
+        동안 목록이 위아래로 덜컹거리던 게 그것입니다. 바뀌는 것은 안에 든
+        것이지 줄의 크기가 아니어야 합니다.
+      */}
       {!editing && (
-        hovered
-          ? <ActionIcon onClick={e => { e.stopPropagation(); setDraft(name); setEditing(true) }} title="그룹 이름 수정">✎</ActionIcon>
-          : <span style={{ fontSize: 10, color: 'var(--sb-t3)', opacity: .7, flexShrink: 0 }}>{count}</span>
+        <span style={{
+          width: 18, height: 18, flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {hovered
+            ? <ActionIcon onClick={e => { e.stopPropagation(); setDraft(name); setEditing(true) }} title="그룹 이름 수정">✎</ActionIcon>
+            : <span style={{ fontSize: 10, color: 'var(--sb-t3)', opacity: .7 }}>{count}</span>}
+        </span>
       )}
     </div>
   )

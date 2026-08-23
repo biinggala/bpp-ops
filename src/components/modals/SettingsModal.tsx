@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { setTheme, themeChoice, type ThemeChoice } from '../../lib/theme'
 import { haptic } from '../../lib/haptics'
 import { useMobile } from '../../hooks/useMobile'
@@ -8,6 +8,7 @@ import { chimeEnabled, playChime, setChimeEnabled } from '../../lib/chime'
 import { fileWatchEnabled, setFileWatchEnabled } from '../../lib/driveWatch'
 import { useDriveStore } from '../../store/driveStore'
 import { useMailStore } from '../../store/mailStore'
+import { useOrgStore } from '../../store/orgStore'
 import { showTestNotice } from '../layout/NoticeToast'
 import { Icon, type IconName } from '../shared/Icon'
 
@@ -82,6 +83,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         <Section title="연동" note="받은 알림에 밖에서 온 소식을 들이는 통로입니다. 이 기기가 아니라 계정에 붙습니다.">
           <MailLinkRow />
         </Section>
+
+        <OrgSection />
 
         <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 18, paddingTop: 12, borderTop: '1px solid var(--bd)', userSelect: 'text' }}>
           빌드 {__BUILD_ID__}
@@ -350,4 +353,100 @@ function ChimeRow() {
       />
     </div>
   )
+}
+
+
+/**
+ * ── 조직과 회의실 ────────────────────────────────────────────────────────────
+ *
+ * 여기만 이 창에서 **다른 사람 화면에도 보이는** 설정입니다. 위의 것들은 다
+ * 이 기기 것이고, 회의실 목록은 회사가 함께 쓰는 사실입니다. 그래서 칸을
+ * 나누고 그렇다고 적어 둡니다 — 같은 창에 있으면서 하나는 나만의 것이고
+ * 하나는 전원의 것이면, 모르고 고치는 사람이 나옵니다.
+ *
+ * 소속은 이메일 도메인입니다. 초대도 승인도 없습니다.
+ */
+function OrgSection() {
+  const email = useAuthStore(s => s.email)
+  const { orgId, name, rooms, ready, createOrg, addRoom, updateRoom, error } = useOrgStore()
+  const [newName, setNewName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const domain = email?.split('@')[1] ?? ''
+
+  if (!email || !ready) return null
+
+  if (!orgId) {
+    return (
+      <Section title="조직" note={`${domain} 로 로그인한 사람들이 함께 쓰는 회의실을 등록해 둘 수 있습니다. 만들면 같은 도메인 전원이 바로 씁니다 — 초대는 없습니다.`}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            placeholder="조직 이름 (예: 블랙페이퍼)"
+            style={INPUT}
+          />
+          <button
+            onClick={async () => { setBusy(true); await createOrg(newName, email); setBusy(false) }}
+            disabled={busy}
+            style={{ ...navBtn, borderColor: 'var(--ac)', background: 'var(--ac)', color: '#fff', opacity: busy ? .6 : 1 }}
+          >{busy ? '만드는 중…' : '만들기'}</button>
+        </div>
+        {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6 }}>{error}</div>}
+      </Section>
+    )
+  }
+
+  return (
+    <Section title="회의실" note={`${name || domain} 전체가 함께 보는 목록입니다. 여기서 고치면 모두의 화면이 바뀝니다.`}>
+      {rooms.length === 0 && (
+        <div style={{ fontSize: 11, color: 'var(--t3)', padding: '2px 0 8px' }}>
+          아직 등록된 회의실이 없습니다
+        </div>
+      )}
+      {rooms.map(room => (
+        <div key={room.id} style={{ ...ROW, opacity: room.active === false ? .5 : 1 }}>
+          <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+            {room.name}
+            {room.note && (
+              <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>{room.note}</span>
+            )}
+          </span>
+          {/* 지우지 않고 끕니다 — 지나간 예약이 이름을 잃으면 안 됩니다. */}
+          <MiniSwitch
+            on={room.active !== false}
+            onClick={() => void updateRoom(room.id, { active: room.active === false })}
+          />
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+        <input
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && newName.trim()) { void addRoom(newName); setNewName('') }
+          }}
+          placeholder="회의실 이름 (예: 대회의실)"
+          style={INPUT}
+        />
+        <button
+          onClick={() => { if (newName.trim()) { void addRoom(newName); setNewName('') } }}
+          style={navBtn}
+        >추가</button>
+      </div>
+      {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6 }}>{error}</div>}
+    </Section>
+  )
+}
+
+const INPUT: React.CSSProperties = {
+  flex: 1, minWidth: 0, boxSizing: 'border-box',
+  padding: '5px 8px', borderRadius: 'var(--r1)', border: '1px solid var(--bd)',
+  background: 'var(--bg2)', color: 'var(--t1)', fontSize: 12.5,
+  outline: 'none', fontFamily: 'var(--font)',
+}
+
+const navBtn: React.CSSProperties = {
+  padding: '5px 12px', borderRadius: 'var(--r1)', border: '1px solid var(--bd)',
+  background: 'transparent', color: 'var(--t2)', fontSize: 12,
+  cursor: 'pointer', fontFamily: 'var(--font)', flexShrink: 0,
 }

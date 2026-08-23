@@ -8,6 +8,7 @@ import { useAuthStore } from '../store/authStore'
 import { usePresenceStore } from '../store/presenceStore'
 import { useUserProfileStore } from '../store/userProfileStore'
 import { useSyncStore } from '../store/syncStore'
+import { useOrgStore } from '../store/orgStore'
 import { parseInviteToken } from '../lib/paths'
 import { useMobile } from '../hooks/useMobile'
 import type { Project } from '../types'
@@ -82,6 +83,13 @@ export function AppPage() {
     if (!uid) return
     return subscribeWorkspace(uid, email ?? null)
   }, [uid, email])
+
+  // 조직 — 회의실 목록이 사는 곳. 도메인으로 찾으므로 이메일만 있으면 됩니다.
+  const subscribeOrg = useOrgStore(s => s.subscribe)
+  useEffect(() => {
+    if (!email) return
+    return subscribeOrg(email)
+  }, [email, subscribeOrg])
 
   useEffect(() => {
     if (!uid) return

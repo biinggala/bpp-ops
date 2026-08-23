@@ -49,6 +49,36 @@
       ".read": "auth != null",
       ".write": "auth != null"
     },
+    "orgs": {
+      "$org": {
+        ".read": "auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ','))",
+        "meta": {
+          ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && ((!data.exists() && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + newData.child('domain').val().replace('.', ','))) || (auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ','))))",
+          ".validate": "newData.hasChildren(['name', 'domain']) && newData.child('name').isString() && newData.child('name').val().length <= 80 && newData.child('domain').isString() && newData.child('domain').val().length <= 64"
+        },
+        "rooms": {
+          ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ','))",
+          "$room": {
+            ".validate": "newData.hasChildren(['name']) && newData.child('name').isString() && newData.child('name').val().length <= 60"
+          }
+        },
+        "bookings": {
+          "$date": {
+            "$bid": {
+              ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ',')) && (!data.exists() || data.child('by').val() === auth.token.email.toLowerCase())",
+              ".validate": "newData.hasChildren(['roomId', 'from', 'to', 'by', 'at']) && newData.child('roomId').isString() && newData.child('from').isNumber() && newData.child('to').isNumber() && newData.child('to').val() > newData.child('from').val() && newData.child('by').val() === auth.token.email.toLowerCase() && newData.child('at').isNumber() && (!newData.hasChild('title') || newData.child('title').val().length <= 200)"
+            }
+          }
+        }
+      }
+    },
+    "orgByDomain": {
+      "$domain": {
+        ".read": "auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + $domain)",
+        ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + $domain) && !data.exists()",
+        ".validate": "newData.isString() && newData.val().length <= 64"
+      }
+    },
     "userProfiles": {
       "$uid": {
         ".read": "auth != null",

@@ -1090,22 +1090,22 @@ function MilestoneRow({
             still means "make a task here", which is what that gesture means on
             every other row. */}
         {dueCol !== null && (
-          <div
+          /*
+            운영체제 기본 툴팁(`title`)을 안 씁니다.
+
+            웹뷰에서 그게 엉뚱한 자리에 그려집니다 — 화면 왼쪽 위, 뷰 탭 위에
+            검은 상자가 하나 떠 있던 것이 이것이었습니다. 위치를 우리가 정할
+            수 없는 것은 우리가 정할 수 있는 것으로 바꿉니다. 마일스톤 이름
+            라벨과 같은 모양이라 새로 배울 것도 없습니다.
+          */
+          <DateHandle
+            left={dueCol * dayW + Math.floor(dayW / 2) - 9}
+            accent={accent}
+            dim={isDone}
+            dragging={dragging}
+            hint={`${milestone?.dueDate ?? ''} — 끌어서 날짜 변경`}
             onMouseDown={onDateMouseDown}
-            title={`${milestone?.dueDate} — 드래그해서 날짜 변경`}
-            style={{
-              position: 'absolute', left: dueCol * dayW + Math.floor(dayW / 2) - 9,
-              top: '50%', transform: 'translateY(-50%)',
-              width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'grab', zIndex: 3,
-            }}
-          >
-            <span style={{
-              fontSize: 13, lineHeight: 1, color: accent,
-              filter: dragging ? `drop-shadow(0 0 5px ${accent})` : 'none',
-              opacity: isDone ? .55 : 1,
-            }}>◆</span>
-          </div>
+          />
         )}
 
         {dragging && dueCol !== null && (
@@ -1413,6 +1413,51 @@ function elbow(x1: number, y1: number, x2: number, y2: number) {
 
 // ── Milestone UI helpers ─────────────────────────────────────────────────────
 
+/**
+ * 마일스톤 날짜를 끄는 ◆ 손잡이와, 그 힌트.
+ *
+ * 힌트는 손잡이 **아래**로 나옵니다. 위로 내면 날짜 머리글을 덮고, 그건 이
+ * 화면에서 제일 자주 읽는 줄입니다.
+ */
+function DateHandle({ left, accent, dim, dragging, hint, onMouseDown }: {
+  left: number
+  accent: string
+  dim: boolean
+  dragging: boolean
+  hint: string
+  onMouseDown: (e: React.MouseEvent) => void
+}) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <div
+      onMouseDown={onMouseDown}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        position: 'absolute', left, top: '50%', transform: 'translateY(-50%)',
+        width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'grab', zIndex: 3,
+      }}
+    >
+      <span style={{
+        fontSize: 13, lineHeight: 1, color: accent,
+        filter: dragging ? `drop-shadow(0 0 5px ${accent})` : 'none',
+        opacity: dim ? .55 : 1,
+      }}>◆</span>
+      {/* 끌고 있는 동안은 안 띄웁니다 — 그때는 바뀌는 날짜를 보여주는 배지가
+          따로 있고, 두 상자가 같이 떠 있으면 어느 게 지금인지 모릅니다. */}
+      {hovered && !dragging && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 3px)', left: '50%', transform: 'translateX(-50%)',
+          background: '#1e1b4b', color: '#c4b5fd', fontSize: 10.5, fontWeight: 500,
+          padding: '3px 7px', borderRadius: 5, whiteSpace: 'nowrap',
+          pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,.3)', zIndex: 20,
+        }}>{hint}</div>
+      )}
+    </div>
+  )
+}
+
 function MilestonePin({ marker, dayW, forceShow }: { marker: { id: string; name: string; col: number; done: boolean }; dayW: number; forceShow?: boolean }) {
   const [hovered, setHovered] = useState(false)
   const show = hovered || forceShow
@@ -1430,8 +1475,19 @@ function MilestonePin({ marker, dayW, forceShow }: { marker: { id: string; name:
       <svg width="10" height="6" viewBox="0 0 10 6" style={{ display: 'block', opacity: marker.done ? .5 : 1, filter: show ? `drop-shadow(0 0 4px ${MS_COLOR}aa)` : 'none', transition: 'filter .15s' }} aria-hidden>
         <path d="M0 0h10L5 6z" fill={MS_COLOR} />
       </svg>
+      {/*
+        이름은 **머리글 밖으로** 내려갑니다.
+
+        `top: 10`이었는데, 이 핀은 날짜 숫자 줄 안에 살기 때문에 10px 아래는
+        아직 그 줄입니다 — 마일스톤에 마우스를 올리면 이름이 며칠인지를 덮고
+        있었습니다. 날짜를 보려고 올린 마우스가 날짜를 지우는 셈입니다.
+
+        `100%`는 이 줄의 아래끝입니다. 줄 높이를 몰라도 늘 그 밑입니다. 거기서
+        차트 첫 줄을 조금 덮는데, 그건 잠깐 덮여도 되는 자리입니다 — 날짜
+        머리글과 달리 스크롤하면 다시 볼 수 있습니다.
+      */}
       {show && (
-        <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: '#1e1b4b', color: '#c4b5fd', fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 5, whiteSpace: 'nowrap', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,.3)', zIndex: 20 }}>
+        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: '50%', transform: 'translateX(-50%)', background: '#1e1b4b', color: '#c4b5fd', fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 5, whiteSpace: 'nowrap', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,.3)', zIndex: 20 }}>
           ◆ {marker.name}
         </div>
       )}
