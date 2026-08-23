@@ -384,7 +384,7 @@ export function DateField({ value, context, onChange, placeholder = '—', forma
   context?: DateContext
   onChange: (v: string) => void
   placeholder?: string
-  format?: 'short' | 'full'
+  format?: 'short' | 'full' | 'compact'
   style?: React.CSSProperties
 }) {
   const [open, setOpen] = useState(false)
@@ -393,6 +393,8 @@ export function DateField({ value, context, onChange, placeholder = '—', forma
   const label = value
     ? (() => {
         const d = new Date(value + 'T00:00:00')
+        // 'compact' — 26.8.23. 연도가 필요하지만 한 칸에 들어가야 하는 자리용.
+        if (format === 'compact') return `${String(d.getFullYear()).slice(2)}.${d.getMonth() + 1}.${d.getDate()}`
         return format === 'full'
           ? `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}.`
           : `${d.getMonth() + 1}/${d.getDate()}`
