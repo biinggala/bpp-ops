@@ -15,6 +15,7 @@ import { useMobile } from '../../../hooks/useMobile'
 import { getCatColor, NOTION } from '../../../types'
 import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade } from '../../../lib/utils'
 import type { Task } from '../../../types'
+import { useShallow } from 'zustand/react/shallow'
 
 type Chip = { kind: 'gcal'; ev: GCalEvent } | { kind: 'task'; t: Task }
 
@@ -40,7 +41,7 @@ const MOB_STATUS: Record<string, { bg: string; color: string }> = {
 // ── GCal connect button ───────────────────────────────────────────────────────
 
 function GCalButton() {
-  const { token, loading, autoRefreshing, wasConnected, error, calendars, enabledCalendarIds, connect, disconnect, autoReconnect, fetchCalendars, setCalendarEnabled, refreshEvents } = useGCalStore()
+  const { token, loading, autoRefreshing, wasConnected, error, calendars, enabledCalendarIds, connect, disconnect, autoReconnect, fetchCalendars, setCalendarEnabled, refreshEvents } = useGCalStore(useShallow(s => ({ token: s.token, loading: s.loading, autoRefreshing: s.autoRefreshing, wasConnected: s.wasConnected, error: s.error, calendars: s.calendars, enabledCalendarIds: s.enabledCalendarIds, connect: s.connect, disconnect: s.disconnect, autoReconnect: s.autoReconnect, fetchCalendars: s.fetchCalendars, setCalendarEnabled: s.setCalendarEnabled, refreshEvents: s.refreshEvents })))
   const [pickerOpen, setPickerOpen] = React.useState(false)
 
   // The calendar list is what makes shared team calendars reachable at all, so
@@ -236,9 +237,9 @@ function GoogleDot() {
 // ── Mobile calendar ───────────────────────────────────────────────────────────
 
 function MobileCalendar() {
-  const { openTaskModal, openTaskDetail, projectId } = useUiStore()
+  const { openTaskModal, openTaskDetail, projectId } = useUiStore(useShallow(s => ({ openTaskModal: s.openTaskModal, openTaskDetail: s.openTaskDetail, projectId: s.projectId })))
   const tasks = useFilteredTasks()
-  const { token, events: gcalEvents, ensureEvents } = useGCalStore()
+  const { token, events: gcalEvents, ensureEvents } = useGCalStore(useShallow(s => ({ token: s.token, events: s.events, ensureEvents: s.ensureEvents })))
   const todayDate = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
   const todayStr  = useMemo(() => fmt(todayDate), [todayDate])
   const [selectedDate, setSelectedDate] = useState(todayStr)
@@ -709,8 +710,8 @@ function monthGridStart(year: number, month: number) {
 }
 
 function DesktopCalendar() {
-  const { calRange, calAnchor, setCalRange, setCalAnchor } = useUiStore()
-  const { calendars, targetCalendarId, canWrite, setTargetCalendar } = useGCalStore()
+  const { calRange, calAnchor, setCalRange, setCalAnchor } = useUiStore(useShallow(s => ({ calRange: s.calRange, calAnchor: s.calAnchor, setCalRange: s.setCalRange, setCalAnchor: s.setCalAnchor })))
+  const { calendars, targetCalendarId, canWrite, setTargetCalendar } = useGCalStore(useShallow(s => ({ calendars: s.calendars, targetCalendarId: s.targetCalendarId, canWrite: s.canWrite, setTargetCalendar: s.setTargetCalendar })))
 
   const anchor = toDate(calAnchor)
   const isMonth = calRange === 'month'
@@ -918,9 +919,9 @@ function RangeSwitch({ value, onChange }: { value: CalRange; onChange: (r: CalRa
 
 function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYear: number; calMonth: number }) {
   // 날짜를 누르면 그 날짜로 채워진 새 업무 창이 열립니다 — onPlanDay 참고.
-  const { openTaskDetail, projectId, openTaskModal } = useUiStore()
+  const { openTaskDetail, projectId, openTaskModal } = useUiStore(useShallow(s => ({ openTaskDetail: s.openTaskDetail, projectId: s.projectId, openTaskModal: s.openTaskModal })))
   const tasks = useFilteredTasks()
-  const { updateTask, tasks: allTasks } = useTaskStore()
+  const { updateTask, tasks: allTasks } = useTaskStore(useShallow(s => ({ updateTask: s.updateTask, tasks: s.tasks })))
   const allMilestones = useMilestoneStore(s => s.milestones)
   const updateMilestone = useMilestoneStore(s => s.updateMilestone)
   const projects = useProjectStore(s => s.projects)
@@ -928,7 +929,7 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
     const ids = new Set(projects.map(p => p.id))
     return allMilestones.filter(m => ids.has(m.projectId))
   }, [allMilestones, projects])
-  const { token, events: gcalEvents, ensureEvents } = useGCalStore()
+  const { token, events: gcalEvents, ensureEvents } = useGCalStore(useShallow(s => ({ token: s.token, events: s.events, ensureEvents: s.ensureEvents })))
 
   // A buffer week above and below the six on screen, so a scroll parked between
   // two weeks has something to show in the gap.

@@ -5,10 +5,11 @@ import { useAuthStore } from '../store/authStore'
 import { useProjectStore } from '../store/projectStore'
 import { assigneeAliases, parseAssignees, isAssignedTo } from '../lib/utils'
 import type { Task } from '../types'
+import { useShallow } from 'zustand/react/shallow'
 
 export function useFilteredTasks(): Task[] {
   const tasks = useTaskStore(s => s.tasks)
-  const { space, projectId, myTasksOnly, personalOnly, hideCompleted, filters } = useUiStore()
+  const { space, projectId, myTasksOnly, personalOnly, hideCompleted, filters } = useUiStore(useShallow(s => ({ space: s.space, projectId: s.projectId, myTasksOnly: s.myTasksOnly, personalOnly: s.personalOnly, hideCompleted: s.hideCompleted, filters: s.filters })))
   const memberKey = useAuthStore(s => s.memberKey)
   const email = useAuthStore(s => s.email)
   const projects = useProjectStore(s => s.projects)

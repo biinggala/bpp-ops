@@ -21,6 +21,7 @@ import { useNoticeToast } from './NoticeToast'
 import { MEMBERS } from '../../types'
 import { buildInviteToken } from '../../lib/paths'
 import type { MemberKey, Project } from '../../types'
+import { useShallow } from 'zustand/react/shallow'
 
 /** The topbar's row height. The two headers' bottom rules are one line. */
 const HEADER_H = 52
@@ -76,12 +77,12 @@ function saveCollapsedGroups(next: Set<string>) {
 }
 
 export function Sidebar() {
-  const { projectId, setProject, myTasksOnly, setMyTasksOnly, personalOnly, setPersonalOnly, sidebarOpen, setSidebarOpen, screen, setScreen, openCalendar, openCommandPalette } = useUiStore()
+  const { projectId, setProject, myTasksOnly, setMyTasksOnly, personalOnly, setPersonalOnly, sidebarOpen, setSidebarOpen, screen, setScreen, openCalendar, openCommandPalette } = useUiStore(useShallow(s => ({ projectId: s.projectId, setProject: s.setProject, myTasksOnly: s.myTasksOnly, setMyTasksOnly: s.setMyTasksOnly, personalOnly: s.personalOnly, setPersonalOnly: s.setPersonalOnly, sidebarOpen: s.sidebarOpen, setSidebarOpen: s.setSidebarOpen, screen: s.screen, setScreen: s.setScreen, openCalendar: s.openCalendar, openCommandPalette: s.openCommandPalette })))
   const isMobile = useMobile()
   const tasks = useTaskStore(s => s.tasks)
-  const { projects, addProject, updateProject, deleteProject, addMember, removeMember } = useProjectStore()
+  const { projects, addProject, updateProject, deleteProject, addMember, removeMember } = useProjectStore(useShallow(s => ({ projects: s.projects, addProject: s.addProject, updateProject: s.updateProject, deleteProject: s.deleteProject, addMember: s.addMember, removeMember: s.removeMember })))
   const deleteMilestonesForProject = useMilestoneStore(s => s.deleteMilestonesForProject)
-  const { memberKey, displayName, email, photoURL, signOutUser } = useAuthStore()
+  const { memberKey, displayName, email, photoURL, signOutUser } = useAuthStore(useShallow(s => ({ memberKey: s.memberKey, displayName: s.displayName, email: s.email, photoURL: s.photoURL, signOutUser: s.signOutUser })))
 
   // Project state
   const [addingProject, setAddingProject] = useState(false)
@@ -895,6 +896,9 @@ export function Sidebar() {
               </ContextMenuItem>
               <div style={{ height: 1, background: 'var(--bd)', margin: '4px -4px' }} />
               {orgShareItem(contextMenu.id)}
+              {/* 되돌릴 수 없는 것 앞에는 한 칸 더 둡니다. 붙어 있으면 손이
+                  미끄러지는 거리가 그만큼 짧아집니다. */}
+              <div style={{ height: 1, background: 'var(--bd)', margin: '5px 6px' }} />
               <ContextMenuItem icon="trash" danger onClick={() => { setDeleteConfirm({ id: contextMenu.id, name: contextMenu.name }); setContextMenu(null) }}>
                 삭제
               </ContextMenuItem>
@@ -958,24 +962,38 @@ export function Sidebar() {
 /* ── Sub-components ── */
 
 /**
- * 오른쪽 클릭 메뉴가 설 자리.
+ * ── 오른쪽 클릭 메뉴가 설 자리 ───────────────────────────────────────────────
  *
- * 높이를 재지 않고 **항목 수로 셈합니다** — 한 줄 30px에 안팎 여백 8px.
- * 재려면 한 번 그린 다음이라야 하고, 그리고 나서 옮기면 그 한 프레임이
- * 눈에 보입니다(일정 카드에서 겪은 그것).
+ * **위로 뒤집지 않습니다.** 처음엔 아래가 모자라면 위로 열게 했는데, 그러면
+ * 메뉴의 *아래쪽*이 포인터에 붙습니다 — 맨 아래 줄이 '삭제'인 메뉴에서
+ * 그건 포인터 바로 밑에 삭제를 놓는 일입니다. 잘리지 않게 하려다 더 나쁜
+ * 것을 만든 셈입니다.
+ *
+ * 대신 **화면 안으로 밀어 넣습니다.** 그리고 밀어 넣느라 포인터가 메뉴 안에
+ * 들어가게 되면, 메뉴를 오른쪽으로 조금 비켜 세워 **포인터가 어떤 줄 위에도
+ * 놓이지 않게** 합니다. 안 움직이고 그대로 누르면 아무 줄도 안 눌립니다 —
+ * 메뉴가 닫힐 뿐입니다. 무언가를 고르려면 손을 움직여야 합니다.
+ *
+ * 화면보다 긴 메뉴는 제 안에서 스크롤합니다.
+ *
+ * 높이는 재지 않고 항목 수로 셈합니다 — 재려면 한 번 그린 다음이라야 하고,
+ * 그리고 나서 옮기면 그 한 프레임이 눈에 보입니다(일정 카드에서 겪은 그것).
  */
+const MENU_ROW_H = 32
+const MENU_W = 176
+
 function menuPlace(x: number, y: number, items: number): React.CSSProperties {
   const M = 8
-  const W = 176
-  const guess = items * 30 + 8
-  const left = Math.min(x, window.innerWidth - W - M)
-  const below = window.innerHeight - y - M
-  // 아래가 모자라면 위로 엽니다. 위도 모자라면 아래로 두되 화면 안에서
-  // 스크롤하게 둡니다 — 어느 쪽이든 잘려 나가지는 않습니다.
-  if (guess <= below) return { left, top: y, maxHeight: below }
-  const above = y - M
-  if (guess <= above) return { left, bottom: window.innerHeight - y, maxHeight: above }
-  return { left, top: M, maxHeight: window.innerHeight - M * 2 }
+  const guess = items * MENU_ROW_H + 16
+  const maxH = window.innerHeight - M * 2
+  const height = Math.min(guess, maxH)
+
+  const top = Math.max(M, Math.min(y, window.innerHeight - height - M))
+  // 밀어 넣은 만큼 포인터가 메뉴 안으로 들어왔으면 옆으로 비켜세웁니다.
+  const nudged = top < y
+  const left = Math.min(nudged ? x + 10 : x, window.innerWidth - MENU_W - M)
+
+  return { left, top, maxHeight: maxH }
 }
 
 /** 장소와 범위 사이의 한 줄. 여백만으로는 '끊겼다'가 아니라 '떨어졌다'로 읽힙니다. */

@@ -9,6 +9,7 @@ import { authorizedEmails, isAuthorizedAssignee, assigneeKeyToEmail, parseAssign
 import { haptic } from '../../lib/haptics'
 import { MEMBERS, STATUS_LIST, STATUS_COLORS } from '../../types'
 import type { MemberKey, Status } from '../../types'
+import { useShallow } from 'zustand/react/shallow'
 
 /**
  * ── Filters on a phone ───────────────────────────────────────────────────────
@@ -48,7 +49,7 @@ export function MobileFilterSheet({ onClose }: { onClose: () => void }) {
     hideCompleted, setHideCompleted,
     listGroup, setListGroup,
     view, myTasksOnly, projectId,
-  } = useUiStore()
+  } = useUiStore(useShallow(s => ({ filters: s.filters, setFilters: s.setFilters, resetFilters: s.resetFilters, hideCompleted: s.hideCompleted, setHideCompleted: s.setHideCompleted, listGroup: s.listGroup, setListGroup: s.setListGroup, view: s.view, myTasksOnly: s.myTasksOnly, projectId: s.projectId })))
   const scoped = useScopedTasks()
   const projects = useProjectStore(s => s.projects)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
@@ -290,7 +291,7 @@ function Chips({ options, selected, onPick }: {
 
 /** Whether anything is narrowing the view, for the badge on the button. */
 export function useActiveFilterCount(): number {
-  const { filters, hideCompleted } = useUiStore()
+  const { filters, hideCompleted } = useUiStore(useShallow(s => ({ filters: s.filters, hideCompleted: s.hideCompleted })))
   return (
     filters.projects.length + filters.assignees.length +
     filters.statuses.length + filters.tags.length +

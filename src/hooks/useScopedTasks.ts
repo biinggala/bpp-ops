@@ -3,6 +3,7 @@ import { useUiStore } from '../store/uiStore'
 import { useAuthStore } from '../store/authStore'
 import { useAccessibleTasks } from './useAccessibleTasks'
 import { isAssignedTo } from '../lib/utils'
+import { useShallow } from 'zustand/react/shallow'
 
 /**
  * Tasks in the current scope — space, project, 내 할 일 — but with none of the
@@ -19,7 +20,7 @@ import { isAssignedTo } from '../lib/utils'
  */
 export function useScopedTasks() {
   const accessible = useAccessibleTasks()
-  const { space, projectId, myTasksOnly } = useUiStore()
+  const { space, projectId, myTasksOnly } = useUiStore(useShallow(s => ({ space: s.space, projectId: s.projectId, myTasksOnly: s.myTasksOnly })))
   const memberKey = useAuthStore(s => s.memberKey)
   const email = useAuthStore(s => s.email)
 

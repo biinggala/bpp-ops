@@ -13,6 +13,7 @@ import { Icon } from '../shared/Icon'
 import { fileKind, driveUrl, type DriveSearchResult } from '../../lib/googleDrive'
 import { openExternal } from '../../lib/desktopLinks'
 import type { TaskLink, ViewType } from '../../types'
+import { useShallow } from 'zustand/react/shallow'
 
 // 보드는 뷰 탭에서 내렸으므로 여기서도 내립니다 — 팔레트에만 남으면
 // 화면 어디에도 없는 곳으로 가는 문이 됩니다. 코드는 그대로 있습니다.
@@ -72,7 +73,7 @@ export function CommandPalette() {
     isCommandPaletteOpen, closeCommandPalette,
     openTaskModal, setView, setScreen, setSpace, setProject, setDetailTaskId, openNote,
     openCalendar,
-  } = useUiStore()
+  } = useUiStore(useShallow(s => ({ isCommandPaletteOpen: s.isCommandPaletteOpen, closeCommandPalette: s.closeCommandPalette, openTaskModal: s.openTaskModal, setView: s.setView, setScreen: s.setScreen, setSpace: s.setSpace, setProject: s.setProject, setDetailTaskId: s.setDetailTaskId, openNote: s.openNote, openCalendar: s.openCalendar })))
   const tasks = useTaskStore(s => s.tasks)
   const spaces = useSpaceStore(s => s.spaces)
   const projects = useProjectStore(s => s.projects)

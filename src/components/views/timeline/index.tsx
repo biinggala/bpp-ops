@@ -18,6 +18,7 @@ import { addDays, toDate, fmtYMD, isComposing } from '../../../lib/utils'
 import { openExternal } from '../../../lib/desktopLinks'
 import { splitAgenda, joinAgenda } from '../../../lib/googleCalendar'
 import type { GCalEvent } from '../../../store/gcalStore'
+import { useShallow } from 'zustand/react/shallow'
 
 /**
  * Day and week timeline.
@@ -116,7 +117,7 @@ interface Draft {
  * 들어오는 이유이기도 합니다.
  */
 export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[]; lead?: number; bare?: boolean }) {
-  const { token, events, calendars, createEvent, updateEvent, removeEvent, ensureEvents, respond } = useGCalStore()
+  const { token, events, calendars, createEvent, updateEvent, removeEvent, ensureEvents, respond } = useGCalStore(useShallow(s => ({ token: s.token, events: s.events, calendars: s.calendars, createEvent: s.createEvent, updateEvent: s.updateEvent, removeEvent: s.removeEvent, ensureEvents: s.ensureEvents, respond: s.respond })))
   const tasks = useFilteredTasks()
   const updateTask = useTaskStore(s => s.updateTask)
   const openTaskDetail = useUiStore(s => s.openTaskDetail)

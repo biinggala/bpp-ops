@@ -12,6 +12,7 @@ import { MEMBERS, STATUS_COLORS } from '../../types'
 import type { ViewType, Status, MemberKey } from '../../types'
 import { STATUS_LIST } from '../../types'
 import { Icon } from '../shared/Icon'
+import { useShallow } from 'zustand/react/shallow'
 
 /**
  * 뷰 탭. 묶음 단위로 적습니다 — 사이의 세로선이 곧 이 묶음의 경계라,
@@ -76,7 +77,7 @@ export function ViewBar({ filtersOnly = false }: { filtersOnly?: boolean }) {
     view, setView, filters, setFilters, resetFilters,
     hideCompleted, setHideCompleted,
     listGroup, setListGroup, myTasksOnly, setMyTasksOnly, personalOnly, projectId,
-  } = useUiStore()
+  } = useUiStore(useShallow(s => ({ view: s.view, setView: s.setView, filters: s.filters, setFilters: s.setFilters, resetFilters: s.resetFilters, hideCompleted: s.hideCompleted, setHideCompleted: s.setHideCompleted, listGroup: s.listGroup, setListGroup: s.setListGroup, myTasksOnly: s.myTasksOnly, setMyTasksOnly: s.setMyTasksOnly, personalOnly: s.personalOnly, projectId: s.projectId })))
   const isMobile = useMobile()
   // Options come from the current scope, not from everything the user can see:
   // a menu that offers values which cannot appear in this view is a menu of

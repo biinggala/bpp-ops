@@ -13,6 +13,7 @@ import { DateField } from '../../shared/DatePicker'
 import { askConfirm } from '../../shared/Confirm'
 import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade, isComposing } from '../../../lib/utils'
 import type { Task, Milestone, Project } from '../../../types'
+import { useShallow } from 'zustand/react/shallow'
 
 /**
  * ── The Gantt ────────────────────────────────────────────────────────────────
@@ -90,8 +91,8 @@ type Visual =
 export function GanttView() {
   const filteredTasks = useFilteredTasks()
   const allTasks = useTaskStore(s => s.tasks)
-  const { updateTask, addTask, deleteTask } = useTaskStore()
-  const { openTaskModal, openTaskDetail, projectId, hideCompleted, setProject } = useUiStore()
+  const { updateTask, addTask, deleteTask } = useTaskStore(useShallow(s => ({ updateTask: s.updateTask, addTask: s.addTask, deleteTask: s.deleteTask })))
+  const { openTaskModal, openTaskDetail, projectId, hideCompleted, setProject } = useUiStore(useShallow(s => ({ openTaskModal: s.openTaskModal, openTaskDetail: s.openTaskDetail, projectId: s.projectId, hideCompleted: s.hideCompleted, setProject: s.setProject })))
   const allMilestones = useMilestoneStore(s => s.milestones)
   const { deleteMilestone, updateMilestone } = useMilestoneStore()
   const projects = useProjectStore(s => s.projects)

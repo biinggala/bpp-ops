@@ -33,6 +33,7 @@ import { haptic } from '../../../lib/haptics'
 import type { DateContext } from '../../shared/DatePicker'
 import type { Task, Milestone, Status, Priority, TaskLink } from '../../../types'
 import type { ListGroup } from '../../../store/uiStore'
+import { useShallow } from 'zustand/react/shallow'
 
 // ── Column config ─────────────────────────────────────────────────────────────
 
@@ -305,8 +306,8 @@ function MobileTableView() {
   const taskEvents = useTaskEvents()
   const filteredTasks = useFilteredTasks()
   const allTasks = useTaskStore(s => s.tasks)
-  const { addTask, updateTask, deleteTask } = useTaskStore()
-  const { openTaskModal: _openTaskModal, openTaskDetail, projectId, hideCompleted, listGroup, myTasksOnly } = useUiStore()
+  const { addTask, updateTask, deleteTask } = useTaskStore(useShallow(s => ({ addTask: s.addTask, updateTask: s.updateTask, deleteTask: s.deleteTask })))
+  const { openTaskModal: _openTaskModal, openTaskDetail, projectId, hideCompleted, listGroup, myTasksOnly } = useUiStore(useShallow(s => ({ openTaskModal: s.openTaskModal, openTaskDetail: s.openTaskDetail, projectId: s.projectId, hideCompleted: s.hideCompleted, listGroup: s.listGroup, myTasksOnly: s.myTasksOnly })))
   const { milestones, updateMilestone } = useMilestoneStore()
   const projects = useProjectStore(s => s.projects)
   const userEmail = useAuthStore(s => s.email)
@@ -642,8 +643,8 @@ export function TableView() {
   const filteredTasks = useFilteredTasks()
   const allTasks = useTaskStore(s => s.tasks)          // raw — only for task-tree traversal
   const accessibleTasks = useAccessibleTasks()          // for option lists (tags etc.)
-  const { addTask, deleteTask, updateTask } = useTaskStore()
-  const { openTaskDetail, projectId, space, hideCompleted, listGroup, myTasksOnly } = useUiStore()
+  const { addTask, deleteTask, updateTask } = useTaskStore(useShallow(s => ({ addTask: s.addTask, deleteTask: s.deleteTask, updateTask: s.updateTask })))
+  const { openTaskDetail, projectId, space, hideCompleted, listGroup, myTasksOnly } = useUiStore(useShallow(s => ({ openTaskDetail: s.openTaskDetail, projectId: s.projectId, space: s.space, hideCompleted: s.hideCompleted, listGroup: s.listGroup, myTasksOnly: s.myTasksOnly })))
   const { milestones, updateMilestone, deleteMilestone, addMilestone } = useMilestoneStore()
   const allProjects = useProjectStore(s => s.projects)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)

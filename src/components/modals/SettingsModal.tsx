@@ -15,6 +15,7 @@ import { LATEST } from '../../lib/whatsNew'
 import { askConfirm } from '../shared/Confirm'
 import { showTestNotice } from '../layout/NoticeToast'
 import { Icon, type IconName } from '../shared/Icon'
+import { useShallow } from 'zustand/react/shallow'
 
 /**
  * ── 설정 ─────────────────────────────────────────────────────────────────────
@@ -560,7 +561,7 @@ function ChimeRow() {
  */
 function OrgSection() {
   const email = useAuthStore(s => s.email)
-  const { orgId, name, domain, admins, ready, createOrg, setAdmin, error } = useOrgStore()
+  const { orgId, name, domain, admins, ready, createOrg, setAdmin, error } = useOrgStore(useShallow(s => ({ orgId: s.orgId, name: s.name, domain: s.domain, admins: s.admins, ready: s.ready, createOrg: s.createOrg, setAdmin: s.setAdmin, error: s.error })))
   const [orgName, setOrgName] = useState('')
   const [adminMail, setAdminMail] = useState('')
   const [busy, setBusy] = useState(false)
@@ -657,7 +658,7 @@ function OrgSection() {
  */
 function RoomsSection() {
   const email = useAuthStore(s => s.email)
-  const { name, domain, rooms, admins, addRoom, updateRoom, removeRoom, error } = useOrgStore()
+  const { name, domain, rooms, admins, addRoom, updateRoom, removeRoom, error } = useOrgStore(useShallow(s => ({ name: s.name, domain: s.domain, rooms: s.rooms, admins: s.admins, addRoom: s.addRoom, updateRoom: s.updateRoom, removeRoom: s.removeRoom, error: s.error })))
   const [roomName, setRoomName] = useState('')
   if (!email) return null
   const isAdmin = admins.includes(email.toLowerCase())
@@ -742,7 +743,7 @@ function RoomsSection() {
  */
 function OrgProjects() {
   const email = useAuthStore(s => s.email)
-  const { orgId, orgProjects, joinRequests, requestJoin, clearJoinRequest, error } = useOrgStore()
+  const { orgId, orgProjects, joinRequests, requestJoin, clearJoinRequest, error } = useOrgStore(useShallow(s => ({ orgId: s.orgId, orgProjects: s.orgProjects, joinRequests: s.joinRequests, requestJoin: s.requestJoin, clearJoinRequest: s.clearJoinRequest, error: s.error })))
   const myProjects = useProjectStore(s => s.projects)
   const addMember = useProjectStore(s => s.addMember)
   const displayName = useAuthStore(s => s.displayName)

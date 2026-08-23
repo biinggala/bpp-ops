@@ -7,9 +7,10 @@ import { MobileFilterButton } from './MobileFilterSheet'
 import { pendingUpdate, installUpdate, openInBrowser, type DesktopRelease } from '../../lib/desktopUpdate'
 import { Icon } from '../shared/Icon'
 import { Tip, CMD } from '../shared/Tip'
+import { useShallow } from 'zustand/react/shallow'
 
 export function Topbar() {
-  const { space, projectId, myTasksOnly, openTaskModal, toggleSidebar, view, screen } = useUiStore()
+  const { space, projectId, myTasksOnly, openTaskModal, toggleSidebar, view, screen } = useUiStore(useShallow(s => ({ space: s.space, projectId: s.projectId, myTasksOnly: s.myTasksOnly, openTaskModal: s.openTaskModal, toggleSidebar: s.toggleSidebar, view: s.view, screen: s.screen })))
   const sidebarHidden = useUiStore(s => s.sidebarHidden)
   const toggleSidebarHidden = useUiStore(s => s.toggleSidebarHidden)
   const projects = useProjectStore(s => s.projects)

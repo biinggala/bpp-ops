@@ -14,6 +14,7 @@ import {
   useResolvedLinks, useProjectFolderId, driveIdOf, linkFromDriveFile,
 } from '../../shared/DriveFiles'
 import { driveIdFromUrl } from '../../../lib/googleDrive'
+import { useShallow } from 'zustand/react/shallow'
 
 const FOLDER_MIME = 'application/vnd.google-apps.folder'
 
@@ -35,7 +36,7 @@ const FOLDER_MIME = 'application/vnd.google-apps.folder'
  */
 
 export function FilesView() {
-  const { projectId } = useUiStore()
+  const { projectId } = useUiStore(useShallow(s => ({ projectId: s.projectId })))
   const projects = useProjectStore(s => s.projects)
   const tasks = useAccessibleTasks()
   const isMobile = useMobile()

@@ -9,12 +9,13 @@ import { fmtDate } from '../../../lib/utils'
 import { STATUS_LIST, statusAccent } from '../../../types'
 import { StatusMark } from '../../shared/StatusMark'
 import type { Task, Status } from '../../../types'
+import { useShallow } from 'zustand/react/shallow'
 
 
 export function BoardView() {
   const tasks = useFilteredTasks()
-  const { updateTask, deleteTask } = useTaskStore()
-  const { openTaskDetail, openTaskModal, filters } = useUiStore()
+  const { updateTask, deleteTask } = useTaskStore(useShallow(s => ({ updateTask: s.updateTask, deleteTask: s.deleteTask })))
+  const { openTaskDetail, openTaskModal, filters } = useUiStore(useShallow(s => ({ openTaskDetail: s.openTaskDetail, openTaskModal: s.openTaskModal, filters: s.filters })))
 
   // The board groups by status, so a status filter is a choice of columns.
   // Rendering the unselected ones as empty shells made the filter look broken —

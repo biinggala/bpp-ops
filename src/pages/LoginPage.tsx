@@ -1,7 +1,8 @@
 import { useAuthStore } from '../store/authStore'
+import { useShallow } from 'zustand/react/shallow'
 
 export function LoginPage() {
-  const { signIn, error } = useAuthStore()
+  const { signIn, error } = useAuthStore(useShallow(s => ({ signIn: s.signIn, error: s.error })))
   const hasPendingInvite = !!sessionStorage.getItem('pending_invite')
 
   return (

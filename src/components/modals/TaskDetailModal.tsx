@@ -32,6 +32,7 @@ import { ActivityList } from '../shared/ActivityList'
 import { openExternal } from '../../lib/desktopLinks'
 import type { Task, Status, Priority, TaskLink } from '../../types'
 import { isComposing } from '../../lib/utils'
+import { useShallow } from 'zustand/react/shallow'
 
 
 /* ── Shared helpers ── */
@@ -581,11 +582,11 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
 /* ── Main modal (shared, desktop + mobile) ── */
 
 export function TaskDetailModal() {
-  const { detailTaskId, closeTaskDetail } = useUiStore()
+  const { detailTaskId, closeTaskDetail } = useUiStore(useShallow(s => ({ detailTaskId: s.detailTaskId, closeTaskDetail: s.closeTaskDetail })))
   const task = useTaskStore(s => s.tasks.find(t => t.id === detailTaskId))
-  const { updateTask, deleteTask } = useTaskStore()
+  const { updateTask, deleteTask } = useTaskStore(useShallow(s => ({ updateTask: s.updateTask, deleteTask: s.deleteTask })))
   const allTasks = useTaskStore(st => st.tasks)
-  const { uid } = useAuthStore()
+  const { uid } = useAuthStore(useShallow(s => ({ uid: s.uid })))
   const { presences, setCurrentTask } = usePresenceStore()
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const allProjects = useProjectStore(s => s.projects)

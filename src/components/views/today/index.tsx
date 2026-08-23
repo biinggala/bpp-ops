@@ -21,6 +21,7 @@ import { DayTimeline } from './DayTimeline'
 import { BlockTools } from './BlockTools'
 import { LoadingChips } from '../../shared/Loading'
 import type { Task } from '../../../types'
+import { useShallow } from 'zustand/react/shallow'
 
 /**
  * ── 오늘 ─────────────────────────────────────────────────────────────────────
@@ -310,7 +311,7 @@ export function TodayView() {
 /** 오늘 아침에 눈에 들어와야 하는 순서: 지난 것, 가까운 것, 날짜 없는 것. */
 function useMine(): Task[] {
   const tasks = useTaskStore(s => s.tasks)
-  const { memberKey, email } = useAuthStore()
+  const { memberKey, email } = useAuthStore(useShallow(s => ({ memberKey: s.memberKey, email: s.email })))
   return useMemo(() => {
     const mine = tasks.filter(t => t.status !== '완료' && isAssignedTo(t.assignee, memberKey, email))
     return mine.sort((a, b) => {

@@ -27,12 +27,14 @@ import { TodayView } from '../components/views/today'
 import { TaskModal } from '../components/modals/TaskModal'
 import { TaskDetailModal } from '../components/modals/TaskDetailModal'
 import { CommandPalette } from '../components/modals/CommandPalette'
-import { EmptyState } from '../components/shared/EmptyState'
+import { EmptyState, ScopeEmpty } from '../components/shared/EmptyState'
+import { useFilteredTasks } from '../hooks/useFilteredTasks'
 import { LoadingRows } from '../components/shared/Loading'
 import { Toast } from '../components/shared/Toast'
 import { NoticeToast } from '../components/layout/NoticeToast'
 import { setNoticeReporter } from '../lib/notify'
 import { useToast } from '../components/shared/Toast'
+import { useShallow } from 'zustand/react/shallow'
 
 class TaskDetailErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -75,7 +77,7 @@ export function AppPage() {
   const openCommandPalette = useUiStore(s => s.openCommandPalette)
   const isTaskModalOpen = useUiStore(s => s.isTaskModalOpen)
   const undo = useTaskStore(s => s.undo)
-  const { uid, memberKey, displayName, email } = useAuthStore()
+  const { uid, memberKey, displayName, email } = useAuthStore(useShallow(s => ({ uid: s.uid, memberKey: s.memberKey, displayName: s.displayName, email: s.email })))
   const detailTaskId = useUiStore(s => s.detailTaskId)
   const subscribePresence = usePresenceStore(s => s.subscribe)
 
@@ -172,8 +174,23 @@ export function AppPage() {
     return () => document.removeEventListener('keydown', h)
   }, [isTaskModalOpen, openCommandPalette, undo])
 
-  // 다 오기 전에는 비어 있다고 말하지 않습니다 — 아직 안 온 것뿐입니다.
-  const isEmpty = ready && tasks.length === 0 && view !== 's' && view !== 'g'
+  /**
+   * 비어 있음에는 두 가지가 있습니다.
+   *
+   * 하나는 **이 앱에 업무가 하나도 없는 첫날**이고, 하나는 **지금 이 서랍이
+   * 빈 것**입니다('개인'에 아무것도 없는 날처럼). 전에는 앞의 것만 봤고,
+   * 뒤의 것은 아무것도 안 그렸습니다 — 필터 바만 남은 검은 판이 되어서,
+   * 업무가 없는 것인지 앱이 고장 난 것인지 구별이 안 됐습니다.
+   *
+   * 다 오기 전에는 어느 쪽도 말하지 않습니다. 아직 안 온 것뿐입니다.
+   *
+   * 간트·통계·자료는 목록이 비어도 자기 화면이 있어서 빼 둡니다. 캘린더도
+   * 달력이 그려져 있으면 고장으로 보이지 않습니다.
+   */
+  const scoped = useFilteredTasks()
+  const listy = view === 't' || view === 'b'
+  const firstDay = ready && tasks.length === 0 && view !== 's' && view !== 'g'
+  const scopeEmpty = ready && tasks.length > 0 && listy && scoped.length === 0
 
   // Notices are invisible to the person who sends them — both the ones that
   // land and the ones that do not. The toast is where both are said.
@@ -201,8 +218,10 @@ export function AppPage() {
             /* 범위 없는 캘린더. 뷰 탭의 캘린더와 같은 화면을 그리지만,
                걸린 필터가 없어서 보이는 것이 곧 내 앞의 전부입니다. */
             <CalendarView />
-          ) : isEmpty ? (
+          ) : firstDay ? (
             <EmptyState />
+          ) : scopeEmpty ? (
+            <ScopeEmpty />
           ) : (
             <>
               {view === 't' && <TableView />}

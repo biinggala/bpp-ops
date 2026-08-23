@@ -2,9 +2,10 @@ import { useEffect } from 'react'
 import { useAuthStore } from './store/authStore'
 import { LoginPage } from './pages/LoginPage'
 import { AppPage } from './pages/AppPage'
+import { useShallow } from 'zustand/react/shallow'
 
 export default function App() {
-  const { uid, loading, subscribe } = useAuthStore()
+  const { uid, loading, subscribe } = useAuthStore(useShallow(s => ({ uid: s.uid, loading: s.loading, subscribe: s.subscribe })))
 
   useEffect(() => {
     // Capture invite code from URL before it gets lost during login redirect

@@ -6,6 +6,7 @@ import { fileKind, relativeTime, driveIdFromUrl, driveUrl, type DriveFile, type 
 import { docTabUrl } from '../../lib/googleDocs'
 import { NOTION } from '../../types'
 import type { TaskLink } from '../../types'
+import { useShallow } from 'zustand/react/shallow'
 
 /**
  * ── Task materials ───────────────────────────────────────────────────────────
@@ -246,7 +247,7 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
   onPick: (f: DriveFile, tab?: { id: string; title: string }) => void
   onClose?: () => void
 }) {
-  const { wasConnected, token, needsReconnect, connect, connecting, search, error } = useDriveStore()
+  const { wasConnected, token, needsReconnect, connect, connecting, search, error } = useDriveStore(useShallow(s => ({ wasConnected: s.wasConnected, token: s.token, needsReconnect: s.needsReconnect, connect: s.connect, connecting: s.connecting, search: s.search, error: s.error })))
   const snippets = useDriveStore(s => s.snippets)
   const snippetLoading = useDriveStore(s => s.snippetLoading)
   const loadSnippets = useDriveStore(s => s.loadSnippets)
