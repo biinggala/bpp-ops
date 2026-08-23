@@ -81,7 +81,6 @@ type Drag = {
   anchorCol: number
   cascade: string[]
   /** Set when the drag is drawing a task that does not exist yet. */
-  newIn?: { milestoneId: string | null; projectId: string }
 }
 
 type Visual =
@@ -315,18 +314,10 @@ export function GanttView() {
         // task on the calendar every time somebody tapped an empty lane.
         if (!moved) return
         haptic('success')
-        if (d.newIn) {
-          const created = addTask({
-            type: '상위', name: '', cat: '', assignee: '', priority: '중간', status: '대기',
-            progress: 0, memo: '', start: dateOf(from), due: dateOf(to),
-            projectId: d.newIn.projectId,
-            ...(d.newIn.milestoneId ? { milestoneId: d.newIn.milestoneId } : null),
-            createdBy: email ?? undefined,
-          })
-          setRenaming({ id: created.id, chain: false })
-        } else {
-          updateTask(d.taskId, { start: dateOf(from), due: dateOf(to) })
-        }
+        // 빈 레인을 그으면 그 줄의 업무에 기간이 생깁니다. 없던 업무를 만드는
+        // 길이었던 가지는 마일스톤 줄에서만 쓰였고, 그 줄은 이제 아무 제스처도
+        // 광고하지 않습니다.
+        updateTask(d.taskId, { start: dateOf(from), due: dateOf(to) })
         return
       }
 
@@ -378,7 +369,7 @@ export function GanttView() {
     }
   }, [updateTask, addTask, updateMilestone, totalDays, rangeStart, email])
 
-  const laneMouseDown = (e: React.MouseEvent, opts: { taskId: string; task?: Task; newIn?: Drag['newIn'] }) => {
+  const laneMouseDown = (e: React.MouseEvent, opts: { taskId: string; task?: Task }) => {
     if (e.button !== 0) return
     const lane = e.currentTarget as HTMLElement
     const anchorCol = Math.floor((e.clientX - lane.getBoundingClientRect().left) / dayW)
@@ -386,7 +377,6 @@ export function GanttView() {
     beginDrag({
       mode: 'create', taskId: opts.taskId, lane, startX: e.clientX, anchorCol,
       origStart: opts.task?.start ?? '', origDue: opts.task?.due ?? '', cascade: [],
-      newIn: opts.newIn,
     })
   }
 
@@ -564,8 +554,21 @@ export function GanttView() {
 
         <div style={{ minWidth: leftW + timelineW, position: 'relative' }}>
 
+          {/*
+            머리글은 하나입니다.
+
+            달 띠와 날짜 띠가 각각 sticky이던 시절, 둘은 서로 다른 두 개의
+            고정 요소라 스크롤 위치가 반 픽셀에 걸릴 때마다 사이에 머리카락
+            같은 틈이 생겼습니다 — 그리로 아래 내용이 지나가는 게 보였고,
+            왼쪽 업무 열에서 특히 눈에 띄었습니다.
+
+            이제 하나가 고정되고 두 띠는 그 안에 있습니다. 남는 건 머리글과
+            본문 사이 한 줄뿐이고, 그건 요소 바깥에 그려지는 그림자로 덮습니다.
+          */}
+          <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg2)', boxShadow: '0 1px 0 var(--bd)' }}>
+
           {/* Month band */}
-          <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 10, height: MONTH_H, background: 'var(--bg2)', borderBottom: '1px solid var(--bd)' }}>
+          <div style={{ display: 'flex', height: MONTH_H, background: 'var(--bg2)', borderBottom: '1px solid var(--bd)' }}>
             <div style={{ width: leftW, flexShrink: 0, position: 'sticky', left: 0, zIndex: 11, background: 'var(--bg2)', borderRight: '1px solid var(--bd)', display: 'flex', alignItems: 'center', paddingLeft: isMobile ? 8 : 14, fontSize: 11, fontWeight: 600, color: 'var(--t3)' }}>
               업무
             </div>
@@ -579,7 +582,7 @@ export function GanttView() {
           </div>
 
           {/* Day band */}
-          <div style={{ display: 'flex', position: 'sticky', top: MONTH_H, zIndex: 10, height: DAY_H, background: 'var(--bg)', borderBottom: '2px solid var(--bd)' }}>
+          <div style={{ display: 'flex', height: DAY_H, background: 'var(--bg)', borderBottom: '2px solid var(--bd)' }}>
             <div style={{ width: leftW, flexShrink: 0, position: 'sticky', left: 0, zIndex: 11, background: 'var(--bg2)', borderRight: '1px solid var(--bd)' }} />
             <div style={{ position: 'relative', flexShrink: 0, width: timelineW }}>
               {ticks.map(t => (
@@ -602,16 +605,22 @@ export function GanttView() {
             </div>
           </div>
 
+          </div>
+
           {/* One backdrop for the whole chart: weekends, today, milestone lines.
               Drawn once here rather than once per row, which is what it used to
               cost. */}
           <Backdrop
             left={leftW} width={timelineW} height={contentH}
-            dayW={dayW} zoom={zoom} ticks={ticks} todayCol={todayCol}
+            dayW={dayW} zoom={zoom} ticks={ticks}
             // Full-height lines belong to one project's plan. Across several
             // they stack into a barcode nobody can read a date off.
             markers={projectId ? milestoneMarkers : []} hoveredMilestoneId={hoveredMilestoneId}
           />
+
+          {todayCol >= 0 && (
+            <TodayLine left={leftW} top={HEADER_H} height={contentH} x={todayCol * dayW + Math.floor(dayW / 2)} />
+          )}
 
           {/* Dependencies, tucked behind the bars they connect. */}
           {arrows.length > 0 && (
@@ -662,14 +671,8 @@ export function GanttView() {
                 timelineW={timelineW}
                 leftW={leftW}
                 dayW={dayW}
-                creating={visual?.mode === 'create' && visual.taskId === `group:${row.groupId}` ? visual : null}
                 onHoverChange={setHoveredMilestoneId}
                 onAdd={() => addInGroup(row.milestone)}
-                onLaneMouseDown={e => laneMouseDown(e, {
-                  taskId: `group:${row.groupId}`,
-                  newIn: { milestoneId: row.milestone?.id ?? null, projectId: projectFor(row.milestone) },
-                })}
-                canDragCreate={!!projectFor(row.milestone)}
                 onContextMenu={row.milestone ? (x, y) => setMsCtxMenu({ x, y, milestone: row.milestone! }) : undefined}
                 rangeStart={rangeStart}
                 dragOffset={visual?.mode === 'milestone' && visual.taskId === row.milestone?.id ? visual.offset : null}
@@ -781,10 +784,9 @@ function Toolbar({ zoom, setZoom, onToday, unplaced, markUnplaced, setMarkUnplac
 
 // ── Backdrop ─────────────────────────────────────────────────────────────────
 
-function Backdrop({ left, width, height, dayW, zoom, ticks, todayCol, markers, hoveredMilestoneId }: {
+function Backdrop({ left, width, height, dayW, zoom, ticks, markers, hoveredMilestoneId }: {
   left: number; width: number; height: number; dayW: number; zoom: Zoom
   ticks: { col: number; weekend: boolean; week: boolean }[]
-  todayCol: number
   markers: { id: string; name: string; col: number; done: boolean }[]
   hoveredMilestoneId: string | null
 }) {
@@ -806,10 +808,27 @@ function Backdrop({ left, width, height, dayW, zoom, ticks, todayCol, markers, h
           opacity: m.done ? .4 : 1,
         }} />
       ))}
-      {todayCol >= 0 && (
-        <div style={{ position: 'absolute', left: todayCol * dayW + Math.floor(dayW / 2), top: 0, bottom: 0, width: 2, background: 'var(--ac)', opacity: .45 }} />
-      )}
     </div>
+  )
+}
+
+/**
+ * 오늘.
+ *
+ * 배경이 아니라 앞면입니다. 뒤에 그리면 막대 하나가 지나갈 때마다 선이
+ * 끊기고, 정작 '오늘이 이 막대의 어디쯤인지'가 궁금한 순간에 사라집니다 —
+ * 그게 이 선이 있는 이유인데도요.
+ *
+ * 앞에 오는 대신 얇고 반투명합니다. 막대 위의 글자를 읽는 걸 방해하면
+ * 앞으로 나온 값을 못 합니다.
+ */
+function TodayLine({ left, top, height, x }: { left: number; top: number; height: number; x: number }) {
+  return (
+    <div style={{
+      position: 'absolute', left: left + x, top, height, width: 2,
+      background: 'var(--ac)', opacity: .5,
+      zIndex: 3, pointerEvents: 'none',
+    }} />
   )
 }
 
@@ -905,7 +924,7 @@ function ProjectRow({ project, expanded, onToggle, rollup, count, timelineW, lef
 
 function MilestoneRow({
   milestone, expanded, onToggle, rollup, timelineW, leftW, dayW,
-  creating, onHoverChange, onAdd, onLaneMouseDown, canDragCreate, onContextMenu, compact, depth,
+  onHoverChange, onAdd, onContextMenu, compact, depth,
   rangeStart, dragOffset, onDateMouseDown, onDateChange,
 }: {
   compact: boolean
@@ -923,11 +942,8 @@ function MilestoneRow({
   timelineW: number
   leftW: number
   dayW: number
-  creating: { from: number; to: number } | null
   onHoverChange: (id: string | null) => void
   onAdd: () => void
-  onLaneMouseDown: (e: React.MouseEvent) => void
-  canDragCreate: boolean
   onContextMenu?: (x: number, y: number) => void
 }) {
   const [hovered, setHovered] = useState(false)
@@ -1036,11 +1052,20 @@ function MilestoneRow({
         </button>
       </div>
 
-      {/* Lane — dragging here draws a new task straight into this milestone. */}
+      {/*
+        Lane.
+
+        십자 커서가 없습니다. 마일스톤 줄에서 십자는 '여기 그으면 마일스톤이
+        생긴다'로 읽히는데, 마일스톤은 그렇게 만들어지지 않습니다. 그은 결과가
+        업무였고, 아무것도 안 생긴 것처럼 보이는 경우도 있었습니다.
+
+        업무를 넣는 길은 두 개 다 남아 있고 둘 다 자기 이름을 말합니다: 왼쪽
+        이름 칸의 '+ 업무'와, 우클릭 메뉴. 이 줄에 없는 건 거짓말하는 커서뿐
+        입니다.
+      */}
       <div
         data-lane
-        onMouseDown={canDragCreate ? onLaneMouseDown : undefined}
-        style={{ width: timelineW, flexShrink: 0, position: 'relative', height: GROUP_H, cursor: canDragCreate ? 'crosshair' : 'default' }}
+        style={{ width: timelineW, flexShrink: 0, position: 'relative', height: GROUP_H }}
       >
         {rollup && (
           <div style={{
@@ -1086,7 +1111,6 @@ function MilestoneRow({
           </div>
         )}
 
-        {creating && <DraftBar from={creating.from} to={creating.to} dayW={dayW} accent={accent} label="새 업무" />}
       </div>
     </div>
   )
@@ -1389,11 +1413,17 @@ function MilestonePin({ marker, dayW, forceShow }: { marker: { id: string; name:
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{ position: 'absolute', left: left - 7, top: 2, zIndex: 3, cursor: 'default' }}
+      /* 숫자 위가 아니라 띠의 윗변에 겁니다. ◆는 이 칸 한가운데에 놓이는데
+         날짜도 한가운데 있어서, 마일스톤이 있는 날은 며칠인지 읽을 수가
+         없었습니다. 아래를 가리키는 작은 삼각형이면 같은 열을 가리키면서
+         숫자를 건드리지 않습니다. */
+      style={{ position: 'absolute', left: left - 5, top: 0, zIndex: 3, cursor: 'default' }}
     >
-      <span style={{ fontSize: 12, color: MS_COLOR, lineHeight: 1, display: 'block', opacity: marker.done ? .5 : 1, filter: show ? `drop-shadow(0 0 4px ${MS_COLOR}aa)` : 'none', transition: 'filter .15s' }}>◆</span>
+      <svg width="10" height="6" viewBox="0 0 10 6" style={{ display: 'block', opacity: marker.done ? .5 : 1, filter: show ? `drop-shadow(0 0 4px ${MS_COLOR}aa)` : 'none', transition: 'filter .15s' }} aria-hidden>
+        <path d="M0 0h10L5 6z" fill={MS_COLOR} />
+      </svg>
       {show && (
-        <div style={{ position: 'absolute', top: 18, left: '50%', transform: 'translateX(-50%)', background: '#1e1b4b', color: '#c4b5fd', fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 5, whiteSpace: 'nowrap', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,.3)', zIndex: 20 }}>
+        <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: '#1e1b4b', color: '#c4b5fd', fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 5, whiteSpace: 'nowrap', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,.3)', zIndex: 20 }}>
           ◆ {marker.name}
         </div>
       )}
