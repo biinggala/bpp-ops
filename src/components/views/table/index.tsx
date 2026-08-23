@@ -1821,7 +1821,7 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
           onClose={() => setMenu(null)}
           actions={[
             {
-              label: '마일스톤 삭제', icon: '✕', danger: true,
+              label: '마일스톤 삭제', icon: 'trash' as const, danger: true,
               onSelect: async () => {
                 if (await askConfirm({ message: `"${milestone.name}" 마일스톤을 삭제할까요?` })) onDelete()
               },

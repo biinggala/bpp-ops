@@ -57,6 +57,11 @@
   --sb-bd2:    rgba(55,53,47,.16);
   --sb-field:  rgba(55,53,47,.045);
 
+  /* The phone's bottom bar. Translucent so the list scrolling under it stays
+     visible — which means it cannot be `--bg` with an alpha bolted on at the
+     call site, or it goes white in the dark. */
+  --bar-bg: rgba(252,252,251,.88);
+
   /* Notion's tag palette. Named here rather than in types.ts so a tag, a
      status pill and a milestone diamond all change together with the theme. */
   --n-gray-bg:   #EBECED;  --n-gray-tx:   #787774;
@@ -116,6 +121,8 @@
   --sb-bd:     rgba(255,255,255,.094);
   --sb-bd2:    rgba(255,255,255,.16);
   --sb-field:  rgba(255,255,255,.055);
+
+  --bar-bg: rgba(25,25,25,.88);
 
   --n-gray-bg:   #2F2F2F;  --n-gray-tx:   #9B9B9B;
   --n-brown-bg:  #4A3228;  --n-brown-tx:  #BA856F;

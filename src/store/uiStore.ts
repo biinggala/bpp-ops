@@ -92,7 +92,10 @@ export const useUiStore = create<UiState>((set, get) => ({
   listGroup: loadListGroup(),
   space: null,
   projectId: null,
-  myTasksOnly: false,
+  // The day starts with what is mine. Opening on 전체 업무 meant everybody's
+  // first sight of the app was fifty people's work, and the first click of every
+  // morning was the same one.
+  myTasksOnly: true,
   hideCompleted: false,
   filters: { ...defaultFilters },
   detailTaskId: null,
