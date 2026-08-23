@@ -53,6 +53,15 @@ export const P = {
    * 아무도 거기에 그런 걸 안 씁니다. 규칙도 본인만 읽고 씁니다.
    */
   dailyNote:        (email: string, date: string) => `dailyNotes/${emailKey(email)}/${date}`,
+  /**
+   * 드라이브를 어디까지 봤는지.
+   *
+   * 페이지 토큰 하나와, 파일마다 마지막으로 알린 시각. 기기가 아니라 사람에게
+   * 붙어 있어야 합니다 — 노트북에서 본 변경을 폰에서 다시 알리면 같은 일이
+   * 두 번 일어난 것처럼 보입니다.
+   */
+  driveWatch:       (email: string) => `driveWatch/${emailKey(email)}`,
+
   /** Where a device's push subscription lives, so the server can reach it. */
   pushSubs:         (uid: string) => `pushSubs/${uid}`,
   pushSub:          (uid: string, id: string) => `pushSubs/${uid}/${id}`,

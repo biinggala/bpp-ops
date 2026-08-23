@@ -404,8 +404,16 @@ input, select, textarea, button {
 .bpp-snippet-loading { animation: bpp-pulse 1.4s ease-in-out infinite }
 .bpp-snippet         { animation: bpp-fade-in .18s ease-out }
 
+/* 아직 안 온 줄. 빈 목록과 헷갈리면 안 되므로 회색 막대가 자리를 잡고
+   숨을 쉽니다 — 여기 뭔가 들어올 것이라는 말입니다. */
+.bpp-skel {
+  background: var(--bd);
+  border-radius: 4px;
+  animation: bpp-pulse 1.3s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .bpp-snippet-loading, .bpp-snippet { animation: none }
+  .bpp-snippet-loading, .bpp-snippet, .bpp-skel { animation: none }
 }
 
 /* iOS Safari zooms the whole page in when a field smaller than 16px takes

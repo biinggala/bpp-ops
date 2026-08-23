@@ -5,6 +5,8 @@ import { useMobile } from '../../hooks/useMobile'
 import { useAuthStore } from '../../store/authStore'
 import { disablePush, enablePush, pushEnabledHere, pushSupport, showLocalNotice } from '../../lib/push'
 import { chimeEnabled, playChime, setChimeEnabled } from '../../lib/chime'
+import { fileWatchEnabled, setFileWatchEnabled } from '../../lib/driveWatch'
+import { useDriveStore } from '../../store/driveStore'
 import { showTestNotice } from '../layout/NoticeToast'
 import { Icon, type IconName } from '../shared/Icon'
 
@@ -73,6 +75,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         <Section title="알림" note="켜 두는 것이 기본입니다. 기기마다 따로 정합니다 — 노트북에서 켠다고 폰이 켜지지는 않습니다.">
           <PushRow />
           <ChimeRow />
+          <FileWatchRow />
         </Section>
 
         <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 18, paddingTop: 12, borderTop: '1px solid var(--bd)', userSelect: 'text' }}>
@@ -248,6 +251,35 @@ function PushRow() {
       </span>
       {test}
       <MiniSwitch on={on} busy={busy} onClick={() => void toggle()} />
+    </div>
+  )
+}
+
+/**
+ * ── 첨부 파일이 바뀌었을 때 ─────────────────────────────────────────────────
+ *
+ * 드라이브가 연결돼 있을 때만 도는 것이라, 여기 스위치는 '한 번 더' 끄는
+ * 자리입니다. 온종일 같이 고치는 문서 하나가 붙어 있으면 이 알림만 계속
+ * 올라올 수 있고, 그때 끌 데가 있어야 합니다.
+ *
+ * 문구가 '이 기기에서 확인합니다'인 이유: 알림은 사람에게 남습니다. 폰에서
+ * 꺼도 노트북이 켜져 있으면 알림은 옵니다 — 끄는 건 이 기기가 확인하는
+ * 일이지 알림을 안 받는 게 아닙니다. 그걸 안 쓰면 거짓말이 됩니다.
+ */
+function FileWatchRow() {
+  const [on, setOn] = useState(fileWatchEnabled())
+  const connected = useDriveStore(s => !!s.token || s.wasConnected)
+  return (
+    <div style={ROW}>
+      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+        첨부 파일 변경 알림
+        <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
+          {connected
+            ? '내 업무에 붙인 드라이브 파일을 이 기기에서 확인합니다'
+            : '드라이브를 연동해야 확인할 수 있습니다'}
+        </span>
+      </span>
+      <MiniSwitch on={on && connected} onClick={() => { const next = !on; setFileWatchEnabled(next); setOn(next) }} />
     </div>
   )
 }

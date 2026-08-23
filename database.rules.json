@@ -73,6 +73,20 @@
         }
       }
     },
+    "driveWatch": {
+      "$mail": {
+        ".read": "auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $mail",
+        ".write": "auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $mail",
+        "token": {
+          ".validate": "newData.isString() && newData.val().length <= 400"
+        },
+        "seen": {
+          "$fid": {
+            ".validate": "newData.isNumber()"
+          }
+        }
+      }
+    },
     "pushSubs": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",

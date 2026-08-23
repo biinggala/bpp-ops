@@ -25,6 +25,7 @@ import { TaskModal } from '../components/modals/TaskModal'
 import { TaskDetailModal } from '../components/modals/TaskDetailModal'
 import { CommandPalette } from '../components/modals/CommandPalette'
 import { EmptyState } from '../components/shared/EmptyState'
+import { LoadingRows } from '../components/shared/Loading'
 import { Toast } from '../components/shared/Toast'
 import { NoticeToast } from '../components/layout/NoticeToast'
 import { setNoticeReporter } from '../lib/notify'
@@ -54,6 +55,7 @@ export function AppPage() {
   const screen = useUiStore(s => s.screen)
   const tasks = useTaskStore(s => s.tasks)
   const subscribeWorkspace = useSyncStore(s => s.subscribe)
+  const ready = useSyncStore(s => s.ready)
   const joinProject = useProjectStore(s => s.joinProject)
   const invites = useProjectStore(s => s.invites)
   const projects = useProjectStore(s => s.projects)
@@ -136,7 +138,8 @@ export function AppPage() {
     return () => document.removeEventListener('keydown', h)
   }, [isTaskModalOpen, openCommandPalette, undo])
 
-  const isEmpty = tasks.length === 0 && view !== 's' && view !== 'g'
+  // 다 오기 전에는 비어 있다고 말하지 않습니다 — 아직 안 온 것뿐입니다.
+  const isEmpty = ready && tasks.length === 0 && view !== 's' && view !== 'g'
 
   // Notices are invisible to the person who sends them — both the ones that
   // land and the ones that do not. The toast is where both are said.
@@ -155,6 +158,8 @@ export function AppPage() {
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
           {screen === 'today' ? (
             <TodayView />
+          ) : !ready ? (
+            <LoadingRows />
           ) : isEmpty ? (
             <EmptyState />
           ) : (

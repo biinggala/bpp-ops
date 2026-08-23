@@ -15,7 +15,7 @@
 export type IconName =
   | 'pencil' | 'users' | 'layers' | 'archive' | 'unarchive' | 'trash'
   | 'exit' | 'settings' | 'plus' | 'external' | 'unlink' | 'sun' | 'moon' | 'monitor'
-  | 'inbox' | 'home' | 'today'
+  | 'inbox' | 'home' | 'today' | 'file'
 
 /** The ones a single path can say. */
 const PATHS: Partial<Record<IconName, string>> = {
@@ -26,6 +26,8 @@ const PATHS: Partial<Record<IconName, string>> = {
   unlink: 'm9.2 14.8-2.4 2.4a3.4 3.4 0 0 1-4.8-4.8l2.4-2.4M14.8 9.2l2.4-2.4a3.4 3.4 0 0 1 4.8 4.8l-2.4 2.4M4.4 4.4l15.2 15.2',
   exit: 'M9.6 19.2H6a1.8 1.8 0 0 1-1.8-1.8V6.6A1.8 1.8 0 0 1 6 4.8h3.6M14.6 15.8 18.4 12l-3.8-3.8M18.4 12H9.2',
   moon: 'M20 13.4A8 8 0 0 1 10.6 4a8.2 8.2 0 1 0 9.4 9.4z',
+  // 밖에서 온 줄이라는 표시. 안에서 일어난 일과 한눈에 갈라져야 합니다.
+  file: 'M13.4 3.6H7.2a1.8 1.8 0 0 0-1.8 1.8v13.2a1.8 1.8 0 0 0 1.8 1.8h9.6a1.8 1.8 0 0 0 1.8-1.8V8.4zM13.4 3.6v4.8h5.2',
 }
 
 export function Icon({ name, size = 15, strokeWidth = 1.7 }: {

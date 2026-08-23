@@ -5,8 +5,11 @@ import { useUiStore } from '../../store/uiStore'
 import { useProjectStore } from '../../store/projectStore'
 import { NOTICE_LABEL as LABEL, NOTICE_TONE as TONE, type Notice } from '../../lib/notify'
 import { StatusMark } from '../shared/StatusMark'
+import { Icon } from '../shared/Icon'
 import { statusAccent } from '../../types'
 import { useNoticeToast } from './NoticeToast'
+import { useSyncStore } from '../../store/syncStore'
+import { pollDriveChanges, POLL_MS } from '../../lib/driveWatch'
 
 /**
  * ── 알림 ─────────────────────────────────────────────────────────────────────
@@ -50,11 +53,29 @@ export function useNoticeInbox() {
   const notices = useNoticeStore(s => s.notices)
   const unread = useNoticeStore(s => s.unread)
   const subscribe = useNoticeStore(s => s.subscribe)
+  const ready = useSyncStore(s => s.ready)
 
   useEffect(() => {
     if (!email) return
     return subscribe(email)
   }, [email, subscribe])
+
+  /**
+   * 밖에서 온 것 — 지금은 드라이브 하나입니다.
+   *
+   * 업무가 다 도착한 뒤에 시작합니다. 그 전에 물어보면 '붙여 둔 파일이
+   * 없다'고 대답하게 되고, 그건 아직 안 온 것뿐입니다.
+   *
+   * 구독이 아니라 몇 분에 한 번 묻는 방식입니다. 드라이브에는 우리가
+   * 받을 수 있는 실시간 통로가 없고, 파일 수정은 초 단위로 급하지도
+   * 않습니다.
+   */
+  useEffect(() => {
+    if (!email || !ready) return
+    void pollDriveChanges()
+    const timer = window.setInterval(() => { void pollDriveChanges() }, POLL_MS)
+    return () => clearInterval(timer)
+  }, [email, ready])
 
   // The unread count belongs on the app's icon too — iOS and macOS both draw it,
   // and on a phone that badge is the only part of this anybody sees at a glance.
@@ -134,7 +155,13 @@ export function NoticeList({ onClose }: { onClose: () => void }) {
                 onMouseEnter={e => e.currentTarget.style.background = 'var(--sb-hover)'}
                 onMouseLeave={e => e.currentTarget.style.background = rest}
               >
-                {n.status ? (
+                {n.kind === 'file_changed' || n.kind === 'file_removed' ? (
+                  // 밖에서 온 줄. 색만으로는 '안에서 누가 뭘 했다'는 다른
+                  // 줄들과 안 갈라집니다 — 어디서 온 소식인지가 먼저입니다.
+                  <span style={{ color: TONE[n.kind], flexShrink: 0, marginTop: 1, display: 'flex' }}>
+                    <Icon name="file" size={12} />
+                  </span>
+                ) : n.status ? (
                   // The state it moved to, drawn the way the list draws it — so
                   // the row says '검토중' without spending a word on it.
                   <span style={{ color: statusAccent(n.status), flexShrink: 0, marginTop: 2, display: 'flex' }}>

@@ -35,6 +35,8 @@ export type NoticeKind =
   | 'subtask'       // 내 업무 아래 하위 업무가 생김
   | 'due_soon'      // 아침 브리핑이 남기는 것 (서버가 씀)
   | 'overdue'
+  | 'file_changed'  // 내 업무에 붙여 둔 드라이브 파일을 남이 고침
+  | 'file_removed'  // 그 파일이 사라짐 (휴지통 / 공유 해제)
 
 export interface Notice {
   id: string
@@ -99,6 +101,8 @@ export const NOTICE_LABEL: Record<NoticeKind, string> = {
   subtask:        '하위 업무 추가',
   due_soon:       '마감 임박',
   overdue:        '마감 지남',
+  file_changed:   '첨부 파일 수정',
+  file_removed:   '첨부 파일 없어짐',
 }
 
 /** Colour carries the kind at a glance; the dot is the only colour in the row. */
@@ -110,6 +114,8 @@ export const NOTICE_TONE: Record<NoticeKind, string> = {
   subtask:        '#9065B0',
   due_soon:       '#D9730D',
   overdue:        'var(--danger)',
+  file_changed:   '#0F9D58',
+  file_removed:   'var(--danger)',
 }
 
 /** How each kind reads as a notification title. The body is the task's name. */
@@ -121,6 +127,8 @@ export const NOTICE_HEADLINE: Record<NoticeKind, string> = {
   subtask:     '하위 업무가 추가됐습니다',
   due_soon:    '마감이 다가옵니다',
   overdue:     '마감이 지났습니다',
+  file_changed: '첨부 파일이 수정됐습니다',
+  file_removed: '첨부 파일이 없어졌습니다',
 }
 
 /**
