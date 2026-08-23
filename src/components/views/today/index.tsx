@@ -165,7 +165,7 @@ export function TodayView() {
    * 한 뼘으로 줄어듭니다. 하루가 어떻게 생겼는지 보려다 적을 곳을 잃는 건
    * 거꾸로입니다 — 창이 좁아지면 이쪽이 먼저 비켜섭니다.
    */
-  const roomy = !useMobile(1240)
+  const roomy = !useMobile(1320)
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', minHeight: 0, overflow: 'hidden' }}>

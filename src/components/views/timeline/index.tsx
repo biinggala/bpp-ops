@@ -101,7 +101,19 @@ interface Draft {
  * strip below reads, so the three of them travel as one without React having to
  * redraw a single column.
  */
-export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number }) {
+/**
+ * `bare`는 오늘 화면의 좁은 칸에 이 격자를 그대로 끼울 때 씁니다.
+ *
+ * 두 가지를 뺍니다. **날짜 머리줄** — 하루짜리라 옆 노트가 이미 그 날짜를
+ * 말하고 있고, 그 줄을 누르면 업무를 만들게 되어 있는데 오늘 화면에서
+ * 업무를 만드는 곳은 우측 상단 버튼 하나입니다. 그리고 **마감 업무 칩** —
+ * 그건 노트와 가져올 것이 하는 말이라, 같은 화면에서 세 번 하면 셋 다
+ * 흘려보게 됩니다.
+ *
+ * 시간 격자 자체는 그대로입니다. 끌어서 회의를 만드는 동작이 이 칸에
+ * 들어오는 이유이기도 합니다.
+ */
+export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[]; lead?: number; bare?: boolean }) {
   const { token, events, calendars, createEvent, updateEvent, removeEvent, ensureEvents, respond } = useGCalStore()
   const tasks = useFilteredTasks()
   const updateTask = useTaskStore(s => s.updateTask)
@@ -447,6 +459,7 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* Day headers stay put while the hours scroll. */}
+      {!bare && (
       <div style={{ display: 'flex', borderBottom: '1px solid var(--bd)', flexShrink: 0 }}>
         <div style={{ width: GUTTER, flexShrink: 0 }} />
         <Track lead={lead} count={days.length}>
@@ -488,6 +501,7 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
         </Track>
         <div style={{ width: rail, flexShrink: 0 }} />
       </div>
+      )}
 
       {/* All-day strip: things pinned to the day rather than to a time. */}
       <div style={{
@@ -520,7 +534,7 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
                 {ev.summary}
               </a>
             ))}
-            {(tasksByDate.get(date) ?? []).map(task => (
+            {!bare && (tasksByDate.get(date) ?? []).map(task => (
               <DueTask
                 key={task.id}
                 task={task}
@@ -529,7 +543,7 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
                 onOpen={() => openTaskDetail(task.id)}
               />
             ))}
-            {!(allDayByDate.get(date)?.length || tasksByDate.get(date)?.length) && (
+            {!(allDayByDate.get(date)?.length || (!bare && tasksByDate.get(date)?.length)) && (
               <div style={{ height: 16 }} />
             )}
           </div>

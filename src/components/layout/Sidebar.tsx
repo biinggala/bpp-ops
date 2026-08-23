@@ -696,7 +696,7 @@ export function Sidebar() {
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                         <input
                           ref={projectEditRef}
-                          style={{ flex: 1, background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r1)', padding: '2px 6px', fontSize: 14, fontWeight: 500, color: 'var(--sb-t1)', outline: 'none' }}
+                          style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r1)', padding: '2px 6px', fontSize: 14, fontWeight: 500, color: 'var(--sb-t1)', outline: 'none' }}
                           value={editProjectName}
                           onChange={e => setEditProjectName(e.target.value)}
                           onBlur={() => handleRenameProject(p.id)}
@@ -744,7 +744,10 @@ export function Sidebar() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px 4px 14px', margin: '1px 0' }}>
               <input
                 ref={projectNameRef}
-                style={{ flex: 1, background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r1)', padding: '3px 7px', fontSize: 14, fontWeight: 500, color: 'var(--sb-t1)', outline: 'none' }}
+                /* minWidth: 0 이 없으면 input은 기본 size(약 20글자)만큼을 최소
+                   폭으로 우기고, flex는 그 아래로 못 줄입니다 — 사이드바가
+                   좁아도 칸 혼자 길어져서 밖으로 잘려 나갑니다. */
+                style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r1)', padding: '3px 7px', fontSize: 14, fontWeight: 500, color: 'var(--sb-t1)', outline: 'none' }}
                 placeholder="프로젝트 이름..."
                 value={newProjectName}
                 onChange={e => setNewProjectName(e.target.value)}
@@ -1108,7 +1111,7 @@ function GroupHeader({ name, count, collapsed, onToggle, onRename, onDropProject
             if (e.key === 'Enter') { e.preventDefault(); commit() }
             if (e.key === 'Escape') { setDraft(name); setEditing(false) }
           }}
-          style={{ flex: 1, minWidth: 0, background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r1)', padding: '1px 5px', fontSize: 12, fontWeight: 600, color: 'var(--sb-t1)', outline: 'none' }}
+          style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r1)', padding: '1px 5px', fontSize: 12, fontWeight: 600, color: 'var(--sb-t1)', outline: 'none' }}
         />
       ) : (
         <span style={{
