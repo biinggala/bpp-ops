@@ -22,6 +22,28 @@ import type { MemberKey, Project } from '../../types'
 /** The topbar's row height. The two headers' bottom rules are one line. */
 const HEADER_H = 52
 
+/**
+ * ── 사이드바 폭 ──────────────────────────────────────────────────────────────
+ *
+ * 이 기기의 것입니다 — 순서와 같은 이유로요. 27인치에서 넓게 쓰는 사람과
+ * 13인치에서 좁게 쓰는 사람이 서로의 화면을 밀어낼 이유가 없습니다.
+ *
+ * 하한은 프로젝트 이름이 두어 글자로 잘리기 시작하는 지점, 상한은 사이드바가
+ * 본문보다 중요해 보이기 시작하는 지점입니다.
+ */
+const WIDTH_KEY = 'sidebar_width'
+const WIDTH_DEFAULT = 240
+const WIDTH_MIN = 190
+const WIDTH_MAX = 420
+
+function loadWidth(): number {
+  try {
+    const saved = Number(localStorage.getItem(WIDTH_KEY))
+    if (saved >= WIDTH_MIN && saved <= WIDTH_MAX) return saved
+  } catch { /* private mode */ }
+  return WIDTH_DEFAULT
+}
+
 const ORDER_KEY = 'sidebar_project_order'
 const GROUPS_KEY = 'sidebar_collapsed_groups'
 
@@ -78,6 +100,7 @@ export function Sidebar() {
    * 열이 통째로 바뀝니다. 노션이 홈과 인박스를 가르는 방식과 같습니다.
    */
   const [pane, setPane] = useState<'home' | 'inbox'>('home')
+  const [width, setWidth] = useState(loadWidth)
   const { unread } = useNoticeInbox()
   const todayOpen = useTodayCount()
   const profileRef = useRef<HTMLDivElement>(null)
@@ -342,7 +365,8 @@ export function Sidebar() {
         />
       )}
       <aside style={{
-        width: 240, background: 'var(--sb-bg)', display: 'flex', flexDirection: 'column', flexShrink: 0,
+        width: isMobile ? WIDTH_DEFAULT : width, background: 'var(--sb-bg)', display: 'flex', flexDirection: 'column', flexShrink: 0,
+        position: 'relative',
         borderRight: '1px solid var(--sb-bd)',
         ...(isMobile ? {
           position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 1000,
@@ -683,6 +707,8 @@ export function Sidebar() {
             </div>
           </div>
         )}
+
+      {!isMobile && <WidthHandle width={width} onChange={setWidth} />}
       </aside>
 
       {/* Right-click context menu */}
@@ -1481,5 +1507,79 @@ function PaneTab({ icon, label, active, count = 0, onClick }: {
         }}>{count > 99 ? '99+' : count}</span>
       )}
     </button>
+  )
+}
+
+/**
+ * ── 폭 손잡이 ────────────────────────────────────────────────────────────────
+ *
+ * 사이드바 오른쪽 모서리. 평소에는 안 보이고, 그 위에 가면 얇은 선 하나가
+ * 뜹니다 — 늘 보이는 손잡이는 사이드바에 없어도 되는 세로줄을 하나 더 긋는
+ * 일이고, 이 경계는 이미 테두리가 긋고 있습니다.
+ *
+ * 잡는 면은 눈에 보이는 것보다 넓습니다(6px). 1px짜리 선을 정확히 겨냥하는
+ * 건 마우스로 할 일이 아닙니다.
+ *
+ * 더블클릭하면 기본값으로 돌아옵니다. 끌어서 망친 걸 끌어서 되돌리는 건
+ * 어렵고, 되돌릴 방법이 없으면 사람들은 아예 안 건드립니다.
+ */
+function WidthHandle({ width, onChange }: { width: number; onChange: (w: number) => void }) {
+  const [active, setActive] = useState(false)
+  const [hovered, setHovered] = useState(false)
+
+  const begin = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = width
+    const el = e.currentTarget
+    el.setPointerCapture(e.pointerId)
+    setActive(true)
+    // 끄는 동안 글자가 잡히면 사이드바 절반이 파랗게 칠해집니다.
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
+
+    const move = (ev: PointerEvent) => {
+      const next = Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, startW + ev.clientX - startX))
+      onChange(next)
+    }
+    const end = (ev: PointerEvent) => {
+      el.releasePointerCapture(ev.pointerId)
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerup', end)
+      el.removeEventListener('pointercancel', end)
+      setActive(false)
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+      const final = Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, startW + ev.clientX - startX))
+      try { localStorage.setItem(WIDTH_KEY, String(Math.round(final))) } catch { /* private mode */ }
+    }
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerup', end)
+    el.addEventListener('pointercancel', end)
+  }
+
+  const reset = () => {
+    onChange(WIDTH_DEFAULT)
+    try { localStorage.setItem(WIDTH_KEY, String(WIDTH_DEFAULT)) } catch { /* private mode */ }
+  }
+
+  return (
+    <div
+      onPointerDown={begin}
+      onDoubleClick={reset}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      title="드래그해서 폭 조절 · 더블클릭하면 기본값"
+      style={{
+        position: 'absolute', top: 0, bottom: 0, right: -3, width: 6,
+        cursor: 'col-resize', zIndex: 5, touchAction: 'none',
+      }}
+    >
+      <div style={{
+        position: 'absolute', top: 0, bottom: 0, left: 2, width: 2,
+        background: active || hovered ? 'var(--ac)' : 'transparent',
+        transition: 'background .12s',
+      }} />
+    </div>
   )
 }
