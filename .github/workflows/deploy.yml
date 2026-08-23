@@ -24,8 +24,16 @@ jobs:
       - name: Build
         run: npm run build
 
+      # NOT continue-on-error. It was, and that is how a rules file with a
+      # syntax error rode along for days reporting success: `"//"` comment keys
+      # are illegal (a key may not contain `/`), the whole file was rejected,
+      # and every rule in it — notices, pushSubs — was never live. Notices were
+      # denied by the root's `.write: false` and nobody could see why.
+      #
+      # A rules deploy that fails now stops the hosting deploy below it, which
+      # is the correct order: shipping code whose rules did not land is worse
+      # than not shipping.
       - name: Deploy Firebase Database Rules
-        continue-on-error: true
         run: |
           echo "$FIREBASE_SA" > /tmp/sa.json
           npx firebase-tools@latest deploy --only database --project crng-task-manager
