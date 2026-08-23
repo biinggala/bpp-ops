@@ -57,10 +57,8 @@
     },
     "notices": {
       "$mail": {
-        "//": "Addressed by email rather than uid. A sender knows the assignee's email — it is what the task stores — and needed the project's member list to turn it into a uid, so anybody thin in that list silently received nothing. auth.token.email is what the recipient can prove, so it is the key.",
         ".read": "auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $mail",
         "$nid": {
-          "//": "Leaving a notice is what assigning work to somebody is, so anyone signed in may create one — but only ever a new one. Changing or removing it is the owner's alone: that is what 'read' and 'dismiss' mean.",
           ".write": "auth != null && (!data.exists() || (auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $mail))",
           ".validate": "newData.hasChildren(['kind', 'by', 'at']) && newData.child('kind').isString() && newData.child('by').isString() && newData.child('at').isNumber() && (!newData.hasChild('taskName') || newData.child('taskName').val().length <= 200) && (!newData.hasChild('detail') || newData.child('detail').val().length <= 200)"
         }
@@ -68,7 +66,6 @@
     },
     "pushSubs": {
       "$uid": {
-        "//": "A device's own subscription. Nobody but its owner writes it; the sender reads it with admin credentials, which the rules do not apply to.",
         ".read": "auth != null && auth.uid === $uid",
         ".write": "auth != null && auth.uid === $uid"
       }
