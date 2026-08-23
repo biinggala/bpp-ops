@@ -123,7 +123,7 @@ export function DayTimeline({ date }: { date: string }) {
             flexShrink: 0, padding: '5px 12px 7px', borderTop: '1px solid var(--bd)',
             fontSize: 10, color: 'var(--t3)', textAlign: 'center',
           }}>
-            빈 시간을 끌면 회의가 만들어집니다
+            빈 시간을 끌면 일정이 만들어집니다
           </div>
         </>
       )}
