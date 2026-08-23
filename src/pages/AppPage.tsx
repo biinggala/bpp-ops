@@ -56,6 +56,7 @@ export function AppPage() {
   const tasks = useTaskStore(s => s.tasks)
   const subscribeWorkspace = useSyncStore(s => s.subscribe)
   const ready = useSyncStore(s => s.ready)
+  const sidebarHidden = useUiStore(s => s.sidebarHidden)
   const joinProject = useProjectStore(s => s.joinProject)
   const invites = useProjectStore(s => s.invites)
   const projects = useProjectStore(s => s.projects)
@@ -129,6 +130,19 @@ export function AppPage() {
         if (!isTaskModalOpen) openCommandPalette()
       }
 
+      /**
+       * ⌘\ — 노션과 같은 키입니다. 다른 걸 고르면 새로 외워야 합니다.
+       *
+       * `e.code`로도 봅니다. 한글 입력 상태에서 이 자리를 누르면 브라우저가
+       * 주는 글자가 `\`가 아니라 `₩`입니다 — 글자만 보면 한글로 타이핑하다
+       * 누른 사람에게는 단축키가 없는 것과 같습니다. `code`는 자판의 자리를
+       * 말하므로 입력기와 무관합니다.
+       */
+      if ((e.metaKey || e.ctrlKey) && (e.key === '\\' || e.key === '₩' || e.code === 'Backslash')) {
+        e.preventDefault()
+        useUiStore.getState().toggleSidebarHidden()
+      }
+
       if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !isEditing) {
         e.preventDefault()
         undo()
@@ -149,7 +163,8 @@ export function AppPage() {
 
   return (
     <div className="flex h-full overflow-hidden">
-      <Sidebar />
+      {/* 폰에서는 서랍이라 늘 있어야 합니다 — 없으면 열 것이 없습니다. */}
+      {(isMobile || !sidebarHidden) && <Sidebar />}
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <Topbar />
