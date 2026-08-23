@@ -9,6 +9,8 @@ import { useAuthStore } from '../../../store/authStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
 import { authorizedEmails } from '../../../lib/utils'
 import type { Task } from '../../../types'
+import type { Rsvp } from '../../../lib/googleCalendar'
+import { Icon } from '../../shared/Icon'
 import { addDays, toDate, fmtYMD, isComposing } from '../../../lib/utils'
 import type { GCalEvent } from '../../../store/gcalStore'
 
@@ -97,7 +99,7 @@ interface Draft {
  * redraw a single column.
  */
 export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number }) {
-  const { token, events, calendars, createEvent, updateEvent, removeEvent, ensureEvents } = useGCalStore()
+  const { token, events, calendars, createEvent, updateEvent, removeEvent, ensureEvents, respond } = useGCalStore()
   const tasks = useFilteredTasks()
   const updateTask = useTaskStore(s => s.updateTask)
   const openTaskDetail = useUiStore(s => s.openTaskDetail)
@@ -307,6 +309,23 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
   }, [selected, eventsByDate])
   useEffect(() => { if (selectedInfo) setSelectedTitle(selectedInfo.event.summary) }, [selectedInfo?.event.id])
 
+  /**
+   * 고른 일정에서 실제로 고친 게 있는가 — 이름이나 참석자.
+   *
+   * 참석자는 순서가 다를 수 있으니 정렬해서 비교합니다. 사람을 넣었다 빼면
+   * 목록의 순서가 바뀌는데, 그걸 '고쳤다'로 읽으면 저장 버튼이 안 사라집니다.
+   */
+  const selectedDirty = useMemo(() => {
+    if (!selectedInfo) return false
+    if (selectedTitle.trim() !== (selectedInfo.event.summary ?? '')) return true
+    const was = (selectedInfo.event.attendees ?? [])
+      .map(a => a.email)
+      .filter(email => email !== myEmail?.toLowerCase())
+      .sort()
+    const now = [...guests].sort()
+    return was.length !== now.length || was.some((email, i) => email !== now[i])
+  }, [selectedInfo, selectedTitle, guests, myEmail])
+
   const todayStr = fmtYMD(now)
   const nowMinutes = now.getHours() * 60 + now.getMinutes()
 
@@ -455,6 +474,9 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
           onDelete={async () => { await removeEvent(selectedInfo.event.id); setSelected(null) }}
           openLink={selectedInfo.event.htmlLink}
           responses={selectedInfo.event.attendees}
+          dirty={selectedDirty}
+          myResponse={selectedInfo.event.attendees?.find(a => a.self)?.responseStatus ?? undefined}
+          onRespond={r => { void respond(selectedInfo.event.id, r) }}
           onClose={() => setSelected(null)}
         />
       )}
@@ -947,7 +969,7 @@ const linkBtn: React.CSSProperties = {
  */
 function EventCard({
   at, heading, title, onTitle, saving, teammates, guests, nameOf, onToggleGuest,
-  onSave, onDelete, onClose, openLink, responses,
+  onSave, onDelete, onClose, openLink, responses, myResponse, onRespond, dirty = true,
 }: {
   at: { x: number; y: number }
   heading: string
@@ -963,6 +985,18 @@ function EventCard({
   onClose: () => void
   openLink?: string
   responses?: { email: string; responseStatus?: string }[]
+  /** 내 응답. 초대받은 일정에만 있습니다 — 내가 만든 것에는 답할 게 없습니다. */
+  myResponse?: string
+  onRespond?: (response: Rsvp) => void
+  /**
+   * 고친 게 있는가.
+   *
+   * 아무것도 안 고쳤는데 '저장'이 놓여 있으면, 그 버튼이 무엇을 저장하는지
+   * 알 수가 없습니다 — 누르면 뭔가 일어날 것 같아서 안 누르게 되고, 그 자리는
+   * 계속 신경 쓰이는 자리로 남습니다. 새 일정은 늘 저장할 게 있으므로 기본이
+   * 참입니다.
+   */
+  dirty?: boolean
 }) {
   const WIDTH = 280
   const MARGIN = 8
@@ -1015,7 +1049,13 @@ function EventCard({
           overflowY: 'auto', boxSizing: 'border-box',
         }}
       >
-        <div style={{ fontSize: 11, color: 'var(--t3)', marginBottom: 4 }}>{heading}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+          <span style={{ fontSize: 11, color: 'var(--t3)' }}>{heading}</span>
+          {/* 삭제는 여기 들어갑니다. 아래에 빨간 버튼으로 놓여 있으면 '저장'
+              옆에 나란히 앉아서, 자주 하는 일과 되돌릴 수 없는 일이 같은
+              크기로 같은 줄에 있게 됩니다. */}
+          {onDelete && <CardMenu onDelete={onDelete} />}
+        </div>
         <input
           autoFocus
           value={title}
@@ -1041,12 +1081,15 @@ function EventCard({
           onToggle={onToggleGuest} responses={responses}
         />
 
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 12 }}>
-          <button onClick={onSave} disabled={saving} style={{ ...navStyle, borderColor: 'var(--ac)', color: '#fff', background: 'var(--ac)' }}>
-            {saving ? '저장 중…' : '저장'}
-          </button>
-          {onDelete && (
-            <button onClick={onDelete} style={{ ...navStyle, borderColor: 'rgba(212,76,71,.4)', color: 'var(--danger)' }}>삭제</button>
+        {onRespond && myResponse && (
+          <RsvpRow current={myResponse} onRespond={onRespond} />
+        )}
+
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 12, minHeight: 24 }}>
+          {dirty && (
+            <button onClick={onSave} disabled={saving} style={{ ...navStyle, borderColor: 'var(--ac)', color: '#fff', background: 'var(--ac)' }}>
+              {saving ? '저장 중…' : '저장'}
+            </button>
           )}
           {openLink && (
             <a href={openLink} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--t3)' }}>
@@ -1056,6 +1099,118 @@ function EventCard({
         </div>
       </div>
     </>
+  )
+}
+
+/**
+ * 카드의 ⋯ — 지금은 삭제 하나뿐입니다.
+ *
+ * 하나짜리 메뉴가 과해 보이지만, 이 하나가 **되돌릴 수 없는 일**입니다. 자주
+ * 누르는 것과 한 번 누르면 끝인 것이 같은 줄에 같은 크기로 있으면 언젠가
+ * 잘못 누릅니다. 한 겹 뒤에 두면 그 실수가 안 일어납니다.
+ */
+function CardMenu({ onDelete }: { onDelete: () => void }) {
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const away = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    // 이 메뉴를 연 클릭이 곧바로 닫지 않도록 다음 클릭부터.
+    const t = setTimeout(() => document.addEventListener('mousedown', away), 0)
+    document.addEventListener('keydown', key)
+    return () => {
+      clearTimeout(t)
+      document.removeEventListener('mousedown', away)
+      document.removeEventListener('keydown', key)
+    }
+  }, [open])
+
+  return (
+    <div ref={box} style={{ marginLeft: 'auto', position: 'relative', flexShrink: 0 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        aria-label="더 보기"
+        style={{
+          width: 22, height: 22, borderRadius: 'var(--r1)', border: 'none', padding: 0,
+          cursor: 'pointer', fontFamily: 'var(--font)', fontSize: 13, lineHeight: 1,
+          background: open ? 'var(--bg3)' : 'transparent', color: 'var(--t3)',
+        }}
+        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+        onMouseLeave={e => (e.currentTarget.style.background = open ? 'var(--bg3)' : 'transparent')}
+      >⋯</button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 24, right: 0, minWidth: 132, zIndex: 10,
+          background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r2)',
+          boxShadow: 'var(--sh-md)', padding: 4,
+        }}>
+          <button
+            onClick={() => { setOpen(false); onDelete() }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7, width: '100%',
+              padding: '5px 8px', borderRadius: 'var(--r1)', border: 'none',
+              background: 'transparent', cursor: 'pointer', fontFamily: 'var(--font)',
+              fontSize: 12.5, color: 'var(--danger)', textAlign: 'left',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--danger-l)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            <Icon name="trash" size={13} />
+            일정 삭제
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * ── 갈 건가 ──────────────────────────────────────────────────────────────────
+ *
+ * 초대만 받아 놓은 일정은 점선으로 그려 두었는데, 그것만으로는 절반입니다 —
+ * 점선을 보고 나서 답하려면 앱을 나가 구글로 가야 했습니다. 그 화면에서 하는
+ * 일이 '오늘 뭘 할지 정하는 것'인데 정하는 버튼이 딴 데 있었던 겁니다.
+ *
+ * 세 개를 다 놓습니다. 수락만 놓으면 안 가는 회의를 거절할 데가 없어서 점선이
+ * 영원히 남고, 그러면 점선이 '아직 안 정함'이 아니라 '무시하는 것'이 됩니다.
+ *
+ * 이미 답한 뒤에도 남아 있습니다. 지금 고른 것이 눌린 채로 보이고, 마음이
+ * 바뀌면 옆의 것을 누릅니다 — 답을 바꾸려고 구글까지 갈 일은 아닙니다.
+ */
+function RsvpRow({ current, onRespond }: { current: string; onRespond: (r: Rsvp) => void }) {
+  const options: { value: Rsvp; label: string; tone: string }[] = [
+    { value: 'accepted',  label: '수락', tone: '#448361' },
+    { value: 'tentative', label: '미정', tone: '#D9730D' },
+    { value: 'declined',  label: '거절', tone: 'var(--danger)' },
+  ]
+  const undecided = current === 'needsAction'
+
+  return (
+    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--bd)' }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--t2)', marginBottom: 6 }}>
+        {undecided ? '초대받았습니다' : '내 응답'}
+      </div>
+      <div style={{ display: 'flex', gap: 5 }}>
+        {options.map(o => {
+          const on = current === o.value
+          return (
+            <button
+              key={o.value}
+              onClick={() => onRespond(o.value)}
+              style={{
+                flex: 1, padding: '4px 0', borderRadius: 'var(--r1)', cursor: 'pointer',
+                fontFamily: 'var(--font)', fontSize: 12, fontWeight: on ? 600 : 400,
+                border: `1px solid ${on ? o.tone : 'var(--bd)'}`,
+                background: on ? o.tone : 'transparent',
+                color: on ? '#fff' : 'var(--t2)',
+              }}
+            >{o.label}</button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
