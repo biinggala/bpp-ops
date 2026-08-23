@@ -7,6 +7,8 @@ import TaskItem from '@tiptap/extension-task-item'
 import Highlight from '@tiptap/extension-highlight'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
+import { MoreMenu } from '../shared/MoreMenu'
+import { askConfirm } from '../shared/Confirm'
 import { useAuthStore } from '../../store/authStore'
 import { usePresenceStore } from '../../store/presenceStore'
 import { useProjectStore } from '../../store/projectStore'
@@ -581,7 +583,8 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
 export function TaskDetailModal() {
   const { detailTaskId, closeTaskDetail } = useUiStore()
   const task = useTaskStore(s => s.tasks.find(t => t.id === detailTaskId))
-  const { updateTask } = useTaskStore()
+  const { updateTask, deleteTask } = useTaskStore()
+  const allTasks = useTaskStore(st => st.tasks)
   const { uid } = useAuthStore()
   const { presences, setCurrentTask } = usePresenceStore()
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
@@ -759,6 +762,36 @@ export function TaskDetailModal() {
               </div>
             </div>
           )}
+
+          {/*
+            ── 삭제 ──────────────────────────────────────────────────────────
+            메뉴 뒤에 두고, 누르면 무엇이 지워지는지 이름과 하위 업무 수까지
+            말한 다음 한 번 더 묻습니다. 앱의 다른 삭제(업무 우클릭, 마일스톤,
+            회의실)가 전부 이 모양이고, docs/desktop-updates.md에 규칙으로도
+            적혀 있습니다 — 파괴적인 버튼은 hover에 두지 않고, 메뉴 뒤에 두고,
+            필요하면 확인을 받는다.
+
+            '삭제를 두 번 누르기'는 안 씁니다. 같은 자리를 두 번 누르는 건
+            더블클릭 한 번으로 뚫리고, 무엇보다 **무엇이 지워지는지 말하지
+            않습니다.** 하위 업무 세 개가 같이 사라지는 걸 모르고 누르는
+            일이 그 방식에서는 막히지 않습니다.
+          */}
+          <MoreMenu items={[{
+            label: '업무 삭제',
+            icon: 'trash',
+            danger: true,
+            onSelect: async () => {
+              const children = allTasks.filter(t => t.parentId === task.id)
+              const ok = await askConfirm({
+                message: `"${task.name || '이름 없음'}" 업무를 삭제할까요?`,
+                detail: children.length ? `하위 업무 ${children.length}개도 함께 삭제됩니다.` : undefined,
+              })
+              if (!ok) return
+              children.forEach(c => deleteTask(c.id))
+              deleteTask(task.id)
+              close()
+            },
+          }]} />
         </div>
 
         {/* Body — one column, scrolled as a whole */}

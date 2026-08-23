@@ -11,6 +11,7 @@ import type { Task } from '../../../types'
 import type { Rsvp } from '../../../lib/googleCalendar'
 import { Icon } from '../../shared/Icon'
 import { RsvpPicker } from '../../shared/RsvpPicker'
+import { MoreMenu } from '../../shared/MoreMenu'
 import { useToast } from '../../shared/Toast'
 import { useOrgStore, clashesFor, NO_BOOKINGS, type Room, type Booking } from '../../../store/orgStore'
 import { addDays, toDate, fmtYMD, isComposing } from '../../../lib/utils'
@@ -1340,7 +1341,11 @@ function EventCard({
           {/* 삭제는 여기 들어갑니다. 아래에 빨간 버튼으로 놓여 있으면 '저장'
               옆에 나란히 앉아서, 자주 하는 일과 되돌릴 수 없는 일이 같은
               크기로 같은 줄에 있게 됩니다. */}
-          {onDelete && <CardMenu onDelete={onDelete} />}
+          {onDelete && (
+            <div style={{ marginLeft: 'auto' }}>
+              <MoreMenu items={[{ label: '일정 삭제', icon: 'trash', danger: true, onSelect: onDelete }]} />
+            </div>
+          )}
         </div>
         <input
           autoFocus
@@ -1549,83 +1554,6 @@ function RoomOption({ room, clashes, chosen, onPick }: {
         }}>{room.note}</span>
       )}
     </button>
-  )
-}
-
-/**
- * 카드의 ⋯ — 지금은 삭제 하나뿐입니다.
- *
- * 하나짜리 메뉴가 과해 보이지만, 이 하나가 **되돌릴 수 없는 일**입니다. 자주
- * 누르는 것과 한 번 누르면 끝인 것이 같은 줄에 같은 크기로 있으면 언젠가
- * 잘못 누릅니다. 한 겹 뒤에 두면 그 실수가 안 일어납니다.
- */
-function CardMenu({ onDelete }: { onDelete: () => void }) {
-  const [open, setOpen] = useState(false)
-  const box = useRef<HTMLDivElement>(null)
-
-  /**
-   * 바깥을 누르면 닫힙니다 — **잡는 단계(capture)로** 듣습니다.
-   *
-   * 처음엔 평범하게 document에 걸었는데 안 닫혔습니다. 카드가 자기
-   * mousedown에 stopPropagation을 걸고 있기 때문입니다 — 카드 안을 눌렀을
-   * 때 뒤의 덮개가 카드를 닫아 버리지 않게 하려고요. 그 덕에 카드 안에서
-   * 일어난 mousedown은 document까지 못 올라오고, document에 걸어 둔 귀는
-   * 아무것도 못 듣습니다. 이벤트가 안 온 게 아니라 막힌 것인데, 코드에서는
-   * 둘이 똑같아 보입니다.
-   *
-   * 잡는 단계는 document에서 대상으로 **내려가는** 길이라 아래에서 무엇을
-   * 막든 먼저 지나갑니다. 제목 칸을 눌러도, 참석자를 눌러도 닫힙니다.
-   */
-  useEffect(() => {
-    if (!open) return
-    const away = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
-    // 이 메뉴를 연 클릭이 곧바로 닫지 않도록 다음 클릭부터.
-    const t = setTimeout(() => document.addEventListener('mousedown', away, true), 0)
-    document.addEventListener('keydown', key)
-    return () => {
-      clearTimeout(t)
-      document.removeEventListener('mousedown', away, true)
-      document.removeEventListener('keydown', key)
-    }
-  }, [open])
-
-  return (
-    <div ref={box} style={{ marginLeft: 'auto', position: 'relative', flexShrink: 0 }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        aria-label="더 보기"
-        style={{
-          width: 22, height: 22, borderRadius: 'var(--r1)', border: 'none', padding: 0,
-          cursor: 'pointer', fontFamily: 'var(--font)', fontSize: 13, lineHeight: 1,
-          background: open ? 'var(--bg3)' : 'transparent', color: 'var(--t3)',
-        }}
-        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
-        onMouseLeave={e => (e.currentTarget.style.background = open ? 'var(--bg3)' : 'transparent')}
-      >⋯</button>
-      {open && (
-        <div style={{
-          position: 'absolute', top: 24, right: 0, minWidth: 132, zIndex: 10,
-          background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r2)',
-          boxShadow: 'var(--sh-md)', padding: 4,
-        }}>
-          <button
-            onClick={() => { setOpen(false); onDelete() }}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 7, width: '100%',
-              padding: '5px 8px', borderRadius: 'var(--r1)', border: 'none',
-              background: 'transparent', cursor: 'pointer', fontFamily: 'var(--font)',
-              fontSize: 12.5, color: 'var(--danger)', textAlign: 'left',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--danger-l)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-          >
-            <Icon name="trash" size={13} />
-            일정 삭제
-          </button>
-        </div>
-      )}
-    </div>
   )
 }
 
