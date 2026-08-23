@@ -467,7 +467,26 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
           onToggleGuest={email => setGuests(g => g.includes(email) ? g.filter(x => x !== email) : [...g, email])}
           onSave={async () => {
             setSaving(true)
-            await updateEvent(selectedInfo.event.id, { summary: selectedTitle.trim() || selectedInfo.event.summary, attendees: guests })
+            /**
+             * 저장할 때 **나를 다시 넣습니다.**
+             *
+             * 화면의 참석자 목록에서 나는 빼 놓습니다 — 내 응답은 아래 따로
+             * 있고, 목록에서 나를 지울 수 있으면 안 되니까요. 그런데 저장은
+             * 그 목록을 그대로 구글에 보냅니다. 그러면 참석자를 한 명
+             * 추가하려고 저장한 순간 내가 회의에서 빠집니다.
+             *
+             * 원래 참석자가 아무도 없던 일정(혼자 쓰는 시간 블록)은 그대로
+             * 둡니다. 나 하나를 참석자로 만들면 구글이 나에게 초대장을
+             * 보냅니다 — 내가 만든 내 블록에 대해서요.
+             */
+            const had = selectedInfo.event.attendees ?? []
+            const withMe = had.some(a => a.self) && myEmail
+              ? [...guests, myEmail.toLowerCase()]
+              : guests
+            await updateEvent(selectedInfo.event.id, {
+              summary: selectedTitle.trim() || selectedInfo.event.summary,
+              attendees: withMe,
+            })
             setSaving(false)
             setSelected(null)
           }}
@@ -819,6 +838,38 @@ function AttendeeList({ teammates, chosen, nameOf, onToggle, responses }: {
     (!needle || nameOf(email).toLowerCase().includes(needle) || email.toLowerCase().includes(needle)),
   )
 
+  /**
+   * 목록에 없는 주소로도 초대합니다.
+   *
+   * 회의에 부를 사람이 늘 우리 팀인 건 아닙니다 — 출연자, 외주 디자이너,
+   * 클라이언트. 구글은 어떤 주소로든 초대장을 보낼 수 있는데 우리 창만
+   * 팀원 목록으로 막고 있었습니다. 막을 이유가 없습니다: 프로젝트 접근
+   * 권한과는 아무 상관이 없고, 캘린더 초대장 한 통일 뿐입니다.
+   *
+   * 이미 목록에 있거나 팀원 후보에 있는 주소면 안 내놓습니다 — 같은 사람이
+   * 두 줄로 보이면 어느 쪽을 눌러야 하는지 알 수 없습니다.
+   */
+  const typedEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(needle) ? needle : null
+  const newEmail = typedEmail
+      && !chosen.some(e => e.toLowerCase() === typedEmail)
+      && !candidates.some(e => e.toLowerCase() === typedEmail)
+    ? typedEmail
+    : null
+
+  /**
+   * 팀원은 이름으로, 바깥 사람은 주소 그대로.
+   *
+   * getNameByEmail은 모르는 주소를 만나면 앞부분만 떼서 돌려줍니다 —
+   * `jh832013@gmail.com`이 'jh832013'이 됩니다. 그러면 바깥으로 나가는
+   * 초대가 팀원처럼 보입니다. 밖으로 보내는 것은 밖으로 보이는 게 맞습니다.
+   */
+  const label = (email: string) => (teammates.includes(email) ? nameOf(email) : email)
+
+  /** 화살표와 Enter가 훑는 한 줄기. 새 주소는 늘 맨 아래입니다 — 'kim@'까지
+      쳤을 때 아직 팀원을 좁히는 중일 수 있고, 그때 Enter가 생주소로
+      튀면 안 됩니다. */
+  const picks: string[] = newEmail ? [...candidates, newEmail] : candidates
+
   useEffect(() => { setPick(0) }, [q])
 
   const COLLAPSE_AT = 4
@@ -878,7 +929,7 @@ function AttendeeList({ teammates, chosen, nameOf, onToggle, responses }: {
         return (
           <AttendeeRow
             key={email}
-            name={nameOf(email)}
+            name={label(email)}
             email={email}
             mark={mark}
             onRemove={() => onToggle(email)}
@@ -901,12 +952,12 @@ function AttendeeList({ teammates, chosen, nameOf, onToggle, responses }: {
             onKeyDown={e => {
               if (isComposing(e)) return
               if (e.key === 'Escape') { e.stopPropagation(); setQ(''); setAdding(false) }
-              if (e.key === 'ArrowDown') { e.preventDefault(); setPick(p => Math.min(p + 1, candidates.length - 1)) }
+              if (e.key === 'ArrowDown') { e.preventDefault(); setPick(p => Math.min(p + 1, picks.length - 1)) }
               if (e.key === 'ArrowUp') { e.preventDefault(); setPick(p => Math.max(p - 1, 0)) }
               // 카드 전체의 Enter는 '저장'입니다. 이름을 고르는 중에는 여기서 멈춰야 합니다.
-              if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); add(candidates[pick]) }
+              if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); add(picks[pick]) }
             }}
-            placeholder="이름으로 찾기"
+            placeholder="이름 또는 이메일"
             style={{
               width: '100%', boxSizing: 'border-box', padding: '5px 8px',
               borderRadius: 'var(--r1)', border: '1px solid var(--bd)',
@@ -917,25 +968,39 @@ function AttendeeList({ teammates, chosen, nameOf, onToggle, responses }: {
           {/* 여섯 줄까지. 더 있으면 스크롤이 그렇다고 말합니다 — 이름을 더
               치면 좁혀진다는 것도 같이. */}
           <div style={{ maxHeight: ROW_H * 6, overflowY: 'auto', marginTop: 4 }}>
-            {candidates.length === 0 && (
-              <div style={{ fontSize: 11, color: 'var(--t3)', padding: '4px 2px' }}>
-                {teammates.length ? '찾는 사람이 없습니다' : '초대할 팀원이 없습니다'}
+            {picks.length === 0 && (
+              <div style={{ fontSize: 11, color: 'var(--t3)', padding: '4px 2px', lineHeight: 1.5 }}>
+                {needle
+                  ? '찾는 사람이 없습니다. 이메일을 전부 쓰면 그 주소로 초대할 수 있습니다.'
+                  : teammates.length ? '이름을 쓰거나 이메일을 넣으세요' : '초대할 팀원이 없습니다'}
               </div>
             )}
-            {candidates.map((email, i) => (
-              <div
-                key={email}
-                onMouseEnter={() => setPick(i)}
-                onMouseDown={e => { e.preventDefault(); add(email) }}
-                title={email}
-                style={{
-                  display: 'flex', alignItems: 'center', height: ROW_H, padding: '0 6px',
-                  borderRadius: 'var(--r1)', cursor: 'pointer', fontSize: 12,
-                  color: 'var(--t1)', background: i === pick ? 'var(--bg3)' : 'transparent',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}
-              >{nameOf(email)}</div>
-            ))}
+            {picks.map((email, i) => {
+              const outside = email === newEmail
+              return (
+                <div
+                  key={email}
+                  onMouseEnter={() => setPick(i)}
+                  onMouseDown={e => { e.preventDefault(); add(email) }}
+                  title={email}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6, height: ROW_H, padding: '0 6px',
+                    borderRadius: 'var(--r1)', cursor: 'pointer', fontSize: 12,
+                    color: 'var(--t1)', background: i === pick ? 'var(--bg3)' : 'transparent',
+                    overflow: 'hidden', whiteSpace: 'nowrap',
+                  }}
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{label(email)}</span>
+                  {/* 팀 밖으로 나간다는 것은 말해 줘야 합니다. 주소를 잘못 치면
+                      모르는 사람의 받은메일함에 회의가 하나 생깁니다. */}
+                  {outside && (
+                    <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--t3)', flexShrink: 0 }}>
+                      팀 밖으로 초대
+                    </span>
+                  )}
+                </div>
+              )
+            })}
           </div>
           <button
             onClick={() => { setQ(''); setAdding(false) }}
