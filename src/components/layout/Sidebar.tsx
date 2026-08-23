@@ -70,7 +70,7 @@ function saveCollapsedGroups(next: Set<string>) {
 }
 
 export function Sidebar() {
-  const { filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly, personalOnly, setPersonalOnly, sidebarOpen, setSidebarOpen, screen, setScreen } = useUiStore()
+  const { filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly, personalOnly, setPersonalOnly, sidebarOpen, setSidebarOpen, screen, setScreen, openCalendar } = useUiStore()
   const isMobile = useMobile()
   const tasks = useTaskStore(s => s.tasks)
   const { projects, addProject, updateProject, deleteProject, addMember, removeMember } = useProjectStore()
@@ -583,6 +583,38 @@ export function Sidebar() {
             오늘
           </NavItem>
 
+          {/*
+            ── 캘린더 ──────────────────────────────────────────────────────────
+            뷰 탭에도 캘린더가 있습니다. 같은 것이 아닙니다.
+
+            거기 캘린더는 *지금 보고 있는 범위*를 달력에 그립니다 — 이 프로젝트의
+            마감들. 여기 캘린더는 범위가 없는 **내 일정 전부**입니다. 사람들이
+            하루에 몇 번씩 열고 싶은 건 뒤쪽이고, 그걸 보려면 지금까지는 업무
+            목록에 들어가 → 범위를 전체로 바꾸고 → 탭을 눌러야 했습니다.
+
+            그래서 오늘 옆에 세웁니다. 이 둘은 '무엇을 보느냐'가 아니라
+            '어디로 가느냐'라서, 아래 줄들과는 종류가 다릅니다.
+          */}
+          <NavItem
+            active={screen === 'calendar'}
+            onClick={() => { openCalendar(); closeSidebar() }}
+            node={<Icon name="calendar" size={14} />}
+            emphasis
+          >
+            캘린더
+          </NavItem>
+
+          {/*
+            여기서 한 번 끊깁니다.
+
+            위의 둘은 *장소*입니다 — 생김새부터 다른 화면으로 갑니다. 아래의
+            것들은 전부 같은 업무 화면이고, 다른 건 거기 걸리는 *범위*뿐입니다
+            (내 것 / 전부 / 개인 / 이 프로젝트). 프로젝트도 그 범위 중 하나라
+            'Projects' 위에 선을 하나 더 긋지는 않습니다 — 이름표가 이미 그
+            자리를 말하고 있고, 한 경계에 표시가 둘이면 경계가 둘로 보입니다.
+          */}
+          <NavRule />
+
           {/* 둘 다 매일 쓰는 줄이라 둘 다 굵습니다. 다른 건 숫자의 성격입니다 —
               오늘의 숫자는 '지금 남은 것'이라 채워진 알약이고, 여기 숫자는
               재고의 크기라 회색입니다. 채워진 알약이 둘이면 눈이 어디로 갈지
@@ -892,6 +924,11 @@ export function Sidebar() {
 }
 
 /* ── Sub-components ── */
+
+/** 장소와 범위 사이의 한 줄. 여백만으로는 '끊겼다'가 아니라 '떨어졌다'로 읽힙니다. */
+function NavRule() {
+  return <div style={{ height: 1, background: 'var(--sb-bd)', margin: '7px 8px 6px' }} />
+}
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (

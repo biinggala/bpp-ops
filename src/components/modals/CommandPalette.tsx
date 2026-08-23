@@ -8,9 +8,10 @@ import { useSpaceStore } from '../../store/spaceStore'
 import { useProjectStore } from '../../store/projectStore'
 import type { ViewType } from '../../types'
 
+// 보드는 뷰 탭에서 내렸으므로 여기서도 내립니다 — 팔레트에만 남으면
+// 화면 어디에도 없는 곳으로 가는 문이 됩니다. 코드는 그대로 있습니다.
 const VIEW_META: { id: ViewType; icon: string; label: string }[] = [
   { id: 't', icon: '≡', label: '리스트 뷰' },
-  { id: 'b', icon: '⬛', label: '보드 뷰' },
   { id: 'c', icon: '📅', label: '캘린더 뷰' },
   { id: 'g', icon: '📊', label: '간트 차트' },
   { id: 's', icon: '📈', label: '통계' },
@@ -43,7 +44,8 @@ type Item = {
 export function CommandPalette() {
   const {
     isCommandPaletteOpen, closeCommandPalette,
-    openTaskModal, setView, setSpace, setProject, setDetailTaskId, openNote,
+    openTaskModal, setView, setScreen, setSpace, setProject, setDetailTaskId, openNote,
+    openCalendar,
   } = useUiStore()
   const tasks = useTaskStore(s => s.tasks)
   const spaces = useSpaceStore(s => s.spaces)
@@ -98,9 +100,18 @@ export function CommandPalette() {
         id: 'new-task', kind: 'action', icon: '+', label: '새 업무 추가', hint: 'N',
         onSelect: () => { openTaskModal(); closeCommandPalette() },
       })
+      // 범위 없는 캘린더 — 사이드바의 그 줄과 같은 곳입니다. 뷰 탭의
+      // '캘린더 뷰'(지금 범위를 달력으로)와는 다른 문이라 따로 둡니다.
+      result.push({
+        id: 'go-calendar', kind: 'action', icon: '📆', label: '캘린더',
+        sub: '내 일정 전부',
+        onSelect: () => { openCalendar(); closeCommandPalette() },
+      })
       VIEW_META.forEach(v => result.push({
         id: `view-${v.id}`, kind: 'action', icon: v.icon, label: v.label,
-        onSelect: () => { setView(v.id); closeCommandPalette() },
+        // 오늘에 서서 뷰를 고르면 업무 화면으로 데려가야 합니다 — 안 그러면
+        // 고른 것이 화면에 나타나지 않아 눌리지 않은 것처럼 보입니다.
+        onSelect: () => { setView(v.id); setScreen('work'); closeCommandPalette() },
       }))
     }
 
