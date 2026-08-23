@@ -14,9 +14,9 @@ interface ContextMenuProps {
   onDelete: () => void
 }
 
-export function ContextMenu({ x, y, task, onClose, onEdit, onAddSubtask, onStatusChange, onDelete }: ContextMenuProps) {
+/** Dismissal, shared by both menus: outside, Escape, or a touch elsewhere. */
+function useDismiss(onClose: () => void) {
   const ref = useRef<HTMLDivElement>(null)
-
   useEffect(() => {
     const close = (e: MouseEvent | TouchEvent | KeyboardEvent) => {
       if (e instanceof KeyboardEvent) { if (e.key === 'Escape') onClose(); return }
@@ -31,23 +31,65 @@ export function ContextMenu({ x, y, task, onClose, onEdit, onAddSubtask, onStatu
       document.removeEventListener('keydown', close)
     }
   }, [onClose])
+  return ref
+}
 
-  // Clamp to viewport
-  const menuW = 200
-  const clampedX = Math.min(x, window.innerWidth - menuW - 8)
-  const clampedY = Math.min(y, window.innerHeight - 260)
+const MENU_W = 200
+
+function panelStyle(x: number, y: number, height: number): React.CSSProperties {
+  return {
+    position: 'fixed',
+    left: Math.min(x, window.innerWidth - MENU_W - 8),
+    top: Math.min(y, window.innerHeight - height),
+    width: MENU_W, background: 'var(--bg)',
+    border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
+    boxShadow: 'var(--sh-md)',
+    zIndex: 500, padding: 4, userSelect: 'none', boxSizing: 'border-box',
+  }
+}
+
+/**
+ * ── 우클릭 메뉴 (일반) ───────────────────────────────────────────────────────
+ *
+ * For the things that used to reveal a button on hover.
+ *
+ * A control that only exists while the pointer is over it is undiscoverable —
+ * nobody hovers a row to find out what it can do — and a *destructive* one
+ * there is worse: it sits under a pointer that arrived for some other reason.
+ * Right-click asks for the menu, and the dangerous item is then a second,
+ * deliberate press.
+ */
+export interface MenuAction {
+  label: string
+  icon?: string
+  danger?: boolean
+  onSelect: () => void
+}
+
+export function ActionMenu({ x, y, actions, onClose }: {
+  x: number; y: number; actions: MenuAction[]; onClose: () => void
+}) {
+  const ref = useDismiss(onClose)
+  return (
+    <div ref={ref} style={panelStyle(x, y, actions.length * 32 + 16)}>
+      {actions.map((action, i) => (
+        <Item
+          key={i}
+          icon={action.icon ?? '·'}
+          label={action.label}
+          danger={action.danger}
+          onClick={() => { haptic(action.danger ? 'warn' : 'tap'); action.onSelect(); onClose() }}
+        />
+      ))}
+    </div>
+  )
+}
+
+export function ContextMenu({ x, y, task, onClose, onEdit, onAddSubtask, onStatusChange, onDelete }: ContextMenuProps) {
+  const ref = useDismiss(onClose)
 
   return (
-    <div
-      ref={ref}
-      style={{
-        position: 'fixed', left: clampedX, top: clampedY,
-        width: menuW, background: 'var(--bg)',
-        border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
-        boxShadow: 'var(--sh-md)',
-        zIndex: 500, padding: 4, userSelect: 'none', boxSizing: 'border-box',
-      }}
-    >
+    <div ref={ref} style={panelStyle(x, y, 260)}>
       <Item icon="✎" label="수정" onClick={() => { haptic('tap'); onEdit(); onClose() }} />
       <Item icon="+" label="하위 업무 추가" onClick={() => { haptic('tap'); onAddSubtask(); onClose() }} />
 

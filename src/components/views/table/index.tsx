@@ -19,7 +19,7 @@ import { useAuthStore } from '../../../store/authStore'
 import { useMobile } from '../../../hooks/useMobile'
 import { TagBadge } from '../../shared/Badge'
 import { AssigneeAvatar } from '../../shared/Avatar'
-import { ContextMenu } from '../../shared/ContextMenu'
+import { ActionMenu, ContextMenu } from '../../shared/ContextMenu'
 import { fmtDate, isOverdue, parseAssignees, assigneeKeyToEmail, stripHtml, isComposing } from '../../../lib/utils'
 import { NOTION, STATUS_LIST, PRIORITY_LIST, getTagColor, statusAccent } from '../../../types'
 import {
@@ -1713,6 +1713,11 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
   const [hovered, setHovered] = useState(false)
   const [editingName, setEditingName] = useState(false)
   const [tempName, setTempName] = useState(milestone.name)
+  // Delete used to be a button that appeared on hover at the right edge, which
+  // is both undiscoverable and one stray click from gone. It is a right-click
+  // and then a confirmation now — the same two deliberate steps a task's own
+  // delete already asks for.
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const isDone = !!milestone.done
   const overdue = !isDone && diff < 0
   const close = !isDone && diff >= 0 && diff <= 7
@@ -1732,6 +1737,7 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
       className="lp-row"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onContextMenu={onDelete ? e => { e.preventDefault(); e.stopPropagation(); setMenu({ x: e.clientX, y: e.clientY }) } : undefined}
       style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px 6px 14px', background: 'var(--bg)', borderBottom: '1px solid var(--bd)', borderTop: '1px solid var(--bd)', borderLeft: `3px solid ${accent}`, position: 'sticky', left: 0, zIndex: 4, minWidth: minWidth ?? undefined, opacity: isDone ? 0.65 : 1, transition: 'opacity .2s' }}
     >
       {/* Pinned to the viewport's left edge, like the name column on task rows.
@@ -1809,20 +1815,19 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
       </div>
       </div>
 
-      {!editingName && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, position: 'sticky', right: 12, marginLeft: 'auto', flexShrink: 0, opacity: hovered ? 1 : 0, pointerEvents: hovered ? 'auto' : 'none', transition: 'opacity .12s' }}>
-          {onDelete && (
-            <button
-              onClick={async e => {
-                e.stopPropagation()
+      {menu && onDelete && (
+        <ActionMenu
+          x={menu.x} y={menu.y}
+          onClose={() => setMenu(null)}
+          actions={[
+            {
+              label: '마일스톤 삭제', icon: '✕', danger: true,
+              onSelect: async () => {
                 if (await askConfirm({ message: `"${milestone.name}" 마일스톤을 삭제할까요?` })) onDelete()
-              }}
-              style={{ padding: '3px 8px', fontSize: 11, borderRadius: 'var(--r1)', border: '1px solid rgba(212,76,71,.4)', background: 'var(--bg2)', color: '#D44C47', cursor: 'pointer', fontFamily: 'var(--font)' }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(212,76,71,.07)' }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg2)' }}
-            >삭제</button>
-          )}
-        </div>
+              },
+            },
+          ]}
+        />
       )}
     </div>
   )

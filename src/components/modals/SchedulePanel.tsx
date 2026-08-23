@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useGCalStore, type GCalEvent } from '../../store/gcalStore'
 import { useAuthStore } from '../../store/authStore'
+import { ActionMenu } from '../shared/ContextMenu'
 import { openExternal } from '../../lib/desktopLinks'
 import { isComposing, parseAssignees } from '../../lib/utils'
 import { NOTION } from '../../types'
@@ -667,11 +668,14 @@ function PickExisting({ day, dayEvents, linkedIds, taskId, onPick }: {
 
 function EventRow({ ev, busy, onDetach }: { ev: GCalEvent; busy: boolean; onDetach: () => void }) {
   const [hovered, setHovered] = useState(false)
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const guests = ev.attendees?.length ?? 0
   return (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setMenu({ x: e.clientX, y: e.clientY }) }}
+      title="우클릭 — 연결 해제"
       style={{
         display: 'flex', alignItems: 'center', gap: 8, padding: '5px 7px',
         borderRadius: 'var(--r1)', background: hovered ? 'var(--bg3)' : 'transparent',
@@ -687,6 +691,11 @@ function EventRow({ ev, busy, onDetach }: { ev: GCalEvent; busy: boolean; onDeta
           {whenLabel(ev)}{guests > 0 ? ` · 참석 ${guests}명` : ''}
         </div>
       </div>
+      {/* '열기' stays on hover — it is the harmless one, and it is what the row
+          is mostly for. '해제' left: a destructive control that appears under a
+          pointer which arrived for some other reason is one stray click from
+          undoing somebody's work. It is a right-click now, like a milestone's
+          delete and a task's. */}
       {ev.htmlLink && (
         <button
           onClick={() => openExternal(ev.htmlLink)}
@@ -694,12 +703,21 @@ function EventRow({ ev, busy, onDetach }: { ev: GCalEvent; busy: boolean; onDeta
           style={{ ...CHIP, padding: '2px 7px', opacity: hovered ? 1 : 0, transition: 'opacity .1s' }}
         >열기</button>
       )}
-      <button
-        onClick={onDetach}
-        disabled={busy}
-        title="연결 해제 (일정은 지우지 않습니다)"
-        style={{ ...CHIP, padding: '2px 7px', color: '#D44C47', borderColor: 'rgba(212,76,71,.35)', opacity: hovered ? 1 : 0, transition: 'opacity .1s' }}
-      >해제</button>
+      {menu && (
+        <ActionMenu
+          x={menu.x} y={menu.y}
+          onClose={() => setMenu(null)}
+          actions={[
+            ...(ev.htmlLink ? [{ label: '구글 캘린더에서 열기', icon: '↗', onSelect: () => openExternal(ev.htmlLink) }] : []),
+            {
+              label: '연결 해제', icon: '✕', danger: true,
+              // The event itself is not touched — unpinning an interview from a
+              // task must never read as cancelling the interview.
+              onSelect: () => { if (!busy) onDetach() },
+            },
+          ]}
+        />
+      )}
     </div>
   )
 }
