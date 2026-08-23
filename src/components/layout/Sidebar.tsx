@@ -12,7 +12,8 @@ import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import { Icon, type IconName } from '../shared/Icon'
 import { SettingsModal } from '../modals/SettingsModal'
-import { useNoticeInbox, NoticePanel, type NoticeAnchor } from './Notices'
+import { useNoticeInbox, NoticeList } from './Notices'
+import { useNoticeToast } from './NoticeToast'
 import { MEMBERS } from '../../types'
 import { buildInviteToken } from '../../lib/paths'
 import type { MemberKey, Project } from '../../types'
@@ -65,7 +66,33 @@ export function Sidebar() {
   const [memberModal, setMemberModal] = useState<{ id: string; name: string } | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  /**
+   * 사이드바가 무엇을 보여주고 있는가.
+   *
+   * 받은 알림을 nav 줄로 넣었더니 내 할 일·전체 업무·프로젝트와 같은 열에
+   * 앉아서 '또 하나의 업무 뷰'로 읽혔습니다. 성격이 다른 것을 같은 모양으로
+   * 그리면 같은 것이 됩니다.
+   *
+   * 그래서 세로 목록이 아니라 가로 토글입니다 — 모양부터 다르고, 누르면 이
+   * 열이 통째로 바뀝니다. 노션이 홈과 인박스를 가르는 방식과 같습니다.
+   */
+  const [pane, setPane] = useState<'home' | 'inbox'>('home')
+  const { unread } = useNoticeInbox()
   const profileRef = useRef<HTMLDivElement>(null)
+
+  // The banner hides itself while the list is on screen — reading a notice and
+  // being handed the same notice again is noise.
+  const inboxVisible = pane === 'inbox' && (!isMobile || sidebarOpen)
+  useEffect(() => {
+    const store = useNoticeToast.getState()
+    store.setPanelOpen(inboxVisible)
+    // 설정의 '테스트'가 배너를 띄우려면 이 열을 먼저 비켜세울 수 있어야 합니다.
+    store.registerClose(() => setPane('home'))
+    return () => {
+      useNoticeToast.getState().setPanelOpen(false)
+      useNoticeToast.getState().registerClose(null)
+    }
+  }, [inboxVisible])
 
   useEffect(() => { if (addingProject) projectNameRef.current?.focus() }, [addingProject])
   useEffect(() => { if (editingProjectId) projectEditRef.current?.select() }, [editingProjectId])
@@ -425,17 +452,28 @@ export function Sidebar() {
           )}
         </div>
 
-        {/* Search */}
-        <div style={{ padding: '8px 10px' }}>
-          <input
-            style={{ width: '100%', background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r2)', padding: '5px 9px', fontSize: 12, color: 'var(--sb-t2)', outline: 'none' }}
-            placeholder="검색..."
-            value={filters.search}
-            onChange={e => setFilters({ search: e.target.value })}
-          />
+        {/* 홈 · 받은 알림 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 10px 2px' }}>
+          <PaneTab icon="home" label="홈" active={pane === 'home'} onClick={() => setPane('home')} />
+          <PaneTab icon="inbox" label="받은 알림" active={pane === 'inbox'} count={unread} onClick={() => { setPane('inbox'); haptic('tap') }} />
         </div>
 
+        {/* Search — the home pane's, since it searches tasks. */}
+        {pane === 'home' && (
+          <div style={{ padding: '6px 10px 8px' }}>
+            <input
+              style={{ width: '100%', background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r2)', padding: '5px 9px', fontSize: 12, color: 'var(--sb-t2)', outline: 'none' }}
+              placeholder="검색..."
+              value={filters.search}
+              onChange={e => setFilters({ search: e.target.value })}
+            />
+          </div>
+        )}
+
+        {pane === 'inbox' && <NoticeList onClose={closeSidebar} />}
+
         {/* Nav */}
+        {pane === 'home' && (
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 6px' }}>
 
           {/* 내 할 일 comes first and is the only nav row carrying a number.
@@ -458,8 +496,6 @@ export function Sidebar() {
           >
             전체 업무
           </NavItem>
-
-          <InboxRow onOpen={closeSidebar} />
 
           {/* Projects section */}
           <SectionLabel>Projects</SectionLabel>
@@ -592,6 +628,7 @@ export function Sidebar() {
 
 
         </div>
+        )}
 
         {/* Online users */}
         {onlineUsers.length > 0 && (
@@ -727,22 +764,16 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-function NavItem({ children, active, onClick, count, emphasis, icon, node, alert, innerRef }: {
-  children: React.ReactNode; active: boolean; onClick: (e: React.MouseEvent<HTMLDivElement>) => void
+function NavItem({ children, active, onClick, count, emphasis, icon }: {
+  children: React.ReactNode; active: boolean; onClick: () => void
   /** Omitted where a number would be decoration rather than information. */
   count?: number
   /** Draws the count as a filled pill — the row you are meant to start from. */
   emphasis?: boolean
   icon?: string
-  /** A drawn icon, where a glyph will not do. */
-  node?: React.ReactNode
-  /** Red rather than blue: this count is an interruption, not a workload. */
-  alert?: boolean
-  innerRef?: React.Ref<HTMLDivElement>
 }) {
   return (
     <div
-      ref={innerRef}
       onClick={onClick}
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
@@ -755,19 +786,17 @@ function NavItem({ children, active, onClick, count, emphasis, icon, node, alert
       onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--sb-hover)' }}
       onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
     >
-      {node
-        ? <span style={{ width: 16, display: 'flex', justifyContent: 'center', flexShrink: 0, opacity: .75 }}>{node}</span>
-        : icon && <span style={{ fontSize: 11, opacity: emphasis ? .85 : .6, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>}
+      {icon && <span style={{ fontSize: 11, opacity: emphasis ? .85 : .6, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>}
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
       {count !== undefined && count > 0 && (
-        emphasis || alert ? (
-          <span title={alert ? '안 읽은 알림' : '아직 완료하지 않은 내 업무'} style={{
+        emphasis ? (
+          <span title="아직 완료하지 않은 내 업무" style={{
             marginLeft: 'auto', flexShrink: 0,
             minWidth: 18, padding: '0 6px', height: 17,
-            borderRadius: 999, background: alert ? 'var(--danger)' : 'var(--ac)', color: '#fff',
+            borderRadius: 999, background: 'var(--ac)', color: '#fff',
             fontSize: 11, fontWeight: 600,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          }}>{count > 99 ? '99+' : count}</span>
+          }}>{count}</span>
         ) : (
           <span style={{ fontSize: 12, color: 'var(--sb-t3)', marginLeft: 'auto', flexShrink: 0 }}>{count}</span>
         )
@@ -1366,51 +1395,60 @@ function MemberManageModal({ project, currentEmail, suggestable, onAddMember, on
 }
 
 /**
- * ── 받은 알림 ────────────────────────────────────────────────────────────────
+ * ── 홈 · 받은 알림 ───────────────────────────────────────────────────────────
  *
- * A sidebar row rather than a bell in the top bar.
+ * 노션이 하는 대로: **켜져 있는 쪽만 이름을 답니다.** 꺼진 쪽은 아이콘 하나로
+ * 줄어듭니다. 240px 열에서 두 개의 이름표를 나란히 두면 그것만으로 한 줄이
+ * 차고, 어느 쪽이 켜져 있는지는 색으로만 구분해야 합니다 — 이름의 유무가
+ * 색보다 훨씬 빨리 읽힙니다.
  *
- * The bell was one unlabelled glyph in a row of unlabelled glyphs, next to the
- * update arrow and the 새 업무 button, and it was regularly read as a switch for
- * turning notifications on — which is a different thing entirely, and now lives
- * in 설정. Here it is a named row with a count, in the column where the other
- * places you can go already are. Notion puts its inbox in the same place, for
- * the same reason.
- *
- * The list opens beside the row rather than replacing the screen: what is in it
- * is almost always one line long, and going somewhere to read one line and then
- * coming back is a worse trade than a panel.
+ * 안 읽은 수는 아이콘 어깨에 붙는 빨간 점입니다. 옆의 '내 할 일' 숫자와
+ * 색으로 갈립니다: 파란 것은 내가 할 일의 양이고, 빨간 것은 나를 부르는
+ * 신호입니다.
  */
-function InboxRow({ onOpen }: { onOpen: () => void }) {
-  const { notices, unread, signedIn } = useNoticeInbox()
-  const [open, setOpen] = useState(false)
-  const [anchor, setAnchor] = useState<NoticeAnchor | null>(null)
-  const rowRef = useRef<HTMLDivElement>(null)
-
-  if (!signedIn) return null
-
+function PaneTab({ icon, label, active, count = 0, onClick }: {
+  icon: IconName; label: string; active: boolean; count?: number; onClick: () => void
+}) {
+  const [hovered, setHovered] = useState(false)
   return (
-    <>
-      <NavItem
-        active={open}
-        innerRef={rowRef}
-        node={<Icon name="inbox" size={14} />}
-        count={unread}
-        alert
-        onClick={() => {
-          haptic('tap')
-          if (open) { setOpen(false); return }
-          const r = rowRef.current?.getBoundingClientRect()
-          if (r) setAnchor({ top: r.top - 4, left: r.right + 10 })
-          setOpen(true)
-          // On a phone the sidebar is a drawer over the app; the sheet comes up
-          // from the bottom and the drawer has no reason to stay in front of it.
-          onOpen()
-        }}
-      >
-        받은 알림
-      </NavItem>
-      {open && <NoticePanel notices={notices} anchor={anchor} onClose={() => setOpen(false)} />}
-    </>
+    <button
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={active}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6, position: 'relative',
+        height: 30, padding: active ? '0 11px 0 9px' : '0 8px',
+        borderRadius: 'var(--r2)', border: 'none', cursor: 'pointer',
+        fontFamily: 'var(--font)', fontSize: 13, fontWeight: active ? 600 : 400,
+        color: active ? 'var(--sb-t1)' : 'var(--sb-t2)',
+        background: active ? 'var(--sb-active)' : hovered ? 'var(--sb-hover)' : 'transparent',
+        transition: 'background .1s, color .1s',
+        flexShrink: 0,
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <span style={{ display: 'flex', position: 'relative' }}>
+        <Icon name={icon} size={16} />
+        {count > 0 && !active && (
+          <span style={{
+            position: 'absolute', top: -5, right: -7,
+            minWidth: 15, height: 15, padding: '0 4px',
+            borderRadius: 999, background: 'var(--danger)', color: '#fff',
+            fontSize: 9, fontWeight: 700, lineHeight: '15px', textAlign: 'center',
+            boxShadow: '0 0 0 2px var(--sb-bg)',
+          }}>{count > 99 ? '99+' : count}</span>
+        )}
+      </span>
+      {active && label}
+      {active && count > 0 && (
+        <span style={{
+          minWidth: 17, padding: '0 5px', height: 16, borderRadius: 999,
+          background: 'var(--danger)', color: '#fff',
+          fontSize: 10, fontWeight: 700,
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        }}>{count > 99 ? '99+' : count}</span>
+      )}
+    </button>
   )
 }

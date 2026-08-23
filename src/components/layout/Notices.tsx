@@ -1,10 +1,8 @@
 import React, { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useNoticeStore } from '../../store/noticeStore'
 import { useAuthStore } from '../../store/authStore'
 import { useUiStore } from '../../store/uiStore'
 import { useProjectStore } from '../../store/projectStore'
-import { useMobile } from '../../hooks/useMobile'
 import { NOTICE_LABEL as LABEL, NOTICE_TONE as TONE, type Notice } from '../../lib/notify'
 import { StatusMark } from '../shared/StatusMark'
 import { statusAccent } from '../../types'
@@ -72,89 +70,16 @@ export function useNoticeInbox() {
   return { notices, unread, signedIn: !!uid }
 }
 
-/** Where the panel hangs from: the sidebar row that opened it. */
-export interface NoticeAnchor { top: number; left: number }
-
 /**
- * The list itself — a floating panel on a desktop, a bottom sheet on a phone.
+ * ── 받은 알림 목록 ───────────────────────────────────────────────────────────
  *
- * It hangs off the sidebar row rather than the top bar, which is where Notion
- * puts its inbox and, more to the point, where the thing that owns it now lives.
+ * 사이드바 본문을 차지합니다 — 떠 있는 패널이 아니라, 프로젝트 목록이 있던
+ * 자리를 대신합니다. 그래서 위치를 계산할 앵커도, 바깥을 덮는 레이어도
+ * 없습니다. 폭이 240이라 한 줄에 들어갈 것만 넣습니다: 무슨 일이 일어났는지,
+ * 누가 했는지, 언제.
  */
-export function NoticePanel({ notices, anchor, onClose }: {
-  notices: Notice[]
-  anchor: NoticeAnchor | null
-  onClose: () => void
-}) {
-  const isMobile = useMobile()
-
-  // The banner hides itself while this list is open, and the test button has to
-  // be able to close it — so the panel reports the state and lends its closer.
-  useEffect(() => {
-    const store = useNoticeToast.getState()
-    store.setPanelOpen(true)
-    store.registerClose(onClose)
-    return () => {
-      useNoticeToast.getState().setPanelOpen(false)
-      useNoticeToast.getState().registerClose(null)
-    }
-  }, [onClose])
-
-  return isMobile
-    ? <NoticeSheet notices={notices} onClose={onClose} />
-    : <NoticePopover notices={notices} anchor={anchor} onClose={onClose} />
-}
-
-function NoticePopover({ notices, anchor, onClose }: {
-  notices: Notice[]
-  anchor: NoticeAnchor | null
-  onClose: () => void
-}) {
-  const width = 340
-  // Kept on screen: a row near the bottom of a short window would otherwise
-  // hang the panel off the end of it.
-  const top = Math.min(anchor?.top ?? 80, Math.max(8, window.innerHeight - 320))
-  return createPortal(
-    <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9300 }} />
-      <div style={{
-        position: 'fixed', top,
-        left: Math.min(anchor?.left ?? 250, window.innerWidth - width - 8),
-        width, maxHeight: 'min(70vh, 520px)', zIndex: 9301,
-        background: 'var(--bg)', border: '1px solid var(--bd)',
-        borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)',
-        display: 'flex', flexDirection: 'column', overflow: 'hidden',
-      }}>
-        <NoticeList notices={notices} onClose={onClose} />
-      </div>
-    </>,
-    document.body,
-  )
-}
-
-function NoticeSheet({ notices, onClose }: { notices: Notice[]; onClose: () => void }) {
-  return createPortal(
-    <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 9300 }} />
-      <div style={{
-        position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 9301,
-        maxHeight: '78%', background: 'var(--bg)',
-        borderTopLeftRadius: 'var(--r4)', borderTopRightRadius: 'var(--r4)',
-        boxShadow: '0 -8px 40px rgba(0,0,0,.2)',
-        paddingBottom: 'var(--safe-b)',
-        display: 'flex', flexDirection: 'column', overflow: 'hidden',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 2px' }}>
-          <span style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--bd2)' }} />
-        </div>
-        <NoticeList notices={notices} onClose={onClose} />
-      </div>
-    </>,
-    document.body,
-  )
-}
-
-function NoticeList({ notices, onClose }: { notices: Notice[]; onClose: () => void }) {
+export function NoticeList({ onClose }: { onClose: () => void }) {
+  const notices = useNoticeStore(s => s.notices)
   const markRead = useNoticeStore(s => s.markRead)
   const markAllRead = useNoticeStore(s => s.markAllRead)
   const dismiss = useNoticeStore(s => s.dismiss)
@@ -170,26 +95,19 @@ function NoticeList({ notices, onClose }: { notices: Notice[]; onClose: () => vo
   let lastBucket = ''
 
   return (
-    <>
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '10px 14px', borderBottom: '1px solid var(--bd)', flexShrink: 0,
-      }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--t1)' }}>
-          알림{unread > 0 ? ` ${unread}` : ''}
-        </span>
-        {unread > 0 && (
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      {unread > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px 10px 6px', flexShrink: 0 }}>
           <button
             onClick={markAllRead}
-            style={{ fontSize: 12, color: 'var(--ac)', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'var(--font)', padding: 0 }}
+            style={{ fontSize: 11, color: 'var(--ac)', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'var(--font)', padding: 0 }}
           >모두 읽음</button>
-        )}
-      </div>
+        </div>
+      )}
 
-
-      <div style={{ overflowY: 'auto', flex: 1 }}>
+      <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
         {notices.length === 0 && (
-          <div style={{ padding: '28px 16px', textAlign: 'center', fontSize: 13, color: 'var(--t3)' }}>
+          <div style={{ padding: '28px 16px', textAlign: 'center', fontSize: 12, color: 'var(--sb-t3)', lineHeight: 1.6 }}>
             새 알림이 없습니다
           </div>
         )}
@@ -198,54 +116,58 @@ function NoticeList({ notices, onClose }: { notices: Notice[]; onClose: () => vo
           const header = bucket !== lastBucket ? bucket : null
           lastBucket = bucket
           const project = n.projectId ? projects.find(p => p.id === n.projectId) : undefined
+          const rest = n.read ? 'transparent' : 'var(--ac-l)'
           return (
             <React.Fragment key={n.id}>
               {header && (
-                <div style={{ padding: '8px 14px 4px', fontSize: 11, fontWeight: 600, color: 'var(--t3)', background: 'var(--bg)', position: 'sticky', top: 0 }}>
+                <div style={{ padding: '8px 10px 3px', fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: 'var(--sb-t3)', background: 'var(--sb-bg)', position: 'sticky', top: 0 }}>
                   {header}
                 </div>
               )}
               <div
                 onClick={() => openNotice(n)}
                 style={{
-                  display: 'flex', gap: 9, padding: '9px 14px', cursor: n.taskId ? 'pointer' : 'default',
-                  background: n.read ? 'transparent' : 'rgba(35,131,226,.05)',
-                  borderBottom: '1px solid var(--bd)',
+                  display: 'flex', gap: 8, padding: '7px 8px 7px 10px', margin: '0 4px',
+                  borderRadius: 'var(--r2)', cursor: n.taskId ? 'pointer' : 'default',
+                  background: rest,
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
-                onMouseLeave={e => e.currentTarget.style.background = n.read ? 'transparent' : 'rgba(35,131,226,.05)'}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--sb-hover)'}
+                onMouseLeave={e => e.currentTarget.style.background = rest}
               >
                 {n.status ? (
                   // The state it moved to, drawn the way the list draws it — so
                   // the row says '검토중' without spending a word on it.
                   <span style={{ color: statusAccent(n.status), flexShrink: 0, marginTop: 2, display: 'flex' }}>
-                    <StatusMark status={n.status} size={13} />
+                    <StatusMark status={n.status} size={12} />
                   </span>
                 ) : (
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: TONE[n.kind] ?? 'var(--t3)', flexShrink: 0, marginTop: 5 }} />
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: TONE[n.kind] ?? 'var(--sb-t3)', flexShrink: 0, marginTop: 5 }} />
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, color: 'var(--t1)', fontWeight: n.read ? 400 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 12.5, color: 'var(--sb-t1)', fontWeight: n.read ? 400 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {n.taskName || '(이름 없음)'}
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {/* 240 is not 340: the time joins this line rather than taking
+                      a column of its own, and the project is the first thing to
+                      go when there is no room for it. */}
+                  <div style={{ fontSize: 11, color: 'var(--sb-t3)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {LABEL[n.kind] ?? n.kind}
                     {n.detail ? ` · ${n.detail}` : ''}
                     {' · '}{n.by}
+                    {' · '}{clock(n.at)}
                     {project ? ` · ${project.name}` : ''}
                   </div>
                 </div>
-                <span style={{ fontSize: 10, color: 'var(--t3)', flexShrink: 0, marginTop: 2 }}>{clock(n.at)}</span>
                 <button
                   onClick={e => { e.stopPropagation(); dismiss(n.id) }}
                   aria-label="지우기"
-                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: 13, padding: '0 2px', flexShrink: 0, lineHeight: 1 }}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--sb-t3)', fontSize: 13, padding: '0 2px', flexShrink: 0, lineHeight: 1, alignSelf: 'flex-start', marginTop: 1 }}
                 >×</button>
               </div>
             </React.Fragment>
           )
         })}
       </div>
-    </>
+    </div>
   )
 }
