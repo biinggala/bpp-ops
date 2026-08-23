@@ -11,7 +11,7 @@ import { useUserProfileStore } from '../../store/userProfileStore'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import { Icon, type IconName } from '../shared/Icon'
-import { CMD } from '../shared/Tip'
+import { Tip, CMD } from '../shared/Tip'
 import { WidthHandle } from '../shared/WidthHandle'
 import { SettingsModal } from '../modals/SettingsModal'
 import { useNoticeInbox, NoticeList } from './Notices'
@@ -548,7 +548,7 @@ export function Sidebar() {
         </div>
 
         {/* 홈 · 받은 알림 · 검색 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 10px', minWidth: 0 }}>
           <PaneTab icon="home" label="홈" active={pane === 'home'} onClick={() => setPane('home')} />
           <PaneTab icon="inbox" label="받은 알림" tour="inbox" active={pane === 'inbox'} count={unread + external} onClick={() => { setPane('inbox'); haptic('tap') }} />
           {/*
@@ -564,7 +564,8 @@ export function Sidebar() {
           */}
           <IconAction
             tour="search"
-            label={isMobile ? '검색' : `검색 · ${CMD}K`}
+            label="검색"
+            keys={isMobile ? undefined : [CMD, 'K']}
             // 폰에서 서랍은 화면을 덮고 있습니다. 검색 창을 그 위에 또 얹으면
             // 판 두 장이 겹쳐서, 닫고 나면 서랍이 아직 열려 있습니다.
             onClick={() => { haptic('tap'); closeSidebar(); openCommandPalette() }}
@@ -1638,16 +1639,25 @@ function MemberManageModal({ project, currentEmail, suggestable, onAddMember, on
  * 안 켜진 PaneTab과 같은 크기·모양이라 줄은 고르게 보이고, 오른쪽 끝에 혼자
  * 떨어져 있어서 왼쪽 둘과 성격이 다르다는 게 자리로 읽힙니다.
  */
-function IconAction({ label, onClick, tour }: { label: string; onClick: () => void; tour?: string }) {
+function IconAction({ label, keys, onClick, tour }: {
+  label: string
+  keys?: string[]
+  onClick: () => void
+  tour?: string
+}) {
   const [hovered, setHovered] = useState(false)
+  // native title은 웹뷰에서 가리키는 것과 상관없이 화면 구석에 뜹니다.
+  // docs/desktop-updates.md의 금지 목록에 있는 그것입니다.
   return (
+    // 오른쪽 끝으로 미는 건 Tip 바깥에서 합니다 — Tip은 자기 안에서
+    // inline-flex 한 칸이라, 그 안의 margin:auto는 아무 데도 안 밉니다.
+    <span style={{ marginLeft: 'auto', flexShrink: 0, display: 'flex' }}>
+    <Tip label={label} keys={keys}>
     <button
       onClick={onClick}
       data-tour={tour}
       aria-label={label}
-      title={label}
       style={{
-        marginLeft: 'auto',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         width: 30, height: 30, padding: 0,
         borderRadius: 'var(--r2)', border: 'none', cursor: 'pointer',
@@ -1660,6 +1670,8 @@ function IconAction({ label, onClick, tour }: { label: string; onClick: () => vo
     >
       <Icon name="search" size={16} />
     </button>
+    </Tip>
+    </span>
   )
 }
 
@@ -1682,7 +1694,13 @@ function PaneTab({ icon, label, active, count = 0, onClick, tour }: {
         color: active ? 'var(--sb-t1)' : 'var(--sb-t2)',
         background: active ? 'var(--sb-active)' : hovered ? 'var(--sb-hover)' : 'transparent',
         transition: 'background .1s, color .1s',
-        flexShrink: 0,
+        /**
+         * 이름이 붙어 있는 건 켜진 탭 하나뿐이라, 줄이 넘칠 때 줄어들 수
+         * 있는 것도 그 하나입니다. 셋 다 안 줄어들게 두었더니 사이드바를
+         * 좁히는 순간 맨 오른쪽 돋보기가 밖으로 밀려 잘렸습니다.
+         */
+        flexShrink: active ? 1 : 0,
+        minWidth: 0,
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -1699,7 +1717,11 @@ function PaneTab({ icon, label, active, count = 0, onClick, tour }: {
           }}>{count > 99 ? '99+' : count}</span>
         )}
       </span>
-      {active && label}
+      {active && (
+        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {label}
+        </span>
+      )}
       {active && count > 0 && (
         <span style={{
           minWidth: 17, padding: '0 5px', height: 16, borderRadius: 999,
