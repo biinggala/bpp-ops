@@ -173,14 +173,16 @@ function Tour({ onClose, isMobile }: { onClose: () => void; isMobile: boolean })
   /**
    * 가리킬 것이 화면에 있어야 가리킬 수 있습니다.
    *
-   * 사이드바를 접어 둔 사람에게는 밝힐 줄 자체가 없습니다. 투어 동안만 펴
-   * 두고, 끝나면 원래대로 되돌립니다 — 남의 설정을 소개가 바꿔 놓고 가면
-   * 안 됩니다.
+   * 사이드바를 접어 둔 사람에게는 밝힐 줄 자체가 없으므로 펴 놓고 시작합니다.
+   *
+   * **끝나도 다시 접지 않습니다.** 처음엔 원래대로 되돌렸는데, 그러면 방금
+   * "여기가 오늘이고 여기가 캘린더입니다" 하고 보여준 열이 소개가 끝나는
+   * 순간 사라집니다 — 배운 것을 곧바로 감추는 셈입니다. 이 앱의 기본 화면은
+   * 사이드바가 펴져 있는 화면이고, 접는 건 ⌘\로 언제든 됩니다.
    */
   useEffect(() => {
     if (isMobile || !sidebarHidden) return
     toggleSidebarHidden()
-    return () => { if (useUiStore.getState().sidebarHidden === false) toggleSidebarHidden() }
     // 처음 한 번만. 투어 도중 사람이 직접 접었다면 그건 그 사람의 뜻입니다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
