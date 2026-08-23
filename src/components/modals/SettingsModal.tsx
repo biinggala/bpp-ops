@@ -297,31 +297,47 @@ function PushRow() {
   const isMobile = useMobile()
   const [on, setOn] = useState(pushEnabledHere())
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  /** 결과 한 줄. `bad`가 참일 때만 빨갛습니다 — 정상을 빨갛게 칠하지 않습니다. */
+  const [error, setError] = useState<{ bad: boolean; text: string } | null>(null)
   const me = useAuthStore(s => s.displayName || s.email?.split('@')[0] || '나')
   const support = pushSupport()
 
   /**
-   * Two notifications from one press, because they can fail separately.
+   * 한 번 눌러 두 가지를 확인합니다 — 따로 실패하기 때문입니다.
    *
-   * The banner is drawn by the app and always works. The OS notification needs a
-   * real notification permission and a live worker — and *not* a push — so when
-   * it fails it says which of the two is broken, which is the question
-   * 'permission denied' on its own never answered.
+   * 배너는 앱이 직접 그립니다. 기기 알림(OS 알림)은 알림 권한과 살아 있는
+   * 서비스 워커가 필요하고, 데스크톱 셸에서는 아예 불가능합니다. '알림이 안
+   * 와요'라는 말에 둘 중 무엇이 안 됐는지가 답이어야 합니다.
+   *
+   * **좌표를 안 씁니다.** 전에는 `배너 y=60 h=58 w=330`을 그대로 보여줬습니다.
+   * 배너가 안 그려지던 버그를 잡을 때 필요했던 값인데, 그 버그가 끝난 뒤에도
+   * 남아서 사용자에게 읽으라고 내밀고 있었습니다. 재기는 계속 하되(그려졌는지
+   * 아닌지는 물어봐야 압니다) 말로 옮깁니다.
+   *
+   * 그리고 **데스크톱에서 기기 알림 실패는 빨간 글씨가 아닙니다.** 그건 이
+   * 앱의 정상 상태고, 정상을 빨갛게 칠하면 빨간 글씨를 안 보게 됩니다.
    */
   const runTest = async () => {
     showTestNotice(me, !isMobile)
-    const res = await showLocalNotice('테스트 알림', '이게 보이면 폰 알림은 정상입니다')
+    const res = await showLocalNotice('테스트 알림', '이게 보이면 기기 알림도 정상입니다')
 
-    // Measured rather than assumed. Four wrong guesses about the bottom bar
-    // ended with one screenshot of real numbers; 'it does not appear' is the
-    // same kind of claim and deserves the same treatment.
     await new Promise(r => setTimeout(r, 300))
-    const box = document.querySelector('[data-notice-banner]')?.getBoundingClientRect()
-    const where = box
-      ? `배너 y=${Math.round(box.top)} h=${Math.round(box.height)} w=${Math.round(box.width)}`
-      : '배너 없음(DOM에 안 그려짐)'
-    setError(`${where} · OS 알림 ${res.ok ? 'ok' : `실패 — ${res.reason}`}`)
+    const drawn = !!document.querySelector('[data-notice-banner]')
+
+    if (!drawn) {
+      setError({ bad: true, text: '화면 배너가 안 떴습니다. 새로고침한 뒤 다시 눌러 주세요.' })
+      return
+    }
+    if (res.ok) {
+      setError({ bad: false, text: '배너와 기기 알림 모두 정상입니다.' })
+      return
+    }
+    if (!support.ok) {
+      // 데스크톱 앱에서는 배너가 곧 알림입니다. 위 줄이 이미 그렇게 말합니다.
+      setError({ bad: false, text: '배너는 정상입니다. 기기 알림은 이 앱에서 원래 안 되고, 앱이 닫혀 있을 때는 폰으로 옵니다.' })
+      return
+    }
+    setError({ bad: true, text: `배너는 떴고, 기기 알림이 실패했습니다 — ${res.reason}` })
   }
 
   const test = (
@@ -335,8 +351,8 @@ function PushRow() {
   )
 
   const detail = error && (
-    <span style={{ display: 'block', fontSize: 11, marginTop: 3, lineHeight: 1.45, color: error.includes('실패') ? 'var(--danger)' : 'var(--t3)' }}>
-      {error}
+    <span style={{ display: 'block', fontSize: 11, marginTop: 3, lineHeight: 1.45, color: error.bad ? 'var(--danger)' : 'var(--t3)' }}>
+      {error.text}
     </span>
   )
 
@@ -363,7 +379,7 @@ function PushRow() {
     } else {
       const res = await enablePush()
       if (res.ok) setOn(true)
-      else setError(res.reason)
+      else setError({ bad: true, text: res.reason })
     }
     setBusy(false)
   }
