@@ -1195,23 +1195,60 @@ function CardMenu({ onDelete }: { onDelete: () => void }) {
  * 세 개를 다 놓습니다. 수락만 놓으면 안 가는 회의를 거절할 데가 없어서 점선이
  * 영원히 남고, 그러면 점선이 '아직 안 정함'이 아니라 '무시하는 것'이 됩니다.
  *
- * 이미 답한 뒤에도 남아 있습니다. 지금 고른 것이 눌린 채로 보이고, 마음이
- * 바뀌면 옆의 것을 누릅니다 — 답을 바꾸려고 구글까지 갈 일은 아닙니다.
+ * **답한 뒤에도 셋이 남지만, 조용해집니다.** 답을 바꾸는 일은 자주 있습니다 —
+ * 일정이 겹쳐서 못 가게 되면요 — 그래서 없애면 구글까지 나가야 합니다. 다만
+ * 셋이 똑같은 크기로 똑같이 강조돼 있으면 이미 답했는데도 계속 묻고 있는
+ * 것처럼 보입니다. 그래서 정하기 전에는 질문의 모양(큰 버튼 셋, '초대받았
+ * 습니다')이고, 정한 뒤에는 상태의 모양(작은 한 줄, 고른 것만 표시)입니다.
+ * 있는 것은 같고 목소리만 다릅니다.
  */
 function RsvpRow({ current, onRespond }: { current: string; onRespond: (r: Rsvp) => void }) {
-  const options: { value: Rsvp; label: string; tone: string }[] = [
-    { value: 'accepted',  label: '수락', tone: '#448361' },
-    { value: 'tentative', label: '미정', tone: '#D9730D' },
-    { value: 'declined',  label: '거절', tone: 'var(--danger)' },
+  /**
+   * `soft`를 따로 두는 이유: `--danger`는 밝은 화면과 어두운 화면에서 값이
+   * 다릅니다. tint()에 넣으면 hex가 아니라서 회색으로 떨어집니다 — 거절만
+   * 색을 잃습니다. 빨강은 이미 있는 --danger-l을 씁니다.
+   */
+  const options: { value: Rsvp; label: string; tone: string; soft: string }[] = [
+    { value: 'accepted',  label: '수락', tone: '#448361',      soft: tint('#448361', .16) },
+    { value: 'tentative', label: '미정', tone: '#D9730D',      soft: tint('#D9730D', .16) },
+    { value: 'declined',  label: '거절', tone: 'var(--danger)', soft: 'var(--danger-l)' },
   ]
   const undecided = current === 'needsAction'
 
-  return (
-    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--bd)' }}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--t2)', marginBottom: 6 }}>
-        {undecided ? '초대받았습니다' : '내 응답'}
+  if (undecided) {
+    return (
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--bd)' }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--t2)', marginBottom: 6 }}>
+          초대받았습니다
+        </div>
+        <div style={{ display: 'flex', gap: 5 }}>
+          {options.map(o => (
+            <button
+              key={o.value}
+              onClick={() => onRespond(o.value)}
+              style={{
+                flex: 1, padding: '5px 0', borderRadius: 'var(--r1)', cursor: 'pointer',
+                fontFamily: 'var(--font)', fontSize: 12,
+                border: `1px solid ${o.value === 'accepted' ? o.tone : 'var(--bd)'}`,
+                background: o.value === 'accepted' ? o.tone : 'transparent',
+                color: o.value === 'accepted' ? '#fff' : 'var(--t2)',
+                fontWeight: o.value === 'accepted' ? 600 : 400,
+              }}
+            >{o.label}</button>
+          ))}
+        </div>
       </div>
-      <div style={{ display: 'flex', gap: 5 }}>
+    )
+  }
+
+  // 정한 뒤 — 한 줄. 고른 것만 색을 갖고, 나머지는 눌릴 수 있다는 것만 보입니다.
+  return (
+    <div style={{
+      marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--bd)',
+      display: 'flex', alignItems: 'center', gap: 6,
+    }}>
+      <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0 }}>내 응답</span>
+      <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
         {options.map(o => {
           const on = current === o.value
           return (
@@ -1219,12 +1256,14 @@ function RsvpRow({ current, onRespond }: { current: string; onRespond: (r: Rsvp)
               key={o.value}
               onClick={() => onRespond(o.value)}
               style={{
-                flex: 1, padding: '4px 0', borderRadius: 'var(--r1)', cursor: 'pointer',
-                fontFamily: 'var(--font)', fontSize: 12, fontWeight: on ? 600 : 400,
-                border: `1px solid ${on ? o.tone : 'var(--bd)'}`,
-                background: on ? o.tone : 'transparent',
-                color: on ? '#fff' : 'var(--t2)',
+                padding: '2px 8px', borderRadius: 'var(--r1)', border: 'none', cursor: 'pointer',
+                fontFamily: 'var(--font)', fontSize: 11.5,
+                fontWeight: on ? 600 : 400,
+                background: on ? o.soft : 'transparent',
+                color: on ? o.tone : 'var(--t3)',
               }}
+              onMouseEnter={e => { if (!on) e.currentTarget.style.background = 'var(--bg3)' }}
+              onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}
             >{o.label}</button>
           )
         })}
