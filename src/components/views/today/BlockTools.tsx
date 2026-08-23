@@ -23,12 +23,33 @@ import { haptic } from '../../../lib/haptics'
 
 interface Slot { pos: number; top: number; left: number; height: number }
 
-/** 커서가 놓인 최상위 블록의 위치. 문단 안 어디를 가리켜도 그 문단을 줍니다. */
+/**
+ * 포인터가 가리키는 최상위 블록의 위치.
+ *
+ * 먼저 프로즈미러에게 묻고, 안 되면 **줄들의 상자를 직접 잽니다.**
+ * `posAtCoords`는 글이 있는 자리만 답합니다 — 손잡이가 사는 왼쪽 여백이나
+ * 업무 줄(contentEditable=false) 위에서는 null입니다. 그걸 '블록 없음'으로
+ * 받으면, 손잡이를 잡으러 가는 순간 손잡이가 사라집니다.
+ *
+ * 세로 위치만 알면 어느 줄인지는 정해집니다. 그래서 실패하면 y로 찾습니다.
+ */
 function blockAt(editor: Editor, x: number, y: number): number | null {
   const found = editor.view.posAtCoords({ left: x, top: y })
-  if (!found) return null
-  const $p = editor.state.doc.resolve(found.pos)
-  return $p.depth > 0 ? $p.before(1) : null
+  if (found) {
+    const $p = editor.state.doc.resolve(found.pos)
+    if ($p.depth > 0) return $p.before(1)
+  }
+  let near: { start: number; gap: number } | null = null
+  editor.state.doc.forEach((_child, offset) => {
+    const dom = editor.view.nodeDOM(offset)
+    if (!(dom instanceof HTMLElement)) return
+    const box = dom.getBoundingClientRect()
+    const gap = y < box.top ? box.top - y : y > box.bottom ? y - box.bottom : 0
+    if (!near || gap < near.gap) near = { start: offset, gap }
+  })
+  const hit = near as { start: number; gap: number } | null
+  // 줄에서 한참 떨어진 곳(노트 아래 빈 공간)까지 손잡이를 띄우지는 않습니다.
+  return hit && hit.gap <= 12 ? hit.start : null
 }
 
 export function BlockTools({ editor, boundary }: {
@@ -49,12 +70,16 @@ export function BlockTools({ editor, boundary }: {
    */
   const frozen = useRef(false)
   frozen.current = !!menu || !!slash
+  const handleRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const host = boundary.current
     if (!host || !editor) return
     const move = (e: MouseEvent) => {
       if (frozen.current) return
+      // 손잡이 위에 있는 동안은 아무것도 다시 재지 않습니다. 잡으러 온 손이
+      // 자기가 잡으려던 것을 지우게 두면 그건 잡을 수 없는 손잡이입니다.
+      if (e.target instanceof Node && handleRef.current?.contains(e.target)) return
       const pos = blockAt(editor, e.clientX, e.clientY)
       if (pos === null) { setSlot(null); return }
       const dom = editor.view.nodeDOM(pos)
@@ -139,7 +164,7 @@ export function BlockTools({ editor, boundary }: {
   return (
     <>
       {slot && !menu && (
-          <div style={{
+          <div ref={handleRef} style={{
             position: 'absolute', top: slot.top, left: slot.left - 46,
             height: Math.min(slot.height, 30), display: 'flex', alignItems: 'center', gap: 1,
             zIndex: 2,
