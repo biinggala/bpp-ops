@@ -344,7 +344,7 @@ export function Sidebar() {
               in the profile popover, and putting the rarer, more destructive of
               the two on the always-visible button was backwards. */}
           <button
-            onClick={() => { haptic('tap'); setSettingsOpen(true) }}
+            onClick={() => { haptic('tap'); setProfileOpen(false); setSettingsOpen(true) }}
             title="설정"
             style={{ width: 24, height: 24, borderRadius: 'var(--r1)', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--sb-t3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background .1s, color .1s' }}
             onMouseEnter={e => { e.currentTarget.style.background = 'var(--sb-hover)'; e.currentTarget.style.color = 'var(--sb-t1)' }}

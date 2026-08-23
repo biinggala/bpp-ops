@@ -24,27 +24,13 @@ import { BadgeSelect } from '../shared/BadgeSelect'
 import { SchedulePanel } from './SchedulePanel'
 import { StatusPill, PriorityLabel } from '../shared/StatusPill'
 import { useMenu, Menu, MenuList, MenuItem, CellTrigger, Dot } from '../shared/Menu'
+import { PropCell, OptionPicker, STATUS_STYLE, PRIORITY_STYLE } from '../shared/PropRow'
 import { STATUS_LIST, PRIORITY_LIST, NOTION } from '../../types'
 import { ActivityList } from '../shared/ActivityList'
 import { openExternal } from '../../lib/desktopLinks'
 import type { Task, Status, Priority, TaskLink } from '../../types'
 import { isComposing } from '../../lib/utils'
 
-
-// The same pairs the list and the board use. This panel predated the shared
-// palette and had grown its own approximations of it — close enough to look
-// like a rendering bug rather than a different colour.
-const STATUS_STYLE: Record<Status, { bg: string; color: string }> = {
-  '진행중': { bg: NOTION.blue.bg,   color: NOTION.blue.text },
-  '대기':   { bg: NOTION.gray.bg,   color: NOTION.gray.text },
-  '검토중': { bg: NOTION.yellow.bg, color: NOTION.yellow.text },
-  '완료':   { bg: NOTION.green.bg,  color: NOTION.green.text },
-}
-const PRIORITY_STYLE: Record<Priority, { bg: string; color: string }> = {
-  '높음': { bg: NOTION.red.bg,    color: NOTION.red.text },
-  '중간': { bg: NOTION.orange.bg, color: NOTION.orange.text },
-  '낮음': { bg: 'transparent',    color: 'var(--t3)' },
-}
 
 /* ── Shared helpers ── */
 
@@ -67,15 +53,6 @@ function openLinkFrom(e: React.MouseEvent): boolean {
 }
 
 /** One property in the grid: a quiet label above nothing, beside its control. */
-function PropCell({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, minHeight: 30 }}>
-      <span style={{ width: 62, fontSize: 12, color: 'var(--t3)', fontWeight: 500, flexShrink: 0 }}>{label}</span>
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>{children}</div>
-    </div>
-  )
-}
-
 /* ── AssetsPanel — the task's materials ── */
 
 /**
@@ -179,47 +156,6 @@ function AssetsPanel({ links, projectId, onChange }: {
  * The colour dot also does real work: it is how a project is recognised
  * everywhere else in the app, and a list of bare names is not.
  */
-function OptionPicker({ value, options, empty, onChange }: {
-  value: string | undefined
-  options: { value: string; label: string; dot?: string; sub?: string }[]
-  empty: string
-  onChange: (v: string | undefined) => void
-}) {
-  const m = useMenu()
-  const current = options.find(o => o.value === value)
-
-  return (
-    <div ref={m.rootRef} style={{ position: 'relative', display: 'flex', flex: 1, minWidth: 0 }}>
-      <CellTrigger open={m.open} onOpen={el => m.toggleAt(el, 220)}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, fontSize: 13 }}>
-          {current?.dot && <Dot color={current.dot} />}
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: current ? 'var(--t1)' : 'var(--t3)' }}>
-            {current?.label ?? empty}
-          </span>
-        </span>
-      </CellTrigger>
-      {m.open && (
-        <Menu pos={m.pos} panelRef={m.panelRef} width={220}>
-          <MenuList>
-            <MenuItem selected={!value} onSelect={() => { onChange(undefined); m.setOpen(false) }}>{empty}</MenuItem>
-            {options.map(o => (
-              <MenuItem
-                key={o.value}
-                selected={o.value === value}
-                onSelect={() => { onChange(o.value); m.setOpen(false) }}
-                trailing={o.sub ? <span style={{ fontSize: 10, color: 'var(--t3)', flexShrink: 0 }}>{o.sub}</span> : undefined}
-              >
-                {o.dot && <Dot color={o.dot} />}
-                {o.label}
-              </MenuItem>
-            ))}
-          </MenuList>
-        </Menu>
-      )}
-    </div>
-  )
-}
-
 /* ── Editor Toolbar ── */
 
 function ToolBtn({ active, onClick, title, children }: { active?: boolean; onClick: () => void; title: string; children: React.ReactNode }) {

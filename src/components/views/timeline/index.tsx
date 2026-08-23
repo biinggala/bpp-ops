@@ -131,6 +131,33 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
   const ghostRef = useRef<{ id: string; from: number; to: number } | null>(null)
   const dragging = useRef<{ date: string; anchorMinutes: number } | null>(null)
   const gridRef = useRef<HTMLDivElement>(null)
+
+  /**
+   * ── 줄이 안 맞던 이유 ──────────────────────────────────────────────────────
+   *
+   * The day headers and the hour grid draw the same columns with the same
+   * flex rules, and they still did not line up.
+   *
+   * The grid scrolls; the headers do not. Our scrollbar is a *classic* one
+   * (index.css gives it a width), so it takes 6px out of the grid's width and
+   * nothing out of the header's — and every column line below sat a few pixels
+   * left of the one above it, drifting further across the week.
+   *
+   * So both scrolling rows always reserve the rail (`scrollbar-gutter: stable`,
+   * below), and the header reserves exactly as much by measuring it. Measured
+   * rather than hard-coded at 6: the number is a stylesheet's opinion today and
+   * the platform's tomorrow.
+   */
+  const [rail, setRail] = useState(0)
+  useEffect(() => {
+    const el = gridRef.current
+    if (!el) return
+    const measure = () => setRail(el.offsetWidth - el.clientWidth)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
   const [selected, setSelected] = useState<string | null>(null)
   /** Placing a task on a whole day, opened from that day's header. */
   const [planning, setPlanning] = useState<{ date: string; anchor: HTMLElement } | null>(null)
@@ -341,13 +368,14 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
           )
         })}
         </Track>
+        <div style={{ width: rail, flexShrink: 0 }} />
       </div>
 
       {/* All-day strip: things pinned to the day rather than to a time. */}
       <div style={{
         display: 'flex', flexShrink: 0,
         borderBottom: '1px solid var(--bd2)', background: 'var(--bg2)',
-        maxHeight: 112, overflowY: 'auto',
+        maxHeight: 112, overflowY: 'scroll', scrollbarGutter: 'stable',
       }}>
         <div style={{ width: GUTTER, flexShrink: 0 }} />
         <Track lead={lead} count={days.length}>
@@ -423,7 +451,7 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
         />
       )}
 
-      <div ref={gridRef} style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
+      <div ref={gridRef} style={{ flex: 1, overflowY: 'scroll', scrollbarGutter: 'stable', position: 'relative' }}>
         <div style={{ display: 'flex', position: 'relative', height: 24 * SLOT_H }}>
           {/* Hour labels */}
           <div style={{ width: GUTTER, flexShrink: 0, position: 'relative' }}>

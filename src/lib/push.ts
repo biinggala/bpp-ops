@@ -24,6 +24,9 @@ import { isDesktopShell } from './desktopAuth'
 /** Public half of the pair. Safe to ship — it is what identifies the sender. */
 const VAPID_PUBLIC = 'BI_RGaYUrlhgdXk1iRGJ6tWUN74BSKOuLfGvnsdDNSjLFcYohGiDGG69xsp5sQniu73ncADcwsdOnZ16WsKYkGw'
 
+/** Set only by an explicit '끄기'. Its absence means 'on wherever possible'. */
+const OFF_KEY = 'bpp_push_off'
+
 /** Where the sender lives — the same Cloud Run service as the MCP endpoint. */
 export const PUSH_API = 'https://crng-task-manager-1050546278891.asia-northeast3.run.app'
 
@@ -174,6 +177,7 @@ export async function enablePush(): Promise<{ ok: true } | { ok: false; reason: 
       at: Date.now(),
     })
     localStorage.setItem('bpp_push_on', '1')
+    localStorage.removeItem(OFF_KEY)
     return { ok: true }
   } catch (e) {
     if (Notification.permission === 'denied') return { ok: false, reason: `${deniedHelp()} (${context(reg)})` }
@@ -245,6 +249,8 @@ export async function showLocalNotice(
 export async function disablePush(): Promise<void> {
   const uid = auth.currentUser?.uid
   localStorage.removeItem('bpp_push_on')
+  // Remembered, so the next load does not turn it straight back on.
+  try { localStorage.setItem(OFF_KEY, '1') } catch { /* private mode */ }
   try {
     if (uid) await remove(ref(db, P.pushSub(uid, deviceId())))
     const reg = await navigator.serviceWorker?.getRegistration('/')
@@ -257,6 +263,32 @@ export function pushEnabledHere(): boolean {
   try {
     return localStorage.getItem('bpp_push_on') === '1' && Notification.permission === 'granted'
   } catch { return false }
+}
+
+/** '이 기기에서는 됐다'고 한 사람만 꺼져 있습니다 — 그 외에는 켜는 게 기본입니다. */
+function optedOut(): boolean {
+  try { return localStorage.getItem(OFF_KEY) === '1' } catch { return false }
+}
+
+/**
+ * 기본값은 켜짐.
+ *
+ * 스위치를 찾아 눌러야 알림이 오는 건 기본값이 틀린 것입니다. 그렇다고 페이지가
+ * 열리자마자 권한 창을 띄울 수는 없습니다 — 묻지도 않은 허락을 요구하는 앱은
+ * 사람들이 '거부'를 누르고, 아이폰은 한 번 거부하면 되돌릴 방법이 없습니다.
+ *
+ * 그래서 조용히 되는 데까지만 합니다. 이미 권한이 있는 기기(다른 기기에서
+ * 켰거나, 전에 켰다가 앱을 다시 깐 경우)는 아무것도 묻지 않고 바로 구독합니다.
+ * 권한을 물어야 하는 기기는 설정 창의 스위치가 그 한 번의 탭을 받습니다.
+ */
+export async function autoEnablePush(): Promise<void> {
+  try {
+    if (optedOut()) return
+    if (Notification.permission !== 'granted') return
+    if (!pushSupport().ok) return
+    if (pushEnabledHere()) return
+    await enablePush()
+  } catch { /* best effort */ }
 }
 
 /**

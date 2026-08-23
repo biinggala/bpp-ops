@@ -1,37 +1,38 @@
 import { useEffect, useState } from 'react'
 import { setTheme, themeChoice, type ThemeChoice } from '../../lib/theme'
 import { haptic } from '../../lib/haptics'
+import { useMobile } from '../../hooks/useMobile'
+import { useAuthStore } from '../../store/authStore'
+import { disablePush, enablePush, pushEnabledHere, pushSupport, showLocalNotice } from '../../lib/push'
+import { chimeEnabled, playChime, setChimeEnabled } from '../../lib/chime'
+import { showTestNotice } from '../layout/NoticeToast'
 import { Icon, type IconName } from '../shared/Icon'
 
 /**
  * ── 설정 ─────────────────────────────────────────────────────────────────────
  *
  * Everything here belongs to *this machine*, not to the team. Fifty people share
- * the projects; nobody shares a screen or the room it is in, so none of this
- * goes near the database — the same line the sidebar's ordering follows.
+ * the projects; nobody shares a screen, or the room it is in, or the pocket the
+ * phone is in — so none of this goes near the database. It is the same line the
+ * sidebar's ordering follows.
  *
- * It lives behind an icon rather than in the sidebar's foot because a control
- * you touch twice a year should not be occupying the sidebar's last row every
- * day. The room the theme switch was taking is worth more than the one click it
- * saves.
+ * The notification switches used to live in the bell's popover, which put
+ * settings inside an inbox: you went there to clear notices and found a control
+ * panel at the top of the list. The bell is now only the list.
  */
 
-const THEMES: { value: ThemeChoice; label: string; icon: IconName; hint: string }[] = [
-  { value: 'light', label: '밝게', icon: 'sun', hint: '항상 밝은 화면' },
-  { value: 'dark', label: '어둡게', icon: 'moon', hint: '항상 어두운 화면' },
-  { value: 'system', label: '시스템', icon: 'monitor', hint: '기기 설정을 따릅니다' },
+const THEMES: { value: ThemeChoice; label: string; icon: IconName }[] = [
+  { value: 'light', label: '밝게', icon: 'sun' },
+  { value: 'dark', label: '어둡게', icon: 'moon' },
+  { value: 'system', label: '시스템', icon: 'monitor' },
 ]
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
-  const [choice, setChoice] = useState<ThemeChoice>(() => themeChoice())
-
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', esc)
     return () => window.removeEventListener('keydown', esc)
   }, [onClose])
-
-  const pick = (value: ThemeChoice) => { setTheme(value); setChoice(value); haptic('tap') }
 
   return (
     <div
@@ -45,11 +46,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         onClick={e => e.stopPropagation()}
         style={{
           background: 'var(--bg)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-lg)',
-          border: '1px solid var(--bd)', width: '100%', maxWidth: 420,
+          border: '1px solid var(--bd)', width: '100%', maxWidth: 440,
+          maxHeight: '86vh', overflowY: 'auto',
           padding: '20px 22px 22px', boxSizing: 'border-box',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
           <span style={{ color: 'var(--t2)', display: 'flex' }}><Icon name="settings" size={16} /></span>
           <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--t1)', flex: 1 }}>설정</div>
           <button
@@ -64,42 +66,217 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           >✕</button>
         </div>
 
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--t2)', marginBottom: 3 }}>화면 밝기</div>
-        <div style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1.6, marginBottom: 10 }}>
-          이 기기에서만 적용됩니다. 다른 사람 화면은 바뀌지 않습니다.
-        </div>
+        <Section title="화면 밝기" note="이 기기에서만 적용됩니다. 다른 사람 화면은 바뀌지 않습니다.">
+          <ThemeChoiceRow />
+        </Section>
 
-        <div style={{ display: 'flex', gap: 6 }}>
-          {THEMES.map(t => {
-            const on = choice === t.value
-            return (
-              <button
-                key={t.value}
-                onClick={() => pick(t.value)}
-                title={t.hint}
-                style={{
-                  flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                  padding: '12px 6px 10px', borderRadius: 'var(--r2)', cursor: 'pointer',
-                  fontFamily: 'var(--font)', fontSize: 12, fontWeight: on ? 600 : 400,
-                  border: `1px solid ${on ? 'var(--ac)' : 'var(--bd)'}`,
-                  background: on ? 'var(--ac-l)' : 'transparent',
-                  color: on ? 'var(--ac)' : 'var(--t2)',
-                  transition: 'background .1s, color .1s, border-color .1s',
-                }}
-                onMouseEnter={e => { if (!on) e.currentTarget.style.background = 'var(--bg3)' }}
-                onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}
-              >
-                <Icon name={t.icon} size={19} />
-                {t.label}
-              </button>
-            )
-          })}
-        </div>
+        <Section title="알림" note="켜 두는 것이 기본입니다. 기기마다 따로 정합니다 — 노트북에서 켠다고 폰이 켜지지는 않습니다.">
+          <PushRow />
+          <ChimeRow />
+        </Section>
 
-        <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--bd)', userSelect: 'text' }}>
+        <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 18, paddingTop: 12, borderTop: '1px solid var(--bd)', userSelect: 'text' }}>
           빌드 {__BUILD_ID__}
         </div>
       </div>
+    </div>
+  )
+}
+
+function Section({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 22 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--t2)', marginBottom: note ? 3 : 10 }}>{title}</div>
+      {note && <div style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1.6, marginBottom: 10 }}>{note}</div>}
+      {children}
+    </div>
+  )
+}
+
+function ThemeChoiceRow() {
+  const [choice, setChoice] = useState<ThemeChoice>(() => themeChoice())
+  return (
+    <div style={{ display: 'flex', gap: 6 }}>
+      {THEMES.map(t => {
+        const on = choice === t.value
+        return (
+          <button
+            key={t.value}
+            onClick={() => { setTheme(t.value); setChoice(t.value); haptic('tap') }}
+            style={{
+              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+              padding: '12px 6px 10px', borderRadius: 'var(--r2)', cursor: 'pointer',
+              fontFamily: 'var(--font)', fontSize: 12, fontWeight: on ? 600 : 400,
+              border: `1px solid ${on ? 'var(--ac)' : 'var(--bd)'}`,
+              background: on ? 'var(--ac-l)' : 'transparent',
+              color: on ? 'var(--ac)' : 'var(--t2)',
+              transition: 'background .1s, color .1s, border-color .1s',
+            }}
+            onMouseEnter={e => { if (!on) e.currentTarget.style.background = 'var(--bg3)' }}
+            onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}
+          >
+            <Icon name={t.icon} size={19} />
+            {t.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** The switch used by both notification rows, so they cannot drift apart. */
+function MiniSwitch({ on, busy, onClick }: { on: boolean; busy?: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy}
+      role="switch"
+      aria-checked={on}
+      style={{
+        width: 38, height: 22, borderRadius: 999, flexShrink: 0, padding: 2,
+        border: 'none', cursor: busy ? 'default' : 'pointer',
+        background: on ? 'var(--ac)' : 'var(--bd2)',
+        display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start',
+        transition: 'background .15s', opacity: busy ? .6 : 1,
+      }}
+    >
+      <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.25)', transition: 'all .15s' }} />
+    </button>
+  )
+}
+
+const ROW: React.CSSProperties = {
+  display: 'flex', alignItems: 'flex-start', gap: 10,
+  padding: '10px 0', borderTop: '1px solid var(--bd)',
+}
+
+/**
+ * 이 기기에서 푸시 받기.
+ *
+ * A subscription belongs to one browser on one machine, so this is per-device by
+ * nature. It is on wherever it can be — see `autoEnablePush` — and this switch
+ * exists for the one device that has not been asked yet, and for turning it off.
+ *
+ * When it *cannot* work, the reason is written out rather than left as a dead
+ * switch: an iPhone that has not been added to the home screen and a desktop
+ * shell with no Push API fail for completely different reasons, and 'off' says
+ * neither of them.
+ */
+function PushRow() {
+  const isMobile = useMobile()
+  const [on, setOn] = useState(pushEnabledHere())
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const me = useAuthStore(s => s.displayName || s.email?.split('@')[0] || '나')
+  const support = pushSupport()
+
+  /**
+   * Two notifications from one press, because they can fail separately.
+   *
+   * The banner is drawn by the app and always works. The OS notification needs a
+   * real notification permission and a live worker — and *not* a push — so when
+   * it fails it says which of the two is broken, which is the question
+   * 'permission denied' on its own never answered.
+   */
+  const runTest = async () => {
+    showTestNotice(me, !isMobile)
+    const res = await showLocalNotice('테스트 알림', '이게 보이면 폰 알림은 정상입니다')
+
+    // Measured rather than assumed. Four wrong guesses about the bottom bar
+    // ended with one screenshot of real numbers; 'it does not appear' is the
+    // same kind of claim and deserves the same treatment.
+    await new Promise(r => setTimeout(r, 300))
+    const box = document.querySelector('[data-notice-banner]')?.getBoundingClientRect()
+    const where = box
+      ? `배너 y=${Math.round(box.top)} h=${Math.round(box.height)} w=${Math.round(box.width)}`
+      : '배너 없음(DOM에 안 그려짐)'
+    setError(`${where} · OS 알림 ${res.ok ? 'ok' : `실패 — ${res.reason}`}`)
+  }
+
+  const test = (
+    <button
+      onClick={() => void runTest()}
+      style={{
+        fontSize: 11, color: 'var(--ac)', background: 'transparent', border: 'none',
+        cursor: 'pointer', fontFamily: 'var(--font)', padding: 0, flexShrink: 0, marginTop: 2,
+      }}
+    >테스트</button>
+  )
+
+  const detail = error && (
+    <span style={{ display: 'block', fontSize: 11, marginTop: 3, lineHeight: 1.45, color: error.includes('실패') ? 'var(--danger)' : 'var(--t3)' }}>
+      {error}
+    </span>
+  )
+
+  // Offered even where push cannot work at all — in the desktop app the banner
+  // *is* the notification, and this is the only way to see it without waiting
+  // for a colleague to assign something.
+  if (!support.ok) {
+    return (
+      <div style={ROW}>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: 'var(--t3)', lineHeight: 1.55 }}>
+          {support.reason}
+          {detail}
+        </span>
+        {test}
+      </div>
+    )
+  }
+
+  const toggle = async () => {
+    setBusy(true); setError(null)
+    if (on) {
+      await disablePush()
+      setOn(false)
+    } else {
+      const res = await enablePush()
+      if (res.ok) setOn(true)
+      else setError(res.reason)
+    }
+    setBusy(false)
+  }
+
+  return (
+    <div style={ROW}>
+      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+        이 기기에서 푸시 받기
+        <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
+          앱이 닫혀 있어도 알림이 옵니다
+        </span>
+        {detail}
+      </span>
+      {test}
+      <MiniSwitch on={on} busy={busy} onClick={() => void toggle()} />
+    </div>
+  )
+}
+
+/**
+ * 알림 소리 — 배너가 뜰 때만.
+ *
+ * A push that arrives with the app closed uses the phone's own notification
+ * sound; nothing here reaches that, and no web app can choose it.
+ */
+function ChimeRow() {
+  const [on, setOn] = useState(chimeEnabled())
+  return (
+    <div style={ROW}>
+      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+        알림 소리
+        <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
+          앱이 열려 있을 때 배너와 함께
+        </span>
+      </span>
+      <MiniSwitch
+        on={on}
+        onClick={() => {
+          const next = !on
+          setChimeEnabled(next); setOn(next)
+          // Hearing it is the only way to judge it.
+          if (next) playChime()
+        }}
+      />
     </div>
   )
 }
