@@ -7,6 +7,7 @@ import { disablePush, enablePush, pushEnabledHere, pushSupport, showLocalNotice 
 import { chimeEnabled, playChime, setChimeEnabled } from '../../lib/chime'
 import { fileWatchEnabled, setFileWatchEnabled } from '../../lib/driveWatch'
 import { useDriveStore } from '../../store/driveStore'
+import { useMailStore } from '../../store/mailStore'
 import { showTestNotice } from '../layout/NoticeToast'
 import { Icon, type IconName } from '../shared/Icon'
 
@@ -76,6 +77,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           <PushRow />
           <ChimeRow />
           <FileWatchRow />
+        </Section>
+
+        <Section title="연동" note="받은 알림에 밖에서 온 소식을 들이는 통로입니다. 이 기기가 아니라 계정에 붙습니다.">
+          <MailLinkRow />
         </Section>
 
         <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 18, paddingTop: 12, borderTop: '1px solid var(--bd)', userSelect: 'text' }}>
@@ -251,6 +256,40 @@ function PushRow() {
       </span>
       {test}
       <MiniSwitch on={on} busy={busy} onClick={() => void toggle()} />
+    </div>
+  )
+}
+
+/**
+ * 메일 연동 — 켜고 끄는 것만.
+ *
+ * 연결하는 버튼은 받은 알림 목록 안에도 있습니다. 처음 보는 사람은 거기서
+ * 만나고, 끊으러 오는 사람은 여기로 옵니다 — 끊는 버튼을 목록에 두면 매일
+ * 보는 자리에 매일 안 쓰는 버튼이 있게 됩니다.
+ */
+function MailLinkRow() {
+  const wasConnected = useMailStore(s => s.wasConnected)
+  const needsReconnect = useMailStore(s => s.needsReconnect)
+  const connecting = useMailStore(s => s.connecting)
+  const connect = useMailStore(s => s.connect)
+  const disconnect = useMailStore(s => s.disconnect)
+  const on = wasConnected && !needsReconnect
+
+  return (
+    <div style={ROW}>
+      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+        메일
+        <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
+          {on
+            ? '나에게 물어 왔고 아직 답 안 한 대화만 가져옵니다'
+            : '읽기 권한만 받습니다. 메일을 보내거나 지우지 않습니다.'}
+        </span>
+      </span>
+      <MiniSwitch
+        on={on}
+        busy={connecting}
+        onClick={() => { if (on) disconnect(); else void connect() }}
+      />
     </div>
   )
 }

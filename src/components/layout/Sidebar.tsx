@@ -101,7 +101,7 @@ export function Sidebar() {
    */
   const [pane, setPane] = useState<'home' | 'inbox'>('home')
   const [width, setWidth] = useState(loadWidth)
-  const { unread } = useNoticeInbox()
+  const { unread, external } = useNoticeInbox()
   const todayOpen = useTodayCount()
   const profileRef = useRef<HTMLDivElement>(null)
 
@@ -481,7 +481,7 @@ export function Sidebar() {
         {/* 홈 · 받은 알림 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 10px 2px' }}>
           <PaneTab icon="home" label="홈" active={pane === 'home'} onClick={() => setPane('home')} />
-          <PaneTab icon="inbox" label="받은 알림" active={pane === 'inbox'} count={unread} onClick={() => { setPane('inbox'); haptic('tap') }} />
+          <PaneTab icon="inbox" label="받은 알림" active={pane === 'inbox'} count={unread + external} onClick={() => { setPane('inbox'); haptic('tap') }} />
         </div>
 
         {/* Search — the home pane's, since it searches tasks. */}

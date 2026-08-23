@@ -15,7 +15,7 @@
 export type IconName =
   | 'pencil' | 'users' | 'layers' | 'archive' | 'unarchive' | 'trash'
   | 'exit' | 'settings' | 'plus' | 'external' | 'unlink' | 'sun' | 'moon' | 'monitor'
-  | 'inbox' | 'home' | 'today' | 'file' | 'panel'
+  | 'inbox' | 'home' | 'today' | 'file' | 'panel' | 'mail'
 
 /** The ones a single path can say. */
 const PATHS: Partial<Record<IconName, string>> = {
@@ -76,6 +76,15 @@ export function Icon({ name, size = 15, strokeWidth = 1.7 }: {
     )
   }
   // 사이드바 — 창 하나에 왼쪽 기둥. 채워진 쪽이 접었다 폈다 하는 쪽입니다.
+  // 봉투. 밖에서 온 줄이라는 표시는 색이 아니라 모양이어야 합니다.
+  if (name === 'mail') {
+    return (
+      <svg {...common}>
+        <rect x="3.2" y="5.4" width="17.6" height="13.2" rx="2.2" />
+        <path d="m3.8 7.2 7.1 5.1a2 2 0 0 0 2.2 0l7.1-5.1" />
+      </svg>
+    )
+  }
   if (name === 'panel') {
     return (
       <svg {...common}>
