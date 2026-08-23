@@ -7,6 +7,9 @@ import { useTaskStore } from '../../store/taskStore'
 import { useSpaceStore } from '../../store/spaceStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useDriveStore } from '../../store/driveStore'
+import { useMobile } from '../../hooks/useMobile'
+import { haptic } from '../../lib/haptics'
+import { Icon } from '../shared/Icon'
 import { fileKind, driveUrl, type DriveSearchResult } from '../../lib/googleDrive'
 import { openExternal } from '../../lib/desktopLinks'
 import type { TaskLink, ViewType } from '../../types'
@@ -74,6 +77,7 @@ export function CommandPalette() {
   const spaces = useSpaceStore(s => s.spaces)
   const projects = useProjectStore(s => s.projects)
 
+  const isMobile = useMobile()
   const [query, setQuery] = useState('')
   const [selectedIdx, setSelectedIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -83,7 +87,9 @@ export function CommandPalette() {
     if (isCommandPaletteOpen) {
       setQuery('')
       setSelectedIdx(0)
-      setTimeout(() => inputRef.current?.focus(), 20)
+      // preventScroll: 폰에서 이 창은 화면 위쪽에 붙어 있는데, 기본 focus는
+      // 뒤에 있는 본문까지 스크롤시켜 판이 한 번 덜컹거립니다.
+      setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 20)
     }
   }, [isCommandPaletteOpen])
 
@@ -282,7 +288,23 @@ export function CommandPalette() {
         onClick={closeCommandPalette}
         style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 200, backdropFilter: 'blur(4px)' }}
       />
-      <div style={{
+      {/*
+        폰에서는 떠 있는 판이 아니라 위에서 내려오는 한 장입니다.
+
+        580px 고정폭은 390pt 화면에서 그냥 밖으로 나갑니다. 그리고 여기서는
+        키보드가 올라오면 화면의 절반이 사라지므로, 판을 가운데 띄우는 대신
+        위에 붙이고 아래를 키보드에 내줍니다 — dvh는 그 줄어든 높이를
+        따라옵니다(vh는 안 따라옵니다).
+      */}
+      <div style={isMobile ? {
+        position: 'fixed', top: 0, left: 0, right: 0,
+        maxHeight: '88dvh',
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        background: 'var(--bg)',
+        borderBottomLeftRadius: 'var(--r4)', borderBottomRightRadius: 'var(--r4)',
+        boxShadow: '0 12px 40px rgba(0,0,0,.32)',
+        zIndex: 201, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      } : {
         position: 'fixed', top: '14vh', left: '50%', transform: 'translateX(-50%)',
         width: 580, maxHeight: '66vh',
         background: 'var(--bg)', borderRadius: 'var(--r4)',
@@ -291,27 +313,47 @@ export function CommandPalette() {
       }}>
 
         {/* Search row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px', borderBottom: '1px solid var(--bd)', flexShrink: 0 }}>
-          <span style={{ fontSize: 15, color: 'var(--t3)', lineHeight: 1, flexShrink: 0, fontWeight: 400 }}>⌘</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '11px 14px' : '13px 16px', borderBottom: '1px solid var(--bd)', flexShrink: 0 }}>
+          {/* 폰에는 ⌘ 키가 없습니다. 여기 있는 이유를 말해 주는 건 돋보기입니다. */}
+          {isMobile
+            ? <span style={{ color: 'var(--t3)', display: 'flex', flexShrink: 0 }}><Icon name="search" size={17} /></span>
+            : <span style={{ fontSize: 15, color: 'var(--t3)', lineHeight: 1, flexShrink: 0, fontWeight: 400 }}>⌘</span>}
           <input
             ref={inputRef}
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="업무 · 프로젝트 · 자료 · 노트 검색..."
-            style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, background: 'transparent', color: 'var(--t1)', fontFamily: 'var(--font)' }}
+            placeholder={isMobile ? '검색' : '업무 · 프로젝트 · 자료 · 노트 검색...'}
+            autoFocus
+            /* type="search"가 아니라 text입니다 — 사파리가 자기 ✕를 하나 더
+               그려서 우리 것과 나란히 섭니다. 자판 모양만 검색으로 바꿉니다. */
+            inputMode="search"
+            enterKeyHint="search"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            /* iOS는 16px보다 작은 입력칸에 커서가 들어가면 화면을 확대합니다 —
+               한 번 확대되면 되돌아오지 않아서, 검색 한 번에 앱이 커진 채로
+               남습니다. 폰에서만 16px입니다. */
+            style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', fontSize: isMobile ? 16 : 14, background: 'transparent', color: 'var(--t1)', fontFamily: 'var(--font)' }}
           />
           {query ? (
             <button
               onClick={() => setQuery('')}
-              style={{ border: 'none', background: 'var(--bg3)', color: 'var(--t3)', cursor: 'pointer', fontSize: 12, borderRadius: 4, width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontFamily: 'var(--font)' }}
+              aria-label="지우기"
+              style={{ border: 'none', background: 'var(--bg3)', color: 'var(--t3)', cursor: 'pointer', fontSize: isMobile ? 14 : 12, borderRadius: 999, width: isMobile ? 28 : 20, height: isMobile ? 28 : 20, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontFamily: 'var(--font)' }}
             >✕</button>
+          ) : isMobile ? (
+            <button
+              onClick={() => { haptic('tap'); closeCommandPalette() }}
+              style={{ border: 'none', background: 'transparent', color: 'var(--ac)', cursor: 'pointer', fontSize: 14, fontFamily: 'var(--font)', padding: '4px 2px', flexShrink: 0 }}
+            >취소</button>
           ) : (
             <kbd style={kbdStyle}>ESC</kbd>
           )}
         </div>
 
         {/* Result list */}
-        <div ref={listRef} style={{ overflowY: 'auto', flex: 1 }}>
+        <div ref={listRef} style={{ overflowY: 'auto', flex: 1, WebkitOverflowScrolling: 'touch', paddingBottom: isMobile ? 'env(safe-area-inset-bottom, 0px)' : 0 }}>
           {items.length === 0 && (
             <div style={{ padding: '36px 16px', textAlign: 'center', fontSize: 13, color: 'var(--t3)' }}>
               결과 없음
@@ -333,7 +375,9 @@ export function CommandPalette() {
                     onClick={item.onSelect}
                     onMouseEnter={() => setSelectedIdx(absIdx)}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 10, padding: '7px 16px',
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      // 손가락으로 누를 줄은 44pt 가까이 되어야 옆 줄이 안 눌립니다.
+                      padding: isMobile ? '11px 14px' : '7px 16px',
                       cursor: 'pointer',
                       background: isSelected ? 'var(--bg3)' : 'transparent',
                       transition: 'background .06s',
@@ -349,19 +393,21 @@ export function CommandPalette() {
                       {item.icon}
                     </span>
 
-                    <span style={{ fontSize: 13, color: 'var(--t1)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: isMobile ? 15 : 13, color: 'var(--t1)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {item.label}
                     </span>
 
                     {item.sub && (
-                      <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0 }}>{item.sub}</span>
+                      <span style={{ fontSize: isMobile ? 12 : 11, color: 'var(--t3)', flexShrink: 0, maxWidth: '40%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.sub}</span>
                     )}
 
-                    {item.hint && !item.sub && (
+                    {item.hint && !item.sub && !isMobile && (
                       <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0 }}>{item.hint}</span>
                     )}
 
-                    {isSelected && (
+                    {/* 골라 놓은 줄에 붙는 ↵는 키보드가 있는 사람에게만
+                        뜻이 있습니다. 폰에서는 그냥 누르면 됩니다. */}
+                    {isSelected && !isMobile && (
                       <kbd style={{ ...kbdStyle, opacity: .6, flexShrink: 0, marginLeft: 4 }}>↵</kbd>
                     )}
                   </div>
@@ -371,12 +417,15 @@ export function CommandPalette() {
           ))}
         </div>
 
-        {/* Footer */}
-        <div style={{ padding: '6px 14px', borderTop: '1px solid var(--bd)', display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0 }}>
-          <FooterHint keys={['↑', '↓']} label="이동" />
-          <FooterHint keys={['↵']} label="선택" />
-          <FooterHint keys={['ESC']} label="닫기" />
-        </div>
+        {/* 자판 안내는 자판이 있을 때만. 폰에서는 키보드가 올라오는 자리를
+            안내문이 차지하고 앉아 결과 한 줄을 밀어냅니다. */}
+        {!isMobile && (
+          <div style={{ padding: '6px 14px', borderTop: '1px solid var(--bd)', display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0 }}>
+            <FooterHint keys={['↑', '↓']} label="이동" />
+            <FooterHint keys={['↵']} label="선택" />
+            <FooterHint keys={['ESC']} label="닫기" />
+          </div>
+        )}
       </div>
     </>
   )

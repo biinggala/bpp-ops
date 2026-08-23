@@ -558,8 +558,10 @@ export function Sidebar() {
             찾습니다. 상자보다 넓고, 무엇보다 어디서 눌러도 답이 나옵니다.
           */}
           <IconAction
-            label={`검색 · ${CMD}K`}
-            onClick={() => { openCommandPalette(); haptic('tap') }}
+            label={isMobile ? '검색' : `검색 · ${CMD}K`}
+            // 폰에서 서랍은 화면을 덮고 있습니다. 검색 창을 그 위에 또 얹으면
+            // 판 두 장이 겹쳐서, 닫고 나면 서랍이 아직 열려 있습니다.
+            onClick={() => { haptic('tap'); closeSidebar(); openCommandPalette() }}
           />
         </div>
 
