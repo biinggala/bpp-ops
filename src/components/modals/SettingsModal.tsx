@@ -369,7 +369,8 @@ function ChimeRow() {
 function OrgSection() {
   const email = useAuthStore(s => s.email)
   const { orgId, name, rooms, ready, createOrg, addRoom, updateRoom, error } = useOrgStore()
-  const [newName, setNewName] = useState('')
+  const [orgName, setOrgName] = useState('')
+  const [roomName, setRoomName] = useState('')
   const [busy, setBusy] = useState(false)
   const domain = email?.split('@')[1] ?? ''
 
@@ -380,13 +381,13 @@ function OrgSection() {
       <Section title="조직" note={`${domain} 로 로그인한 사람들이 함께 쓰는 회의실을 등록해 둘 수 있습니다. 만들면 같은 도메인 전원이 바로 씁니다 — 초대는 없습니다.`}>
         <div style={{ display: 'flex', gap: 6 }}>
           <input
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
+            value={orgName}
+            onChange={e => setOrgName(e.target.value)}
             placeholder="조직 이름 (예: 블랙페이퍼)"
             style={INPUT}
           />
           <button
-            onClick={async () => { setBusy(true); await createOrg(newName, email); setBusy(false) }}
+            onClick={async () => { setBusy(true); await createOrg(orgName, email); setBusy(false) }}
             disabled={busy}
             style={{ ...navBtn, borderColor: 'var(--ac)', background: 'var(--ac)', color: '#fff', opacity: busy ? .6 : 1 }}
           >{busy ? '만드는 중…' : '만들기'}</button>
@@ -420,16 +421,16 @@ function OrgSection() {
       ))}
       <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
         <input
-          value={newName}
-          onChange={e => setNewName(e.target.value)}
+          value={roomName}
+          onChange={e => setRoomName(e.target.value)}
           onKeyDown={e => {
-            if (e.key === 'Enter' && newName.trim()) { void addRoom(newName); setNewName('') }
+            if (e.key === 'Enter' && roomName.trim()) { void addRoom(roomName); setRoomName('') }
           }}
           placeholder="회의실 이름 (예: 대회의실)"
           style={INPUT}
         />
         <button
-          onClick={() => { if (newName.trim()) { void addRoom(newName); setNewName('') } }}
+          onClick={() => { if (roomName.trim()) { void addRoom(roomName); setRoomName('') } }}
           style={navBtn}
         >추가</button>
       </div>
