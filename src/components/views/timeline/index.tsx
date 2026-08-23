@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { useGCalStore } from '../../../store/gcalStore'
+import { useGCalStore, awaitingMe } from '../../../store/gcalStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { DayPlanner } from '../calendar/DayPlanner'
@@ -386,8 +386,16 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
                 title={ev.summary}
                 style={{
                   fontSize: 10, lineHeight: 1.4, padding: '2px 6px', borderRadius: 4,
-                  background: tint(ev.calendarColor || '#337EA9', .13),
-                  borderLeft: `3px solid ${ev.calendarColor || '#337EA9'}`,
+                  ...(awaitingMe(ev)
+                    ? {
+                        background: 'transparent',
+                        border: `1.5px dashed ${ev.calendarColor || '#337EA9'}`,
+                        boxSizing: 'border-box' as const,
+                      }
+                    : {
+                        background: tint(ev.calendarColor || '#337EA9', .13),
+                        borderLeft: `3px solid ${ev.calendarColor || '#337EA9'}`,
+                      }),
                   color: 'var(--t1)',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none',
                 }}>
@@ -623,6 +631,9 @@ function EventBlock({ placed, ghost, selected, onSelect, onMove }: {
   const to = ghost?.to ?? placed.to
   const width = 100 / lanes
   const colour = event.calendarColor || '#337EA9'
+  // 아직 수락 안 한 초대는 면을 안 칠합니다 — 확정된 것만 칠해져 있어야
+  // 오늘이 실제로 얼마나 찼는지 보입니다. awaitingMe 참고.
+  const pending = awaitingMe(event)
   const height = Math.max(18, (to - from) * PX_PER_MIN - 2)
   // Below roughly two lines there is no room to stack the time above the name,
   // so they share one line and the name takes what is left.
@@ -639,8 +650,12 @@ function EventBlock({ placed, ghost, selected, onSelect, onMove }: {
         height,
         left: `calc(${lane * width}% + 3px)`,
         width: `calc(${width}% - 6px)`,
-        background: tint(colour, ghost ? .28 : .13),
-        borderLeft: `3px solid ${colour}`,
+        background: pending ? 'transparent' : tint(colour, ghost ? .28 : .13),
+        // 왼쪽 굵은 선은 '이 캘린더의 확정된 일정'이라는 표시입니다. 점선
+        // 테두리가 그 자리를 대신하므로 둘을 같이 쓰지 않습니다.
+        ...(pending
+          ? { border: `1.5px dashed ${colour}`, boxSizing: 'border-box' as const }
+          : { borderLeft: `3px solid ${colour}` }),
         borderRadius: 5,
         boxShadow: selected ? `0 0 0 2px ${colour}` : 'none',
         color: 'var(--t1)',

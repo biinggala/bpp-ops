@@ -24,6 +24,29 @@ export interface GCalEvent {
   taskId?: string
 }
 
+/**
+ * ── 아직 대답 안 한 일정 ─────────────────────────────────────────────────────
+ *
+ * 초대만 받아 놓고 수락도 거절도 안 한 일정은 **아직 내 일정이 아닙니다.**
+ * 그런데 화면에서는 확정된 회의와 똑같이 칠해져 있었습니다 — 오늘 오후가 꽉
+ * 차 보이는데 그중 절반은 내가 갈지 안 갈지도 모르는 것들인 거죠.
+ *
+ * 그래서 맥 캘린더가 하는 것과 같은 표시를 씁니다: **점선 테두리, 채우기
+ * 없음.** 색은 그대로 둡니다 — 어느 캘린더 것인지는 여전히 알아야 하고,
+ * 바뀌는 건 '확정인가' 하나뿐입니다. 확정된 것만 면으로 칠해져 있으면 오늘이
+ * 실제로 얼마나 찼는지가 한눈에 보입니다.
+ *
+ * `tentative`(미정)는 여기 안 넣습니다. 그건 대답을 안 한 게 아니라 '아마
+ * 간다'고 대답한 것이고, 대답한 것과 안 한 것은 다른 상태입니다.
+ *
+ * 참석자가 없는 일정 — 내가 만든 것, 혼자 쓰는 시간 블록 — 은 대답할 것이
+ * 없으므로 늘 확정입니다.
+ */
+export function awaitingMe(event: { attendees?: EventAttendee[] }): boolean {
+  const me = event.attendees?.find(a => a.self)
+  return !!me && (me.responseStatus ?? 'needsAction') === 'needsAction'
+}
+
 const ENABLED_KEY = 'gcal_enabled_calendars'
 
 /**
