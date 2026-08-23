@@ -100,10 +100,6 @@ const PRIORITY_STYLE: Record<Priority, { bg: string; color: string }> = {
 
 // Only 높음 gets a mark next to the name. Marking every level would make the
 // column louder without making anything stand out.
-const PRIORITY_MARK: Partial<Record<Priority, string>> = {
-  '높음': NOTION.red.text,
-}
-
 /**
  * The colour a milestone and everything under it share.
  *
@@ -1520,15 +1516,15 @@ function Row({
                   {isExpanded ? '▼' : '▶'}
                 </button>
               )}
-              {PRIORITY_MARK[task.priority] && !isDone && (
-                <span
-                  title={`우선순위 ${task.priority}`}
-                  style={{
-                    width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-                    background: PRIORITY_MARK[task.priority],
-                  }}
-                />
-              )}
+              {/*
+                우선순위 '높음'에 붙던 빨간 점이 여기 있었습니다.
+
+                두 가지 이유로 뺐습니다. 하나, 우선순위는 이미 자기 열에
+                badge로 있습니다 — 한 줄에서 같은 사실을 두 번 말하고 있었던
+                겁니다. 둘, 이 앱에서 이름 앞의 색점은 이미 '프로젝트'라는 뜻을
+                갖고 있습니다. 같은 자리의 같은 모양이 다른 뜻을 가지면 둘 다
+                안 읽힙니다.
+              */}
               {editing === 'name' ? (
                 <InlineTextEdit
                   value={task.name}
