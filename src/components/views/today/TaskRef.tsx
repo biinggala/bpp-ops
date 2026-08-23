@@ -6,6 +6,9 @@ import { useUiStore } from '../../../store/uiStore'
 import { useProjectStore } from '../../../store/projectStore'
 import { haptic } from '../../../lib/haptics'
 import { daysFrom } from '../../../lib/utils'
+import { StatusMark } from '../../shared/StatusMark'
+import { useMenu, Menu, MenuList, MenuItem } from '../../shared/Menu'
+import { STATUS_LIST, statusAccent, type Status } from '../../../types'
 
 /**
  * ── 노트 안의 업무 ───────────────────────────────────────────────────────────
@@ -23,9 +26,17 @@ import { daysFrom } from '../../../lib/utils'
  * 있습니다. 이름을 복사해 두었다면 오늘 아침의 사본을 붙들고 하루를 보내게
  * 됩니다.
  *
- * 체크는 한 방향으로만 흐릅니다: 여기서 체크하면 그 태스크가 완료가 됩니다.
- * 반대로 담당자·마감일·프로젝트는 여기서 못 고칩니다 — 이름을 누르면 상세
- * 창이 열리고, 그게 그걸 고치는 곳입니다. 노트는 일이 사는 곳이 아니라 오늘의
+ * **여기 있는 건 체크박스가 아니라 상태입니다.** 처음엔 동그란 체크박스였는데,
+ * 그건 일이 끝났거나 안 끝났거나 둘 중 하나라는 말입니다. 우리 업무는 대기 ·
+ * 진행중 · 검토중 · 완료 네 가지고, 하루 중에 제일 자주 일어나는 변화는
+ * '완료'가 아니라 '진행중으로 옮김'입니다. 체크박스는 그걸 표현할 수 없어서
+ * 한 번 누르면 무조건 완료로 보내 버렸습니다 — 아직 하는 중인 일을요.
+ *
+ * 그래서 목록·보드와 같은 표시(StatusMark)를 쓰고, 누르면 네 상태가 나옵니다.
+ * 자유 체크리스트는 그대로 체크박스입니다. 그쪽은 정말로 둘 중 하나니까요.
+ *
+ * 담당자·마감일·프로젝트는 여기서 못 고칩니다 — 이름을 누르면 상세 창이
+ * 열리고, 그게 그걸 고치는 곳입니다. 노트는 일이 사는 곳이 아니라 오늘의
  * 결정이 사는 곳입니다.
  */
 
@@ -102,20 +113,17 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
   const diff = task.due ? daysFrom(task.due, new Date()) : null
   const late = diff !== null && diff < 0 && !done
 
-  const toggle = () => {
+  const setStatus = (next: Status) => {
+    if (next === task.status) return
     haptic('toggle')
-    updateTask(task.id, { status: done ? '진행중' : '완료', ...(done ? {} : { progress: 100 }) })
+    // 완료로 옮길 때만 진행률을 같이 채웁니다. 완료에서 나올 때 0으로
+    // 되돌리면 그동안 한 일이 없던 일이 됩니다.
+    updateTask(task.id, { status: next, ...(next === '완료' ? { progress: 100 } : {}) })
   }
 
   return (
     <NodeViewWrapper as="div" contentEditable={false} style={ROW} data-drag-handle>
-      <button onClick={toggle} aria-label={done ? '완료 취소' : '완료'} style={{
-        ...BOX,
-        border: done ? '2px solid #448361' : '2px solid var(--bd2)',
-        background: done ? '#448361' : 'transparent',
-        color: '#fff', fontSize: 10, cursor: 'pointer', padding: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>{done ? '✓' : ''}</button>
+      <StatusPick status={task.status} onPick={setStatus} />
 
       <span
         onClick={() => openTaskDetail(task.id)}
@@ -147,6 +155,47 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
       {/* 노트에서 빼는 것과 업무를 지우는 건 다른 일입니다. 이건 앞의 것. */}
       <button onClick={() => deleteNode()} title="오늘 목록에서 빼기" style={REMOVE}>×</button>
     </NodeViewWrapper>
+  )
+}
+
+/**
+ * 상태를 보여 주고, 누르면 바꾸는 것.
+ *
+ * 표시는 목록·보드와 같은 StatusMark입니다. 오늘 화면에서만 다른 모양을 쓰면
+ * 같은 값을 두 가지로 배우게 됩니다.
+ */
+function StatusPick({ status, onPick }: { status: Status; onPick: (s: Status) => void }) {
+  const m = useMenu()
+  return (
+    <span ref={m.rootRef} style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
+      <button
+        onClick={e => m.toggleAt(e.currentTarget, 148, 200)}
+        aria-label={`상태: ${status}`}
+        title={status}
+        style={{
+          width: 20, height: 20, borderRadius: '50%', border: 'none', padding: 0, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: m.open ? 'var(--bg3)' : 'transparent',
+          color: statusAccent(status), fontFamily: 'var(--font)',
+        }}
+        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+        onMouseLeave={e => (e.currentTarget.style.background = m.open ? 'var(--bg3)' : 'transparent')}
+      >
+        <StatusMark status={status} size={14} />
+      </button>
+      {m.open && (
+        <Menu pos={m.pos} panelRef={m.panelRef} width={148}>
+          <MenuList>
+            {STATUS_LIST.map(s => (
+              <MenuItem key={s} selected={s === status} onSelect={() => { onPick(s); m.setOpen(false) }}>
+                <span style={{ color: statusAccent(s), display: 'flex' }}><StatusMark status={s} size={12} /></span>
+                {s}
+              </MenuItem>
+            ))}
+          </MenuList>
+        </Menu>
+      )}
+    </span>
   )
 }
 
