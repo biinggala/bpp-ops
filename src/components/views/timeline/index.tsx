@@ -269,6 +269,7 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
   const bookRoom = useOrgStore(s => s.book)
   const releaseRoom = useOrgStore(s => s.release)
   const releaseForEvent = useOrgStore(s => s.releaseForEvent)
+  const retitleForEvent = useOrgStore(s => s.retitleForEvent)
   /** 새 일정에서 고른 방. 일정이 아직 없으므로 저장할 때까지 여기 있습니다. */
   const [draftRoom, setDraftRoom] = useState<string | null>(null)
 
@@ -585,10 +586,11 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
             const withMe = had.some(a => a.self) && myEmail
               ? [...guests, myEmail.toLowerCase()]
               : guests
-            await updateEvent(selectedInfo.event.id, {
-              summary: shownTitle.trim() || selectedInfo.event.summary,
-              attendees: withMe,
-            })
+            const summary = shownTitle.trim() || selectedInfo.event.summary
+            await updateEvent(selectedInfo.event.id, { summary, attendees: withMe })
+            // 예약에 적힌 제목도 같이. 사본은 늙습니다 — 남들이 방 목록에서
+            // 읽는 '무슨 회의로 찼는지'가 그 사본입니다.
+            await retitleForEvent(selectedInfo.date, selectedInfo.event.id, summary)
             setSaving(false)
             setSelected(null)
           }}
@@ -1482,6 +1484,17 @@ function RoomRow({ slot, booking, onPick }: {
   )
 }
 
+/**
+ * 목록의 방 한 줄.
+ *
+ * **찬 방은 무엇 때문에 찼는지까지 말합니다.** 시간과 사람만 적었더니
+ * '10:30–12:00 김하연'이었는데, 그걸로는 내 회의를 미룰지 방을 바꿀지 정할
+ * 수가 없습니다. 무슨 회의인지 알면 판단이 됩니다 — 주간 정기 회의라면
+ * 내가 옮기고, 잠깐 잡아 둔 것이면 물어보면 되니까요.
+ *
+ * 그래서 찬 방만 두 줄입니다. 첫 줄은 방과 시간, 둘째 줄은 회의 제목과
+ * 잡은 사람. 빈 방은 한 줄이고, 그게 대부분이라 목록은 여전히 짧습니다.
+ */
 function RoomOption({ room, clashes, chosen, onPick }: {
   room: Room
   clashes: Booking[]
@@ -1490,35 +1503,57 @@ function RoomOption({ room, clashes, chosen, onPick }: {
 }) {
   const [hovered, setHovered] = useState(false)
   const taken = clashes.length > 0
+  const first = clashes[0]
+
   return (
     <button
       onClick={taken ? undefined : onPick}
       disabled={taken}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      title={taken ? clashes.map(c => `${hhmm(c.from)}–${hhmm(c.to)} ${c.byName ?? c.by}`).join('\n') : room.note}
       style={{
-        display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-        padding: '5px 8px', borderRadius: 'var(--r1)', border: 'none',
+        display: 'flex', flexDirection: 'column', gap: 1, width: '100%',
+        padding: taken ? '5px 8px 6px' : '5px 8px',
+        borderRadius: 'var(--r1)', border: 'none',
         cursor: taken ? 'default' : 'pointer', fontFamily: 'var(--font)', textAlign: 'left',
         background: chosen ? 'var(--ac-l)' : hovered && !taken ? 'var(--bg3)' : 'transparent',
-        opacity: taken ? .55 : 1,
+        opacity: taken ? .6 : 1,
       }}
     >
-      <span style={{
-        fontSize: 12.5, color: chosen ? 'var(--ac)' : 'var(--t1)',
-        fontWeight: chosen ? 600 : 400,
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>{room.name}</span>
-      {/* 왜 못 쓰는지까지 말해 줍니다. '사용 중'만 쓰면 시간을 옮길지 방을
-          바꿀지 정할 수가 없습니다. */}
-      {taken && (
-        <span style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--t3)', flexShrink: 0 }}>
-          {hhmm(clashes[0].from)}–{hhmm(clashes[0].to)} {clashes[0].byName ?? ''}
+      <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, width: '100%', minWidth: 0 }}>
+        <span style={{
+          fontSize: 12.5, color: chosen ? 'var(--ac)' : 'var(--t1)',
+          fontWeight: chosen ? 600 : 400,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{room.name}</span>
+        {taken && first && (
+          <span style={{
+            marginLeft: 'auto', flexShrink: 0, fontSize: 10.5, color: 'var(--t3)',
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            {hhmm(first.from)}–{hhmm(first.to)}
+            {/* 여러 건 겹치면 첫 건만 자세히 적고 나머지는 셉니다. 셋을 다
+                적으면 이 줄이 카드 절반을 씁니다. */}
+            {clashes.length > 1 ? ` +${clashes.length - 1}` : ''}
+          </span>
+        )}
+      </span>
+
+      {taken && first && (
+        <span style={{
+          fontSize: 10.5, color: 'var(--t3)', width: '100%', minWidth: 0,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {first.title || '(제목 없음)'}
+          {first.byName ? ` · ${first.byName}` : ''}
         </span>
       )}
-      {chosen && !taken && (
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--ac)', flexShrink: 0 }}>✓</span>
+
+      {!taken && room.note && (
+        <span style={{
+          fontSize: 10.5, color: 'var(--t3)', width: '100%', minWidth: 0,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{room.note}</span>
       )}
     </button>
   )
