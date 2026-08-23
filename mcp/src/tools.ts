@@ -11,7 +11,9 @@ import {
 import {
   createProject, mutateMilestones, mutateTasks, newId,
   readMilestones, readProjects, readTasks, readUserProfiles, writeProjectMeta,
+  readDailyNote, readDailyNoteDates, writeDailyNote,
 } from './store.js'
+import { checklistHtml, noteToMarkdown, paragraphHtml, taskRefHtml } from './note.js'
 import { PRIORITIES, STATUSES, type Milestone, type Priority, type Status, type Task, type TaskLink } from './types.js'
 
 const YMD = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD')
@@ -847,6 +849,93 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       if (!gone) throw new Error('link not found on this project')
       await writeProjectMeta(args.project_id, { links: links.filter(l => l.id !== args.link_id) })
       return text({ removed: gone })
+    }
+  )
+
+  /* ── 데일리 노트 ───────────────────────────────────────────────────────── */
+
+  /**
+   * 노트는 부르는 사람의 것입니다.
+   *
+   * 경로가 ctx.email 로만 만들어집니다 — 이 서버는 관리자 권한이라 규칙이
+   * 막아 주지 않고, 남의 노트를 가리킬 인자를 두지 않는 것이 유일한 울타리
+   * 입니다. 그래서 '누구의' 를 받는 자리가 아예 없습니다.
+   */
+  server.registerTool(
+    'get_daily_note',
+    {
+      title: '오늘 노트 읽기',
+      description:
+        "Reads the caller's daily note for a date (default today) as markdown. The note is where somebody plans their day: a mix of free checkboxes for small things and references to real tasks. Task references are resolved here — you see the task's current name and whether it is done, not the id. Use this to answer 'what am I doing today' or 'what did I write down about X'.",
+      inputSchema: {
+        date: YMD.optional().describe('YYYY-MM-DD, default today'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (args) => {
+      const date = args.date ?? today()
+      const [html, tasks] = await Promise.all([readDailyNote(ctx.email, date), readTasks()])
+      const markdown = noteToMarkdown(html, tasks)
+      return text({ date, empty: !markdown, markdown })
+    }
+  )
+
+  server.registerTool(
+    'list_daily_notes',
+    {
+      title: '노트 있는 날',
+      description:
+        "Lists the dates the caller has a daily note for, newest first. Use it to find which day to read when somebody says 'last week I wrote something about…'.",
+      inputSchema: { limit: z.number().int().min(1).max(120).optional() },
+      annotations: { readOnlyHint: true },
+    },
+    async (args) => {
+      const dates = await readDailyNoteDates(ctx.email)
+      return text({ dates: dates.slice(0, args.limit ?? 30), total: dates.length })
+    }
+  )
+
+  server.registerTool(
+    'append_daily_note',
+    {
+      title: '오늘 노트에 붙이기',
+      description:
+        "Appends to the caller's daily note (default today). Three kinds of line, and the difference matters: `task_ids` become live references — ticking one in the app completes the real task, and its name and status stay current; `todos` become plain checkboxes that live only in the note, for the small things not worth a task; `notes` are plain paragraphs. Existing content is never replaced.",
+      inputSchema: {
+        date: YMD.optional().describe('YYYY-MM-DD, default today'),
+        task_ids: z.array(z.string()).optional().describe('existing tasks to put on the day'),
+        todos: z.array(z.string()).optional().describe('personal checkboxes — not tasks, nobody else sees them'),
+        notes: z.array(z.string()).optional().describe('plain lines of text'),
+      },
+    },
+    async (args) => {
+      const date = args.date ?? today()
+      const ids = args.task_ids ?? []
+      const todos = (args.todos ?? []).filter(t => t.trim())
+      const notes = (args.notes ?? []).filter(t => t.trim())
+      if (!ids.length && !todos.length && !notes.length) {
+        throw new Error('nothing to append — pass task_ids, todos or notes')
+      }
+
+      // 있지도 않은 업무를 가리키는 줄은 만들지 않습니다. 노트에 '삭제된
+      // 업무'가 처음부터 적혀 있는 건 아무에게도 쓸모가 없습니다.
+      const tasks = await readTasks()
+      const accessible = accessibleProjectIds(await readProjects(), ctx.email)
+      const known = new Set(
+        tasks.filter(t => isTaskVisible(t, ctx.email, accessible)).map(t => t.id)
+      )
+      const missing = ids.filter(id => !known.has(id))
+      if (missing.length) throw new Error(`task not found or not accessible: ${missing.join(', ')}`)
+
+      const before = await readDailyNote(ctx.email, date)
+      const added = taskRefHtml(ids) + checklistHtml(todos) + paragraphHtml(notes)
+      await writeDailyNote(ctx.email, date, before + added)
+
+      return text({
+        date,
+        appended: { tasks: ids.length, todos: todos.length, notes: notes.length },
+        markdown: noteToMarkdown(before + added, tasks),
+      })
     }
   )
 }

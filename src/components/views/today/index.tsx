@@ -47,7 +47,11 @@ const GUTTER = 46
 
 export function TodayView() {
   const isMobile = useMobile()
-  const [date, setDate] = useState(TODAY)
+  const stored = useUiStore(s => s.noteDate)
+  const openNote = useUiStore(s => s.openNote)
+  const date = stored ?? TODAY()
+  const setDate = (next: string | ((d: string) => string)) =>
+    openNote(typeof next === 'function' ? next(date) : next)
   const { html, save, saving } = useDailyNote(date)
   /**
    * 지금 노트 안에 있는 업무들.
@@ -161,7 +165,7 @@ export function TodayView() {
             {dayLabel(date)}
           </span>
           {!isToday && (
-            <button onClick={() => setDate(TODAY)} style={GHOST}>오늘로</button>
+            <button onClick={() => openNote(null)} style={GHOST}>오늘로</button>
           )}
           <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
             <span style={{ fontSize: 11, color: 'var(--t3)', marginRight: 6, minWidth: 34, textAlign: 'right' }}>

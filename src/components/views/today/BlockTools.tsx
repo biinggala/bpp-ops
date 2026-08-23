@@ -170,9 +170,17 @@ export function BlockTools({ editor, boundary }: {
             zIndex: 2,
           }}>
             <HandleBtn
-              title="아래에 새 줄"
+              title="새 줄"
               onClick={() => {
                 const node = editor.state.doc.nodeAt(slot.pos)
+                // 빈 줄에서 눌렀으면 그 줄을 씁니다. 아래에 하나 더 만들면
+                // 빈 줄 두 개가 되고, 누른 사람은 그중 어느 쪽이 자기 것인지
+                // 모릅니다. 글이 있는 줄에서는 노션처럼 아래에 만듭니다.
+                const blank = node?.type.name === 'paragraph' && node.content.size === 0
+                if (blank) {
+                  editor.chain().focus().setTextSelection(slot.pos + 1).insertContent('/').run()
+                  return
+                }
                 const after = slot.pos + (node?.nodeSize ?? 1)
                 editor.chain().focus().insertContentAt(after, { type: 'paragraph' })
                   .setTextSelection(after + 1).insertContent('/').run()
