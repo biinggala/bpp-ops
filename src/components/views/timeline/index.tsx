@@ -726,67 +726,201 @@ function DueTask({ task, overdue, onToggle, onOpen }: {
   )
 }
 
-/** The chip's own height and the gap between rows — so four rows is a number. */
-const CHIP_H = 24
-const CHIP_GAP = 6
-
 /**
- * Picks who to invite from the people this account shares a project with.
+ * ── 참석자 ───────────────────────────────────────────────────────────────────
  *
- * Google mails everyone listed the moment the event is saved, so the panel says
- * so rather than letting an invitation go out unannounced.
+ * 예전에는 팀원 **전원**을 동그란 칩으로 늘어놓고 고르게 했습니다. 열다섯 명일
+ * 때도 벽이었는데 우리는 쉰 명입니다 — 그러면 일정 하나 만드는 데 필요한
+ * 이름 두 개를 마흔여덟 개 사이에서 찾아야 합니다. 게다가 이미 초대된
+ * 사람들의 응답('수락', '대기')은 카드 저 아래 따로 적혀 있어서, 같은 사람이
+ * 화면의 두 군데에 다른 모습으로 있었습니다.
+ *
+ * 그래서 뒤집었습니다. **초대된 사람만 목록으로** 보이고, 응답은 그 사람 이름
+ * 왼쪽에 붙습니다. 추가는 밑의 '초대할 사람'을 눌러 이름을 쳐서 합니다.
+ * 화면에 있는 이름 수가 쉰이 아니라 실제 참석자 수만큼입니다.
+ *
+ * 저장하는 순간 구글이 메일을 보내므로, 아직 발송되지 않은 사람이 몇 명인지
+ * 미리 말해 둡니다. 초대장이 조용히 나가면 안 됩니다.
  */
-function AttendeePicker({ teammates, chosen, nameOf, onToggle }: {
+
+const ROW_H = 26
+
+/** 응답을 한 글자로. 색이 안 보여도 모양이 다릅니다. */
+const RESPONSE_MARK: Record<string, { glyph: string; color: string; label: string }> = {
+  accepted:    { glyph: '✓', color: '#448361',      label: '수락' },
+  declined:    { glyph: '✕', color: 'var(--danger)', label: '거절' },
+  tentative:   { glyph: '~', color: '#D9730D',      label: '미정' },
+  needsAction: { glyph: '?', color: 'var(--t3)',    label: '응답 대기' },
+}
+
+function AttendeeList({ teammates, chosen, nameOf, onToggle, responses }: {
   teammates: string[]
   chosen: string[]
   nameOf: (email: string) => string
   onToggle: (email: string) => void
+  responses?: { email: string; responseStatus?: string }[]
 }) {
-  if (!teammates.length) {
-    return <div style={{ fontSize: 11, color: 'var(--t3)' }}>초대할 팀원이 없습니다</div>
+  const [adding, setAdding] = useState(false)
+  const [q, setQ] = useState('')
+  const [pick, setPick] = useState(0)
+
+  const answered = new Map((responses ?? []).map(r => [r.email, r.responseStatus ?? 'needsAction']))
+  // 목록에 있지만 아직 구글이 모르는 사람 = 이번에 저장하면 초대장이 갈 사람.
+  const fresh = chosen.filter(e => !answered.has(e))
+
+  const needle = q.trim().toLowerCase()
+  const candidates = teammates.filter(email =>
+    !chosen.includes(email) &&
+    (!needle || nameOf(email).toLowerCase().includes(needle) || email.toLowerCase().includes(needle)),
+  )
+
+  useEffect(() => { setPick(0) }, [q])
+
+  const add = (email: string | undefined) => {
+    if (!email) return
+    onToggle(email)
+    // 창을 닫지 않습니다 — 회의에 한 명만 부르는 경우는 드뭅니다.
+    setQ('')
+    setPick(0)
   }
+
   return (
     <div>
-      {/* Whole rows only.
-          The box scrolled at a height that was not a multiple of the row pitch,
-          so it always ended on a chip sliced through the middle — which reads as
-          a broken panel rather than as a list that continues. Fixing the chip's
-          height makes the pitch knowable, and the cap is an exact four rows.
-          The scrollbar is what says there is more; a half-eaten name is not. */}
-      <div style={{
-        display: 'flex', flexWrap: 'wrap', gap: CHIP_GAP,
-        maxHeight: CHIP_H * 4 + CHIP_GAP * 3, overflowY: 'auto',
-      }}>
-        {teammates.map(email => {
-          const on = chosen.includes(email)
-          return (
-            <button
-              key={email}
-              onClick={() => onToggle(email)}
-              title={email}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 4,
-                height: CHIP_H, boxSizing: 'border-box',
-                padding: '0 8px', borderRadius: 999, cursor: 'pointer',
-                border: `1px solid ${on ? 'var(--ac)' : 'var(--bd)'}`,
-                background: on ? 'var(--ac-l)' : 'transparent',
-                color: on ? 'var(--ac)' : 'var(--t2)',
-                fontSize: 11, lineHeight: 1, fontFamily: 'var(--font)', whiteSpace: 'nowrap',
-              }}
-            >
-              {on && <span style={{ fontSize: 9 }}>✓</span>}
-              {nameOf(email)}
-            </button>
-          )
-        })}
-      </div>
-      {chosen.length > 0 && (
-        <div style={{ fontSize: 10, color: 'var(--t3)', marginTop: 6 }}>
-          저장하면 {chosen.length}명에게 구글 캘린더 초대장이 발송됩니다.
+      {chosen.length === 0 && !adding && (
+        <div style={{ fontSize: 11, color: 'var(--t3)', padding: '2px 0 4px' }}>아직 아무도 없습니다</div>
+      )}
+
+      {chosen.map(email => {
+        const mark = RESPONSE_MARK[answered.get(email) ?? ''] ?? null
+        return (
+          <AttendeeRow
+            key={email}
+            name={nameOf(email)}
+            email={email}
+            mark={mark}
+            onRemove={() => onToggle(email)}
+          />
+        )
+      })}
+
+      {adding ? (
+        <div style={{ marginTop: 4 }}>
+          <input
+            autoFocus
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            onKeyDown={e => {
+              if (isComposing(e)) return
+              if (e.key === 'Escape') { e.stopPropagation(); setQ(''); setAdding(false) }
+              if (e.key === 'ArrowDown') { e.preventDefault(); setPick(p => Math.min(p + 1, candidates.length - 1)) }
+              if (e.key === 'ArrowUp') { e.preventDefault(); setPick(p => Math.max(p - 1, 0)) }
+              // 카드 전체의 Enter는 '저장'입니다. 이름을 고르는 중에는 여기서 멈춰야 합니다.
+              if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); add(candidates[pick]) }
+            }}
+            placeholder="이름으로 찾기"
+            style={{
+              width: '100%', boxSizing: 'border-box', padding: '5px 8px',
+              borderRadius: 'var(--r1)', border: '1px solid var(--bd)',
+              background: 'var(--bg2)', color: 'var(--t1)', fontSize: 12,
+              outline: 'none', fontFamily: 'var(--font)',
+            }}
+          />
+          {/* 여섯 줄까지. 더 있으면 스크롤이 그렇다고 말합니다 — 이름을 더
+              치면 좁혀진다는 것도 같이. */}
+          <div style={{ maxHeight: ROW_H * 6, overflowY: 'auto', marginTop: 4 }}>
+            {candidates.length === 0 && (
+              <div style={{ fontSize: 11, color: 'var(--t3)', padding: '4px 2px' }}>
+                {teammates.length ? '찾는 사람이 없습니다' : '초대할 팀원이 없습니다'}
+              </div>
+            )}
+            {candidates.map((email, i) => (
+              <div
+                key={email}
+                onMouseEnter={() => setPick(i)}
+                onMouseDown={e => { e.preventDefault(); add(email) }}
+                title={email}
+                style={{
+                  display: 'flex', alignItems: 'center', height: ROW_H, padding: '0 6px',
+                  borderRadius: 'var(--r1)', cursor: 'pointer', fontSize: 12,
+                  color: 'var(--t1)', background: i === pick ? 'var(--bg3)' : 'transparent',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}
+              >{nameOf(email)}</div>
+            ))}
+          </div>
+          <button
+            onClick={() => { setQ(''); setAdding(false) }}
+            style={{ ...linkBtn, marginTop: 2 }}
+          >닫기</button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setAdding(true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6, height: ROW_H, padding: '0 4px',
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            color: 'var(--ac)', fontSize: 12, fontFamily: 'var(--font)',
+          }}
+        >
+          <span style={{ fontSize: 13, lineHeight: 1 }}>＋</span>
+          초대할 사람
+        </button>
+      )}
+
+      {fresh.length > 0 && (
+        <div style={{ fontSize: 10, color: 'var(--t3)', marginTop: 6, lineHeight: 1.5 }}>
+          저장하면 {fresh.length}명에게 구글 캘린더 초대장이 발송됩니다.
         </div>
       )}
     </div>
   )
+}
+
+function AttendeeRow({ name, email, mark, onRemove }: {
+  name: string
+  email: string
+  mark: { glyph: string; color: string; label: string } | null
+  onRemove: () => void
+}) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      title={mark ? `${email} · ${mark.label}` : `${email} · 초대 예정`}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 7, height: ROW_H, padding: '0 4px',
+        borderRadius: 'var(--r1)', background: hovered ? 'var(--bg3)' : 'transparent',
+      }}
+    >
+      {/* 아직 초대 안 나간 사람은 빈 동그라미. 응답이 없는 것과 물어본 적이
+          없는 것은 다른 상태입니다. */}
+      <span style={{
+        width: 14, height: 14, borderRadius: '50%', flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        border: `1px solid ${mark ? mark.color : 'var(--bd2)'}`,
+        color: mark ? mark.color : 'transparent', fontSize: 9, lineHeight: 1,
+      }}>{mark?.glyph ?? ''}</span>
+      <span style={{
+        flex: 1, minWidth: 0, fontSize: 12, color: 'var(--t1)',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>{name}</span>
+      <button
+        onClick={onRemove}
+        aria-label={`${name} 빼기`}
+        style={{
+          flexShrink: 0, background: 'transparent', border: 'none', cursor: 'pointer',
+          color: 'var(--t3)', fontSize: 13, lineHeight: 1, padding: '0 2px',
+          opacity: hovered ? 1 : 0, fontFamily: 'var(--font)',
+        }}
+      >×</button>
+    </div>
+  )
+}
+
+const linkBtn: React.CSSProperties = {
+  background: 'transparent', border: 'none', cursor: 'pointer',
+  color: 'var(--t3)', fontSize: 11, padding: '2px 4px', fontFamily: 'var(--font)',
 }
 
 /**
@@ -884,18 +1018,13 @@ function EventCard({
           }}
         />
 
-        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--t2)', margin: '10px 0 6px' }}>참석자</div>
-        <AttendeePicker teammates={teammates} chosen={guests} nameOf={nameOf} onToggle={onToggleGuest} />
-
-        {responses && responses.length > 0 && (
-          <div style={{ marginTop: 8, fontSize: 10, color: 'var(--t3)', lineHeight: 1.6 }}>
-            {responses.map(a => (
-              <div key={a.email}>
-                {nameOf(a.email)} · {RESPONSE_LABEL[a.responseStatus ?? 'needsAction'] ?? a.responseStatus}
-              </div>
-            ))}
-          </div>
-        )}
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--t2)', margin: '10px 0 4px' }}>참석자</div>
+        {/* 응답도 여기 있습니다. 예전에는 카드 아래에 '김하연 · 수락'이 따로
+            적혀 있어서 같은 사람이 화면 두 군데에 다른 모습으로 있었습니다. */}
+        <AttendeeList
+          teammates={teammates} chosen={guests} nameOf={nameOf}
+          onToggle={onToggleGuest} responses={responses}
+        />
 
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 12 }}>
           <button onClick={onSave} disabled={saving} style={{ ...navStyle, borderColor: 'var(--ac)', color: '#fff', background: 'var(--ac)' }}>
@@ -913,13 +1042,6 @@ function EventCard({
       </div>
     </>
   )
-}
-
-const RESPONSE_LABEL: Record<string, string> = {
-  accepted: '수락',
-  declined: '거절',
-  tentative: '미정',
-  needsAction: '응답 대기',
 }
 
 function DraftBlock({ draft }: { draft: Draft }) {
