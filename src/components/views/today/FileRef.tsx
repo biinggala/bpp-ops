@@ -87,12 +87,17 @@ function FileRefView({ node, deleteNode }: NodeViewProps) {
 
   return (
     <NodeViewWrapper as="div" contentEditable={false} style={ROW} data-drag-handle>
-      <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1 }}>{kind.icon}</span>
+      {/* 업무 줄의 상태 표시와 같은 20px 칸. 이모지는 글꼴마다 폭이 달라서
+          그냥 놓으면 줄마다 글 시작점이 달라집니다. */}
+      <span style={{
+        width: 20, flexShrink: 0, fontSize: 14, lineHeight: 1,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>{kind.icon}</span>
       <span
         onClick={() => url && void openExternal(url)}
         title={gone ? '드라이브에서 찾을 수 없습니다' : name}
         style={{
-          fontSize: 14, lineHeight: 1.6, minWidth: 0, cursor: url ? 'pointer' : 'default',
+          fontSize: 14, lineHeight: 1.7, minWidth: 0, cursor: url ? 'pointer' : 'default',
           color: gone ? 'var(--t3)' : 'var(--t1)',
           textDecoration: 'underline', textDecorationColor: 'var(--bd2)', textUnderlineOffset: 3,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',

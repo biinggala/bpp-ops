@@ -128,7 +128,7 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
       <span
         onClick={() => openTaskDetail(task.id)}
         style={{
-          fontSize: 14, lineHeight: 1.6, cursor: 'pointer', minWidth: 0,
+          fontSize: 14, lineHeight: 1.7, cursor: 'pointer', minWidth: 0,
           color: done ? 'var(--t3)' : 'var(--t1)',
           textDecoration: done ? 'line-through' : 'none',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
