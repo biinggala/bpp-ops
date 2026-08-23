@@ -9,6 +9,8 @@ import { usePresenceStore } from '../store/presenceStore'
 import { useUserProfileStore } from '../store/userProfileStore'
 import { useSyncStore } from '../store/syncStore'
 import { useOrgStore } from '../store/orgStore'
+import { usePrefsStore } from '../store/prefsStore'
+import { Welcome } from '../components/modals/Welcome'
 import { parseInviteToken } from '../lib/paths'
 import { useMobile } from '../hooks/useMobile'
 import type { Project } from '../types'
@@ -83,6 +85,13 @@ export function AppPage() {
     if (!uid) return
     return subscribeWorkspace(uid, email ?? null)
   }, [uid, email])
+
+  // 이 사람이 소개를 봤는지, 어느 업데이트까지 읽었는지. 계정에 붙습니다.
+  const subscribePrefs = usePrefsStore(s => s.subscribe)
+  useEffect(() => {
+    if (!email) return
+    return subscribePrefs(email)
+  }, [email, subscribePrefs])
 
   // 조직 — 회의실 목록이 사는 곳. 도메인으로 찾으므로 이메일만 있으면 됩니다.
   const subscribeOrg = useOrgStore(s => s.subscribe)
@@ -215,6 +224,9 @@ export function AppPage() {
         <TaskDetailModal />
       </TaskDetailErrorBoundary>
       <CommandPalette />
+      {/* 맨 위에 섭니다 — 처음 온 사람에게 다른 창이 먼저 뜨면 그건 소개가
+          아니라 방해입니다. */}
+      <Welcome />
       <Toast />
       <NoticeToast />
 

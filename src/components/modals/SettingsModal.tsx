@@ -10,6 +10,8 @@ import { useDriveStore } from '../../store/driveStore'
 import { useMailStore } from '../../store/mailStore'
 import { useOrgStore, pendingJoinCount } from '../../store/orgStore'
 import { useProjectStore } from '../../store/projectStore'
+import { usePrefsStore } from '../../store/prefsStore'
+import { LATEST } from '../../lib/whatsNew'
 import { askConfirm } from '../shared/Confirm'
 import { showTestNotice } from '../layout/NoticeToast'
 import { Icon, type IconName } from '../shared/Icon'
@@ -141,6 +143,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                 <Section title="화면 밝기" note="이 기기에서만 적용됩니다. 다른 사람 화면은 바뀌지 않습니다.">
                   <ThemeChoiceRow />
                 </Section>
+                <Section title="안내" note="한 번 보고 닫으면 다시 안 뜹니다. 여기서 언제든 다시 열 수 있습니다.">
+                  <ReplayRows onOpen={onClose} />
+                </Section>
                 <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 6, paddingTop: 12, borderTop: '1px solid var(--bd)', userSelect: 'text' }}>
                   빌드 {__BUILD_ID__}
                 </div>
@@ -220,6 +225,50 @@ function Section({ title, note, children }: { title: string; note?: string; chil
       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--t2)', marginBottom: note ? 3 : 10 }}>{title}</div>
       {note && <div style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1.6, marginBottom: 10 }}>{note}</div>}
       {children}
+    </div>
+  )
+}
+
+/**
+ * 소개와 업데이트 노트를 다시 여는 두 줄.
+ *
+ * 저장된 '봤음'은 건드리지 않습니다 — 다시 보겠다는 건 잊었다는 뜻이지
+ * 안 봤다는 뜻이 아니고, 되돌려 놓으면 다음에 앱을 켤 때 또 뜹니다.
+ * 그래서 이번 한 번만 여는 `replay`를 씁니다.
+ *
+ * 설정 창은 먼저 닫습니다. 판이 두 장 겹치면 소개를 닫았을 때 설정이 아직
+ * 열려 있습니다.
+ */
+function ReplayRows({ onOpen }: { onOpen: () => void }) {
+  const setReplay = usePrefsStore(s => s.setReplay)
+  const open = (what: 'intro' | 'whatsNew') => { onOpen(); setReplay(what) }
+  return (
+    <>
+      <ReplayRow title="처음 안내 다시 보기" sub="어디서 무엇을 하는지 네 장" onClick={() => open('intro')} />
+      {LATEST && (
+        <ReplayRow title="업데이트 노트" sub={`가장 최근: ${LATEST.date}`} onClick={() => open('whatsNew')} />
+      )}
+    </>
+  )
+}
+
+function ReplayRow({ title, sub, onClick }: { title: string; sub: string; onClick: () => void }) {
+  return (
+    <div style={ROW}>
+      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+        {title}
+        <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>{sub}</span>
+      </span>
+      <button
+        onClick={onClick}
+        style={{
+          flexShrink: 0, height: 26, padding: '0 10px', borderRadius: 'var(--r1)',
+          border: '1px solid var(--bd)', background: 'transparent',
+          fontSize: 12, color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)',
+        }}
+      >
+        열기
+      </button>
     </div>
   )
 }
