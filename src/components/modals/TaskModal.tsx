@@ -45,7 +45,7 @@ const EMPTY: Omit<Task, 'id'> = {
 }
 
 export function TaskModal() {
-  const { isTaskModalOpen, newTaskParentId, newTaskMilestoneId, newTaskProjectId, closeTaskModal, projectId: uiProjectId } = useUiStore()
+  const { isTaskModalOpen, newTaskParentId, newTaskMilestoneId, newTaskProjectId, newTaskDue, closeTaskModal, projectId: uiProjectId } = useUiStore()
   const { tasks, addTask } = useTaskStore()
   const projects = useProjectStore(s => s.projects)
   const milestones = useMilestoneStore(s => s.milestones)
@@ -101,8 +101,11 @@ export function TaskModal() {
       ...(newTaskParentId ? { parentId: newTaskParentId } : {}),
       ...(defaultProjectId ? { projectId: defaultProjectId } : {}),
       ...(defaultMilestoneId ? { milestoneId: defaultMilestoneId } : {}),
+      // 캘린더에서 날짜를 눌러 왔으면 그 날이 마감일입니다. 누른 날짜를
+      // 다시 고르게 하는 건 방금 한 말을 한 번 더 시키는 것입니다.
+      ...(newTaskDue ? { due: newTaskDue } : {}),
     })
-  }, [isTaskModalOpen, newTaskParentId, newTaskMilestoneId, newTaskProjectId])
+  }, [isTaskModalOpen, newTaskParentId, newTaskMilestoneId, newTaskProjectId, newTaskDue])
 
   if (!isTaskModalOpen) return null
 
@@ -269,6 +272,9 @@ export function TaskModal() {
               onMouseLeave={e => (e.currentTarget.style.color = 'var(--t3)')}
             >+ 메모·태그</button>
           )}
+
+          {/* 날짜를 눌러 열었을 때만. 만들 것이 이미 있을 수도 있습니다. */}
+          {newTaskDue && <Backlog date={newTaskDue} onClose={closeTaskModal} />}
         </div>
 
         <div style={{
@@ -391,6 +397,87 @@ function TagInput({ value, onChange }: { value: string[]; onChange: (tags: strin
             </div>
           )}
         </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * ── 이미 있는 업무를 이 날로 ─────────────────────────────────────────────────
+ *
+ * 캘린더에서 빈 날을 누르는 사람이 늘 새 일을 만들려는 건 아닙니다. 백로그가
+ * 쌓인 팀에 부족한 건 업무가 아니라 **언제 할지에 대한 결정**이고, 그 결정이
+ * 일어나는 순간이 지금입니다.
+ *
+ * 예전에는 이게 날짜 옆에 뜨는 별도 팝오버(DayPlanner)에 있었습니다. 그러다
+ * 보니 업무를 만드는 창이 두 개가 됐고, 두 개는 언젠가 어긋납니다. 창은
+ * 하나로 두고 이 목록만 그 안으로 들어왔습니다.
+ *
+ * 접혀 있습니다. 새 업무를 만들러 온 사람에게는 이게 방해고, 그쪽이 더 흔한
+ * 경우입니다. 하위 업무는 뺍니다 — 부모를 따라 움직이므로 둘을 같이 늘어놓으면
+ * 같은 일이 두 번 있는 것처럼 보입니다.
+ */
+function Backlog({ date, onClose }: { date: string; onClose: () => void }) {
+  const tasks = useTaskStore(s => s.tasks)
+  const updateTask = useTaskStore(s => s.updateTask)
+  const projects = useProjectStore(s => s.projects)
+  const [open, setOpen] = useState(false)
+
+  const undated = useMemo(
+    () => tasks.filter(t => !t.due && !t.start && t.status !== '완료' && !t.parentId),
+    [tasks],
+  )
+  if (!undated.length) return null
+
+  return (
+    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--bd)' }}>
+      {!open ? (
+        <button
+          onClick={() => setOpen(true)}
+          style={{
+            padding: 0, border: 'none', background: 'transparent',
+            fontSize: 12, color: 'var(--t3)', cursor: 'pointer', fontFamily: 'var(--font)',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.color = 'var(--t2)')}
+          onMouseLeave={e => (e.currentTarget.style.color = 'var(--t3)')}
+        >날짜 없는 업무 {undated.length}개에서 고르기</button>
+      ) : (
+        <>
+          <div style={{ fontSize: 11, color: 'var(--t3)', marginBottom: 6 }}>
+            누르면 이 업무의 마감일이 {date.slice(5).replace('-', '월 ')}일이 됩니다
+          </div>
+          <div style={{ maxHeight: 168, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {undated.slice(0, 40).map(t => {
+              const project = t.projectId ? projects.find(p => p.id === t.projectId) : undefined
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => { updateTask(t.id, { due: date }); onClose() }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 7, width: '100%',
+                    padding: '5px 7px', borderRadius: 'var(--r1)', border: 'none',
+                    background: 'transparent', cursor: 'pointer', textAlign: 'left',
+                    fontFamily: 'var(--font)',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <span style={{
+                    width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                    background: project?.color ?? 'var(--bd2)',
+                  }} />
+                  <span style={{
+                    flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--t1)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>{t.name || '(이름 없음)'}</span>
+                  {project && (
+                    <span style={{ fontSize: 10.5, color: 'var(--t3)', flexShrink: 0 }}>{project.name}</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </>
       )}
     </div>
   )

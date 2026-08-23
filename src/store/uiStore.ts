@@ -52,6 +52,14 @@ interface UiState {
   newTaskParentId: string | null
   newTaskMilestoneId: string | null
   newTaskProjectId: string | null
+  /**
+   * 미리 채워 둘 마감일. 캘린더에서 **날짜를 눌러** 열었을 때만 있습니다.
+   *
+   * 이 값이 있다는 건 '이 날에 무언가를 놓으려 한다'는 뜻이라, 창이 마감일을
+   * 채워 둘 뿐 아니라 **날짜 없는 업무 목록**도 같이 보여줍니다. 만들 것이
+   * 이미 있을 수도 있으니까요.
+   */
+  newTaskDue: string | null
   isTaskModalOpen: boolean
   isFilterPanelOpen: boolean
   isColorSettingsOpen: boolean
@@ -83,7 +91,14 @@ interface UiState {
   setDetailTaskId: (id: string | null) => void
   openTaskDetail: (id: string) => void
   closeTaskDetail: () => void
-  openTaskModal: (editId?: string, parentId?: string, milestoneId?: string, projectId?: string) => void
+  /**
+   * 새 업무 창을 엽니다.
+   *
+   * 인자를 객체로 받습니다. 자리로 받던 때는 `openTaskModal(undefined, undefined,
+   * m?.id, undefined)` 같은 호출이 나왔는데, undefined 세 개를 세어 가며 읽어야
+   * 하는 코드는 다음 인자가 붙는 순간 틀립니다.
+   */
+  openTaskModal: (opts?: { editId?: string; parentId?: string; milestoneId?: string; projectId?: string; due?: string }) => void
   closeTaskModal: () => void
   setColorSettings: (open: boolean) => void
   openCommandPalette: () => void
@@ -136,6 +151,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   newTaskParentId: null,
   newTaskMilestoneId: null,
   newTaskProjectId: null,
+  newTaskDue: null,
   isTaskModalOpen: false,
   isFilterPanelOpen: false,
   isColorSettingsOpen: false,
@@ -181,8 +197,15 @@ export const useUiStore = create<UiState>((set, get) => ({
   setDetailTaskId: (id) => set({ detailTaskId: id }),
   openTaskDetail: (id: string) => set({ detailTaskId: id }),
   closeTaskDetail: () => set({ detailTaskId: null }),
-  openTaskModal: (editId, parentId, milestoneId, projectId) => set({ isTaskModalOpen: true, editTaskId: editId ?? null, newTaskParentId: parentId ?? null, newTaskMilestoneId: milestoneId ?? null, newTaskProjectId: projectId ?? null }),
-  closeTaskModal: () => set({ isTaskModalOpen: false, editTaskId: null, newTaskParentId: null, newTaskMilestoneId: null, newTaskProjectId: null }),
+  openTaskModal: (opts) => set({
+    isTaskModalOpen: true,
+    editTaskId: opts?.editId ?? null,
+    newTaskParentId: opts?.parentId ?? null,
+    newTaskMilestoneId: opts?.milestoneId ?? null,
+    newTaskProjectId: opts?.projectId ?? null,
+    newTaskDue: opts?.due ?? null,
+  }),
+  closeTaskModal: () => set({ isTaskModalOpen: false, editTaskId: null, newTaskParentId: null, newTaskMilestoneId: null, newTaskProjectId: null, newTaskDue: null }),
   setColorSettings: (open) => set({ isColorSettingsOpen: open }),
   openCommandPalette: () => set({ isCommandPaletteOpen: true }),
   closeCommandPalette: () => set({ isCommandPaletteOpen: false }),

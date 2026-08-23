@@ -504,7 +504,7 @@ function MobileTableView() {
 
   const addTaskBtn = (milestoneId?: string) => (
     <button
-      onClick={() => _openTaskModal(undefined, undefined, milestoneId)}
+      onClick={() => _openTaskModal({ milestoneId })}
       style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', fontSize: 14, color: 'var(--ac)', background: 'transparent', border: 'none', borderTop: '1px solid var(--bd)', cursor: 'pointer', fontFamily: 'var(--font)' }}
     >
       <span style={{ fontSize: 20, lineHeight: 1 }}>+</span> 업무 추가
