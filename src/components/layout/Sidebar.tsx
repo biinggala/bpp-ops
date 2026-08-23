@@ -734,6 +734,34 @@ export function Sidebar() {
           }}
           onClick={e => e.stopPropagation()}
         >
+          {/*
+            ── 조직에 공개 ──────────────────────────────────────────────────
+            **만든 사람이 아니라 멤버**의 일입니다. 규칙도 그렇게 쓰여 있는데
+            (projects/$pid/members/$uid를 검사합니다) 이 메뉴에서는 '만든 사람'
+            묶음 안에 넣어 뒀습니다. 그래서 남이 만든 프로젝트는 규칙상 올릴
+            수 있는데 화면에 버튼이 없었습니다 — 권한이 없는 것처럼 보이지만
+            권한은 있었습니다.
+
+            조직 관리자에게 주는 힘이 아닙니다. 관리자에게 프로젝트 권한을
+            주면 접근 축이 두 개가 되고, 그건 이 기능 전체가 피하려던 것입니다.
+            남의 프로젝트를 끌어오는 일도 없어야 합니다.
+          */}
+          {orgId && (
+            <>
+              <ContextMenuItem
+                icon={sharedProjectIds.has(contextMenu.id) ? 'unlink' : 'users'}
+                onClick={() => {
+                  const project = projects.find(p => p.id === contextMenu.id)
+                  if (project) void setProjectShared(project, !sharedProjectIds.has(contextMenu.id))
+                  setContextMenu(null)
+                }}
+              >
+                {sharedProjectIds.has(contextMenu.id) ? '조직 목록에서 내리기' : '조직에 공개'}
+              </ContextMenuItem>
+              <div style={{ height: 1, background: 'var(--bd)', margin: '4px -4px' }} />
+            </>
+          )}
+
           {isProjectCreator(contextMenu.id) ? (
             <>
               <ContextMenuItem icon="pencil" onClick={() => { setEditingProjectId(contextMenu.id); setEditProjectName(contextMenu.name); setContextMenu(null) }}>
@@ -749,24 +777,6 @@ export function Sidebar() {
               }}>
                 그룹 지정
               </ContextMenuItem>
-              {/* 조직에 올리는 것은 **그 프로젝트 멤버**가 합니다. 조직
-                  관리자가 아닙니다 — 관리자에게 프로젝트 권한을 주지 않기
-                  위해서고, 남의 프로젝트를 끌어오는 일도 없어야 합니다.
-                  조직이 없으면 이 줄도 없습니다. */}
-              {orgId && (
-                <ContextMenuItem
-                  icon={sharedProjectIds.has(contextMenu.id) ? 'unlink' : 'users'}
-                  onClick={() => {
-                    const project = projects.find(p => p.id === contextMenu.id)
-                    if (project) {
-                      void setProjectShared(project, !sharedProjectIds.has(contextMenu.id))
-                    }
-                    setContextMenu(null)
-                  }}
-                >
-                  {sharedProjectIds.has(contextMenu.id) ? '조직 목록에서 내리기' : '조직에 공개'}
-                </ContextMenuItem>
-              )}
               <ContextMenuItem icon={contextMenu.archived ? 'unarchive' : 'archive'} onClick={() => handleArchiveProject(contextMenu.id, !contextMenu.archived)}>
                 {contextMenu.archived ? '아카이브 해제' : '아카이브'}
               </ContextMenuItem>
