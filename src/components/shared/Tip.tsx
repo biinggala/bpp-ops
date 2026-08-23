@@ -57,7 +57,12 @@ export function Tip({ label, keys, children, side = 'bottom' }: {
           transform: side === 'right' ? 'translateY(-50%)' : 'none',
           display: 'flex', alignItems: 'center', gap: 7,
           padding: '5px 9px', borderRadius: 'var(--r2)',
-          background: 'var(--bg4)', border: '1px solid var(--bd)',
+          /* --bg4는 rgba(...,.09)로 **반투명**입니다. 떠 있는 상자의 배경으로
+             쓰면 뒤의 글자가 그대로 비칩니다 — 뷰 탭 글씨가 말풍선 안에
+             겹쳐 보였던 것이 그것입니다. 이 저장소에서 반복되는 실수라
+             docs/desktop-updates.md 표에도 적혀 있습니다: 배경은 --bg(불투명)
+             또는 --bg2. */
+          background: 'var(--bg)', border: '1px solid var(--bd2)',
           boxShadow: 'var(--sh-md)', pointerEvents: 'none', whiteSpace: 'nowrap',
         }}>
           <span style={{ fontSize: 12, color: 'var(--t1)' }}>{label}</span>

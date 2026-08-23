@@ -369,7 +369,7 @@ function ChimeRow() {
  */
 function OrgSection() {
   const email = useAuthStore(s => s.email)
-  const { orgId, name, domain, rooms, admins, ready, createOrg, addRoom, updateRoom, removeRoom, setAdmin, claimAdmin, error } = useOrgStore()
+  const { orgId, name, domain, rooms, admins, ready, createOrg, addRoom, updateRoom, removeRoom, setAdmin, error } = useOrgStore()
   const [orgName, setOrgName] = useState('')
   const [roomName, setRoomName] = useState('')
   const [adminMail, setAdminMail] = useState('')
@@ -482,17 +482,18 @@ function OrgSection() {
             ? `${domain} 주소만 관리자가 될 수 있습니다. 회의실 목록에만 미치고, 업무나 프로젝트를 더 볼 수 있게 되지는 않습니다.`
             : '회의실을 바꿔야 하면 이분들에게 말하면 됩니다.'}
       >
-        {/* 관리자가 없는 조직은 규칙상 조직원 누구나 맡을 수 있습니다. 화면에
-            그 길이 없어서, 자기가 만든 조직을 읽기만 하는 상태가 됐습니다 —
-            관리자 개념이 조직보다 늦게 생겼기 때문입니다. 규칙이 허용하는
-            일은 화면에도 있어야 합니다. */}
-        {admins.length === 0 && (
-          <button
-            onClick={async () => { setBusy(true); await claimAdmin(email); setBusy(false) }}
-            disabled={busy}
-            style={{ ...navBtn, borderColor: 'var(--ac)', background: 'var(--ac)', color: '#fff', opacity: busy ? .6 : 1 }}
-          >{busy ? '…' : '관리자 되기'}</button>
-        )}
+        {/*
+          '관리자 되기' 버튼이 여기 있었습니다.
+
+          관리자 개념이 조직보다 늦게 생겨서, 먼저 만들어진 조직에 관리자가
+          아무도 없던 그 한 번을 위한 것이었습니다. 이제 조직을 만드는 사람이
+          첫 관리자가 되고 마지막 관리자는 스스로 못 나가므로, 앱을 통해서는
+          관리자 0명이 될 수 없습니다.
+
+          규칙에는 그 길이 그대로 있습니다(claimAdmin도 남겨 뒀습니다) —
+          영원히 손 못 대는 조직이 남지 않게 하는 안전장치니까요. 다만 평소에
+          쓸 일이 없는 버튼을 매일 보는 자리에 두지는 않습니다.
+        */}
         {admins.map(mail => (
           <div key={mail} style={ROW}>
             <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
