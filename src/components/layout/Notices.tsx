@@ -204,7 +204,7 @@ export function NoticeList({ onClose }: { onClose: () => void }) {
           return (
             <React.Fragment key={n.id}>
               {header && (
-                <div style={{ padding: '8px 10px 3px', fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: 'var(--sb-t3)', background: 'var(--sb-bg)', position: 'sticky', top: 0 }}>
+                <div style={{ padding: '10px 10px 4px', fontSize: 11, fontWeight: 700, letterSpacing: '.05em', color: 'var(--sb-t3)', background: 'var(--sb-bg)', position: 'sticky', top: 0 }}>
                   {header}
                 </div>
               )}
@@ -234,13 +234,13 @@ export function NoticeList({ onClose }: { onClose: () => void }) {
                   <span style={{ width: 6, height: 6, borderRadius: '50%', background: TONE[n.kind] ?? 'var(--sb-t3)', flexShrink: 0, marginTop: 5 }} />
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12.5, color: 'var(--sb-t1)', fontWeight: n.read ? 400 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 13.5, color: 'var(--sb-t1)', fontWeight: n.read ? 500 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {n.taskName || '(이름 없음)'}
                   </div>
                   {/* 240 is not 340: the time joins this line rather than taking
                       a column of its own, and the project is the first thing to
                       go when there is no room for it. */}
-                  <div style={{ fontSize: 11, color: 'var(--sb-t3)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 12, color: 'var(--sb-t3)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {LABEL[n.kind] ?? n.kind}
                     {n.detail ? ` · ${n.detail}` : ''}
                     {' · '}{n.by}
@@ -268,7 +268,7 @@ function SectionHead({ children, right }: { children: React.ReactNode; right?: R
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 6,
-      padding: '10px 10px 4px', fontSize: 10, fontWeight: 700,
+      padding: '10px 10px 4px', fontSize: 11, fontWeight: 700,
       letterSpacing: '.06em', color: 'var(--sb-t3)',
     }}>
       <span>{children}</span>
@@ -354,11 +354,11 @@ function MailRow({ thread }: { thread: { threadId: string; subject: string; from
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontSize: 12.5, color: 'var(--sb-t1)', fontWeight: 500,
+          fontSize: 13.5, color: 'var(--sb-t1)', fontWeight: 600,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{thread.subject}</div>
         <div style={{
-          fontSize: 11, color: 'var(--sb-t3)', marginTop: 1,
+          fontSize: 12, color: 'var(--sb-t3)', marginTop: 1,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {thread.from}
@@ -408,11 +408,11 @@ function InviteSection() {
             </span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
-                fontSize: 12.5, color: 'var(--sb-t1)', fontWeight: 500,
+                fontSize: 13.5, color: 'var(--sb-t1)', fontWeight: 600,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>{ev.summary || '(제목 없음)'}</div>
               <div style={{
-                fontSize: 11, color: 'var(--sb-t3)', marginTop: 1,
+                fontSize: 12, color: 'var(--sb-t3)', marginTop: 1,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
                 {inviteWhen(ev)}

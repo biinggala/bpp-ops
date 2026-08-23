@@ -449,11 +449,11 @@ export function Sidebar() {
             }
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--sb-t1)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--sb-t1)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               bpp-ops
             </div>
             {userName && (
-              <div style={{ fontSize: 11, color: 'var(--sb-t3)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName}</div>
+              <div style={{ fontSize: 12, color: 'var(--sb-t3)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName}</div>
             )}
           </div>
           {/* 설정 rather than 로그아웃: signing out already lives one click away
@@ -696,7 +696,7 @@ export function Sidebar() {
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                         <input
                           ref={projectEditRef}
-                          style={{ flex: 1, background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r1)', padding: '2px 6px', fontSize: 12, color: 'var(--sb-t1)', outline: 'none' }}
+                          style={{ flex: 1, background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r1)', padding: '2px 6px', fontSize: 14, fontWeight: 500, color: 'var(--sb-t1)', outline: 'none' }}
                           value={editProjectName}
                           onChange={e => setEditProjectName(e.target.value)}
                           onBlur={() => handleRenameProject(p.id)}
@@ -744,7 +744,7 @@ export function Sidebar() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px 4px 14px', margin: '1px 0' }}>
               <input
                 ref={projectNameRef}
-                style={{ flex: 1, background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r1)', padding: '3px 7px', fontSize: 12, color: 'var(--sb-t1)', outline: 'none' }}
+                style={{ flex: 1, background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r1)', padding: '3px 7px', fontSize: 14, fontWeight: 500, color: 'var(--sb-t1)', outline: 'none' }}
                 placeholder="프로젝트 이름..."
                 value={newProjectName}
                 onChange={e => setNewProjectName(e.target.value)}
@@ -764,13 +764,13 @@ export function Sidebar() {
             <>
               <div
                 onClick={() => setArchivedExpanded(v => !v)}
-                style={{ padding: '10px 8px 3px', fontSize: 11, fontWeight: 600, color: 'var(--sb-t3)', letterSpacing: '.06em', textTransform: 'uppercase', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, userSelect: 'none' }}
+                style={{ padding: '12px 8px 4px', fontSize: 12, fontWeight: 600, color: 'var(--sb-t3)', letterSpacing: '.04em', textTransform: 'uppercase', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, userSelect: 'none' }}
                 onMouseEnter={e => (e.currentTarget.style.color = 'var(--sb-t2)')}
                 onMouseLeave={e => (e.currentTarget.style.color = 'var(--sb-t3)')}
               >
                 <span style={{ fontSize: 8, display: 'inline-block', transform: archivedExpanded ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }}>▶</span>
                 Archived
-                <span style={{ marginLeft: 'auto', fontSize: 10, opacity: .8, letterSpacing: 0 }}>{archivedProjects.length}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 11, opacity: .8, letterSpacing: 0 }}>{archivedProjects.length}</span>
               </div>
 
               {archivedExpanded && archivedProjects.map(p => {
@@ -800,7 +800,7 @@ export function Sidebar() {
         {/* Online users */}
         {onlineUsers.length > 0 && (
           <div style={{ borderTop: '1px solid var(--sb-bd)', padding: '8px 10px' }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--sb-t3)', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--sb-t3)', letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: 6 }}>
               접속 중
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -816,7 +816,7 @@ export function Sidebar() {
                       </div>
                       <div style={{ position: 'absolute', bottom: 0, right: 0, width: 7, height: 7, borderRadius: '50%', background: '#448361', border: '1.5px solid var(--sb-bg)' }} />
                     </div>
-                    <span style={{ fontSize: 12, color: 'var(--sb-t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--sb-t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {name}
                     </span>
                   </div>
@@ -936,7 +936,7 @@ function NavRule() {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ padding: '10px 8px 3px', fontSize: 11, fontWeight: 600, color: 'var(--sb-t3)', letterSpacing: '.06em', textTransform: 'uppercase' }}>
+    <div style={{ padding: '12px 8px 4px', fontSize: 12, fontWeight: 600, color: 'var(--sb-t3)', letterSpacing: '.04em', textTransform: 'uppercase' }}>
       {children}
     </div>
   )
@@ -958,9 +958,14 @@ function NavItem({ children, active, onClick, count, emphasis, pill, icon, node 
     <div
       onClick={onClick}
       style={{
-        display: 'flex', alignItems: 'center', gap: 6,
+        display: 'flex', alignItems: 'center', gap: 7,
+        minHeight: 28, boxSizing: 'border-box',
         padding: '4px 8px', borderRadius: 'var(--r2)', cursor: 'pointer',
-        fontSize: 13, fontWeight: active || emphasis ? 500 : 400, margin: '1px 0',
+        // 사이드바의 기본 굵기는 medium입니다. 얇은 회색 글씨는 '읽을 것'이
+        // 아니라 '배경'으로 읽혀서, 매일 누르는 줄들이 화면에서 뒤로 물러나
+        // 있었습니다. 굵게 하는 건 지금 서 있는 줄과 매일 쓰는 줄뿐입니다 —
+        // 전부 굵으면 아무것도 안 굵은 것과 같습니다.
+        fontSize: 14, fontWeight: active || emphasis ? 600 : 500, margin: '1px 0',
         color: active || emphasis ? 'var(--sb-t1)' : 'var(--sb-t2)',
         background: active ? 'var(--sb-active)' : 'transparent',
         transition: 'background .1s, color .1s',
@@ -970,7 +975,7 @@ function NavItem({ children, active, onClick, count, emphasis, pill, icon, node 
     >
       {node
         ? <span style={{ width: 16, display: 'flex', justifyContent: 'center', flexShrink: 0, opacity: .75 }}>{node}</span>
-        : icon && <span style={{ fontSize: 11, opacity: emphasis ? .85 : .6, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>}
+        : icon && <span style={{ fontSize: 12, opacity: emphasis ? .85 : .6, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>}
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
       {count !== undefined && count > 0 && (
         pill ? (
@@ -982,7 +987,7 @@ function NavItem({ children, active, onClick, count, emphasis, pill, icon, node 
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           }}>{count}</span>
         ) : (
-          <span style={{ fontSize: 12, color: 'var(--sb-t3)', marginLeft: 'auto', flexShrink: 0 }}>{count}</span>
+          <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--sb-t3)', marginLeft: 'auto', flexShrink: 0 }}>{count}</span>
         )
       )}
     </div>
@@ -1103,11 +1108,11 @@ function GroupHeader({ name, count, collapsed, onToggle, onRename, onDropProject
             if (e.key === 'Enter') { e.preventDefault(); commit() }
             if (e.key === 'Escape') { setDraft(name); setEditing(false) }
           }}
-          style={{ flex: 1, minWidth: 0, background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r1)', padding: '1px 5px', fontSize: 11, color: 'var(--sb-t1)', outline: 'none' }}
+          style={{ flex: 1, minWidth: 0, background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r1)', padding: '1px 5px', fontSize: 12, fontWeight: 600, color: 'var(--sb-t1)', outline: 'none' }}
         />
       ) : (
         <span style={{
-          flex: 1, fontSize: 10, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase',
+          flex: 1, fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase',
           color: 'var(--sb-t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {name}
@@ -1128,7 +1133,7 @@ function GroupHeader({ name, count, collapsed, onToggle, onRename, onDropProject
         }}>
           {hovered
             ? <ActionIcon onClick={e => { e.stopPropagation(); setDraft(name); setEditing(true) }} title="그룹 이름 수정">✎</ActionIcon>
-            : <span style={{ fontSize: 10, color: 'var(--sb-t3)', opacity: .7 }}>{count}</span>}
+            : <span style={{ fontSize: 11, color: 'var(--sb-t3)', opacity: .7 }}>{count}</span>}
         </span>
       )}
     </div>
@@ -1189,7 +1194,8 @@ function ProjectItem({
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
         padding: `5px 8px 5px ${indented ? 24 : 14}px`, borderRadius: 'var(--r2)', cursor: 'pointer',
-        fontSize: 13, fontWeight: active ? 500 : 400, margin: '1px 0',
+        minHeight: 28, boxSizing: 'border-box',
+        fontSize: 14, fontWeight: active ? 600 : 500, margin: '1px 0',
         color: active ? 'var(--sb-t1)' : dimmed ? 'var(--sb-t3)' : 'var(--sb-t2)',
         background: active ? 'var(--sb-active)' : hovered ? 'var(--sb-hover)' : 'transparent',
         transition: 'background .1s',
@@ -1272,11 +1278,11 @@ function AddBtn({ children, onClick }: { children: React.ReactNode; onClick: () 
   return (
     <div
       onClick={onClick}
-      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px 5px 14px', borderRadius: 'var(--r2)', cursor: 'pointer', fontSize: 13, color: 'var(--sb-t3)', margin: '1px 0', transition: 'background .1s' }}
+      style={{ display: 'flex', alignItems: 'center', gap: 7, minHeight: 28, boxSizing: 'border-box', padding: '5px 8px 5px 14px', borderRadius: 'var(--r2)', cursor: 'pointer', fontSize: 14, fontWeight: 500, color: 'var(--sb-t3)', margin: '1px 0', transition: 'background .1s' }}
       onMouseEnter={e => { e.currentTarget.style.background = 'var(--sb-hover)'; (e.currentTarget.style.color = 'var(--sb-t2)') }}
       onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; (e.currentTarget.style.color = 'var(--sb-t3)') }}
     >
-      <span style={{ fontSize: 14, lineHeight: 1, opacity: .7 }}>+</span>
+      <span style={{ fontSize: 15, lineHeight: 1, opacity: .7 }}>+</span>
       {children}
     </div>
   )
@@ -1647,7 +1653,7 @@ function PaneTab({ icon, label, active, count = 0, onClick }: {
         display: 'flex', alignItems: 'center', gap: 6, position: 'relative',
         height: 30, padding: active ? '0 11px 0 9px' : '0 8px',
         borderRadius: 'var(--r2)', border: 'none', cursor: 'pointer',
-        fontFamily: 'var(--font)', fontSize: 13, fontWeight: active ? 600 : 400,
+        fontFamily: 'var(--font)', fontSize: 14, fontWeight: active ? 600 : 500,
         color: active ? 'var(--sb-t1)' : 'var(--sb-t2)',
         background: active ? 'var(--sb-active)' : hovered ? 'var(--sb-hover)' : 'transparent',
         transition: 'background .1s, color .1s',
