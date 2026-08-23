@@ -11,6 +11,7 @@ import { TimelineGrid, GUTTER as HOUR_GUTTER } from '../timeline'
 import { writableCalendars } from '../../../lib/googleCalendar'
 import type { CalRange } from '../../../types'
 import type { GCalEvent } from '../../../store/gcalStore'
+import { awaitingMe } from '../../../store/gcalStore'
 import { useMobile } from '../../../hooks/useMobile'
 import { getCatColor, NOTION } from '../../../types'
 import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade } from '../../../lib/utils'
@@ -489,7 +490,14 @@ function MobGCalRow({ event }: { event: GCalEvent }) {
       rel="noopener noreferrer"
       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--bd)', textDecoration: 'none' }}
     >
-      <span style={{ width: 7, height: 7, borderRadius: '50%', background: event.calendarColor || GCAL_TEXT, flexShrink: 0 }} />
+      {/* 점 하나로 말해야 하는 자리에서 점선의 대응은 '빈 동그라미'입니다 —
+          채워진 점은 확정, 테두리만 있는 점은 아직 대답 안 한 초대. */}
+      <span style={{
+        width: 7, height: 7, borderRadius: '50%', flexShrink: 0, boxSizing: 'border-box',
+        ...(awaitingMe(event)
+          ? { border: `1.5px solid ${event.calendarColor || GCAL_TEXT}` }
+          : { background: event.calendarColor || GCAL_TEXT }),
+      }} />
       <span style={{ flex: 1, fontSize: 14, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {event.startTime && <span style={{ color: event.calendarColor || GCAL_TEXT, fontWeight: 500, marginRight: 5 }}>{event.startTime}</span>}
         {event.summary}
@@ -1185,7 +1193,18 @@ const MonthCell = React.memo(function MonthCell({
                 target="_blank"
                 rel="noopener noreferrer"
                 title={ev.summary}
-                style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3, background: GCAL_BG, color: GCAL_TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none', display: 'block', cursor: 'pointer', minWidth: 0 }}
+                /* 아직 수락 안 한 초대는 칠하지 않고 점선으로. 달의 한 칸에
+                   칩이 넷 놓일 때, 확정된 것만 칠해져 있어야 그날이 실제로
+                   얼마나 찼는지 보입니다. */
+                style={{
+                  fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3,
+                  color: GCAL_TEXT, overflow: 'hidden', textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap', textDecoration: 'none', display: 'block',
+                  cursor: 'pointer', minWidth: 0, boxSizing: 'border-box',
+                  ...(awaitingMe(ev)
+                    ? { background: 'transparent', border: `1px dashed ${GCAL_TEXT}` }
+                    : { background: GCAL_BG }),
+                }}
                 onClick={e => e.stopPropagation()}
                 onMouseEnter={e => e.currentTarget.style.opacity = '.75'}
                 onMouseLeave={e => e.currentTarget.style.opacity = '1'}
