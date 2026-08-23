@@ -26,7 +26,7 @@ import { CommandPalette } from '../components/modals/CommandPalette'
 import { EmptyState } from '../components/shared/EmptyState'
 import { Toast } from '../components/shared/Toast'
 import { NoticeToast } from '../components/layout/NoticeToast'
-import { setNoticeFailureReporter } from '../lib/notify'
+import { setNoticeReporter } from '../lib/notify'
 import { useToast } from '../components/shared/Toast'
 
 class TaskDetailErrorBoundary extends React.Component<
@@ -136,10 +136,10 @@ export function AppPage() {
 
   const isEmpty = tasks.length === 0 && view !== 's' && view !== 'g'
 
-  // A notice that cannot be written is invisible to the person it was for, so
-  // it is reported to the person whose edit caused it.
+  // Notices are invisible to the person who sends them — both the ones that
+  // land and the ones that do not. The toast is where both are said.
   useEffect(() => {
-    setNoticeFailureReporter(message => useToast.getState().show(message))
+    setNoticeReporter(message => useToast.getState().show(message))
   }, [])
 
   return (

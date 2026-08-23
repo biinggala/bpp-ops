@@ -144,10 +144,12 @@ function leave(target: Target, notice: Omit<Notice, 'id' | 'at' | 'by'>) {
   // A rejected write used to go to the console, and on a phone the console is
   // nowhere. The person who made the change is the only one in a position to
   // notice — the recipient by definition never learns of it.
-  fbSet(node, payload).catch(e => {
-    console.warn('[notice]', e)
-    onNoticeFailed?.(`${target.email}에게 알림 전달 실패`)
-  })
+  fbSet(node, payload)
+    .then(() => announce(target.email))
+    .catch(e => {
+      console.warn('[notice]', e)
+      report(`${target.email}에게 알림 전달 실패`)
+    })
 
   // Push is addressed by uid, because that is how subscriptions are stored.
   // No uid, no buzz; the notice above is delivered either way.
@@ -246,12 +248,45 @@ export function removeNotice(email: string, id: string) {
 }
 
 /**
- * Where a failed write goes so somebody sees it.
+ * ── 보낸 사람에게 남기는 한 줄 ───────────────────────────────────────────────
  *
- * Set once by the app; a notice that cannot be written is the sender's problem
- * to report, because the recipient by definition never learns of it.
+ * Both halves matter, and the second one is the newer lesson.
+ *
+ * A write that *fails* has to be reported, because the recipient by definition
+ * never learns of it — and the console is nowhere, on a phone or in a webview.
+ *
+ * A write that *succeeds* has to be reported too. Otherwise the only difference
+ * between "it went" and "it silently did nothing" is an error that never
+ * appears, which is not a difference anybody can see. Changing somebody else's
+ * task and wondering whether they will ever know is the exact doubt this line
+ * removes.
  */
-let onNoticeFailed: ((message: string) => void) | null = null
-export function setNoticeFailureReporter(report: (message: string) => void) {
-  onNoticeFailed = report
+let onNotice: ((message: string) => void) | null = null
+export function setNoticeReporter(report: (message: string) => void) {
+  onNotice = report
+}
+
+function report(message: string) {
+  onNotice?.(message)
+}
+
+/**
+ * One line for a run of notices rather than one per person.
+ *
+ * A single edit can reach three assignees, and three toasts in a row for one
+ * click reads as a malfunction. They are collected for a moment and named
+ * together.
+ */
+const announced = new Set<string>()
+let announceTimer: number | null = null
+
+function announce(email: string) {
+  announced.add(useUserProfileStore.getState().getNameByEmail(email))
+  if (announceTimer) clearTimeout(announceTimer)
+  announceTimer = window.setTimeout(() => {
+    const names = [...announced]
+    announced.clear()
+    announceTimer = null
+    if (names.length) report(`${names.join(', ')}님에게 알림을 보냈습니다`)
+  }, 400)
 }

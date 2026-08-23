@@ -17,6 +17,13 @@ export const P = {
   projectMember:    (pid: string, uid: string) => `projects/${pid}/members/${uid}`,
   projectTasks:     (pid: string) => `projects/${pid}/tasks`,
   projectTask:      (pid: string, tid: string) => `projects/${pid}/tasks/${tid}`,
+  /**
+   * Who changed what on a task. Inside the project node on purpose: that node
+   * is already readable and writable by exactly its members, so a task's
+   * history is visible to the same people the task is — no new rule, and no
+   * new idea of who may see it.
+   */
+  activity:         (pid: string, tid: string) => `projects/${pid}/activity/${tid}`,
   projectMilestone: (pid: string, mid: string) => `projects/${pid}/milestones/${mid}`,
 
   personalTasks:    (uid: string) => `personalTasks/${uid}`,
