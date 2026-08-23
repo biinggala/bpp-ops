@@ -265,3 +265,30 @@ export async function createProject(
   })
   return { id, ...rest } as Project
 }
+
+/* ── 데일리 노트 ─────────────────────────────────────────────────────────── */
+
+/**
+ * 하루치 노트. 사람마다, 날짜마다 하나.
+ *
+ * 프로젝트가 아니라 개인 가지에 삽니다. 웹은 규칙이 막아 자기 것만 읽지만,
+ * 이 서버는 관리자 SDK라 규칙을 지나칩니다 — 그래서 **부르는 쪽의 이메일로만
+ * 경로를 만든다는 것**이 여기서는 유일한 울타리입니다. 다른 인자로 남의 노트를
+ * 가리킬 수 있게 두면 안 됩니다.
+ */
+const noteKey = (email: string) => email.toLowerCase().trim().replace(/\./g, ',')
+
+export async function readDailyNote(email: string, date: string): Promise<string> {
+  const snap = await initDb().ref(`dailyNotes/${noteKey(email)}/${date}`).get()
+  return (snap.val()?.html as string | undefined) ?? ''
+}
+
+export async function writeDailyNote(email: string, date: string, html: string): Promise<void> {
+  await initDb().ref(`dailyNotes/${noteKey(email)}/${date}`).set({ html, at: Date.now() })
+}
+
+/** 어떤 날에 노트가 있는지. 검색과 '최근에 뭐 적었더라'에 씁니다. */
+export async function readDailyNoteDates(email: string): Promise<string[]> {
+  const snap = await initDb().ref(`dailyNotes/${noteKey(email)}`).get()
+  return Object.keys((snap.val() ?? {}) as Record<string, unknown>).sort().reverse()
+}

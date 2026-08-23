@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { isComposing } from '../../lib/utils'
 import { useUiStore } from '../../store/uiStore'
+import { useAuthStore } from '../../store/authStore'
+import { searchNotes, forgetNotes } from '../../lib/noteSearch'
 import { useTaskStore } from '../../store/taskStore'
 import { useSpaceStore } from '../../store/spaceStore'
 import { useProjectStore } from '../../store/projectStore'
@@ -29,7 +31,7 @@ function fuzzy(str: string, q: string): boolean {
 
 type Item = {
   id: string
-  kind: 'action' | 'task' | 'space' | 'project'
+  kind: 'action' | 'task' | 'space' | 'project' | 'note'
   icon: string
   label: string
   sub?: string
@@ -41,7 +43,7 @@ type Item = {
 export function CommandPalette() {
   const {
     isCommandPaletteOpen, closeCommandPalette,
-    openTaskModal, setView, setSpace, setProject, setDetailTaskId,
+    openTaskModal, setView, setSpace, setProject, setDetailTaskId, openNote,
   } = useUiStore()
   const tasks = useTaskStore(s => s.tasks)
   const spaces = useSpaceStore(s => s.spaces)
@@ -61,6 +63,31 @@ export function CommandPalette() {
   }, [isCommandPaletteOpen])
 
   useEffect(() => { setSelectedIdx(0) }, [query])
+
+  /**
+   * 노트에서 찾기.
+   *
+   * 업무·프로젝트는 이미 메모리에 있어 즉시 걸러지지만 노트는 DB에 있습니다.
+   * 그래서 여기만 비동기고, 결과가 늦게 와도 목록의 맨 아래에 붙습니다 —
+   * 위쪽이 늦게 흔들리면 이미 고르고 있던 줄이 발밑에서 바뀝니다.
+   *
+   * 팔레트를 열 때마다 캐시를 버립니다. 열고 나서 적은 건 못 찾아도 되지만,
+   * 지난번에 열어 둔 뒤로 적은 건 찾을 수 있어야 합니다.
+   */
+  const email = useAuthStore(s => s.email)
+  const [noteHits, setNoteHits] = useState<{ date: string; snippet: string }[]>([])
+
+  useEffect(() => { if (isCommandPaletteOpen) forgetNotes() }, [isCommandPaletteOpen])
+
+  useEffect(() => {
+    const q = query.trim()
+    if (!email || q.length < 2) { setNoteHits([]); return }
+    let alive = true
+    const timer = setTimeout(() => {
+      void searchNotes(email, q).then(hits => { if (alive) setNoteHits(hits) })
+    }, 140)
+    return () => { alive = false; clearTimeout(timer) }
+  }, [query, email])
 
   const items: Item[] = useMemo(() => {
     const q = query.trim()
@@ -102,8 +129,14 @@ export function CommandPalette() {
         onSelect: () => { setProject(p.id); closeCommandPalette() },
       }))
 
+    noteHits.forEach(h => result.push({
+      id: `note-${h.date}`, kind: 'note', icon: '🗓', label: h.snippet,
+      sub: noteDayLabel(h.date), hint: '노트로 이동',
+      onSelect: () => { openNote(h.date); closeCommandPalette() },
+    }))
+
     return result
-  }, [query, tasks, spaces, projects])
+  }, [query, tasks, spaces, projects, noteHits])
 
   const execute = useCallback(() => {
     items[selectedIdx]?.onSelect()
@@ -260,4 +293,15 @@ function FooterHint({ keys, label }: { keys: string[]; label: string }) {
       <span>{label}</span>
     </div>
   )
+}
+
+/** 노트 결과의 부제. 며칠 전 것인지가 날짜 자체보다 빨리 읽힙니다. */
+function noteDayLabel(ymd: string): string {
+  const d = new Date(ymd + 'T00:00:00')
+  const diff = Math.round((d.setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000)
+  const base = `${d.getMonth() + 1}/${d.getDate()} 노트`
+  if (diff === 0) return `오늘 노트`
+  if (diff === -1) return `어제 노트`
+  if (diff < 0) return `${base} · ${-diff}일 전`
+  return base
 }

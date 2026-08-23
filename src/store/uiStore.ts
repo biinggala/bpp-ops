@@ -38,6 +38,9 @@ interface UiState {
    */
   screen: 'today' | 'work'
   setScreen: (s: 'today' | 'work') => void
+  /** 오늘 화면이 펼쳐 놓은 날짜. null이면 진짜 오늘입니다. */
+  noteDate: string | null
+  openNote: (date: string | null) => void
   detailTaskId: string | null
   editTaskId: string | null
   newTaskParentId: string | null
@@ -109,6 +112,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   filters: { ...defaultFilters },
   // 아침에 여는 화면. 내 할 일은 재고이고, 오늘은 계획입니다.
   screen: 'today',
+  noteDate: null,
   detailTaskId: null,
   editTaskId: null,
   newTaskParentId: null,
@@ -154,6 +158,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   setFilters: (f) => set(s => ({ filters: { ...s.filters, ...f } })),
   resetFilters: () => set(st => ({ filters: { ...defaultFilters, sort: st.filters.sort } })),
   setScreen: (screen) => set({ screen }),
+  openNote: (noteDate) => set({ noteDate, screen: 'today' }),
   setDetailTaskId: (id) => set({ detailTaskId: id }),
   openTaskDetail: (id: string) => set({ detailTaskId: id }),
   closeTaskDetail: () => set({ detailTaskId: null }),
