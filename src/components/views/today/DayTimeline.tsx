@@ -2,18 +2,21 @@ import { useEffect, useMemo, useState } from 'react'
 import { useGCalStore, awaitingMe } from '../../../store/gcalStore'
 import { useUiStore } from '../../../store/uiStore'
 import { openExternal } from '../../../lib/desktopLinks'
-import { addDays, fmtYMD } from '../../../lib/utils'
-import { TimelineGrid, geometry } from '../timeline'
+import { fmtYMD } from '../../../lib/utils'
+import { TimelineGrid } from '../timeline'
 import type { GCalEvent } from '../../../store/gcalStore'
 
 /**
  * ── 오늘의 시간 축 ────────────────────────────────────────────────────────────
  *
- * 노트는 **무엇을 할지** 적는 곳이고, 이 칸은 **그럴 자리가 있는지**를 말합니다.
+ * 노트는 **무엇을 할지** 적는 곳이고, 이 칸은 **하루가 어떻게 생겼는지**를
+ * 말합니다. 회의가 네 시간 박힌 날과 하나도 없는 날이 화면에서 똑같이 생겼으면,
+ * "오늘 이거 셋 하자"는 판단이 아니라 추측입니다.
  *
- * 그동안 오늘 화면에는 재고만 있었습니다 — 가져올 것이 "이런 일들이 있다"까지는
- * 말했지만, 회의가 네 시간 박힌 날과 하나도 없는 날이 화면에서 똑같이 생겼습니다.
- * 그 상태에서 "오늘 이거 셋 하자"는 판단이 아니라 추측입니다.
+ * 위는 목록, 아래는 격자입니다. 같은 것을 두 번 그리는 게 아니라 서로 다른
+ * 질문에 답합니다 — 목록은 **무엇이** 있는지를 스크롤 없이, 격자는 **몇 시에**
+ * 있는지를. 격자에서 회의 이름은 칸 높이만큼만 보여서 30분짜리는 두어 글자에서
+ * 잘립니다.
  *
  * 격자는 캘린더 뷰의 하루 뷰를 그대로 씁니다(`TimelineGrid bare`). 하루 종일이
  * 스크롤로 다 있고, **빈 곳을 끌면 회의가 만들어집니다** — 갑자기 잡힌 회의를
@@ -23,17 +26,6 @@ import type { GCalEvent } from '../../../store/gcalStore'
  * 우측 상단 버튼 둘뿐이고, 여기까지 그 일을 하면 담는 곳이 셋이 됩니다.
  * 그래서 날짜 머리줄(눌러서 업무 배치)과 마감 업무 칩은 빼고 붙였습니다.
  */
-
-/**
- * '남은 시간'을 재는 자.
- *
- * 규칙이 아니라 잣대입니다 — 9시에 출근해 7시에 퇴근하라는 뜻이 아니라,
- * "빈 시간 6시간"이라는 말이 성립하려면 하루의 길이를 어디선가 정해야 하기
- * 때문입니다. 24시간으로 재면 늘 넉넉해 보여서 아무 말도 못 합니다.
- * (격자는 이 창과 무관하게 0시부터 24시까지 전부 있습니다. 야근은 야근대로.)
- */
-const WORK_START = 9
-const WORK_END = 19
 
 export const RAIL_W = 320
 
@@ -46,36 +38,6 @@ function clock(d: Date): string {
   const half = h < 12 ? '오전' : '오후'
   const h12 = h % 12 === 0 ? 12 : h % 12
   return m === 0 ? `${half} ${h12}시` : `${half} ${h12}:${pad(m)}`
-}
-
-/** 몇 시간 몇 분. */
-function span(minutes: number): string {
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  if (!h) return `${m}분`
-  if (!m) return `${h}시간`
-  return `${h}시간 ${m}분`
-}
-
-/**
- * 겹친 회의를 두 번 세지 않습니다.
- *
- * 10–11시에 두 개가 겹쳐 있으면 나간 시간은 두 시간이 아니라 한 시간입니다.
- * 이 숫자는 '회의 시간의 합'이 아니라 '내가 못 쓰는 시간'이라서요.
- */
-function busyMinutes(spans: { from: number; to: number }[], lo: number, hi: number): number {
-  const clipped = spans
-    .map(s => ({ from: Math.max(s.from, lo), to: Math.min(s.to, hi) }))
-    .filter(s => s.to > s.from)
-    .sort((a, b) => a.from - b.from)
-
-  let total = 0
-  let end = -1
-  for (const s of clipped) {
-    if (s.from > end) { total += s.to - s.from; end = s.to }
-    else if (s.to > end) { total += s.to - end; end = s.to }
-  }
-  return total
 }
 
 export function DayTimeline({ date }: { date: string }) {
@@ -97,49 +59,20 @@ export function DayTimeline({ date }: { date: string }) {
 
   const isToday = date === fmtYMD(now)
 
-  const timed = useMemo(
-    () => events.filter(e => !e.allDay && e.startIso && e.start <= date && date <= e.end),
-    [events, date],
-  )
-
   /**
-   * 확정된 것만 셉니다.
+   * 이 날의 일정, 시간 순으로.
    *
-   * 아직 수락 안 한 초대는 갈지 안 갈지 모르는 일정이라, 그걸 '나간 시간'에
-   * 넣으면 오늘이 실제보다 꽉 차 보입니다. 격자에는 점선으로 그려져 있되
-   * 숫자에서는 뺍니다 — 화면과 숫자가 같은 뜻이어야 합니다.
+   * 아래 격자와 같은 것을 그립니다. 일부러 그렇습니다 — 격자는 '몇 시에'를,
+   * 이 목록은 '무엇이'를 말합니다. 격자에서 회의 이름은 칸 높이만큼만 보이고
+   * 30분짜리는 두어 글자에서 잘립니다. 하루에 뭐가 있는지는 스크롤 없이
+   * 한눈에 읽혀야 합니다.
    */
-  const { busy, free, count } = useMemo(() => {
-    const confirmed = timed.filter(e => !awaitingMe(e))
-    const spans = confirmed.map(geometry).filter((g): g is { from: number; to: number } => !!g)
-    const b = busyMinutes(spans, WORK_START * 60, WORK_END * 60)
-    return { busy: b, free: (WORK_END - WORK_START) * 60 - b, count: confirmed.length }
-  }, [timed])
-
-  /**
-   * ── 다가오는 일정 ──────────────────────────────────────────────────────────
-   *
-   * 아래 격자는 하루치입니다. 이 목록은 거기서 잘리는 것 — 내일, 모레 —
-   * 을 맡습니다. 그래서 둘이 겹치는 건 '오늘 남은 것'뿐이고, 그건 겹쳐도
-   * 되는 부분입니다: 격자에서는 몇 시인지가, 여기서는 무엇인지가 보입니다.
-   *
-   * 사이드바에 목록을 따로 세우지 않는 이유이기도 합니다. 프로젝트 수십 개가
-   * 깔린 열을 더 길게 만드는 대신, 하루를 들여다보는 자리에 붙여 둡니다.
-   */
-  const upcoming = useMemo(() => {
-    if (!isToday) return []
-    const from = now.getTime()
-    const dated = events
-      .map(e => ({
-        e,
-        // 종일 일정은 시각이 없으므로 그날 0시로 세웁니다 — 목록 안에서
-        // 그날의 맨 앞에 서면 됩니다.
-        at: e.allDay ? new Date(`${e.start}T00:00:00`).getTime() : new Date(e.startIso!).getTime(),
-      }))
-      .filter(x => (x.e.allDay ? x.e.end >= fmtYMD(now) : x.at > from))
-      .sort((a, b) => a.at - b.at)
-    return dated.slice(0, UPCOMING_MAX).map(x => x.e)
-  }, [events, isToday, now])
+  const agenda = useMemo(() => {
+    const onDay = events.filter(e => e.start <= date && date <= e.end)
+    const at = (e: GCalEvent) =>
+      e.allDay ? -1 : new Date(e.startIso!).getHours() * 60 + new Date(e.startIso!).getMinutes()
+    return onDay.sort((a, b) => at(a) - at(b))
+  }, [events, date])
 
   return (
     <aside style={{
@@ -148,9 +81,9 @@ export function DayTimeline({ date }: { date: string }) {
       display: 'flex', flexDirection: 'column', minHeight: 0,
       background: 'var(--bg)',
     }}>
-      <div style={{ padding: '14px 12px 10px', borderBottom: '1px solid var(--bd)', flexShrink: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--t3)', letterSpacing: '.04em', textTransform: 'uppercase', marginBottom: 8 }}>
-          하루
+      <div style={{ padding: '12px 10px 8px', borderBottom: '1px solid var(--bd)', flexShrink: 0, maxHeight: '46%', overflowY: 'auto' }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--t3)', letterSpacing: '.05em', padding: '0 6px', marginBottom: 5 }}>
+          {isToday ? '오늘의 일정' : '이 날의 일정'}
         </div>
 
         {!token ? (
@@ -171,34 +104,13 @@ export function DayTimeline({ date }: { date: string }) {
               {wasConnected ? '캘린더 다시 연결' : '캘린더 연결하기'}
             </button>
           </>
+        ) : agenda.length === 0 ? (
+          <div style={{ padding: '2px 6px 4px', fontSize: 12, color: 'var(--t3)' }}>
+            잡힌 일정이 없습니다
+          </div>
         ) : (
           <>
-            {/*
-              하루의 크기는 한 줄이면 충분합니다.
-              큰 숫자로 세워 뒀더니 아래 목록보다 커서, 정작 무슨 회의가 있는지가
-              뒤로 밀렸습니다. 알아야 하는 건 '얼마나 남았나'와 '뭐가 오나' 둘 다고,
-              둘의 크기가 같아야 둘 다 읽힙니다.
-
-              그래도 건수가 아니라 시간이 앞입니다 — 15분짜리 넷과 두 시간짜리
-              넷은 완전히 다른 하루입니다.
-            */}
-            <div style={{ fontSize: 12, color: 'var(--t2)', fontVariantNumeric: 'tabular-nums' }}>
-              {count === 0
-                ? `${WORK_START}–${WORK_END}시에 잡힌 일정 없음`
-                : <>
-                    <span style={{ color: 'var(--t1)', fontWeight: 600 }}>{free > 0 ? span(free) : '0분'}</span>
-                    {' 비어 있음 · '}{span(busy)} 나감
-                  </>}
-            </div>
-
-            {upcoming.length > 0 && (
-              <div style={{ marginTop: 12 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--t3)', letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: 4 }}>
-                  다가오는 일정
-                </div>
-                {upcoming.map(e => <UpcomingRow key={e.id} event={e} now={now} />)}
-              </div>
-            )}
+            {agenda.map(e => <AgendaRow key={e.id} event={e} now={now} today={isToday} />)}
           </>
         )}
       </div>
@@ -219,41 +131,39 @@ export function DayTimeline({ date }: { date: string }) {
   )
 }
 
-/** 목록에 세우는 개수. 더 늘리면 격자가 화면 밖으로 밀립니다. */
-const UPCOMING_MAX = 6
-
-const WEEKDAY = ['일', '월', '화', '수', '목', '금', '토']
-
 /**
  * 한 줄, 세 조각: 어느 캘린더인지(네모) · 무엇인지(제목) · 언제인지(시각).
  *
- * 수락 안 한 초대는 속을 안 칠한 점선 네모입니다 — 격자에서 쓰는 표시와 같게
- * 둡니다. 같은 사실을 두 곳에서 다르게 그리면 둘 중 하나는 다른 뜻으로 읽힙니다.
+ * 수락 안 한 초대는 속을 안 칠한 점선 네모입니다 — 아래 격자에서 쓰는 표시와
+ * 같게 둡니다. 같은 사실을 두 곳에서 다르게 그리면 둘 중 하나는 다른 뜻으로
+ * 읽힙니다.
+ *
+ * 이미 지난 회의는 흐려집니다. 지우지는 않습니다 — 오늘 무엇을 했는지도
+ * 하루의 일부고, 목록이 하루 종일 짧아지기만 하면 오후에는 아침이 없던
+ * 일이 됩니다.
  */
-function UpcomingRow({ event, now }: { event: GCalEvent; now: Date }) {
+function AgendaRow({ event, now, today }: { event: GCalEvent; now: Date; today: boolean }) {
   const [hovered, setHovered] = useState(false)
   const colour = event.calendarColor || '#337EA9'
   const pending = awaitingMe(event)
 
-  const start = event.allDay ? new Date(`${event.start}T00:00:00`) : new Date(event.startIso!)
-  const days = Math.round(
-    (new Date(fmtYMD(start) + 'T00:00:00').getTime() - new Date(fmtYMD(now) + 'T00:00:00').getTime()) / 86400000,
-  )
-  const day = days === 0 ? '' : days === 1 ? '내일 ' : days < 7 ? `${WEEKDAY[start.getDay()]} ` : `${start.getMonth() + 1}/${start.getDate()} `
-  const when = event.allDay ? `${day}종일` : `${day}${clock(start)}`
+  const start = event.allDay ? null : new Date(event.startIso!)
+  const end = event.endIso ? new Date(event.endIso) : null
+  const past = today && !!end && end.getTime() < now.getTime()
 
   return (
     <button
       onClick={() => void openExternal(event.htmlLink)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      title={event.summary}
+      title={`${event.summary || '(제목 없음)'}${event.location ? ` · ${event.location}` : ''}`}
       style={{
         width: '100%', display: 'flex', alignItems: 'center', gap: 8,
         padding: '4px 6px', margin: '1px 0', borderRadius: 'var(--r1)',
         border: 'none', background: hovered ? 'var(--bg3)' : 'transparent',
         cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left',
-        transition: 'background .08s',
+        opacity: past ? .45 : 1,
+        transition: 'background .08s, opacity .1s',
       }}
     >
       <span style={{
@@ -270,7 +180,7 @@ function UpcomingRow({ event, now }: { event: GCalEvent; now: Date }) {
       <span style={{
         flexShrink: 0, fontSize: 11, color: 'var(--t3)', fontVariantNumeric: 'tabular-nums',
       }}>
-        {when}
+        {start ? clock(start) : '종일'}
       </span>
     </button>
   )
