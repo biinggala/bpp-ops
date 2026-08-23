@@ -93,6 +93,23 @@ export const P = {
    */
   orgAdmins:        (oid: string) => `orgs/${oid}/admins`,
   orgAdmin:         (oid: string, email: string) => `orgs/${oid}/admins/${emailKey(email)}`,
+  /**
+   * ── 조직에 공개된 프로젝트 목록 ──────────────────────────────────────────
+   *
+   * **경계가 아니라 라벨입니다.** 여기 이름이 올라와도 그 프로젝트의 업무는
+   * 못 봅니다 — 접근은 계속 `projects/{pid}/members`가 정합니다. 이 목록이
+   * 답하는 건 '우리 회사에 이런 프로젝트가 있고, 들어가려면 누구에게 말하면
+   * 되는가' 하나입니다.
+   *
+   * 이름을 **한 벌 베껴 둡니다.** 프로젝트 노드는 멤버 아닌 사람에게 닫혀
+   * 있어서, 목록을 그리려면 그 안을 읽지 않고도 이름을 알아야 합니다. 이미
+   * 초대장(`invitesByEmail`)이 같은 이유로 같은 일을 하고 있습니다.
+   */
+  orgProjects:      (oid: string) => `orgs/${oid}/projects`,
+  orgProject:       (oid: string, pid: string) => `orgs/${oid}/projects/${pid}`,
+  /** 참여 요청. 프로젝트별로 모아 두고, 승인은 그 프로젝트 멤버가 합니다. */
+  orgJoinRequests:  (oid: string) => `orgs/${oid}/joinRequests`,
+  orgJoinRequest:   (oid: string, pid: string, email: string) => `orgs/${oid}/joinRequests/${pid}/${emailKey(email)}`,
   orgRooms:         (oid: string) => `orgs/${oid}/rooms`,
   orgRoom:          (oid: string, rid: string) => `orgs/${oid}/rooms/${rid}`,
   /** 예약은 **날짜가 먼저**입니다. 화면이 묻는 건 늘 '이 날 이 방 비었나'인데,

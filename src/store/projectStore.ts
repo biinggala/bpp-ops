@@ -5,6 +5,7 @@ import { gid } from '../lib/utils'
 import { P } from '../lib/paths'
 import { PROJECT_PALETTE } from '../types'
 import { useAuthStore } from './authStore'
+import { useOrgStore } from './orgStore'
 import { useUserProfileStore } from './userProfileStore'
 import type { Project } from '../types'
 
@@ -78,6 +79,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   updateProject: (id, patch) => {
+    // 조직 목록에 이름 사본이 있으면 같이 고칩니다. 사본은 늙습니다.
+    if (patch.name) useOrgStore.getState().syncProjectName(id, patch.name)
     set({ projects: get().projects.map(p => p.id === id ? { ...p, ...patch } : p) })
     const payload: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(patch)) payload[k] = v === undefined ? null : v

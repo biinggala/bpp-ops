@@ -9,6 +9,7 @@ import { fileWatchEnabled, setFileWatchEnabled } from '../../lib/driveWatch'
 import { useDriveStore } from '../../store/driveStore'
 import { useMailStore } from '../../store/mailStore'
 import { useOrgStore } from '../../store/orgStore'
+import { useProjectStore } from '../../store/projectStore'
 import { askConfirm } from '../shared/Confirm'
 import { showTestNotice } from '../layout/NoticeToast'
 import { Icon, type IconName } from '../shared/Icon'
@@ -407,6 +408,8 @@ function OrgSection() {
         **예약은 그대로 전원입니다.** 잠글 곳은 목록이지 사용이 아닙니다 —
         회의실을 쓰려고 관리자에게 부탁해야 한다면 이 기능은 없는 게 낫습니다.
       */}
+      <OrgProjects />
+
       <Section
         title="회의실"
         note={isAdmin
@@ -531,6 +534,107 @@ function OrgSection() {
         {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6, lineHeight: 1.5 }}>{error}</div>}
       </Section>
     </>
+  )
+}
+
+/**
+ * ── 조직에 공개된 프로젝트 ───────────────────────────────────────────────────
+ *
+ * **경계가 아니라 라벨입니다.** 여기 이름이 올라와도 그 프로젝트의 업무는 안
+ * 보입니다 — 접근은 계속 프로젝트 멤버십이 정합니다. 이 목록이 답하는 건
+ * '우리 회사에 이런 프로젝트가 있고, 들어가려면 누구에게 말하면 되는가'
+ * 하나입니다. 새로 들어온 사람이 아무것도 못 보는 문제는 그걸로 풀립니다.
+ *
+ * 올리고 내리는 것은 그 프로젝트 멤버가 사이드바에서 합니다(우클릭 →
+ * 조직에 공개). 조직 관리자가 아닙니다 — 관리자에게 프로젝트 권한을 주지
+ * 않기 위해서고, 남의 프로젝트를 끌어오는 일도 없어야 합니다.
+ */
+function OrgProjects() {
+  const email = useAuthStore(s => s.email)
+  const { orgId, orgProjects, joinRequests, requestJoin, clearJoinRequest, error } = useOrgStore()
+  const myProjects = useProjectStore(s => s.projects)
+  const addMember = useProjectStore(s => s.addMember)
+  const displayName = useAuthStore(s => s.displayName)
+  const [busy, setBusy] = useState<string | null>(null)
+
+  if (!orgId || !email) return null
+
+  const mine = new Set(myProjects.map(p => p.id))
+  const asked = new Set(
+    joinRequests.filter(r => r.email === email.toLowerCase()).map(r => r.projectId),
+  )
+
+  return (
+    <Section
+      title="조직 프로젝트"
+      note="이름만 공개됩니다. 업무 내용은 참여한 뒤에 보입니다 — 목록에 오르는 것과 들어가는 것은 다른 일입니다."
+    >
+      {orgProjects.length === 0 && (
+        <div style={{ fontSize: 11, color: 'var(--t3)', padding: '2px 0 4px', lineHeight: 1.6 }}>
+          공개된 프로젝트가 없습니다. 사이드바에서 프로젝트를 우클릭 → '조직에 공개'.
+        </div>
+      )}
+
+      {orgProjects.map(project => {
+        const joined = mine.has(project.id)
+        // 이 프로젝트 멤버에게만 요청이 의미가 있습니다 — 승인할 사람이니까요.
+        const requests = joined ? joinRequests.filter(r => r.projectId === project.id) : []
+        return (
+          <div key={project.id} style={{ padding: '2px 0' }}>
+            <div style={ROW}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 7, flex: 1, minWidth: 0 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: project.color ?? 'var(--bd2)', flexShrink: 0 }} />
+                <span style={{ fontSize: 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {project.name}
+                </span>
+              </span>
+              {joined ? (
+                <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0 }}>참여 중</span>
+              ) : asked.has(project.id) ? (
+                <button
+                  onClick={() => void clearJoinRequest(project.id, email)}
+                  style={{ ...navBtn, padding: '3px 9px', fontSize: 11, borderColor: 'transparent', color: 'var(--t3)' }}
+                >요청함 · 취소</button>
+              ) : (
+                <button
+                  onClick={async () => {
+                    setBusy(project.id)
+                    await requestJoin(project.id, email, displayName ?? undefined)
+                    setBusy(null)
+                  }}
+                  disabled={busy === project.id}
+                  style={{ ...navBtn, padding: '3px 10px', fontSize: 11 }}
+                >{busy === project.id ? '…' : '참여 요청'}</button>
+              )}
+            </div>
+
+            {/*
+              승인은 **초대장을 쓰는 것**입니다.
+
+              이미 있는 초대 흐름을 그대로 씁니다 — 승인하면 그 사람의 초대함에
+              초대가 놓이고, 그쪽 앱에 초대 창이 뜹니다. 참여 경로를 두 개 만들면
+              하나는 언젠가 안 맞게 됩니다.
+            */}
+            {requests.map(r => (
+              <div key={r.email} style={{ ...ROW, paddingLeft: 15, minHeight: 26 }}>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: 'var(--t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {r.name ? `${r.name} · ${r.email}` : r.email} 참여 요청
+                </span>
+                <button
+                  onClick={async () => { addMember(project.id, r.email); await clearJoinRequest(project.id, r.email) }}
+                  style={{ ...navBtn, padding: '2px 9px', fontSize: 11, borderColor: 'var(--ac)', color: 'var(--ac)' }}
+                >승인</button>
+                <button
+                  onClick={() => void clearJoinRequest(project.id, r.email)}
+                  style={{ ...navBtn, padding: '2px 8px', fontSize: 11, borderColor: 'transparent', color: 'var(--t3)' }}
+                >거절</button>
+              </div>
+            ))}
+          </div>
+        )
+      })}
+      {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6 }}>{error}</div>}
+    </Section>
   )
 }
 

@@ -13,6 +13,7 @@ import { haptic } from '../../lib/haptics'
 import { Icon, type IconName } from '../shared/Icon'
 import { SettingsModal } from '../modals/SettingsModal'
 import { useNoticeInbox, NoticeList } from './Notices'
+import { useOrgStore } from '../../store/orgStore'
 import { useTodayCount } from '../views/today/count'
 import { useNoticeToast } from './NoticeToast'
 import { MEMBERS } from '../../types'
@@ -102,6 +103,10 @@ export function Sidebar() {
   const [pane, setPane] = useState<'home' | 'inbox'>('home')
   const [width, setWidth] = useState(loadWidth)
   const { unread, external } = useNoticeInbox()
+  const orgId = useOrgStore(s => s.orgId)
+  const setProjectShared = useOrgStore(s => s.setProjectShared)
+  const orgProjects = useOrgStore(s => s.orgProjects)
+  const sharedProjectIds = useMemo(() => new Set(orgProjects.map(p => p.id)), [orgProjects])
   const todayOpen = useTodayCount()
   const profileRef = useRef<HTMLDivElement>(null)
 
@@ -744,6 +749,24 @@ export function Sidebar() {
               }}>
                 그룹 지정
               </ContextMenuItem>
+              {/* 조직에 올리는 것은 **그 프로젝트 멤버**가 합니다. 조직
+                  관리자가 아닙니다 — 관리자에게 프로젝트 권한을 주지 않기
+                  위해서고, 남의 프로젝트를 끌어오는 일도 없어야 합니다.
+                  조직이 없으면 이 줄도 없습니다. */}
+              {orgId && (
+                <ContextMenuItem
+                  icon={sharedProjectIds.has(contextMenu.id) ? 'unlink' : 'users'}
+                  onClick={() => {
+                    const project = projects.find(p => p.id === contextMenu.id)
+                    if (project) {
+                      void setProjectShared(project, !sharedProjectIds.has(contextMenu.id))
+                    }
+                    setContextMenu(null)
+                  }}
+                >
+                  {sharedProjectIds.has(contextMenu.id) ? '조직 목록에서 내리기' : '조직에 공개'}
+                </ContextMenuItem>
+              )}
               <ContextMenuItem icon={contextMenu.archived ? 'unarchive' : 'archive'} onClick={() => handleArchiveProject(contextMenu.id, !contextMenu.archived)}>
                 {contextMenu.archived ? '아카이브 해제' : '아카이브'}
               </ContextMenuItem>

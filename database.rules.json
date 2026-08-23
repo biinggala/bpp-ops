@@ -69,6 +69,22 @@
             ".validate": "newData.hasChildren(['name']) && newData.child('name').isString() && newData.child('name').val().length <= 60"
           }
         },
+        "projects": {
+          ".read": "auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ','))",
+          "$pid": {
+            ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ',')) && root.child('projects/' + $pid + '/members/' + auth.uid).exists()",
+            ".validate": "newData.hasChildren(['name']) && newData.child('name').isString() && newData.child('name').val().length <= 80"
+          }
+        },
+        "joinRequests": {
+          ".read": "auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ','))",
+          "$pid": {
+            "$mail": {
+              ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ',')) && (($mail === auth.token.email.toLowerCase().replace('.', ',')) || (root.child('projects/' + $pid + '/members/' + auth.uid).exists()))",
+              ".validate": "newData.hasChildren(['at']) && newData.child('at').isNumber() && (!newData.hasChild('name') || newData.child('name').val().length <= 80)"
+            }
+          }
+        },
         "bookings": {
           "$date": {
             "$bid": {

@@ -3,6 +3,7 @@ import { onValue, push, ref, remove, set as fbSet, update as fbUpdate, off } fro
 import { db } from '../lib/firebase'
 import { P, domainKey, emailKey } from '../lib/paths'
 import { gid } from '../lib/utils'
+import { useAuthStore } from './authStore'
 
 /**
  * ── 조직과 회의실 ────────────────────────────────────────────────────────────
@@ -37,6 +38,24 @@ export interface Room {
    * '(삭제된 회의실)'이 되는 것보다, 새로 못 잡는 방으로 남는 편이 낫습니다.
    */
   active?: boolean
+}
+
+/** 조직에 공개된 프로젝트 한 줄. 이름은 베껴 둔 사본입니다. */
+export interface OrgProject {
+  id: string
+  name: string
+  color?: string
+  /** 올린 사람. 물어볼 데가 필요합니다. */
+  by?: string
+  at?: number
+}
+
+/** 참여 요청 한 건. */
+export interface JoinRequest {
+  projectId: string
+  email: string
+  name?: string
+  at: number
 }
 
 export interface Booking {
@@ -76,6 +95,10 @@ interface OrgState {
    * 언젠가 어긋납니다.
    */
   admins: string[]
+  /** 조직에 공개된 프로젝트들. 이름만입니다 — 업무는 안 딸려 옵니다. */
+  orgProjects: OrgProject[]
+  /** 들어오고 싶다는 요청들. 승인은 그 프로젝트 멤버가 합니다. */
+  joinRequests: JoinRequest[]
   /** 날짜별 예약. 화면이 보는 날짜만 들어 있습니다. */
   bookings: Record<string, Booking[]>
   /** 조직을 찾는 첫 조회가 끝났는가. 그 전에는 '없다'고 말하지 않습니다. */
@@ -100,6 +123,15 @@ interface OrgState {
   updateRoom: (id: string, patch: Partial<Omit<Room, 'id'>>) => Promise<void>
   /** 관리자를 더하거나 뺍니다. 우리 도메인 주소만 됩니다. */
   setAdmin: (email: string, on: boolean) => Promise<boolean>
+
+  /** 프로젝트를 조직 목록에 올리거나 내립니다. 그 프로젝트 멤버만. */
+  setProjectShared: (project: { id: string; name: string; color?: string }, on: boolean) => Promise<boolean>
+  /** 이름이 바뀌면 사본도 맞춥니다. 목록에 없으면 아무 일도 안 합니다. */
+  syncProjectName: (projectId: string, name: string) => void
+  /** 참여를 요청합니다. */
+  requestJoin: (projectId: string, email: string, name?: string) => Promise<boolean>
+  /** 요청을 지웁니다 — 승인했거나, 거절했거나, 본인이 취소했거나. */
+  clearJoinRequest: (projectId: string, email: string) => Promise<void>
 
   book: (input: {
     date: string; roomId: string; from: number; to: number
@@ -132,6 +164,8 @@ export const useOrgStore = create<OrgState>((set, get) => ({
   domain: '',
   rooms: [],
   admins: [],
+  orgProjects: [],
+  joinRequests: [],
   bookings: {},
   ready: false,
   error: null,
@@ -160,7 +194,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       const orgId = (snap.val() as string | null) ?? null
       dropInner()
       if (!orgId) {
-        set({ ready: true, orgId: null, name: '', domain: '', rooms: [], admins: [], bookings: {} })
+        set({ ready: true, orgId: null, name: '', domain: '', rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {} })
         return
       }
 
@@ -190,10 +224,35 @@ export const useOrgStore = create<OrgState>((set, get) => ({
             .sort(),
         })
       }, () => set({ admins: [] }))
+      const projectsRef = ref(db, P.orgProjects(orgId))
+      const projectsHandler = onValue(projectsRef, s => {
+        set({
+          orgProjects: list<OrgProject>(s.val())
+            .filter(p => p.name)
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        })
+      }, () => set({ orgProjects: [] }))
+
+      // 요청은 통째로 한 번에 읽습니다 — 프로젝트마다 리스너를 두면 프로젝트
+      // 수만큼 늘어납니다.
+      const joinRef = ref(db, P.orgJoinRequests(orgId))
+      const joinHandler = onValue(joinRef, s => {
+        const raw = (s.val() ?? {}) as Record<string, Record<string, { at?: number; name?: string }>>
+        const out: JoinRequest[] = []
+        for (const [projectId, people] of Object.entries(raw)) {
+          for (const [key, value] of Object.entries(people ?? {})) {
+            out.push({ projectId, email: key.replace(/,/g, '.'), name: value?.name, at: value?.at ?? 0 })
+          }
+        }
+        set({ joinRequests: out.sort((a, b) => a.at - b.at) })
+      }, () => set({ joinRequests: [] }))
+
       inner = [
         () => off(metaRef, 'value', metaHandler),
         () => off(roomsRef, 'value', roomsHandler),
         () => off(adminsRef, 'value', adminsHandler),
+        () => off(projectsRef, 'value', projectsHandler),
+        () => off(joinRef, 'value', joinHandler),
       ]
       set({ orgId, ready: true, error: null })
     }, () => {
@@ -207,7 +266,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       for (const fn of Object.values(dateWatchers)) fn()
       for (const key of Object.keys(dateWatchers)) delete dateWatchers[key]
       for (const key of Object.keys(wanted)) delete wanted[key]
-      set({ orgId: null, name: '', domain: '', rooms: [], admins: [], bookings: {}, ready: false })
+      set({ orgId: null, name: '', domain: '', rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {}, ready: false })
     }
   },
 
@@ -291,6 +350,69 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     if (!orgId) return
     await fbUpdate(ref(db, P.orgRoom(orgId, id)), patch)
       .catch(e => set({ error: e instanceof Error ? e.message : '회의실 수정 실패' }))
+  },
+
+  setProjectShared: async (project, on) => {
+    const { orgId, admins: _a } = get()
+    if (!orgId) return false
+    try {
+      if (on) {
+        await fbSet(ref(db, P.orgProject(orgId, project.id)), {
+          name: project.name,
+          ...(project.color ? { color: project.color } : {}),
+          by: useAuthStore.getState().email?.toLowerCase() ?? '',
+          at: Date.now(),
+        })
+      } else {
+        // 내릴 때 요청도 같이 치웁니다. 목록에 없는 프로젝트에 대한 요청은
+        // 아무도 볼 데가 없는 채로 남습니다.
+        await remove(ref(db, `${P.orgJoinRequests(orgId)}/${project.id}`)).catch(() => {})
+        await remove(ref(db, P.orgProject(orgId, project.id)))
+      }
+      set({ error: null })
+      return true
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : '조직 목록을 바꾸지 못했습니다' })
+      return false
+    }
+  },
+
+  /**
+   * 이름 사본을 맞춥니다.
+   *
+   * 사본은 늙습니다 — 프로젝트 이름을 바꾸면 조직 목록에는 옛 이름이 남습니다.
+   * 이름을 바꾸는 사람은 그 프로젝트 멤버이므로 규칙상 사본을 쓸 수 있고,
+   * 그러니 그 자리에서 같이 고치는 게 맞습니다. 목록에 없는 프로젝트면
+   * 아무 일도 안 합니다.
+   */
+  syncProjectName: (projectId, name) => {
+    const { orgId, orgProjects } = get()
+    if (!orgId) return
+    if (!orgProjects.some(p => p.id === projectId)) return
+    void fbUpdate(ref(db, P.orgProject(orgId, projectId)), { name }).catch(() => {})
+  },
+
+  requestJoin: async (projectId, email, name) => {
+    const { orgId } = get()
+    if (!orgId) return false
+    try {
+      await fbSet(ref(db, P.orgJoinRequest(orgId, projectId, email)), {
+        at: Date.now(),
+        ...(name ? { name } : {}),
+      })
+      set({ error: null })
+      return true
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : '요청을 보내지 못했습니다' })
+      return false
+    }
+  },
+
+  clearJoinRequest: async (projectId, email) => {
+    const { orgId } = get()
+    if (!orgId) return
+    await remove(ref(db, P.orgJoinRequest(orgId, projectId, email)))
+      .catch(e => set({ error: e instanceof Error ? e.message : '요청을 지우지 못했습니다' }))
   },
 
   removeRoom: async (id) => {
