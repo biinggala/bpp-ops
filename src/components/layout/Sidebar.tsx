@@ -197,6 +197,38 @@ export function Sidebar() {
     return m
   }, [accessibleTasks, today])
 
+  /**
+   * ── 조직에 공개 ────────────────────────────────────────────────────────────
+   *
+   * **만든 사람이 아니라 멤버**의 일입니다. 규칙도 그렇게 쓰여 있습니다
+   * (`projects/$pid/members/$uid`를 검사합니다). 그래서 만든 사람이든 아니든
+   * 같은 자리에 있습니다.
+   *
+   * 자리는 마지막 묶음, **삭제·나가기 바로 위**입니다. 되돌리기 쉬운 것들
+   * (이름·멤버·그룹·아카이브)과 프로젝트의 존재를 건드리는 것들 사이가
+   * 그 경계고, '조직에서 내리기'는 뒤쪽에 가깝습니다 — 남들 화면에서 프로젝트
+   * 하나가 사라지는 일이니까요.
+   *
+   * 조직 관리자에게 주는 힘이 아닙니다. 관리자에게 프로젝트 권한을 주면 접근
+   * 축이 두 개가 되고, 그건 이 기능 전체가 피하려던 것입니다.
+   */
+  const orgShareItem = (id: string) => {
+    if (!orgId) return null
+    const shared = sharedProjectIds.has(id)
+    return (
+      <ContextMenuItem
+        icon={shared ? 'unlink' : 'users'}
+        onClick={() => {
+          const project = projects.find(p => p.id === id)
+          if (project) void setProjectShared(project, !shared)
+          setContextMenu(null)
+        }}
+      >
+        {shared ? '조직 목록에서 내리기' : '조직에 공개'}
+      </ContextMenuItem>
+    )
+  }
+
   const isProjectCreator = (id: string): boolean => {
     const p = projects.find(pj => pj.id === id)
     if (!p || !email) return false
@@ -760,34 +792,6 @@ export function Sidebar() {
           }}
           onClick={e => e.stopPropagation()}
         >
-          {/*
-            ── 조직에 공개 ──────────────────────────────────────────────────
-            **만든 사람이 아니라 멤버**의 일입니다. 규칙도 그렇게 쓰여 있는데
-            (projects/$pid/members/$uid를 검사합니다) 이 메뉴에서는 '만든 사람'
-            묶음 안에 넣어 뒀습니다. 그래서 남이 만든 프로젝트는 규칙상 올릴
-            수 있는데 화면에 버튼이 없었습니다 — 권한이 없는 것처럼 보이지만
-            권한은 있었습니다.
-
-            조직 관리자에게 주는 힘이 아닙니다. 관리자에게 프로젝트 권한을
-            주면 접근 축이 두 개가 되고, 그건 이 기능 전체가 피하려던 것입니다.
-            남의 프로젝트를 끌어오는 일도 없어야 합니다.
-          */}
-          {orgId && (
-            <>
-              <ContextMenuItem
-                icon={sharedProjectIds.has(contextMenu.id) ? 'unlink' : 'users'}
-                onClick={() => {
-                  const project = projects.find(p => p.id === contextMenu.id)
-                  if (project) void setProjectShared(project, !sharedProjectIds.has(contextMenu.id))
-                  setContextMenu(null)
-                }}
-              >
-                {sharedProjectIds.has(contextMenu.id) ? '조직 목록에서 내리기' : '조직에 공개'}
-              </ContextMenuItem>
-              <div style={{ height: 1, background: 'var(--bd)', margin: '4px -4px' }} />
-            </>
-          )}
-
           {isProjectCreator(contextMenu.id) ? (
             <>
               <ContextMenuItem icon="pencil" onClick={() => { setEditingProjectId(contextMenu.id); setEditProjectName(contextMenu.name); setContextMenu(null) }}>
@@ -807,14 +811,18 @@ export function Sidebar() {
                 {contextMenu.archived ? '아카이브 해제' : '아카이브'}
               </ContextMenuItem>
               <div style={{ height: 1, background: 'var(--bd)', margin: '4px -4px' }} />
+              {orgShareItem(contextMenu.id)}
               <ContextMenuItem icon="trash" danger onClick={() => { setDeleteConfirm({ id: contextMenu.id, name: contextMenu.name }); setContextMenu(null) }}>
                 삭제
               </ContextMenuItem>
             </>
           ) : (
-            <ContextMenuItem icon="exit" danger onClick={() => handleLeaveProject(contextMenu.id)}>
-              나가기
-            </ContextMenuItem>
+            <>
+              {orgShareItem(contextMenu.id)}
+              <ContextMenuItem icon="exit" danger onClick={() => handleLeaveProject(contextMenu.id)}>
+                나가기
+              </ContextMenuItem>
+            </>
           )}
         </div>
       )}
