@@ -7,6 +7,7 @@ import TaskItem from '@tiptap/extension-task-item'
 import { useTaskStore } from '../../../store/taskStore'
 import { useAuthStore } from '../../../store/authStore'
 import { useProjectStore } from '../../../store/projectStore'
+import { useSyncStore } from '../../../store/syncStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useMobile } from '../../../hooks/useMobile'
@@ -16,6 +17,7 @@ import { haptic } from '../../../lib/haptics'
 import { TaskRef, TASK_DND } from './TaskRef'
 import { MarkdownTasks } from './markdown'
 import { BlockTools } from './BlockTools'
+import { LoadingChips } from '../../shared/Loading'
 import type { Task } from '../../../types'
 
 /**
@@ -271,6 +273,7 @@ function dueBucket(due: string | undefined): { key: string; label: string; tone?
 function PullRail({ onAdd, inNote }: { onAdd: (t: Task) => void; inNote: Set<string> }) {
   const mine = useMine()
   const projects = useProjectStore(s => s.projects)
+  const ready = useSyncStore(s => s.ready)
   const [group, setGroup] = useState<RailGroup>(loadRailGroup)
   /**
    * 아래가 더 있는지.
@@ -321,11 +324,13 @@ function PullRail({ onAdd, inNote }: { onAdd: (t: Task) => void; inNote: Set<str
       <div style={{ padding: '14px 12px 8px', flexShrink: 0 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--t2)' }}>가져올 것</div>
         <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
-          {mine.length
-            ? `내 업무 ${mine.length}개${taken ? ` · 오늘 ${taken}개` : ''}`
-            : '남은 게 없습니다'}
+          {!ready
+            ? '불러오는 중…'
+            : mine.length
+              ? `내 업무 ${mine.length}개${taken ? ` · 오늘 ${taken}개` : ''}`
+              : '남은 게 없습니다'}
         </div>
-        {mine.length > 0 && (
+        {ready && mine.length > 0 && (
           <div style={{ display: 'flex', gap: 2, marginTop: 8, padding: 2, borderRadius: 'var(--r2)', background: 'var(--bg3)' }}>
             <RailTab on={group === 'due'} onClick={() => pick('due')}>마감순</RailTab>
             <RailTab on={group === 'project'} onClick={() => pick('project')}>프로젝트별</RailTab>
@@ -342,7 +347,10 @@ function PullRail({ onAdd, inNote }: { onAdd: (t: Task) => void; inNote: Set<str
           WebkitMaskImage: more ? 'linear-gradient(to bottom, #000 calc(100% - 26px), transparent)' : 'none',
         }}
       >
-        {sections.map(sec => (
+        {/* 아직 안 온 것을 '남은 게 없습니다'라고 하면, 오늘 할 일이 없다는
+            아주 반가운 거짓말이 됩니다. */}
+        {!ready && <LoadingChips />}
+        {ready && sections.map(sec => (
           <div key={sec.label}>
             {/* 스크롤해도 붙어 있습니다. 열 개째 줄에서 지금 보는 게 어느
                 프로젝트인지 모르면 묶어 놓은 값이 없습니다. */}

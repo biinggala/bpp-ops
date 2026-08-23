@@ -31,6 +31,18 @@ interface ProjectNode {
 interface SyncState {
   /** uid → invite code, per project. Needed to remove a member by address. */
   membersByProject: Record<string, Record<string, string>>
+  /**
+   * 첫 그림이 다 도착했는가.
+   *
+   * 예전엔 프로젝트 **목록**이 오는 순간 참이 됐습니다. 목록은 이름표 몇 개라
+   * 즉시 오지만 그 안의 업무는 프로젝트마다 따로 읽어 와야 하고, 그 사이 몇
+   * 초 동안 앱은 "업무 0개"를 아주 자신 있게 보여 줬습니다. 없는 것과 아직
+   * 안 온 것은 다른 말인데 화면에서는 같아 보였습니다.
+   *
+   * 이제는 목록에 적힌 프로젝트가 **하나도 빠짐없이 한 번씩 응답한 뒤에야**
+   * 참이 됩니다. 응답에는 거절도 포함됩니다 — 못 읽는 프로젝트를 영원히
+   * 기다리면 로딩 표시가 안 끝납니다.
+   */
   ready: boolean
   subscribe: (uid: string, email: string | null) => () => void
 }
@@ -48,6 +60,27 @@ export const useSyncStore = create<SyncState>((set) => ({
     const profileListeners = new Map<string, Unsubscribe>()
     let personalTasks: Record<string, Task> = {}
     let stopped = false
+
+    // 아직 첫 응답을 안 준 프로젝트들. 비면 그림이 다 온 것입니다.
+    const awaiting = new Set<string>()
+    let indexSeen = false
+    let personalSeen = false
+
+    const settle = () => {
+      if (stopped) return
+      set({ ready: indexSeen && personalSeen && awaiting.size === 0 })
+    }
+
+    // 끝나지 않는 로딩 표시는 빈 목록보다 나쁩니다. 연결이 안 좋아 한
+    // 프로젝트가 영영 대답을 안 해도, 8초 뒤에는 지금까지 온 것으로
+    // 화면을 엽니다.
+    const deadline = window.setTimeout(() => {
+      if (stopped) return
+      awaiting.clear()
+      indexSeen = true
+      personalSeen = true
+      settle()
+    }, 8000)
 
     const republish = () => {
       if (stopped) return
@@ -93,14 +126,19 @@ export const useSyncStore = create<SyncState>((set) => ({
     const watchProject = (pid: string) => {
       if (projectListeners.has(pid)) return
       const projectRef = ref(db, P.project(pid))
+      awaiting.add(pid)
       const handler = onValue(projectRef, snap => {
         const node: ProjectNode | null = snap.val()
         if (node) nodes.set(pid, node)
         else nodes.delete(pid)   // deleted, or access was removed
+        awaiting.delete(pid)
+        settle()
         republish()
       }, () => {
         // Listed in our index but not readable: treat it as not ours.
         nodes.delete(pid)
+        awaiting.delete(pid)
+        settle()
         republish()
       })
       projectListeners.set(pid, () => off(projectRef, 'value', handler))
@@ -115,14 +153,18 @@ export const useSyncStore = create<SyncState>((set) => ({
         stop()
         projectListeners.delete(pid)
         nodes.delete(pid)
+        awaiting.delete(pid)
       }
-      set({ ready: true })
+      indexSeen = true
+      settle()
       republish()
     })
 
     const personalRef = ref(db, P.personalTasks(uid))
     const personalHandler = onValue(personalRef, snap => {
       personalTasks = snap.val() ?? {}
+      personalSeen = true
+      settle()
       republish()
     })
 
@@ -150,6 +192,7 @@ export const useSyncStore = create<SyncState>((set) => ({
 
     return () => {
       stopped = true
+      clearTimeout(deadline)
       off(indexRef, 'value', indexHandler)
       off(personalRef, 'value', personalHandler)
       off(spacesRef, 'value', spacesHandler)

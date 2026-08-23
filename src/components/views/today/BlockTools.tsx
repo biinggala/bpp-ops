@@ -239,7 +239,7 @@ interface Turn { label: string; run: (e: Editor) => void }
 
 const TURNS: Turn[] = [
   { label: '본문',       run: e => e.chain().focus().setParagraph().run() },
-  { label: '할 일',      run: e => e.chain().focus().toggleTaskList().run() },
+  { label: '간단한 할 일', run: e => e.chain().focus().toggleTaskList().run() },
   { label: '제목 1',     run: e => e.chain().focus().setNode('heading', { level: 1 }).run() },
   { label: '제목 2',     run: e => e.chain().focus().setNode('heading', { level: 2 }).run() },
   { label: '제목 3',     run: e => e.chain().focus().setNode('heading', { level: 3 }).run() },
@@ -300,7 +300,7 @@ function BlockMenu({ editor, x, y, pos, onClose }: {
 /* ── 슬래시 메뉴 ── */
 
 const SLASH: { label: string; hint: string; run: (e: Editor) => void }[] = [
-  { label: '할 일',      hint: '체크박스 한 줄',   run: e => e.chain().focus().toggleTaskList().run() },
+  { label: '간단한 할 일', hint: '체크박스 한 줄', run: e => e.chain().focus().toggleTaskList().run() },
   { label: '제목 1',     hint: '가장 큰 제목',     run: e => e.chain().focus().setNode('heading', { level: 1 }).run() },
   { label: '제목 2',     hint: '',                run: e => e.chain().focus().setNode('heading', { level: 2 }).run() },
   { label: '제목 3',     hint: '',                run: e => e.chain().focus().setNode('heading', { level: 3 }).run() },

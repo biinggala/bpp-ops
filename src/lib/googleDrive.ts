@@ -132,6 +132,84 @@ export async function searchFiles(
   return out.slice(0, limit)
 }
 
+/**
+ * ── 무엇이 바뀌었는지 묻는 값싼 방법 ────────────────────────────────────────
+ *
+ * 붙여 둔 파일이 마흔 개면 `files.get`을 마흔 번 부르게 됩니다. 앱을 켤 때마다
+ * 마흔 번씩요. Drive에는 "이 아이디들 중에서" 같은 질의가 없어서 목록으로
+ * 묶을 수도 없습니다.
+ *
+ * 대신 **변경 목록**을 씁니다. 내 드라이브 전체에서 지난번 이후 바뀐 것을 한
+ * 번에 받아 오고, 그중 우리가 아는 파일만 골라냅니다 — 파일이 몇 개든 요청은
+ * 한 번입니다. 지난번이 언제인지는 페이지 토큰이 기억합니다.
+ */
+export interface DriveChange {
+  fileId: string
+  /** 휴지통에 갔거나 공유가 끊겨 더 못 보는 상태. */
+  removed: boolean
+  name?: string
+  modifiedTime?: string
+  webViewLink?: string
+  by?: { displayName?: string; emailAddress?: string }
+}
+
+/** 지금부터 세겠다는 표식. 처음 한 번만 받아 두면 됩니다. */
+export async function getStartPageToken(token: string): Promise<string> {
+  const res = await call<{ startPageToken: string }>(token, '/changes/startPageToken', {})
+  return res.startPageToken
+}
+
+const CHANGE_FIELDS =
+  'newStartPageToken,nextPageToken,changes(fileId,removed,' +
+  'file(id,name,trashed,modifiedTime,webViewLink,lastModifyingUser(displayName,emailAddress)))'
+
+/** 한 번에 읽어 올 페이지 수. 이만큼도 안 끝나면 따라잡기를 포기합니다. */
+const MAX_PAGES = 10
+
+/**
+ * `pageToken` 이후의 변경들과, 다음번에 쓸 토큰.
+ *
+ * `caughtUp`이 거짓이면 열 페이지로도 다 못 읽었다는 뜻입니다 — 오래 앱을
+ * 안 켰거나 드라이브가 아주 바쁜 경우입니다. 그럴 땐 못 읽은 나머지를
+ * 포기하고 지금 시점으로 표식을 옮깁니다. 이건 장부가 아니라 알림입니다.
+ */
+export async function listChanges(token: string, pageToken: string): Promise<{
+  changes: DriveChange[]
+  nextToken: string
+  caughtUp: boolean
+}> {
+  const changes: DriveChange[] = []
+  let cursor = pageToken
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const res = await call<{
+      changes?: {
+        fileId?: string
+        removed?: boolean
+        file?: DriveFile & { trashed?: boolean; lastModifyingUser?: { displayName?: string; emailAddress?: string } }
+      }[]
+      nextPageToken?: string
+      newStartPageToken?: string
+    }>(token, '/changes', { pageToken: cursor, pageSize: '100', fields: CHANGE_FIELDS })
+
+    for (const c of res.changes ?? []) {
+      if (!c.fileId) continue
+      changes.push({
+        fileId: c.fileId,
+        removed: !!c.removed || !!c.file?.trashed,
+        name: c.file?.name,
+        modifiedTime: c.file?.modifiedTime,
+        webViewLink: c.file?.webViewLink,
+        by: c.file?.lastModifyingUser,
+      })
+    }
+    if (res.newStartPageToken) return { changes, nextToken: res.newStartPageToken, caughtUp: true }
+    if (!res.nextPageToken) return { changes, nextToken: cursor, caughtUp: true }
+    cursor = res.nextPageToken
+  }
+  // 따라잡지 못했습니다. 부른 쪽이 표식을 새로 받아 옵니다.
+  return { changes, nextToken: cursor, caughtUp: false }
+}
+
 export async function getFile(token: string, fileId: string): Promise<DriveFile> {
   return call<DriveFile>(token, `/files/${encodeURIComponent(fileId)}`, { fields: FIELDS })
 }
