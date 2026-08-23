@@ -296,7 +296,7 @@ export function CommandPalette() {
         위에 붙이고 아래를 키보드에 내줍니다 — dvh는 그 줄어든 높이를
         따라옵니다(vh는 안 따라옵니다).
       */}
-      <div style={isMobile ? {
+      <div data-tour="palette" style={isMobile ? {
         position: 'fixed', top: 0, left: 0, right: 0,
         maxHeight: '88dvh',
         paddingTop: 'env(safe-area-inset-top, 0px)',

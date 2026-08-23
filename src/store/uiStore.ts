@@ -114,6 +114,15 @@ interface UiState {
    */
   dayRail: boolean
   toggleDayRail: () => void
+  /**
+   * 사이드바가 지금 무엇을 보여주는가 — 홈(업무 목록)인가 받은 알림인가.
+   *
+   * 사이드바 안의 state였습니다. 밖으로 꺼낸 건 소개 투어 때문입니다:
+   * "받은 알림은 여기입니다" 하면서 정작 그 열을 못 열면, 가리키기만 하고
+   * 보여주지는 못하는 설명이 됩니다.
+   */
+  sidebarPane: 'home' | 'inbox'
+  setSidebarPane: (p: 'home' | 'inbox') => void
   /** Calendar: how much is shown at once, and the date it starts from. */
   calRange: CalRange
   calAnchor: string
@@ -199,6 +208,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   sidebarOpen: false,
   sidebarHidden: loadSidebarHidden(),
   dayRail: loadDayRail(),
+  sidebarPane: 'home',
   calRange: 7,
   calAnchor: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
 
@@ -278,6 +288,7 @@ export const useUiStore = create<UiState>((set, get) => ({
     try { localStorage.setItem(HIDDEN_KEY, sidebarHidden ? '1' : '0') } catch { /* private mode */ }
     return { sidebarHidden }
   }),
+  setSidebarPane: (sidebarPane) => set({ sidebarPane }),
   toggleDayRail: () => set(s => {
     const dayRail = !s.dayRail
     try { localStorage.setItem(DAY_RAIL_KEY, dayRail ? '1' : '0') } catch { /* private mode */ }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuthStore } from '../../store/authStore'
 import { useUiStore } from '../../store/uiStore'
+import { CMD } from '../shared/Tip'
 import { usePrefsStore } from '../../store/prefsStore'
 import { useGCalStore } from '../../store/gcalStore'
 import { useDriveStore } from '../../store/driveStore'
@@ -33,6 +34,14 @@ import { RELEASES, LATEST } from '../../lib/whatsNew'
 interface Step {
   /** 사이드바·툴바에 붙여 둔 data-tour 이름. 없으면 화면 가운데에 섭니다. */
   tour?: string
+  /**
+   * 이 장에 들어설 때 **실제로 그 화면을 틉니다.**
+   *
+   * 줄만 밝히고 뒤에는 딴 화면이 있으면, 가리키기만 하고 보여주지는 않는
+   * 설명입니다 — "캘린더는 여기입니다" 하는데 뒤에 오늘 노트가 깔려 있으면
+   * 캘린더가 어떻게 생겼는지는 여전히 모릅니다.
+   */
+  enter?: () => void
   eyebrow: string
   title: string
   body: string
@@ -54,35 +63,50 @@ interface Step {
 const STEPS: Step[] = [
   {
     tour: 'today',
+    enter: () => useUiStore.getState().setScreen('today'),
     eyebrow: '아침에 여는 곳',
     title: '오늘',
     body: '날짜 하나에 노트 한 장입니다. 왼쪽에 오늘 봐야 할 업무가 서 있고, 끌어다 놓으면 오늘 할 일이 됩니다. 오른쪽에는 오늘의 일정이 있습니다.',
   },
   {
     tour: 'calendar',
+    enter: () => useUiStore.getState().openCalendar(),
     eyebrow: '내 일정 전부',
     title: '캘린더',
     body: '구글 캘린더 일정과 업무 마감이 한 화면에 놓입니다. 빈 시간을 끌면 그 자리에 일정이 만들어지고, 회의실도 같이 잡을 수 있습니다.',
   },
   {
     tour: 'mine',
+    enter: () => {
+      const ui = useUiStore.getState()
+      ui.setPersonalOnly(false); ui.setProject(null); ui.setMyTasksOnly(true)
+    },
     eyebrow: '일이 사는 곳',
     title: '내 할 일, 그리고 아래 프로젝트들',
     body: '내 할 일은 나에게 온 것 전부, 그 아래는 그 일이 속한 프로젝트입니다. 같은 업무를 리스트·캘린더·간트 어느 쪽으로 봐도 됩니다 — 보는 방법이 다를 뿐 같은 목록입니다.',
   },
   {
     tour: 'inbox',
+    enter: () => useUiStore.getState().setSidebarPane('inbox'),
     eyebrow: '나를 부르는 것들',
     title: '받은 알림',
     body: '나에게 배정된 업무, 멘션, 구글 캘린더 초대가 여기 모입니다. 초대는 이 목록에서 바로 수락하거나 거절할 수 있습니다.',
   },
   {
-    tour: 'search',
+    // 이 장만은 사이드바의 버튼이 아니라 **열린 창 자체**를 밝힙니다.
+    // 여기서 보여줄 것은 누르는 자리가 아니라 열리는 것이니까요.
+    tour: 'palette',
+    enter: () => {
+      const ui = useUiStore.getState()
+      ui.setSidebarPane('home')
+      ui.openCommandPalette()
+    },
     eyebrow: '기억이 안 날 때',
     title: '검색',
-    body: '업무·프로젝트·데일리 노트에 더해 붙여 둔 자료와 드라이브 파일까지 한 번에 찾습니다. 어디에 뒀는지 몰라도 이름 일부만 알면 됩니다.',
+    body: `사이드바의 돋보기, 또는 ${CMD}K. 업무·프로젝트·데일리 노트에 더해 붙여 둔 자료와 드라이브 파일까지 한 번에 찾습니다. 어디에 뒀는지 몰라도 이름 일부만 알면 됩니다.`,
   },
   {
+    enter: () => useUiStore.getState().closeCommandPalette(),
     eyebrow: '한 번만 하면 됩니다',
     title: '구글 연결하기',
     body: '캘린더를 연결하면 일정이 보이고 회의실을 여기서 잡을 수 있습니다. 드라이브를 연결하면 문서를 업무에 붙이고 검색으로 찾을 수 있습니다.',
@@ -190,6 +214,36 @@ function Tour({ onClose, isMobile }: { onClose: () => void; isMobile: boolean })
   const current = STEPS[step]
 
   /**
+   * 장에 들어서면 그 화면을 틉니다. 그리고 투어가 끝나면 투어가 열어 둔
+   * 것들(검색 창, 받은 알림 열)을 치웁니다 — 소개가 남기고 간 창을 사람이
+   * 닫아야 하면 그건 소개가 아니라 뒷정리입니다.
+   */
+  useEffect(() => { current.enter?.() }, [current])
+  useEffect(() => () => {
+    const ui = useUiStore.getState()
+    ui.closeCommandPalette()
+    ui.setSidebarPane('home')
+  }, [])
+
+  /**
+   * 검색 장에서는 창이 열려 있고 그 안의 입력칸에 커서가 가 있습니다.
+   * 그대로 두면 Enter 한 번에 첫 항목('새 업무 추가')이 실행돼서, 설명을
+   * 읽던 사람 앞에 난데없이 업무 만들기 창이 뜹니다. 그 장 동안만 방향키와
+   * Enter를 잡아 둡니다 — Esc는 통과시킵니다. 나가는 문은 늘 열려 있어야
+   * 합니다.
+   */
+  useEffect(() => {
+    if (current.tour !== 'palette') return
+    const hold = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault(); e.stopPropagation()
+      }
+    }
+    document.addEventListener('keydown', hold, true)
+    return () => document.removeEventListener('keydown', hold, true)
+  }, [current.tour])
+
+  /**
    * 자리를 잽니다.
    *
    * 두 번 잽니다 — 지금 한 번, 그리고 다음 그림 뒤에 한 번. 사이드바를 방금
@@ -199,9 +253,15 @@ function Tour({ onClose, isMobile }: { onClose: () => void; isMobile: boolean })
     const measure = () => setRect(findRect(current.tour))
     measure()
     const raf = requestAnimationFrame(measure)
+    // enter()가 방금 연 것(검색 창, 받은 알림 열)은 다음 그림에도 아직
+    // 자리를 못 잡았을 수 있습니다. 한 번 더 재 봅니다.
+    const late = window.setTimeout(measure, 60)
     window.addEventListener('resize', measure)
-    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', measure) }
-  }, [current.tour, sidebarHidden])
+    return () => {
+      cancelAnimationFrame(raf); clearTimeout(late)
+      window.removeEventListener('resize', measure)
+    }
+  }, [current.tour, step, sidebarHidden])
 
   const last = step === STEPS.length - 1
   const next = () => { haptic('tap'); last ? onClose() : setStep(step + 1) }

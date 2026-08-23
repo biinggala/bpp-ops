@@ -106,7 +106,8 @@ export function Sidebar() {
    * 그래서 세로 목록이 아니라 가로 토글입니다 — 모양부터 다르고, 누르면 이
    * 열이 통째로 바뀝니다. 노션이 홈과 인박스를 가르는 방식과 같습니다.
    */
-  const [pane, setPane] = useState<'home' | 'inbox'>('home')
+  const pane = useUiStore(s => s.sidebarPane)
+  const setPane = useUiStore(s => s.setSidebarPane)
   const [width, setWidth] = useState(loadWidth)
   const { unread, external } = useNoticeInbox()
   const orgId = useOrgStore(s => s.orgId)
