@@ -806,6 +806,8 @@ function AttendeeList({ teammates, chosen, nameOf, onToggle, responses }: {
   const [adding, setAdding] = useState(false)
   const [q, setQ] = useState('')
   const [pick, setPick] = useState(0)
+  /** 긴 목록은 접습니다. 280px 카드에서 여덟 줄은 카드 전체가 참석자 목록입니다. */
+  const [all, setAll] = useState(false)
 
   const answered = new Map((responses ?? []).map(r => [r.email, r.responseStatus ?? 'needsAction']))
   // 목록에 있지만 아직 구글이 모르는 사람 = 이번에 저장하면 초대장이 갈 사람.
@@ -818,6 +820,38 @@ function AttendeeList({ teammates, chosen, nameOf, onToggle, responses }: {
   )
 
   useEffect(() => { setPick(0) }, [q])
+
+  const COLLAPSE_AT = 4
+  // 하나만 숨기게 되는 경우는 접지 않습니다 — '1명 전체 보기' 줄이 숨긴 줄과
+  // 같은 자리를 차지하니 아낀 게 없습니다.
+  const expanded = all || chosen.length <= COLLAPSE_AT + 1
+  const shown = expanded ? chosen : chosen.slice(0, COLLAPSE_AT)
+  const hidden = chosen.length - shown.length
+
+  /**
+   * '2명 수락 · 5명 대기'.
+   *
+   * 아무도 답하지 않았으면 안 씁니다 — 줄마다 빈 동그라미가 이미 그 말을
+   * 하고 있고, 같은 사실을 두 번 말하면 둘 다 안 읽힙니다.
+   */
+  const tally = (() => {
+    if (!chosen.length) return null
+    const count = { accepted: 0, declined: 0, tentative: 0, waiting: 0 }
+    for (const email of chosen) {
+      const status = answered.get(email)
+      if (status === 'accepted') count.accepted++
+      else if (status === 'declined') count.declined++
+      else if (status === 'tentative') count.tentative++
+      else count.waiting++
+    }
+    if (!count.accepted && !count.declined && !count.tentative) return null
+    return [
+      count.accepted && `${count.accepted}명 수락`,
+      count.tentative && `${count.tentative}명 미정`,
+      count.declined && `${count.declined}명 거절`,
+      count.waiting && `${count.waiting}명 대기`,
+    ].filter(Boolean).join(' · ')
+  })()
 
   const add = (email: string | undefined) => {
     if (!email) return
@@ -833,7 +867,13 @@ function AttendeeList({ teammates, chosen, nameOf, onToggle, responses }: {
         <div style={{ fontSize: 11, color: 'var(--t3)', padding: '2px 0 4px' }}>아직 아무도 없습니다</div>
       )}
 
-      {chosen.map(email => {
+      {/* 몇 명이 답했는지. 여덟 줄을 눈으로 세는 것보다 한 줄이 낫고,
+          접혀 있을 때는 이 줄이 접힌 부분을 대신 말해 줍니다. */}
+      {tally && (
+        <div style={{ fontSize: 11, color: 'var(--t3)', padding: '0 4px 4px' }}>{tally}</div>
+      )}
+
+      {shown.map(email => {
         const mark = RESPONSE_MARK[answered.get(email) ?? ''] ?? null
         return (
           <AttendeeRow
@@ -845,6 +885,12 @@ function AttendeeList({ teammates, chosen, nameOf, onToggle, responses }: {
           />
         )
       })}
+
+      {hidden > 0 && (
+        <SoftRow icon="⋮" onClick={() => setAll(true)}>
+          참석자 {chosen.length}명 전체 보기
+        </SoftRow>
+      )}
 
       {adding ? (
         <div style={{ marginTop: 4 }}>
@@ -897,17 +943,7 @@ function AttendeeList({ teammates, chosen, nameOf, onToggle, responses }: {
           >닫기</button>
         </div>
       ) : (
-        <button
-          onClick={() => setAdding(true)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6, height: ROW_H, padding: '0 4px',
-            background: 'transparent', border: 'none', cursor: 'pointer',
-            color: 'var(--ac)', fontSize: 12, fontFamily: 'var(--font)',
-          }}
-        >
-          <span style={{ fontSize: 13, lineHeight: 1 }}>＋</span>
-          초대할 사람
-        </button>
+        <SoftRow icon="＋" onClick={() => setAdding(true)}>초대할 사람</SoftRow>
       )}
 
       {fresh.length > 0 && (
@@ -916,6 +952,42 @@ function AttendeeList({ teammates, chosen, nameOf, onToggle, responses }: {
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * 목록 아래에 붙는 한 줄 — '전체 보기', '초대할 사람'.
+ *
+ * 예전에는 파란 글자 링크였습니다. 링크는 글 안에서 쓰는 것이고, 목록 끝에서
+ * 줄 하나를 차지하는 것은 누를 수 있는 **면**이어야 합니다. 테두리는 안 두고
+ * 옅게 채웁니다 — 테두리를 두면 위의 참석자 줄들과 같은 무게로 경쟁합니다.
+ */
+function SoftRow({ icon, children, onClick }: {
+  icon: string
+  children: React.ReactNode
+  onClick: () => void
+}) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+        height: ROW_H + 4, padding: '0 4px', marginTop: 2,
+        borderRadius: 'var(--r1)', border: 'none', cursor: 'pointer',
+        background: hovered ? 'var(--bg2)' : 'var(--bg3)',
+        color: 'var(--t2)', fontSize: 12, fontFamily: 'var(--font)',
+        textAlign: 'left', transition: 'background .1s',
+      }}
+    >
+      <span style={{
+        width: 20, flexShrink: 0, fontSize: 13, lineHeight: 1, color: 'var(--t3)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>{icon}</span>
+      {children}
+    </button>
   )
 }
 
@@ -1215,54 +1287,40 @@ function RsvpRow({ current, onRespond }: { current: string; onRespond: (r: Rsvp)
   ]
   const undecided = current === 'needsAction'
 
-  if (undecided) {
-    return (
-      <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--bd)' }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--t2)', marginBottom: 6 }}>
-          초대받았습니다
-        </div>
-        <div style={{ display: 'flex', gap: 5 }}>
-          {options.map(o => (
-            <button
-              key={o.value}
-              onClick={() => onRespond(o.value)}
-              style={{
-                flex: 1, padding: '5px 0', borderRadius: 'var(--r1)', cursor: 'pointer',
-                fontFamily: 'var(--font)', fontSize: 12,
-                border: `1px solid ${o.value === 'accepted' ? o.tone : 'var(--bd)'}`,
-                background: o.value === 'accepted' ? o.tone : 'transparent',
-                color: o.value === 'accepted' ? '#fff' : 'var(--t2)',
-                fontWeight: o.value === 'accepted' ? 600 : 400,
-              }}
-            >{o.label}</button>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
-  // 정한 뒤 — 한 줄. 고른 것만 색을 갖고, 나머지는 눌릴 수 있다는 것만 보입니다.
   return (
-    <div style={{
-      marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--bd)',
-      display: 'flex', alignItems: 'center', gap: 6,
-    }}>
-      <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0 }}>내 응답</span>
-      <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
-        {options.map(o => {
+    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--bd)' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        fontSize: 11, color: undecided ? 'var(--t2)' : 'var(--t3)',
+        fontWeight: undecided ? 600 : 400, marginBottom: 6,
+      }}>
+        {undecided ? '초대받았습니다' : '내 응답'}
+      </div>
+      <div style={{
+        display: 'flex', borderRadius: 'var(--r2)', overflow: 'hidden',
+        background: 'var(--bg3)', padding: 2, gap: 1,
+      }}>
+        {options.map((o, i) => {
           const on = current === o.value
           return (
             <button
               key={o.value}
               onClick={() => onRespond(o.value)}
               style={{
-                padding: '2px 8px', borderRadius: 'var(--r1)', border: 'none', cursor: 'pointer',
-                fontFamily: 'var(--font)', fontSize: 11.5,
+                flex: 1, padding: '5px 0', border: 'none', cursor: 'pointer',
+                fontFamily: 'var(--font)', fontSize: 12,
                 fontWeight: on ? 600 : 400,
+                borderRadius: 'var(--r1)',
                 background: on ? o.soft : 'transparent',
-                color: on ? o.tone : 'var(--t3)',
+                color: on ? o.tone : 'var(--t2)',
+                // 안 고른 것들 사이만 실선 하나. 고른 칸은 자기 배경이
+                // 경계를 이미 말하고 있어서 선을 겹치면 지저분해집니다.
+                boxShadow: i > 0 && !on && current !== options[i - 1].value
+                  ? 'inset 1px 0 0 var(--bd)'
+                  : 'none',
+                transition: 'background .1s, color .1s',
               }}
-              onMouseEnter={e => { if (!on) e.currentTarget.style.background = 'var(--bg3)' }}
+              onMouseEnter={e => { if (!on) e.currentTarget.style.background = 'var(--bg2)' }}
               onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}
             >{o.label}</button>
           )
