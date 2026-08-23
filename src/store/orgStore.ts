@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { get as dbGet, onValue, push, ref, remove, set as fbSet, update as fbUpdate, off } from 'firebase/database'
+import { onValue, push, ref, remove, set as fbSet, update as fbUpdate, off } from 'firebase/database'
 import { db } from '../lib/firebase'
 import { P, domainKey } from '../lib/paths'
 import { gid } from '../lib/utils'
@@ -112,20 +112,33 @@ export const useOrgStore = create<OrgState>((set, get) => ({
   ready: false,
   error: null,
 
+  /**
+   * ── 조직을 따라갑니다 ─────────────────────────────────────────────────────
+   *
+   * 색인(`orgByDomain`)을 **한 번 읽는 게 아니라 계속 봅니다.**
+   *
+   * 처음에는 한 번만 읽었습니다. 앱을 켤 때 조직이 없으면 아무 리스너도 안
+   * 걸고 끝났는데, 바로 그 다음에 조직을 만들면 화면의 `orgId`는 채워지지만
+   * **아무도 회의실을 듣고 있지 않았습니다.** 방을 추가하면 데이터베이스에는
+   * 들어가고 목록에는 안 나타납니다 — '회의실 추가가 안 된다'로 보이지만
+   * 실은 쓰기가 아니라 읽기가 없었던 것입니다.
+   *
+   * 색인은 한 번 정해지고 끝나는 값이 아닙니다. 우리 회사에 조직이 생기는
+   * 순간이 있고, 그 순간은 내가 앱을 켜 둔 동안일 수 있습니다. 그러면
+   * 옆자리 사람이 조직을 만들어도 내 화면에 바로 들어옵니다.
+   */
   subscribe: (email) => {
-    let stop: (() => void)[] = []
-    let cancelled = false
+    let inner: (() => void)[] = []
+    const dropInner = () => { inner.forEach(fn => fn()); inner = [] }
 
-    void (async () => {
-      let orgId: string | null = null
-      try {
-        const snap = await dbGet(ref(db, P.orgByDomain(email)))
-        orgId = (snap.val() as string | null) ?? null
-      } catch {
-        // 못 읽었다고 조직이 없는 건 아닙니다. 다만 지금은 알 수 없습니다.
+    const indexRef = ref(db, P.orgByDomain(email))
+    const indexHandler = onValue(indexRef, snap => {
+      const orgId = (snap.val() as string | null) ?? null
+      dropInner()
+      if (!orgId) {
+        set({ ready: true, orgId: null, name: '', domain: '', rooms: [], bookings: {} })
+        return
       }
-      if (cancelled) return
-      if (!orgId) { set({ ready: true, orgId: null }); return }
 
       const metaRef = ref(db, P.orgMeta(orgId))
       const metaHandler = onValue(metaRef, s => {
@@ -138,17 +151,24 @@ export const useOrgStore = create<OrgState>((set, get) => ({
           .filter(r => r.name)
           .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name))
         set({ rooms })
+      }, e => {
+        // 규칙이 거절한 것도 알려야 합니다. 조용히 빈 목록이 되면 회의실이
+        // 없는 것과 못 읽는 것이 화면에서 같아 보입니다.
+        set({ rooms: [], error: e instanceof Error ? `회의실을 읽지 못했습니다: ${e.message}` : null })
       })
-      stop = [
+      inner = [
         () => off(metaRef, 'value', metaHandler),
         () => off(roomsRef, 'value', roomsHandler),
       ]
-      set({ orgId, ready: true })
-    })()
+      set({ orgId, ready: true, error: null })
+    }, () => {
+      // 색인을 못 읽었습니다. 없는 것과 구별할 수 없으니 '없음'으로 둡니다.
+      set({ ready: true, orgId: null })
+    })
 
     return () => {
-      cancelled = true
-      stop.forEach(fn => fn())
+      off(indexRef, 'value', indexHandler)
+      dropInner()
       for (const fn of Object.values(dateWatchers)) fn()
       for (const key of Object.keys(dateWatchers)) delete dateWatchers[key]
       for (const key of Object.keys(wanted)) delete wanted[key]
@@ -199,7 +219,10 @@ export const useOrgStore = create<OrgState>((set, get) => ({
         createdAt: Date.now(),
       })
       await fbSet(ref(db, P.orgByDomain(email)), orgId)
-      set({ orgId, name: name.trim(), domain: key.replace(/,/g, '.'), ready: true, error: null })
+      // orgId를 직접 넣지 않습니다. 색인을 보고 있으므로 이 쓰기가 그
+      // 리스너를 깨우고, 거기서 meta와 회의실 구독까지 같이 붙습니다.
+      // 손으로 넣으면 화면에는 조직이 있는데 아무도 안 듣는 상태가 됩니다.
+      set({ error: null })
       return true
     } catch (e) {
       // 색인이 이미 있으면 누군가 먼저 만든 것입니다 — 오류가 아니라 경쟁입니다.
