@@ -18,14 +18,31 @@ export function useTodayCount(): number {
   const { html } = useDailyNote(fmtYMD(new Date()))
   const tasks = useTaskStore(s => s.tasks)
 
+  /**
+   * 글자를 훑는 일과 상태를 읽는 일을 갈라 둡니다.
+   *
+   * 한 덩어리였을 때는 **누군가 어딘가에서 업무 하나만 고쳐도** 노트 전체를
+   * 다시 정규식으로 훑었습니다. tasks는 50명이 쓰는 앱에서 하루 종일 바뀌는
+   * 값이고, 노트의 글자는 그동안 그대로입니다.
+   */
+  const parsed = useMemo(() => {
+    if (!html) return { open: 0, ids: [] as string[] }
+    return {
+      open: (html.match(/data-checked="false"/g) ?? []).length,
+      ids: [...html.matchAll(/data-task-id="([^"]+)"/g)].map(m => m[1]),
+    }
+  }, [html])
+
   return useMemo(() => {
-    if (!html) return 0
-    const open = (html.match(/data-checked="false"/g) ?? []).length
+    if (!parsed.ids.length) return parsed.open
+    // 참조 하나마다 전체 목록을 훑던 것(O(참조×업무))을 한 번의 색인으로
+    // 바꿉니다. 업무가 수천 개가 되면 그 차이가 눈에 보입니다.
+    const byId = new Map(tasks.map(t => [t.id, t]))
     let refs = 0
-    for (const m of html.matchAll(/data-task-id="([^"]+)"/g)) {
-      const t = tasks.find(t => t.id === m[1])
+    for (const id of parsed.ids) {
+      const t = byId.get(id)
       if (t && t.status !== '완료') refs++
     }
-    return open + refs
-  }, [html, tasks])
+    return parsed.open + refs
+  }, [parsed, tasks])
 }

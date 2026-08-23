@@ -850,20 +850,27 @@ export function Sidebar() {
       )}
       </aside>
 
-      {/* Right-click context menu */}
+      {/*
+        Right-click context menu.
+
+        누른 자리에 그대로 놓기만 했더니 목록 아래쪽 프로젝트에서는 메뉴가
+        화면 밑으로 잘렸습니다 — 일정 카드에서 고쳤던 그것과 같은 문제입니다.
+        아래가 모자라면 위로 열고, 옆으로도 화면 안쪽으로 당깁니다.
+        높이는 재지 않습니다: 항목 수로 셈해 두고, 그보다 길어지면 메뉴가
+        제 안에서 스크롤합니다. 재서 다시 놓으면 열릴 때 한 번 덜컹거립니다.
+      */}
       {contextMenu && (
         <div
           style={{
             position: 'fixed',
-            top: contextMenu.y,
-            left: contextMenu.x,
+            ...menuPlace(contextMenu.x, contextMenu.y, isProjectCreator(contextMenu.id) ? 7 : 3),
             zIndex: 9999,
             background: 'var(--bg)',
             border: '1px solid var(--bd)',
             borderRadius: 'var(--r3)',
             boxShadow: 'var(--sh-md)',
             minWidth: 168,
-            overflow: 'hidden',
+            overflowY: 'auto',
             padding: 4,
           }}
           onClick={e => e.stopPropagation()}
@@ -949,6 +956,27 @@ export function Sidebar() {
 }
 
 /* ── Sub-components ── */
+
+/**
+ * 오른쪽 클릭 메뉴가 설 자리.
+ *
+ * 높이를 재지 않고 **항목 수로 셈합니다** — 한 줄 30px에 안팎 여백 8px.
+ * 재려면 한 번 그린 다음이라야 하고, 그리고 나서 옮기면 그 한 프레임이
+ * 눈에 보입니다(일정 카드에서 겪은 그것).
+ */
+function menuPlace(x: number, y: number, items: number): React.CSSProperties {
+  const M = 8
+  const W = 176
+  const guess = items * 30 + 8
+  const left = Math.min(x, window.innerWidth - W - M)
+  const below = window.innerHeight - y - M
+  // 아래가 모자라면 위로 엽니다. 위도 모자라면 아래로 두되 화면 안에서
+  // 스크롤하게 둡니다 — 어느 쪽이든 잘려 나가지는 않습니다.
+  if (guess <= below) return { left, top: y, maxHeight: below }
+  const above = y - M
+  if (guess <= above) return { left, bottom: window.innerHeight - y, maxHeight: above }
+  return { left, top: M, maxHeight: window.innerHeight - M * 2 }
+}
 
 /** 장소와 범위 사이의 한 줄. 여백만으로는 '끊겼다'가 아니라 '떨어졌다'로 읽힙니다. */
 function NavRule() {

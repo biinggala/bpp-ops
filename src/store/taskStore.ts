@@ -212,7 +212,19 @@ export const useTaskStore = create<TaskState>((set, get) => {
       applyOp(op)
     },
 
-    applyRemote: (tasks) => set({ tasks }),
+    /**
+     * 줄 하나가 안 바뀌었으면 set도 안 합니다.
+     *
+     * syncStore가 안 바뀐 것들의 객체 정체를 그대로 물려주므로, 여기서 한 줄씩
+     * 대 보면 '사실은 아무것도 안 바뀐 알림'을 걸러낼 수 있습니다. 그런 알림이
+     * set까지 가면 배열 정체가 바뀌고, 그 배열에 기대는 화면 전부가 다시
+     * 계산합니다 — 결과가 같은 계산을요.
+     */
+    applyRemote: (next) => set(state => {
+      const now = state.tasks
+      if (now.length === next.length && now.every((item, i) => item === next[i])) return state
+      return { tasks: next }
+    }),
   }
 })
 

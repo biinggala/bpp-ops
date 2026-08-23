@@ -82,24 +82,90 @@ export const useSyncStore = create<SyncState>((set) => ({
       settle()
     }, 8000)
 
+    /**
+     * ── 다시 펼치기 ────────────────────────────────────────────────────────────
+     *
+     * 프로젝트 하나가 오면 **모든** 프로젝트의 모든 업무를 새 객체로 다시
+     * 만들고 있었습니다. 남이 업무 하나의 상태를 바꾸면 내 화면의 업무 이천
+     * 개가 전부 새것이 되고, 그것에 기대던 memo와 목록 줄이 통째로 다시
+     * 그려졌습니다. 프로젝트가 스무 개면 처음 켤 때만 스무 번입니다.
+     *
+     * 두 가지를 고칩니다.
+     *
+     * **바뀐 프로젝트만 다시 만듭니다.** onValue가 준 node 객체를 기억해 두고,
+     * 같은 객체면 지난번에 만들어 둔 배열을 그대로 씁니다 — 객체 정체까지
+     * 그대로라 React가 '안 바뀌었다'를 알아봅니다.
+     *
+     * **바뀐 프로젝트 안에서도 그대로인 업무는 그대로 둡니다.** 한 줄을
+     * 고쳤다고 그 프로젝트의 나머지 백 줄이 다시 그려질 이유는 없습니다.
+     */
+    const shaped = new Map<string, {
+      node: ProjectNode
+      project: Project
+      tasks: Task[]
+      milestones: Milestone[]
+      members: Record<string, string>
+    }>()
+    /** 지난번에 내보낸 업무들, id로. 같은 내용이면 그 객체를 다시 씁니다. */
+    let lastTaskById = new Map<string, Task>()
+
+    const keep = <T extends { id: string }>(next: T, prev: T | undefined): T =>
+      prev && JSON.stringify(prev) === JSON.stringify(next) ? prev : next
+
+    /**
+     * 한 박자에 한 번만.
+     *
+     * 앱을 켜면 프로젝트 스무 개가 거의 동시에 도착합니다. 도착할 때마다
+     * 다시 펼치면 스무 번을 펼치고 스무 번을 그립니다 — 마지막 한 번 말고는
+     * 전부 버려지는 그림입니다. 같은 틱에 온 것들은 모아서 한 번에 냅니다.
+     */
+    let pending = false
     const republish = () => {
+      if (stopped || pending) return
+      pending = true
+      queueMicrotask(() => { pending = false; publish() })
+    }
+
+    const publish = () => {
       if (stopped) return
 
       const projects: Project[] = []
       const tasks: Task[] = []
       const milestones: Milestone[] = []
       const membersByProject: Record<string, Record<string, string>> = {}
+      const nextTaskById = new Map<string, Task>()
 
       for (const [pid, node] of nodes) {
         if (!node.meta) continue          // still loading, or the project is gone
-        projects.push({ ...(node.meta as Project), id: pid })
-        membersByProject[pid] = node.members ?? {}
-        // The task's own projectId is trusted over its location only when they
-        // agree; the path is the thing the rules enforce, so it wins.
-        for (const task of values(node.tasks)) tasks.push({ ...task, projectId: pid })
-        for (const milestone of values(node.milestones)) milestones.push({ ...milestone, projectId: pid })
+
+        let cut = shaped.get(pid)
+        if (!cut || cut.node !== node) {
+          cut = {
+            node,
+            project: keep({ ...(node.meta as Project), id: pid }, shaped.get(pid)?.project),
+            members: node.members ?? {},
+            // The task's own projectId is trusted over its location only when
+            // they agree; the path is the thing the rules enforce, so it wins.
+            tasks: values(node.tasks).map(task =>
+              keep({ ...task, projectId: pid }, lastTaskById.get(task.id))),
+            milestones: values(node.milestones).map(m => ({ ...m, projectId: pid })),
+          }
+          shaped.set(pid, cut)
+        }
+
+        projects.push(cut.project)
+        membersByProject[pid] = cut.members
+        for (const task of cut.tasks) { tasks.push(task); nextTaskById.set(task.id, task) }
+        for (const milestone of cut.milestones) milestones.push(milestone)
       }
-      for (const task of values(personalTasks)) tasks.push({ ...task, projectId: undefined })
+      for (const task of values(personalTasks)) {
+        const t = keep({ ...task, projectId: undefined }, lastTaskById.get(task.id))
+        tasks.push(t); nextTaskById.set(t.id, t)
+      }
+      lastTaskById = nextTaskById
+
+      // 목록에서 사라진 프로젝트의 캐시는 같이 버립니다.
+      for (const pid of shaped.keys()) if (!nodes.has(pid)) shaped.delete(pid)
 
       useProjectStore.getState().applyRemote(projects)
       useTaskStore.getState().applyRemote(tasks)
