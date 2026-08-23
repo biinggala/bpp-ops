@@ -16,6 +16,9 @@ import { MEMBERS } from '../../types'
 import { buildInviteToken } from '../../lib/paths'
 import type { MemberKey, Project } from '../../types'
 
+/** The topbar's row height. The two headers' bottom rules are one line. */
+const HEADER_H = 52
+
 const ORDER_KEY = 'sidebar_project_order'
 const GROUPS_KEY = 'sidebar_collapsed_groups'
 
@@ -319,8 +322,24 @@ export function Sidebar() {
         } : {}),
       }}>
 
-        {/* Workspace header */}
-        <div style={{ padding: '14px 12px 10px', paddingTop: isMobile ? 'calc(env(safe-area-inset-top, 0px) + 14px)' : '14px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--sb-bd)', position: 'relative' }} ref={profileRef}>
+        {/*
+          Workspace header.
+
+          Built exactly like the topbar — an outer band that carries the safe-area
+          inset and the rule, and an inner row of a fixed HEADER_H — because the
+          two rules meet at the sidebar's edge and have to be the same line. This
+          one used to be sized by its padding, which put it about six pixels below
+          the other: close enough that nothing looked broken and everything looked
+          slightly wrong.
+        */}
+        <div
+          ref={profileRef}
+          style={{
+            paddingTop: isMobile ? 'env(safe-area-inset-top, 0px)' : 0,
+            borderBottom: '1px solid var(--sb-bd)', position: 'relative', flexShrink: 0,
+          }}
+        >
+        <div style={{ height: HEADER_H, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 8, boxSizing: 'border-box' }}>
           {/* Profile avatar — clickable */}
           <div
             onClick={() => setProfileOpen(o => !o)}
@@ -352,6 +371,8 @@ export function Sidebar() {
           >
             <Icon name="settings" size={15} />
           </button>
+
+        </div>
 
           {/* Profile popover */}
           {profileOpen && (
