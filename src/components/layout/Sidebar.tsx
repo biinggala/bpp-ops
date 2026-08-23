@@ -70,7 +70,7 @@ function saveCollapsedGroups(next: Set<string>) {
 }
 
 export function Sidebar() {
-  const { filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly, sidebarOpen, setSidebarOpen, screen, setScreen } = useUiStore()
+  const { filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly, personalOnly, setPersonalOnly, sidebarOpen, setSidebarOpen, screen, setScreen } = useUiStore()
   const isMobile = useMobile()
   const tasks = useTaskStore(s => s.tasks)
   const { projects, addProject, updateProject, deleteProject, addMember, removeMember } = useProjectStore()
@@ -593,7 +593,7 @@ export function Sidebar() {
                누르면 myTasksOnly가 이미 true라 false로 뒤집혀 전체 업무로
                갔습니다 — 이름이 '내 할 일'인 줄이 하는 일로는 틀렸습니다.
                끄는 건 아래 '전체 업무'가 합니다. */
-            onClick={() => { setMyTasksOnly(true); setProject(null); closeSidebar() }}
+            onClick={() => { setPersonalOnly(false); setMyTasksOnly(true); setProject(null); closeSidebar() }}
             count={myOpenCount}
             emphasis
             icon="☑"
@@ -602,11 +602,30 @@ export function Sidebar() {
           </NavItem>
 
           <NavItem
-            active={screen === 'work' && !myTasksOnly && projectId === null}
-            onClick={() => { setProject(null); setMyTasksOnly(false); closeSidebar() }}
+            active={screen === 'work' && !myTasksOnly && !personalOnly && projectId === null}
+            onClick={() => { setPersonalOnly(false); setProject(null); setMyTasksOnly(false); closeSidebar() }}
             icon="◈"
           >
             전체 업무
+          </NavItem>
+
+          {/*
+            ── 개인 ────────────────────────────────────────────────────────────
+            프로젝트에 속하지 않은 업무들. `personalTasks/{내 계정}`에 살고
+            **아무도 못 봅니다** — 공유될 경로 자체가 없습니다.
+
+            목록에 섞여 있으면 '이건 나만 아는 일'이라는 사실이 화면에서
+            사라집니다. 따로 세워 두면 그 줄에 선 것만으로 그 뜻이 됩니다.
+
+            숫자를 붙이지 않습니다. 여기 쌓이는 건 재고가 아니라 메모에 가깝고,
+            '개인 업무 12개'는 재촉으로 읽힙니다.
+          */}
+          <NavItem
+            active={screen === 'work' && personalOnly}
+            onClick={() => { setPersonalOnly(true); setMyTasksOnly(false); closeSidebar() }}
+            icon="◦"
+          >
+            개인
           </NavItem>
 
           {/* Projects section */}

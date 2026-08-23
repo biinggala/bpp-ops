@@ -16,7 +16,10 @@ export function Topbar() {
   const isMobile = useMobile()
 
   const activeProject = projectId ? projects.find(p => p.id === projectId) : null
-  const title = screen === 'today' ? '오늘' : (activeProject?.name ?? space ?? (myTasksOnly ? '내 할 일' : '전체 업무'))
+  const personalOnly = useUiStore(s => s.personalOnly)
+  const title = screen === 'today'
+    ? '오늘'
+    : (activeProject?.name ?? space ?? (personalOnly ? '개인' : myTasksOnly ? '내 할 일' : '전체 업무'))
 
   return (
     <header style={{
