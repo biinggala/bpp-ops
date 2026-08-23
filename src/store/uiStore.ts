@@ -33,6 +33,18 @@ interface UiState {
   space: string | null
   projectId: string | null      // sidebar project filter
   myTasksOnly: boolean          // quick filter: my tasks
+  /**
+   * 프로젝트에 속하지 않은 업무만.
+   *
+   * 이런 업무는 `personalTasks/{내 계정}`에 살고 **아무도 못 봅니다** — 공유될
+   * 경로 자체가 없습니다. 그래서 목록에 섞여 있으면 '이건 나만 아는 일'이라는
+   * 사실이 화면에서 사라집니다. 따로 세워 두면 그 줄에 선 것만으로 그 뜻이
+   * 됩니다.
+   *
+   * 프로젝트 선택과 배타입니다 — 프로젝트를 고르면 꺼집니다. '프로젝트 없음'과
+   * '이 프로젝트'는 같이 참일 수 없습니다.
+   */
+  personalOnly: boolean
   hideCompleted: boolean        // hide tasks with status === '완료'
   filters: Filters
   /**
@@ -84,6 +96,7 @@ interface UiState {
   setListGroup: (g: ListGroup) => void
   setSpace: (s: string | null) => void
   setProject: (id: string | null) => void
+  setPersonalOnly: (v: boolean) => void
   setMyTasksOnly: (v: boolean) => void
   setHideCompleted: (v: boolean) => void
   setFilters: (f: Partial<Filters>) => void
@@ -141,6 +154,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   // first sight of the app was fifty people's work, and the first click of every
   // morning was the same one.
   myTasksOnly: true,
+  personalOnly: false,
   hideCompleted: false,
   filters: { ...defaultFilters },
   // 아침에 여는 화면. 내 할 일은 재고이고, 오늘은 계획입니다.
@@ -176,7 +190,14 @@ export const useUiStore = create<UiState>((set, get) => ({
   // 눌렀는데 아무 일도 안 일어나면 그 줄은 고장 난 것으로 보입니다.
   setProject: (projectId) => set(st => ({
     projectId, space: null, screen: 'work',
+    // 프로젝트를 고르면 '개인'은 꺼집니다 — 둘은 같이 참일 수 없습니다.
+    personalOnly: false,
     filters: projectId ? { ...st.filters, projects: [] } : st.filters,
+  })),
+  setPersonalOnly: (personalOnly) => set(st => ({
+    personalOnly, screen: 'work',
+    ...(personalOnly ? { projectId: null, space: null } : {}),
+    filters: personalOnly ? { ...st.filters, projects: [] } : st.filters,
   })),
   setMyTasksOnly: (myTasksOnly) => set(st => ({
     myTasksOnly, screen: 'work',

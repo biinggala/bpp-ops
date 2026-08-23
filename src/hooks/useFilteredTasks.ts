@@ -8,7 +8,7 @@ import type { Task } from '../types'
 
 export function useFilteredTasks(): Task[] {
   const tasks = useTaskStore(s => s.tasks)
-  const { space, projectId, myTasksOnly, hideCompleted, filters } = useUiStore()
+  const { space, projectId, myTasksOnly, personalOnly, hideCompleted, filters } = useUiStore()
   const memberKey = useAuthStore(s => s.memberKey)
   const email = useAuthStore(s => s.email)
   const projects = useProjectStore(s => s.projects)
@@ -39,6 +39,8 @@ export function useFilteredTasks(): Task[] {
 
     if (space) result = result.filter(t => t.cat === space)
     if (projectId) result = result.filter(t => t.projectId === projectId)
+    // 프로젝트가 없는 것들 — 나 말고는 아무도 못 보는 업무입니다.
+    if (personalOnly) result = result.filter(t => !t.projectId)
     if (myTasksOnly) result = result.filter(t => isAssignedTo(t.assignee, memberKey, email))
 
     if (filters.projects.length) {
@@ -101,5 +103,5 @@ export function useFilteredTasks(): Task[] {
     }
 
     return result
-  }, [tasks, space, projectId, myTasksOnly, hideCompleted, memberKey, email, projects, filters])
+  }, [tasks, space, projectId, myTasksOnly, personalOnly, hideCompleted, memberKey, email, projects, filters])
 }
