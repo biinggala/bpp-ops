@@ -44,12 +44,19 @@ const TODAY = () => fmtYMD(new Date())
 /**
  * 빈 노트가 번갈아 하는 말.
  *
- * 첫 줄은 초대이고, 둘째는 안심이고, 셋째는 하나뿐인 조작법입니다. 셋 다
- * 처음 온 사람에게 필요한데 한 줄에 다 넣으면 문단이 되고, 문단이 된 안내는
- * 안 읽힙니다.
+ * 초대 → 옆에 있는 것을 여기로 가져오는 법 → 안심 → 하나뿐인 조작법.
+ * 넷 다 처음 온 사람에게 필요한데 한 줄에 다 넣으면 문단이 되고, 문단이 된
+ * 안내는 안 읽힙니다.
+ *
+ * 가져오는 법이 기기마다 다릅니다 — 데스크톱에는 왼쪽에 '가져올 것'이
+ * 세로로 서 있고 끌어다 놓지만, 폰에는 위에 가로 띠가 있고 눌러서 담습니다.
+ * "왼쪽에서 끌어다 놓으세요"는 폰에서 없는 곳을 가리키는 말입니다.
  */
-const HINTS = [
+const HINTS = (mobile: boolean) => [
   '오늘 무엇부터 할까요?',
+  mobile
+    ? '위의 업무를 누르면 오늘 노트에 담깁니다'
+    : '왼쪽의 업무를 끌어다 놓으면 오늘 할 일이 됩니다',
   '여기 적는 것은 나만 볼 수 있습니다',
   "'/'를 누르면 업무와 자료를 넣을 수 있습니다",
 ]
@@ -81,6 +88,12 @@ export function TodayView() {
    */
   const [noteIds, setNoteIds] = useState<Set<string>>(() => new Set())
   const hintRef = useRef(0)
+  /**
+   * 안내문은 편집기가 만들어질 때 한 번 묶인 함수가 읽습니다. 그 함수는
+   * 리렌더를 모르므로, 화면 크기가 바뀌었다는 사실은 ref로 건네야 합니다.
+   */
+  const mobileRef = useRef(isMobile)
+  mobileRef.current = isMobile
   const [dropping, setDropping] = useState(false)
   const noteRef = useRef<HTMLDivElement>(null)
 
@@ -95,7 +108,7 @@ export function TodayView() {
       }),
       // 안내문은 하나가 아니라 셋이 돌아갑니다 — HINTS 참고. 여기서는
       // 지금 차례인 것을 읽어 주기만 합니다.
-      Placeholder.configure({ placeholder: () => HINTS[hintRef.current] }),
+      Placeholder.configure({ placeholder: () => HINTS(mobileRef.current)[hintRef.current] }),
       TaskList,
       TaskItem.configure({ nested: true }),
       TaskRef,
@@ -196,7 +209,7 @@ export function TodayView() {
       dom.classList.add('hint-out')
       window.setTimeout(() => {
         if (editor.isDestroyed) return
-        hintRef.current = (hintRef.current + 1) % HINTS.length
+        hintRef.current = (hintRef.current + 1) % HINTS(mobileRef.current).length
         editor.view.dispatch(editor.state.tr.setMeta('addToHistory', false))
         dom.classList.remove('hint-out')
       }, 280)
