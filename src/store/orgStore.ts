@@ -48,6 +48,15 @@ export interface Booking {
   by: string
   byName?: string
   title?: string
+  /**
+   * 잡을 때의 방 이름.
+   *
+   * 이게 있으면 방을 정말 지울 수 있습니다. 없으면 방을 지운 순간 지난
+   * 예약들이 '(없어진 회의실)'이 되고, 그래서 처음엔 지우기를 막고 끄기만
+   * 뒀습니다 — 오타로 만든 방을 영원히 목록에 두는 값이었죠. 이름을 한 벌
+   * 들고 있으면 둘 다 됩니다.
+   */
+  roomName?: string
   /** 이 예약이 붙어 있는 구글 일정. 일정을 지우면 같이 풀립니다. */
   eventId?: string
   at: number
@@ -96,6 +105,10 @@ interface OrgState {
     date: string; roomId: string; from: number; to: number
     title?: string; eventId?: string; by: string; byName?: string
   }) => Promise<boolean>
+  /** 방을 지웁니다. 지난 예약은 잡을 때 적어 둔 이름으로 계속 읽힙니다. */
+  removeRoom: (id: string) => Promise<void>
+  /** 관리자가 아무도 없는 조직을 맡습니다. 규칙도 이걸 허용합니다. */
+  claimAdmin: (email: string) => Promise<boolean>
   release: (date: string, bookingId: string) => Promise<void>
   /** 일정을 지우거나 회의실을 바꿀 때. 그 일정에 붙은 예약을 다 풉니다. */
   releaseForEvent: (date: string, eventId: string) => Promise<void>
@@ -280,6 +293,38 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       .catch(e => set({ error: e instanceof Error ? e.message : '회의실 수정 실패' }))
   },
 
+  removeRoom: async (id) => {
+    const { orgId } = get()
+    if (!orgId) return
+    await remove(ref(db, P.orgRoom(orgId, id)))
+      .catch(e => set({ error: e instanceof Error ? e.message : '회의실 삭제 실패' }))
+  },
+
+  /**
+   * 관리자 없는 조직을 맡습니다.
+   *
+   * 이 조직은 관리자 개념이 생기기 전에 만들어졌습니다. 규칙은 관리자가 없는
+   * 조직을 조직원 누구나 맡을 수 있게 해 두었는데(영원히 손 못 대는 조직이
+   * 남지 않게 하는 안전장치), 화면에는 그 길이 없어서 자기가 만든 조직을
+   * 읽기만 하는 상태가 됐습니다. 규칙이 허용하는 일은 화면에도 있어야 합니다.
+   */
+  claimAdmin: async (email) => {
+    const { orgId, admins } = get()
+    if (!orgId) return false
+    if (admins.length) {
+      set({ error: '이미 관리자가 있습니다' })
+      return false
+    }
+    try {
+      await fbSet(ref(db, P.orgAdmin(orgId, email)), true)
+      set({ error: null })
+      return true
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : '관리자가 되지 못했습니다' })
+      return false
+    }
+  },
+
   setAdmin: async (email, on) => {
     const { orgId, domain, admins } = get()
     if (!orgId) return false
@@ -315,9 +360,11 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     const { orgId } = get()
     if (!orgId) return false
     const node = push(ref(db, P.orgBookings(orgId, date)))
+    const roomName = get().rooms.find(r => r.id === roomId)?.name
     try {
       await fbSet(node, {
         roomId, from, to,
+        ...(roomName ? { roomName } : {}),
         by: by.toLowerCase(),
         ...(byName ? { byName } : {}),
         ...(title ? { title } : {}),
