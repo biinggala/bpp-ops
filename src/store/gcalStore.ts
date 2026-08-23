@@ -43,8 +43,25 @@ export interface GCalEvent {
  * 없으므로 늘 확정입니다.
  */
 export function awaitingMe(event: { attendees?: EventAttendee[] }): boolean {
-  const me = event.attendees?.find(a => a.self)
+  const me = myAttendance(event)
   return !!me && (me.responseStatus ?? 'needsAction') === 'needsAction'
+}
+
+/**
+ * 내가 **답해야 하는** 참석자 항목. 없으면 답할 일이 없습니다.
+ *
+ * 주최자는 뺍니다. 구글은 내가 만든 일정에도 내 참석자 항목을 넣고
+ * `organizer: true, responseStatus: 'accepted'`로 표시하는데, 그걸 그대로
+ * 읽으면 내가 부른 회의에 나에게 '수락/미정/거절'을 묻게 됩니다. 내가 만든
+ * 회의에 내가 갈지 안 갈지는 물을 일이 아닙니다 — 안 가면 회의를 옮기거나
+ * 없애는 것이고, 그건 다른 버튼입니다.
+ *
+ * 참석자가 아예 없는 일정(혼자 쓰는 시간 블록)도 여기서 null입니다.
+ */
+export function myAttendance(event: { attendees?: EventAttendee[] }): EventAttendee | null {
+  const me = event.attendees?.find(a => a.self)
+  if (!me || me.organizer) return null
+  return me
 }
 
 const ENABLED_KEY = 'gcal_enabled_calendars'
@@ -118,6 +135,22 @@ interface GCalState {
   /** 초대에 수락·미정·거절로 답합니다. */
   respond: (eventId: string, response: Rsvp) => Promise<boolean>
   removeEvent: (eventId: string) => Promise<void>
+}
+
+/**
+ * 구글이 아는 일정 id.
+ *
+ * 우리가 들고 있는 id는 `캘린더id:일정id`입니다 — 캘린더가 여러 개고, 서로
+ * 다른 캘린더에 같은 일정 id가 있을 수 있어서 앞에 캘린더를 붙여 둔 것입니다.
+ * 구글에게 물을 때는 뒤쪽만 보내야 합니다.
+ *
+ * 이걸 함수로 뺀 이유: 부르는 곳마다 `slice(calendarId.length + 1)`을 손으로
+ * 쓰고 있었고, 새로 붙인 '초대 응답'에서 그걸 빼먹었습니다. 그러면 구글은
+ * 없는 일정을 찾다 오류를 내고, 화면에는 '연동 오류'로 보입니다 — 원인이
+ * 인증인 것처럼요. 한 곳에 두면 다음에 또 빼먹을 자리가 없습니다.
+ */
+function bareEventId(event: { id: string; calendarId: string }): string {
+  return event.id.slice(event.calendarId.length + 1)
 }
 
 /** Google returns dates two ways; the views want plain YYYY-MM-DD either way. */
@@ -479,7 +512,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     set({ events: before.map(e => (e.id === eventId ? { ...e, attendees: optimistic } : e)) })
 
     try {
-      await respondToEvent(token, existing.calendarId, eventId, existing.attendees, response)
+      await respondToEvent(token, existing.calendarId, bareEventId(existing), existing.attendees, response)
       return true
     } catch (e: unknown) {
       // 되돌립니다. 실패한 응답이 수락된 것처럼 남아 있으면, 안 간다고 한
@@ -512,7 +545,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     })
 
     try {
-      await updateCalendarEvent(token, existing.calendarId, eventId.slice(existing.calendarId.length + 1), patch)
+      await updateCalendarEvent(token, existing.calendarId, bareEventId(existing), patch)
       return true
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '일정 수정 실패'
@@ -529,8 +562,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     const previous = get().events
     set({ events: previous.filter(e => e.id !== eventId) })
     try {
-      // The stored id is namespaced by calendar; Google wants the bare one.
-      await deleteCalendarEvent(token, target.calendarId, eventId.slice(target.calendarId.length + 1))
+      await deleteCalendarEvent(token, target.calendarId, bareEventId(target))
     } catch (e: unknown) {
       set({ events: previous, error: e instanceof Error ? e.message : '일정 삭제 실패' })
     }

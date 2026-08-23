@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { useGCalStore, awaitingMe } from '../../../store/gcalStore'
+import { useGCalStore, awaitingMe, myAttendance } from '../../../store/gcalStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { DayPlanner } from '../calendar/DayPlanner'
@@ -475,7 +475,13 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
           openLink={selectedInfo.event.htmlLink}
           responses={selectedInfo.event.attendees}
           dirty={selectedDirty}
-          myResponse={selectedInfo.event.attendees?.find(a => a.self)?.responseStatus ?? undefined}
+          /* 주최자에게는 안 묻습니다 — myAttendance 참고. 응답 값이 아예
+             없는 초대는 '아직 안 함'입니다. 없다고 버튼을 감추면 답할
+             방법이 사라집니다. */
+          myResponse={(() => {
+            const me = myAttendance(selectedInfo.event)
+            return me ? (me.responseStatus ?? 'needsAction') : undefined
+          })()}
           onRespond={r => { void respond(selectedInfo.event.id, r) }}
           onClose={() => setSelected(null)}
         />
