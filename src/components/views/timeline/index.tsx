@@ -1143,52 +1143,46 @@ function EventCard({
 }) {
   const WIDTH = 280
   const MARGIN = 8
+  /** 이만큼도 안 남으면 아래가 아니라 위로 엽니다. */
+  const MIN_H = 240
 
   /**
-   * The card's height, measured rather than assumed.
+   * ── 카드는 열린 자리에 그대로 있습니다 ─────────────────────────────────────
    *
-   * This used to clamp against a hard-coded 280 — the height of an empty card.
-   * With four rows of attendees, a list of replies and the buttons, the real
-   * card is closer to 500, so the bottom of it ran past the window and was cut
-   * off. It looks like the webview clipping something, and it is not: the same
-   * arithmetic cuts it in a browser.
+   * 전에는 자기 높이를 재서 위치를 다시 잡았습니다. ResizeObserver로 계속
+   * 보다가, 창 밖으로 넘칠 것 같으면 위로 밀어 올렸습니다. 문제는 **높이가
+   * 한 번에 정해지지 않는다**는 것입니다 — 처음 그릴 때는 0이라 280으로
+   * 가정하고, 그 다음 프레임에 진짜 높이(400 남짓)가 오면 위치가 다시
+   * 계산됩니다. 그게 일정을 누를 때마다 한 번씩 '타닥' 하고 자리가 바뀌던
+   * 것입니다. 참석자 이름이 나중에 도착하거나 칩이 줄바꿈되면 또 움직였고요.
    *
-   * Observed rather than measured once, because the content grows after the
-   * first paint — chips wrap, replies arrive.
+   * 재지 않습니다. 대신 **남은 공간을 카드의 최대 높이로 줍니다.** 아래로
+   * 열면 아래 남은 만큼, 위로 열면 위 남은 만큼. 내용이 그보다 길어지면
+   * 카드가 제 안에서 스크롤할 뿐 자리는 안 움직입니다. 높이를 몰라도 창
+   * 밖으로 안 나가는 게 확실하니 알아볼 이유가 없어집니다.
+   *
+   * 위로 열 때는 top이 아니라 bottom으로 붙입니다. top으로 붙이면 내용이
+   * 늘 때 아래로 자라서 다시 창을 넘습니다.
    */
-  const cardRef = useRef<HTMLDivElement>(null)
-  const [height, setHeight] = useState(0)
-  useEffect(() => {
-    const el = cardRef.current
-    if (!el) return
-    const measure = () => setHeight(el.offsetHeight)
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  const left = Math.min(Math.max(MARGIN, at.x - WIDTH / 2), window.innerWidth - WIDTH - MARGIN)
-  // Below the pointer when it fits, pushed up when it does not, and never above
-  // the top edge — the last clamp matters on a card taller than the window.
-  const top = Math.max(
-    MARGIN,
-    Math.min(at.y + 8, window.innerHeight - (height || 280) - MARGIN),
-  )
+  const place = useMemo(() => {
+    const left = Math.min(Math.max(MARGIN, at.x - WIDTH / 2), window.innerWidth - WIDTH - MARGIN)
+    const below = window.innerHeight - at.y - 8 - MARGIN
+    if (below >= MIN_H) return { left, top: at.y + 8, maxHeight: below }
+    const above = at.y - 8 - MARGIN
+    // 위아래 다 좁으면(작은 창) 넓은 쪽으로. 어느 쪽이든 스크롤합니다.
+    if (above > below) return { left, bottom: window.innerHeight - at.y + 8, maxHeight: above }
+    return { left, top: at.y + 8, maxHeight: Math.max(below, 160) }
+  }, [at.x, at.y])
 
   return (
     <>
       <div style={{ position: 'fixed', inset: 0, zIndex: 9600 }} onMouseDown={onClose} />
       <div
-        ref={cardRef}
         onMouseDown={e => e.stopPropagation()}
         style={{
-          position: 'fixed', left, top, width: WIDTH, zIndex: 9601,
+          position: 'fixed', ...place, width: WIDTH, zIndex: 9601,
           background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
           boxShadow: 'var(--sh-lg)', padding: 12,
-          // A card with more attendees than the window is tall scrolls itself
-          // rather than running off the bottom.
-          maxHeight: `calc(100vh - ${MARGIN * 2}px)`,
           overflowY: 'auto', boxSizing: 'border-box',
         }}
       >
@@ -1363,31 +1357,45 @@ function RsvpRow({ current, onRespond }: { current: string; onRespond: (r: Rsvp)
       </div>
       <div style={{
         display: 'flex', borderRadius: 'var(--r2)', overflow: 'hidden',
-        background: 'var(--bg3)', padding: 2, gap: 1,
+        background: 'var(--bg3)', padding: 2,
       }}>
         {options.map((o, i) => {
           const on = current === o.value
+          /**
+           * 칸 사이의 선은 **따로 그립니다.**
+           *
+           * 처음엔 버튼에 `inset` 그림자로 넣었는데, 버튼이 둥근 모서리를
+           * 갖고 있어서 그림자가 그 곡선을 따라갔습니다 — 선 끝이 살짝
+           * 꺾여 보이던 것이 그것입니다. 그림자는 상자의 모양을 따르고,
+           * 우리가 원하는 건 상자와 무관한 직선 하나입니다.
+           *
+           * 위아래를 조금 띄웁니다. 칸 높이를 꽉 채운 선은 칸을 나누는
+           * 것이 아니라 칸을 가르는 것으로 보입니다.
+           */
+          const rule = i > 0 && !on && current !== options[i - 1].value
           return (
-            <button
-              key={o.value}
-              onClick={() => onRespond(o.value)}
-              style={{
-                flex: 1, padding: '5px 0', border: 'none', cursor: 'pointer',
-                fontFamily: 'var(--font)', fontSize: 12,
-                fontWeight: on ? 600 : 400,
-                borderRadius: 'var(--r1)',
-                background: on ? o.soft : 'transparent',
-                color: on ? o.tone : 'var(--t2)',
-                // 안 고른 것들 사이만 실선 하나. 고른 칸은 자기 배경이
-                // 경계를 이미 말하고 있어서 선을 겹치면 지저분해집니다.
-                boxShadow: i > 0 && !on && current !== options[i - 1].value
-                  ? 'inset 1px 0 0 var(--bd)'
-                  : 'none',
-                transition: 'background .1s, color .1s',
-              }}
-              onMouseEnter={e => { if (!on) e.currentTarget.style.background = 'var(--bg2)' }}
-              onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}
-            >{o.label}</button>
+            <React.Fragment key={o.value}>
+              {i > 0 && (
+                <span aria-hidden style={{
+                  width: 1, flexShrink: 0, margin: '5px 0',
+                  background: rule ? 'var(--bd)' : 'transparent',
+                }} />
+              )}
+              <button
+                onClick={() => onRespond(o.value)}
+                style={{
+                  flex: 1, padding: '5px 0', border: 'none', cursor: 'pointer',
+                  fontFamily: 'var(--font)', fontSize: 12,
+                  fontWeight: on ? 600 : 400,
+                  borderRadius: 'var(--r1)',
+                  background: on ? o.soft : 'transparent',
+                  color: on ? o.tone : 'var(--t2)',
+                  transition: 'background .1s, color .1s',
+                }}
+                onMouseEnter={e => { if (!on) e.currentTarget.style.background = 'var(--bg2)' }}
+                onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}
+              >{o.label}</button>
+            </React.Fragment>
           )
         })}
       </div>
