@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useGCalStore, awaitingMe } from '../../../store/gcalStore'
+import { useGCalStore, awaitingMe, myAttendance } from '../../../store/gcalStore'
 import { useUiStore } from '../../../store/uiStore'
 import { openExternal } from '../../../lib/desktopLinks'
 import { fmtYMD } from '../../../lib/utils'
+import { splitAgenda } from '../../../lib/googleCalendar'
+import { Icon } from '../../shared/Icon'
+import { RsvpPicker } from '../../shared/RsvpPicker'
 import { TimelineGrid } from '../timeline'
 import { WidthHandle } from '../../shared/WidthHandle'
 import type { GCalEvent } from '../../../store/gcalStore'
@@ -162,56 +165,166 @@ export function DayTimeline({ date }: { date: string }) {
 }
 
 /**
- * 한 줄, 세 조각: 어느 캘린더인지(네모) · 무엇인지(제목) · 언제인지(시각).
+ * ── 일정 한 줄, 그리고 그 안 ─────────────────────────────────────────────────
  *
- * 수락 안 한 초대는 속을 안 칠한 점선 네모입니다 — 아래 격자에서 쓰는 표시와
- * 같게 둡니다. 같은 사실을 두 곳에서 다르게 그리면 둘 중 하나는 다른 뜻으로
- * 읽힙니다.
+ * 접혀 있을 때는 세 조각입니다 — 어느 캘린더인지(네모) · 무엇인지 · 몇 시인지.
+ * 회의실이 잡혀 있으면 제목 아래 한 줄이 더 붙습니다. 회의 직전에 알아야 할
+ * 건 대개 '어디로 가지'라서, 그건 열어 봐야 나오면 늦습니다.
  *
- * 이미 지난 회의는 흐려집니다. 지우지는 않습니다 — 오늘 무엇을 했는지도
- * 하루의 일부고, 목록이 하루 종일 짧아지기만 하면 오후에는 아침이 없던
- * 일이 됩니다.
+ * 누르면 **구글로 튀어 나가지 않고 여기서 펴집니다.** 아젠다를 보려고 브라우저
+ * 탭을 하나 여는 건 보려던 것보다 큰 동작이고, 돌아올 때 앱은 처음 화면입니다.
+ * 구글에서 볼 일이 있으면 안에 버튼이 있습니다.
+ *
+ * 수락 안 한 초대는 답하는 칸도 같이 펴집니다. 이 목록에서 그걸 보고 있는
+ * 사람은 이미 '갈까 말까'를 생각하는 중입니다.
  */
 function AgendaRow({ event, now, today }: { event: GCalEvent; now: Date; today: boolean }) {
   const [hovered, setHovered] = useState(false)
+  const [open, setOpen] = useState(false)
+  const respond = useGCalStore(s => s.respond)
+
   const colour = event.calendarColor || '#337EA9'
   const pending = awaitingMe(event)
+  const mine = myAttendance(event)
 
   const start = event.allDay ? null : new Date(event.startIso!)
   const end = event.endIso ? new Date(event.endIso) : null
   const past = today && !!end && end.getTime() < now.getTime()
 
+  const { notesUrl, agenda } = splitAgenda(event.description)
+  const hasDetail = !!event.location || !!agenda.trim() || !!notesUrl || !!mine
+
   return (
-    <button
-      onClick={() => void openExternal(event.htmlLink)}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      title={`${event.summary || '(제목 없음)'}${event.location ? ` · ${event.location}` : ''}`}
-      style={{
-        width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-        padding: '4px 6px', margin: '1px 0', borderRadius: 'var(--r1)',
-        border: 'none', background: hovered ? 'var(--bg3)' : 'transparent',
-        cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left',
-        opacity: past ? .45 : 1,
-        transition: 'background .08s, opacity .1s',
-      }}
-    >
-      <span style={{
-        width: 10, height: 10, borderRadius: 3, flexShrink: 0, boxSizing: 'border-box',
-        background: pending ? 'transparent' : colour,
-        border: pending ? `1.5px dashed ${colour}` : 'none',
-      }} />
-      <span style={{
-        flex: 1, minWidth: 0, fontSize: 13, fontWeight: 500, color: 'var(--t1)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>
-        {event.summary || '(제목 없음)'}
-      </span>
-      <span style={{
-        flexShrink: 0, fontSize: 11, color: 'var(--t3)', fontVariantNumeric: 'tabular-nums',
-      }}>
-        {start ? clock(start) : '종일'}
-      </span>
-    </button>
+    <div style={{ margin: '1px 0' }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        aria-expanded={open}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+          padding: '5px 6px', borderRadius: 'var(--r1)',
+          border: 'none', background: hovered || open ? 'var(--bg3)' : 'transparent',
+          cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left',
+          opacity: past && !open ? .45 : 1,
+          transition: 'background .08s, opacity .1s',
+        }}
+      >
+        <span style={{
+          width: 10, height: 10, borderRadius: 3, flexShrink: 0, boxSizing: 'border-box',
+          background: pending ? 'transparent' : colour,
+          border: pending ? `1.5px dashed ${colour}` : 'none',
+        }} />
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{
+            display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--t1)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {event.summary || '(제목 없음)'}
+          </span>
+          {event.location && (
+            <span style={{
+              display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 1,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {event.location}
+            </span>
+          )}
+        </span>
+        <span style={{
+          flexShrink: 0, fontSize: 11, color: 'var(--t3)', fontVariantNumeric: 'tabular-nums',
+        }}>
+          {start ? clock(start) : '종일'}
+        </span>
+      </button>
+
+      {open && (
+        <div style={{
+          margin: '2px 0 6px 18px', padding: '8px 10px',
+          borderLeft: `2px solid ${colour}`,
+          background: 'var(--bg2)', borderRadius: '0 var(--r1) var(--r1) 0',
+        }}>
+          {/* 시각은 접힌 줄이 시작만 말합니다. 펼친 곳에서는 끝까지. */}
+          {start && (
+            <div style={{ fontSize: 11, color: 'var(--t2)', fontVariantNumeric: 'tabular-nums' }}>
+              {clock(start)}{end ? ` – ${clock(end)}` : ''}
+            </div>
+          )}
+
+          {event.location && (
+            <div style={{ fontSize: 12, color: 'var(--t1)', marginTop: 6, display: 'flex', gap: 6, alignItems: 'baseline' }}>
+              <span style={{ fontSize: 10, color: 'var(--t3)', flexShrink: 0 }}>장소</span>
+              <span style={{ minWidth: 0, wordBreak: 'break-all' }}>{event.location}</span>
+            </div>
+          )}
+
+          {agenda.trim() && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 10, color: 'var(--t3)', marginBottom: 3 }}>아젠다</div>
+              {/* 구글 설명은 줄바꿈이 뜻입니다 — 목록으로 적힌 것을 한 줄로
+                  이어 붙이면 목록이 아니게 됩니다. */}
+              <div style={{
+                fontSize: 12, color: 'var(--t1)', lineHeight: 1.65,
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                maxHeight: 180, overflowY: 'auto',
+              }}>
+                {agenda.trim()}
+              </div>
+            </div>
+          )}
+
+          {notesUrl && (
+            <button
+              onClick={() => void openExternal(notesUrl)}
+              style={{
+                marginTop: 8, width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 8px', borderRadius: 'var(--r1)',
+                border: '1px solid var(--bd)', background: 'var(--bg)',
+                color: 'var(--t1)', fontSize: 12, fontFamily: 'var(--font)',
+                cursor: 'pointer', textAlign: 'left',
+              }}
+            >
+              <Icon name="file" size={13} />
+              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                회의록 열기
+              </span>
+              <Icon name="external" size={12} />
+            </button>
+          )}
+
+          {/* 아직 답 안 한 초대는 여기서 답합니다. 이 줄을 들여다보는 사람은
+              이미 갈까 말까를 생각하는 중입니다. */}
+          {mine && (
+            <div style={{ marginTop: 10 }}>
+              <RsvpPicker
+                compact
+                current={mine.responseStatus ?? 'needsAction'}
+                onRespond={r => void respond(event.id, r)}
+              />
+            </div>
+          )}
+
+          <button
+            onClick={() => void openExternal(event.htmlLink)}
+            style={{
+              marginTop: hasDetail ? 10 : 8, padding: 0,
+              border: 'none', background: 'transparent',
+              color: 'var(--t3)', fontSize: 11, cursor: 'pointer',
+              fontFamily: 'var(--font)',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--ac)' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--t3)' }}
+          >
+            구글 캘린더로 이동 ↗
+          </button>
+
+          {!hasDetail && (
+            <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 6, lineHeight: 1.5 }}>
+              아젠다와 회의록 링크는 캘린더에서 일정을 눌러 적을 수 있습니다.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
