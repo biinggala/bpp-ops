@@ -144,6 +144,18 @@ interface OrgState {
   release: (date: string, bookingId: string) => Promise<void>
   /** 일정을 지우거나 회의실을 바꿀 때. 그 일정에 붙은 예약을 다 풉니다. */
   releaseForEvent: (date: string, eventId: string) => Promise<void>
+  /**
+   * 예약에 적힌 회의 제목을 고칩니다.
+   *
+   * 제목은 잡을 때 베껴 둔 사본입니다 — 다른 사람이 방 목록에서 '무슨 회의로
+   * 찼는지'를 읽으려면 우리 데이터에 있어야 하고, 구글 일정은 그 사람에게
+   * 안 보일 수 있으니까요. 사본이니 늙습니다. 일정 이름을 바꿀 때 같이
+   * 고칩니다.
+   *
+   * 내가 잡은 예약만 고칠 수 있습니다(규칙). 남이 잡아 준 방이면 제목이
+   * 옛것으로 남는데, 그건 방이 틀린 것보다 훨씬 가벼운 문제입니다.
+   */
+  retitleForEvent: (date: string, eventId: string, title: string) => Promise<void>
 }
 
 const list = <T,>(node: Record<string, Omit<T, 'id'>> | null | undefined): (T & { id: string })[] =>
@@ -525,6 +537,15 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     const { bookings, release } = get()
     for (const b of bookings[date] ?? []) {
       if (b.eventId === eventId) await release(date, b.id)
+    }
+  },
+
+  retitleForEvent: async (date, eventId, title) => {
+    const { orgId, bookings } = get()
+    if (!orgId) return
+    for (const b of bookings[date] ?? []) {
+      if (b.eventId !== eventId || b.title === title) continue
+      await fbUpdate(ref(db, P.orgBooking(orgId, date, b.id)), { title }).catch(() => {})
     }
   },
 }))
