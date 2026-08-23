@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useNoticeStore } from '../../store/noticeStore'
 import { useAuthStore } from '../../store/authStore'
 import { useUiStore } from '../../store/uiStore'
 import { useProjectStore } from '../../store/projectStore'
+import { useUserProfileStore } from '../../store/userProfileStore'
 import { NOTICE_LABEL as LABEL, NOTICE_TONE as TONE, type Notice } from '../../lib/notify'
 import { StatusMark } from '../shared/StatusMark'
 import { Icon } from '../shared/Icon'
@@ -11,6 +12,9 @@ import { useNoticeToast } from './NoticeToast'
 import { useSyncStore } from '../../store/syncStore'
 import { pollDriveChanges, POLL_MS } from '../../lib/driveWatch'
 import { useMailStore, MAIL_POLL_MS, warmMailAuth } from '../../store/mailStore'
+import { useGCalStore, awaitingMe, myAttendance } from '../../store/gcalStore'
+import { RsvpPicker } from '../shared/RsvpPicker'
+import { fmtYMD, addDays } from '../../lib/utils'
 import { threadUrl } from '../../lib/gmail'
 import { openExternal } from '../../lib/desktopLinks'
 
@@ -95,6 +99,24 @@ export function useNoticeInbox() {
     return () => clearInterval(timer)
   }, [email, refreshMail])
 
+  /**
+   * 캘린더 초대.
+   *
+   * 목록을 열 때가 아니라 앱이 사는 내내 창을 확보해 둡니다 — 캘린더 화면을
+   * 한 번도 안 열어 본 사람에게도 초대가 도착해야 하고, 배지가 목록을 열어야
+   * 맞는 숫자가 되면 배지가 아닙니다.
+   *
+   * 오늘부터 4주. 지난 초대는 답해도 소용이 없고, 두 달 뒤 초대는 지금 답할
+   * 일이 아닙니다.
+   */
+  const gcalToken = useGCalStore(s => s.token)
+  const ensureEvents = useGCalStore(s => s.ensureEvents)
+  useEffect(() => {
+    if (!gcalToken) return
+    const today = new Date()
+    void ensureEvents(fmtYMD(today), fmtYMD(addDays(today, 28)))
+  }, [gcalToken, ensureEvents])
+
   // The unread count belongs on the app's icon too — iOS and macOS both draw it,
   // and on a phone that badge is the only part of this anybody sees at a glance.
   /**
@@ -116,8 +138,9 @@ export function useNoticeInbox() {
   // 밖에서 온 것도 배지에 셉니다. 답할 메일 세 통이 있는데 배지가 0이면,
   // 그 배지는 '받은 알림'이 아니라 '업무 알림'의 배지입니다.
   const mailCount = useMailStore(s => s.threads.length)
+  const inviteCount = usePendingInvites().length
 
-  return { notices, unread, external: mailCount, signedIn: !!uid }
+  return { notices, unread, external: mailCount + inviteCount, signedIn: !!uid }
 }
 
 /**
@@ -137,6 +160,7 @@ export function NoticeList({ onClose }: { onClose: () => void }) {
   const projects = useProjectStore(s => s.projects)
   const unread = useNoticeStore(s => s.unread)
   const mailCount = useMailStore(s => s.threads.length)
+  const inviteCount = usePendingInvites().length
 
   const openNotice = (n: Notice) => {
     if (!n.read) markRead(n.id)
@@ -160,12 +184,13 @@ export function NoticeList({ onClose }: { onClose: () => void }) {
         {/* 밖에서 온 것이 위입니다. 여섯 줄로 끝나는 목록이고, 아래의 업무
             알림은 끝이 없습니다 — 길이를 모르는 목록 밑에 짧은 목록을 두면
             아무도 못 봅니다. */}
+        <InviteSection />
         <MailSection />
 
         {notices.length > 0 && (
           <SectionHead>업무</SectionHead>
         )}
-        {notices.length === 0 && mailCount === 0 && (
+        {notices.length === 0 && mailCount === 0 && inviteCount === 0 && (
           <div style={{ padding: '28px 16px', textAlign: 'center', fontSize: 12, color: 'var(--sb-t3)', lineHeight: 1.6 }}>
             새 알림이 없습니다
           </div>
@@ -343,4 +368,82 @@ function MailRow({ thread }: { thread: { threadId: string; subject: string; from
       </div>
     </div>
   )
+}
+
+/**
+ * ── 답을 기다리는 캘린더 초대 ────────────────────────────────────────────────
+ *
+ * 지금까지는 캘린더 화면을 열어야만 점선으로 보였습니다. 초대는 '내가 찾아가서
+ * 봐야 하는 것'이 아니라 도착하는 것이고, 도착하는 것들이 모이는 자리는
+ * 받은 알림입니다.
+ *
+ * **여기서 바로 답합니다.** 누르면 캘린더로 보내는 편이 코드는 쉬웠는데,
+ * 그러면 두 번 움직여야 합니다 — 이 목록이 없애려던 게 그 두 번입니다.
+ * 컨트롤은 일정 카드와 같은 것(RsvpPicker)이라 두 화면이 어긋날 수 없습니다.
+ */
+function usePendingInvites() {
+  const events = useGCalStore(s => s.events)
+  return useMemo(() => {
+    const today = fmtYMD(new Date())
+    return events
+      // 지난 초대는 답해도 소용이 없습니다.
+      .filter(ev => ev.start >= today && awaitingMe(ev))
+      .sort((a, b) => (a.startIso ?? a.start).localeCompare(b.startIso ?? b.start))
+  }, [events])
+}
+
+function InviteSection() {
+  const invites = usePendingInvites()
+  const respond = useGCalStore(s => s.respond)
+  if (!invites.length) return null
+
+  return (
+    <>
+      <SectionHead right={<span style={{ opacity: .7 }}>{invites.length}</span>}>캘린더 초대</SectionHead>
+      {invites.map(ev => (
+        <div key={ev.id} style={{ padding: '6px 8px 8px 10px', margin: '0 4px' }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <span style={{ color: '#2383E2', flexShrink: 0, marginTop: 2, display: 'flex' }}>
+              <Icon name="today" size={12} />
+            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: 12.5, color: 'var(--sb-t1)', fontWeight: 500,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{ev.summary || '(제목 없음)'}</div>
+              <div style={{
+                fontSize: 11, color: 'var(--sb-t3)', marginTop: 1,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {inviteWhen(ev)}
+                {organizerOf(ev) ? ` · ${organizerOf(ev)}` : ''}
+              </div>
+            </div>
+          </div>
+          <div style={{ marginTop: 5, marginLeft: 20 }}>
+            <RsvpPicker
+              compact
+              current={myAttendance(ev)?.responseStatus ?? 'needsAction'}
+              onRespond={r => { void respond(ev.id, r) }}
+            />
+          </div>
+        </div>
+      ))}
+    </>
+  )
+}
+
+/** '8월 25일 (월) 14:00' — 240px에 들어가는 만큼만. */
+function inviteWhen(ev: { start: string; startTime?: string; allDay: boolean }): string {
+  const d = new Date(ev.start + 'T00:00:00')
+  const day = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()]
+  const date = `${d.getMonth() + 1}월 ${d.getDate()}일 (${day})`
+  return ev.allDay || !ev.startTime ? `${date} 종일` : `${date} ${ev.startTime}`
+}
+
+/** 부른 사람. 참석자 목록에 organizer로 표시돼 있습니다. */
+function organizerOf(ev: { attendees?: { email: string; organizer?: boolean }[] }): string {
+  const host = ev.attendees?.find(a => a.organizer)
+  if (!host) return ''
+  return useUserProfileStore.getState().getNameByEmail(host.email)
 }
