@@ -12,6 +12,7 @@ import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import { Icon, type IconName } from '../shared/Icon'
 import { SettingsModal } from '../modals/SettingsModal'
+import { useNoticeInbox, NoticePanel, type NoticeAnchor } from './Notices'
 import { MEMBERS } from '../../types'
 import { buildInviteToken } from '../../lib/paths'
 import type { MemberKey, Project } from '../../types'
@@ -458,6 +459,8 @@ export function Sidebar() {
             전체 업무
           </NavItem>
 
+          <InboxRow onOpen={closeSidebar} />
+
           {/* Projects section */}
           <SectionLabel>Projects</SectionLabel>
 
@@ -724,16 +727,22 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-function NavItem({ children, active, onClick, count, emphasis, icon }: {
-  children: React.ReactNode; active: boolean; onClick: () => void
+function NavItem({ children, active, onClick, count, emphasis, icon, node, alert, innerRef }: {
+  children: React.ReactNode; active: boolean; onClick: (e: React.MouseEvent<HTMLDivElement>) => void
   /** Omitted where a number would be decoration rather than information. */
   count?: number
   /** Draws the count as a filled pill — the row you are meant to start from. */
   emphasis?: boolean
   icon?: string
+  /** A drawn icon, where a glyph will not do. */
+  node?: React.ReactNode
+  /** Red rather than blue: this count is an interruption, not a workload. */
+  alert?: boolean
+  innerRef?: React.Ref<HTMLDivElement>
 }) {
   return (
     <div
+      ref={innerRef}
       onClick={onClick}
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
@@ -746,17 +755,19 @@ function NavItem({ children, active, onClick, count, emphasis, icon }: {
       onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--sb-hover)' }}
       onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
     >
-      {icon && <span style={{ fontSize: 11, opacity: emphasis ? .85 : .6, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>}
+      {node
+        ? <span style={{ width: 16, display: 'flex', justifyContent: 'center', flexShrink: 0, opacity: .75 }}>{node}</span>
+        : icon && <span style={{ fontSize: 11, opacity: emphasis ? .85 : .6, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>}
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
       {count !== undefined && count > 0 && (
-        emphasis ? (
-          <span title="아직 완료하지 않은 내 업무" style={{
+        emphasis || alert ? (
+          <span title={alert ? '안 읽은 알림' : '아직 완료하지 않은 내 업무'} style={{
             marginLeft: 'auto', flexShrink: 0,
             minWidth: 18, padding: '0 6px', height: 17,
-            borderRadius: 999, background: 'var(--ac)', color: '#fff',
+            borderRadius: 999, background: alert ? 'var(--danger)' : 'var(--ac)', color: '#fff',
             fontSize: 11, fontWeight: 600,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          }}>{count}</span>
+          }}>{count > 99 ? '99+' : count}</span>
         ) : (
           <span style={{ fontSize: 12, color: 'var(--sb-t3)', marginLeft: 'auto', flexShrink: 0 }}>{count}</span>
         )
@@ -1351,5 +1362,55 @@ function MemberManageModal({ project, currentEmail, suggestable, onAddMember, on
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * ── 받은 알림 ────────────────────────────────────────────────────────────────
+ *
+ * A sidebar row rather than a bell in the top bar.
+ *
+ * The bell was one unlabelled glyph in a row of unlabelled glyphs, next to the
+ * update arrow and the 새 업무 button, and it was regularly read as a switch for
+ * turning notifications on — which is a different thing entirely, and now lives
+ * in 설정. Here it is a named row with a count, in the column where the other
+ * places you can go already are. Notion puts its inbox in the same place, for
+ * the same reason.
+ *
+ * The list opens beside the row rather than replacing the screen: what is in it
+ * is almost always one line long, and going somewhere to read one line and then
+ * coming back is a worse trade than a panel.
+ */
+function InboxRow({ onOpen }: { onOpen: () => void }) {
+  const { notices, unread, signedIn } = useNoticeInbox()
+  const [open, setOpen] = useState(false)
+  const [anchor, setAnchor] = useState<NoticeAnchor | null>(null)
+  const rowRef = useRef<HTMLDivElement>(null)
+
+  if (!signedIn) return null
+
+  return (
+    <>
+      <NavItem
+        active={open}
+        innerRef={rowRef}
+        node={<Icon name="inbox" size={14} />}
+        count={unread}
+        alert
+        onClick={() => {
+          haptic('tap')
+          if (open) { setOpen(false); return }
+          const r = rowRef.current?.getBoundingClientRect()
+          if (r) setAnchor({ top: r.top - 4, left: r.right + 10 })
+          setOpen(true)
+          // On a phone the sidebar is a drawer over the app; the sheet comes up
+          // from the bottom and the drawer has no reason to stay in front of it.
+          onOpen()
+        }}
+      >
+        받은 알림
+      </NavItem>
+      {open && <NoticePanel notices={notices} anchor={anchor} onClose={() => setOpen(false)} />}
+    </>
   )
 }

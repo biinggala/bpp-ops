@@ -5,7 +5,6 @@ import { useAuthStore } from '../../store/authStore'
 import { useUiStore } from '../../store/uiStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMobile } from '../../hooks/useMobile'
-import { haptic } from '../../lib/haptics'
 import { NOTICE_LABEL as LABEL, NOTICE_TONE as TONE, type Notice } from '../../lib/notify'
 import { StatusMark } from '../shared/StatusMark'
 import { statusAccent } from '../../types'
@@ -40,32 +39,24 @@ function clock(at: number): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-export function NoticeBell() {
+/**
+ * 받은 알림을 구독하고, 안 읽은 수를 앱 아이콘에 올립니다.
+ *
+ * 목록을 그리는 곳과 분리돼 있는 이유: 구독은 앱이 떠 있는 내내 살아 있어야
+ * 하고(알림은 패널을 열어야 도착하는 게 아닙니다), 목록은 눌렀을 때만
+ * 그려집니다. 예전에는 둘이 한 컴포넌트라 종 아이콘이 곧 구독이었습니다.
+ */
+export function useNoticeInbox() {
   const uid = useAuthStore(s => s.uid)
   const email = useAuthStore(s => s.email)
   const notices = useNoticeStore(s => s.notices)
   const unread = useNoticeStore(s => s.unread)
   const subscribe = useNoticeStore(s => s.subscribe)
-  const [open, setOpen] = useState(false)
-  const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null)
-  const isMobile = useMobile()
 
   useEffect(() => {
     if (!email) return
     return subscribe(email)
   }, [email, subscribe])
-
-  // The banner hides itself while this list is open, and the test button has to
-  // be able to close it — so the bell reports the state and lends its closer.
-  useEffect(() => {
-    const store = useNoticeToast.getState()
-    store.setPanelOpen(open)
-    store.registerClose(() => setOpen(false))
-    return () => {
-      useNoticeToast.getState().setPanelOpen(false)
-      useNoticeToast.getState().registerClose(null)
-    }
-  }, [open])
 
   // The unread count belongs on the app's icon too — iOS and macOS both draw it,
   // and on a phone that badge is the only part of this anybody sees at a glance.
@@ -78,63 +69,58 @@ export function NoticeBell() {
     else void nav.clearAppBadge?.().catch(() => {})
   }, [unread])
 
-  if (!uid) return null
+  return { notices, unread, signedIn: !!uid }
+}
 
-  const toggle = (e: React.MouseEvent<HTMLButtonElement>) => {
-    haptic('tap')
-    if (open) { setOpen(false); return }
-    const r = e.currentTarget.getBoundingClientRect()
-    setAnchor({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) })
-    setOpen(true)
-  }
+/** Where the panel hangs from: the sidebar row that opened it. */
+export interface NoticeAnchor { top: number; left: number }
 
-  return (
-    <>
-      <button
-        onClick={toggle}
-        aria-label={unread ? `알림 ${unread}건` : '알림'}
-        style={{
-          position: 'relative', width: 36, height: 36, flexShrink: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: open ? 'var(--bg3)' : 'transparent', border: 'none',
-          borderRadius: 'var(--r2)', cursor: 'pointer', color: 'var(--t2)', padding: 0,
-        }}
-        onMouseEnter={e => { if (!open) e.currentTarget.style.background = 'var(--bg3)' }}
-        onMouseLeave={e => { if (!open) e.currentTarget.style.background = 'transparent' }}
-      >
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M18 8.6a6 6 0 1 0-12 0c0 5.2-2.1 6.4-2.1 6.4h16.2S18 13.8 18 8.6" />
-          <path d="M13.7 19a2 2 0 0 1-3.4 0" />
-        </svg>
-        {unread > 0 && (
-          <span style={{
-            position: 'absolute', top: 4, right: 3,
-            minWidth: 16, height: 16, padding: '0 4px',
-            borderRadius: 999, background: 'var(--danger)', color: '#fff',
-            fontSize: 10, fontWeight: 700, lineHeight: '16px', textAlign: 'center',
-            boxShadow: '0 0 0 2px var(--bg)',
-          }}>{unread > 99 ? '99+' : unread}</span>
-        )}
-      </button>
+/**
+ * The list itself — a floating panel on a desktop, a bottom sheet on a phone.
+ *
+ * It hangs off the sidebar row rather than the top bar, which is where Notion
+ * puts its inbox and, more to the point, where the thing that owns it now lives.
+ */
+export function NoticePanel({ notices, anchor, onClose }: {
+  notices: Notice[]
+  anchor: NoticeAnchor | null
+  onClose: () => void
+}) {
+  const isMobile = useMobile()
 
-      {open && (isMobile
-        ? <NoticeSheet notices={notices} onClose={() => setOpen(false)} />
-        : <NoticePopover notices={notices} anchor={anchor} onClose={() => setOpen(false)} />)}
-    </>
-  )
+  // The banner hides itself while this list is open, and the test button has to
+  // be able to close it — so the panel reports the state and lends its closer.
+  useEffect(() => {
+    const store = useNoticeToast.getState()
+    store.setPanelOpen(true)
+    store.registerClose(onClose)
+    return () => {
+      useNoticeToast.getState().setPanelOpen(false)
+      useNoticeToast.getState().registerClose(null)
+    }
+  }, [onClose])
+
+  return isMobile
+    ? <NoticeSheet notices={notices} onClose={onClose} />
+    : <NoticePopover notices={notices} anchor={anchor} onClose={onClose} />
 }
 
 function NoticePopover({ notices, anchor, onClose }: {
   notices: Notice[]
-  anchor: { top: number; right: number } | null
+  anchor: NoticeAnchor | null
   onClose: () => void
 }) {
+  const width = 340
+  // Kept on screen: a row near the bottom of a short window would otherwise
+  // hang the panel off the end of it.
+  const top = Math.min(anchor?.top ?? 80, Math.max(8, window.innerHeight - 320))
   return createPortal(
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9300 }} />
       <div style={{
-        position: 'fixed', top: anchor?.top ?? 60, right: anchor?.right ?? 12,
-        width: 340, maxHeight: 'min(70vh, 520px)', zIndex: 9301,
+        position: 'fixed', top,
+        left: Math.min(anchor?.left ?? 250, window.innerWidth - width - 8),
+        width, maxHeight: 'min(70vh, 520px)', zIndex: 9301,
         background: 'var(--bg)', border: '1px solid var(--bd)',
         borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',

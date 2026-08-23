@@ -4,7 +4,6 @@ import { useProjectStore } from '../../store/projectStore'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import { MobileFilterButton } from './MobileFilterSheet'
-import { NoticeBell } from './NoticeBell'
 import { pendingUpdate, installUpdate, openInBrowser, type DesktopRelease } from '../../lib/desktopUpdate'
 
 export function Topbar() {
@@ -56,7 +55,6 @@ export function Topbar() {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
         <UpdateButton />
-        <NoticeBell />
         {/* One door to everything that narrows or reorders the view. The ✓ that
             used to sit here toggled only 완료 숨기기, and left the other six
             controls with nowhere to live on a phone. */}
