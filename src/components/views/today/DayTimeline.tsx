@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useGCalStore, awaitingMe, myAttendance } from '../../../store/gcalStore'
 import { useUiStore } from '../../../store/uiStore'
 import { openExternal } from '../../../lib/desktopLinks'
@@ -87,6 +87,24 @@ export function DayTimeline({ date }: { date: string }) {
   const isToday = date === fmtYMD(now)
 
   /**
+   * 열려 있는 카드. 한 번에 하나입니다.
+   *
+   * 줄마다 자기 펼침 상태를 들고 있으면 둘이 동시에 열릴 수 있고, 그러면
+   * 목록이 아니라 아코디언이 됩니다. 여기 하나로 두면 다른 줄을 누르는
+   * 순간 앞의 것이 닫힙니다.
+   */
+  const [openEvent, setOpenEvent] = useState<{ id: string; rect: DOMRect } | null>(null)
+
+  // 날짜를 넘기거나 목록이 바뀌면 떠 있던 카드는 없는 줄을 가리키게 됩니다.
+  useEffect(() => { setOpenEvent(null) }, [date])
+  useEffect(() => {
+    if (!openEvent) return
+    const close = () => setOpenEvent(null)
+    window.addEventListener('resize', close)
+    return () => window.removeEventListener('resize', close)
+  }, [openEvent])
+
+  /**
    * 이 날의 일정, 시간 순으로.
    *
    * 아래 격자와 같은 것을 그립니다. 일부러 그렇습니다 — 격자는 '몇 시에'를,
@@ -114,7 +132,12 @@ export function DayTimeline({ date }: { date: string }) {
         width={width} min={W_MIN} max={W_MAX} defaultWidth={W_DEFAULT}
         side="left" onChange={setWidth} onCommit={saveWidth}
       />
-      <div style={{ padding: '12px 10px 8px', borderBottom: '1px solid var(--bd)', flexShrink: 0, maxHeight: '46%', overflowY: 'auto' }}>
+      {/* 떠 있는 카드는 눌린 줄의 좌표에 붙어 있습니다 — 목록이 스크롤하면
+          그 좌표가 가리키던 줄은 다른 데 가 있으므로 카드를 닫습니다. */}
+      <div
+        onScroll={() => setOpenEvent(null)}
+        style={{ padding: '12px 10px 8px', borderBottom: '1px solid var(--bd)', flexShrink: 0, maxHeight: '46%', overflowY: 'auto' }}
+      >
         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--t3)', letterSpacing: '.05em', padding: '0 6px', marginBottom: 5 }}>
           {isToday ? '오늘의 일정' : '이 날의 일정'}
         </div>
@@ -143,10 +166,21 @@ export function DayTimeline({ date }: { date: string }) {
           </div>
         ) : (
           <>
-            {agenda.map(e => <AgendaRow key={e.id} event={e} now={now} today={isToday} />)}
+            {agenda.map(e => (
+              <AgendaRow
+                key={e.id} event={e} now={now} today={isToday}
+                active={openEvent?.id === e.id}
+                onOpen={rect => setOpenEvent(cur => cur?.id === e.id ? null : { id: e.id, rect })}
+              />
+            ))}
           </>
         )}
       </div>
+
+      {openEvent && (() => {
+        const ev = agenda.find(e => e.id === openEvent.id)
+        return ev ? <EventPopover event={ev} anchor={openEvent.rect} onClose={() => setOpenEvent(null)} /> : null
+      })()}
 
       {token && (
         <>
@@ -178,153 +212,216 @@ export function DayTimeline({ date }: { date: string }) {
  * 수락 안 한 초대는 답하는 칸도 같이 펴집니다. 이 목록에서 그걸 보고 있는
  * 사람은 이미 '갈까 말까'를 생각하는 중입니다.
  */
-function AgendaRow({ event, now, today }: { event: GCalEvent; now: Date; today: boolean }) {
+/** 이 앱의 작은 버튼 하나. 캘린더 바의 버튼들과 같은 키(26)·같은 테두리입니다. */
+const PILL: React.CSSProperties = {
+  height: 26, boxSizing: 'border-box', padding: '0 9px',
+  display: 'inline-flex', alignItems: 'center', gap: 5,
+  borderRadius: 'var(--r1)', border: '1px solid var(--bd)',
+  background: 'transparent', color: 'var(--t2)',
+  fontSize: 12, fontFamily: 'var(--font)', cursor: 'pointer',
+  whiteSpace: 'nowrap', maxWidth: '100%',
+}
+
+/** 일정 카드의 '참석자'·'아젠다'와 같은 이름표입니다. 같은 종류의 값이니까요. */
+const LABEL: React.CSSProperties = {
+  fontSize: 11, fontWeight: 600, color: 'var(--t2)', margin: '9px 0 3px',
+}
+
+/**
+ * 목록의 한 줄.
+ *
+ * 세 조각입니다 — 어느 캘린더인지(네모) · 무엇인지 · 몇 시인지. 회의실이
+ * 잡혀 있으면 제목 아래 한 줄이 더 붙습니다. 회의 직전에 알아야 할 건 대개
+ * '어디로 가지'라서, 그건 열어 봐야 나오면 늦습니다.
+ *
+ * 자세한 건 이 줄이 아니라 **위에 떠서** 보여줍니다(EventPopover). 줄 안에서
+ * 폈더니 목록이 통째로 아래로 밀려서, 아젠다 하나 보려다 나머지 일정이 화면
+ * 밖으로 나갔습니다. 이 앱이 일정 카드와 ⋯ 메뉴에서 이미 쓰는 방식입니다.
+ */
+function AgendaRow({ event, now, today, active, onOpen }: {
+  event: GCalEvent
+  now: Date
+  today: boolean
+  active: boolean
+  onOpen: (rect: DOMRect) => void
+}) {
   const [hovered, setHovered] = useState(false)
-  const [open, setOpen] = useState(false)
-  const respond = useGCalStore(s => s.respond)
 
   const colour = event.calendarColor || '#337EA9'
   const pending = awaitingMe(event)
-  const mine = myAttendance(event)
-
   const start = event.allDay ? null : new Date(event.startIso!)
   const end = event.endIso ? new Date(event.endIso) : null
   const past = today && !!end && end.getTime() < now.getTime()
 
-  const { notesUrl, agenda } = splitAgenda(event.description)
-  const hasDetail = !!event.location || !!agenda.trim() || !!notesUrl || !!mine
-
   return (
-    <div style={{ margin: '1px 0' }}>
-      <button
-        onClick={() => setOpen(v => !v)}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        aria-expanded={open}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-          padding: '5px 6px', borderRadius: 'var(--r1)',
-          border: 'none', background: hovered || open ? 'var(--bg3)' : 'transparent',
-          cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left',
-          opacity: past && !open ? .45 : 1,
-          transition: 'background .08s, opacity .1s',
-        }}
-      >
+    <button
+      onClick={e => onOpen(e.currentTarget.getBoundingClientRect())}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      aria-expanded={active}
+      style={{
+        width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+        padding: '5px 6px', margin: '1px 0', borderRadius: 'var(--r1)',
+        border: 'none', background: active || hovered ? 'var(--bg3)' : 'transparent',
+        cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left',
+        opacity: past && !active ? .45 : 1,
+        transition: 'background .08s, opacity .1s',
+      }}
+    >
+      <span style={{
+        width: 10, height: 10, borderRadius: 3, flexShrink: 0, boxSizing: 'border-box',
+        background: pending ? 'transparent' : colour,
+        border: pending ? `1.5px dashed ${colour}` : 'none',
+      }} />
+      <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{
-          width: 10, height: 10, borderRadius: 3, flexShrink: 0, boxSizing: 'border-box',
-          background: pending ? 'transparent' : colour,
-          border: pending ? `1.5px dashed ${colour}` : 'none',
-        }} />
-        <span style={{ flex: 1, minWidth: 0 }}>
+          display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--t1)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {event.summary || '(제목 없음)'}
+        </span>
+        {event.location && (
           <span style={{
-            display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--t1)',
+            display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 1,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
-            {event.summary || '(제목 없음)'}
+            {event.location}
           </span>
-          {event.location && (
-            <span style={{
-              display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 1,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {event.location}
-            </span>
-          )}
-        </span>
-        <span style={{
-          flexShrink: 0, fontSize: 11, color: 'var(--t3)', fontVariantNumeric: 'tabular-nums',
-        }}>
-          {start ? clock(start) : '종일'}
-        </span>
-      </button>
+        )}
+      </span>
+      <span style={{
+        flexShrink: 0, fontSize: 11, color: 'var(--t3)', fontVariantNumeric: 'tabular-nums',
+      }}>
+        {start ? clock(start) : '종일'}
+      </span>
+    </button>
+  )
+}
 
-      {open && (
-        <div style={{
-          margin: '2px 0 6px 18px', padding: '8px 10px',
-          borderLeft: `2px solid ${colour}`,
-          background: 'var(--bg2)', borderRadius: '0 var(--r1) var(--r1) 0',
-        }}>
-          {/* 시각은 접힌 줄이 시작만 말합니다. 펼친 곳에서는 끝까지. */}
-          {start && (
-            <div style={{ fontSize: 11, color: 'var(--t2)', fontVariantNumeric: 'tabular-nums' }}>
-              {clock(start)}{end ? ` – ${clock(end)}` : ''}
-            </div>
-          )}
+/**
+ * ── 줄 위에 떠서 열리는 카드 ─────────────────────────────────────────────────
+ *
+ * 폭은 누른 줄과 같고, 아래가 좁으면 위로 열립니다 — 일정 카드가 하는 것과
+ * 같습니다. 다만 여기서는 높이를 재지 않습니다: 남은 공간을 최대 높이로
+ * 주고, 넘치면 카드가 제 안에서 스크롤합니다. 재서 자리를 다시 잡으면
+ * 열릴 때마다 한 번씩 '타닥' 합니다.
+ *
+ * 바깥 클릭은 **잡는 단계로** 듣습니다. 이 칸 위에 있는 격자가 자기
+ * mousedown을 멈춰 세우고 있어서, 올라오는 단계로 걸어 둔 귀에는 아무것도
+ * 도착하지 않습니다 — 이벤트가 안 온 게 아니라 막힌 것인데 코드에서는
+ * 둘이 똑같아 보입니다. MoreMenu의 같은 주석 참고.
+ */
+function EventPopover({ event, anchor, onClose }: {
+  event: GCalEvent
+  anchor: DOMRect
+  onClose: () => void
+}) {
+  const box = useRef<HTMLDivElement>(null)
+  const respond = useGCalStore(s => s.respond)
 
-          {event.location && (
-            <div style={{ fontSize: 12, color: 'var(--t1)', marginTop: 6, display: 'flex', gap: 6, alignItems: 'baseline' }}>
-              <span style={{ fontSize: 10, color: 'var(--t3)', flexShrink: 0 }}>장소</span>
-              <span style={{ minWidth: 0, wordBreak: 'break-all' }}>{event.location}</span>
-            </div>
-          )}
+  useEffect(() => {
+    const away = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) onClose() }
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
+    const t = setTimeout(() => document.addEventListener('mousedown', away, true), 0)
+    document.addEventListener('keydown', key, true)
+    return () => {
+      clearTimeout(t)
+      document.removeEventListener('mousedown', away, true)
+      document.removeEventListener('keydown', key, true)
+    }
+  }, [onClose])
 
-          {agenda.trim() && (
-            <div style={{ marginTop: 8 }}>
-              <div style={{ fontSize: 10, color: 'var(--t3)', marginBottom: 3 }}>아젠다</div>
-              {/* 구글 설명은 줄바꿈이 뜻입니다 — 목록으로 적힌 것을 한 줄로
-                  이어 붙이면 목록이 아니게 됩니다. */}
-              <div style={{
-                fontSize: 12, color: 'var(--t1)', lineHeight: 1.65,
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                maxHeight: 180, overflowY: 'auto',
-              }}>
-                {agenda.trim()}
-              </div>
-            </div>
-          )}
+  const mine = myAttendance(event)
+  const { notesUrl, agenda } = splitAgenda(event.description)
+  const start = event.allDay ? null : new Date(event.startIso!)
+  const end = event.endIso ? new Date(event.endIso) : null
 
-          {notesUrl && (
-            <button
-              onClick={() => void openExternal(notesUrl)}
-              style={{
-                marginTop: 8, width: '100%', display: 'flex', alignItems: 'center', gap: 6,
-                padding: '6px 8px', borderRadius: 'var(--r1)',
-                border: '1px solid var(--bd)', background: 'var(--bg)',
-                color: 'var(--t1)', fontSize: 12, fontFamily: 'var(--font)',
-                cursor: 'pointer', textAlign: 'left',
-              }}
-            >
-              <Icon name="file" size={13} />
-              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                회의록 열기
-              </span>
-              <Icon name="external" size={12} />
-            </button>
-          )}
+  const GAP = 6
+  const below = window.innerHeight - anchor.bottom - GAP - 8
+  const above = anchor.top - GAP - 8
+  const down = below >= 200 || below >= above
+  const place: React.CSSProperties = down
+    ? { top: anchor.bottom + GAP, maxHeight: below }
+    : { bottom: window.innerHeight - anchor.top + GAP, maxHeight: above }
 
-          {/* 아직 답 안 한 초대는 여기서 답합니다. 이 줄을 들여다보는 사람은
-              이미 갈까 말까를 생각하는 중입니다. */}
-          {mine && (
-            <div style={{ marginTop: 10 }}>
-              <RsvpPicker
-                compact
-                current={mine.responseStatus ?? 'needsAction'}
-                onRespond={r => void respond(event.id, r)}
-              />
-            </div>
-          )}
+  return (
+    <div
+      ref={box}
+      style={{
+        position: 'fixed', left: anchor.left, width: anchor.width, ...place,
+        zIndex: 9500, boxSizing: 'border-box', overflowY: 'auto',
+        background: 'var(--bg)', border: '1px solid var(--bd)',
+        borderRadius: 'var(--r2)', boxShadow: 'var(--sh-md)', padding: '10px 12px 12px',
+      }}
+    >
+      <div style={{
+        fontSize: 13, fontWeight: 600, color: 'var(--t1)', lineHeight: 1.4,
+        wordBreak: 'break-word',
+      }}>
+        {event.summary || '(제목 없음)'}
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
+        {start ? `${clock(start)} – ${end ? clock(end) : ''}` : '하루 종일'}
+      </div>
 
-          <button
-            onClick={() => void openExternal(event.htmlLink)}
-            style={{
-              marginTop: hasDetail ? 10 : 8, padding: 0,
-              border: 'none', background: 'transparent',
-              color: 'var(--t3)', fontSize: 11, cursor: 'pointer',
-              fontFamily: 'var(--font)',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.color = 'var(--ac)' }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'var(--t3)' }}
-          >
-            구글 캘린더로 이동 ↗
-          </button>
-
-          {!hasDetail && (
-            <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 6, lineHeight: 1.5 }}>
-              아젠다와 회의록 링크는 캘린더에서 일정을 눌러 적을 수 있습니다.
-            </div>
-          )}
-        </div>
+      {event.location && (
+        <>
+          <div style={LABEL}>장소</div>
+          <div style={{ fontSize: 12.5, color: 'var(--t1)', wordBreak: 'break-word' }}>
+            {event.location}
+          </div>
+        </>
       )}
+
+      {agenda.trim() && (
+        <>
+          <div style={LABEL}>아젠다</div>
+          {/* 구글 설명은 줄바꿈이 뜻입니다 — 목록으로 적힌 것을 한 줄로
+              이어 붙이면 목록이 아니게 됩니다. */}
+          <div style={{
+            fontSize: 12.5, color: 'var(--t1)', lineHeight: 1.65,
+            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          }}>
+            {agenda.trim()}
+          </div>
+        </>
+      )}
+
+      {/* 아직 답 안 한 초대는 여기서 답합니다. 이 줄을 들여다보는 사람은
+          이미 갈까 말까를 생각하는 중입니다. */}
+      {mine && (
+        <>
+          <div style={LABEL}>내 참석</div>
+          <RsvpPicker
+            compact
+            current={mine.responseStatus ?? 'needsAction'}
+            onRespond={r => void respond(event.id, r)}
+          />
+        </>
+      )}
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
+        {notesUrl && (
+          <button
+            onClick={() => void openExternal(notesUrl)}
+            style={{ ...PILL, minWidth: 0, borderColor: 'var(--bd2)', color: 'var(--t1)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+          >
+            <Icon name="file" size={12} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>회의록</span>
+          </button>
+        )}
+        <button
+          onClick={() => void openExternal(event.htmlLink)}
+          style={PILL}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+        >
+          구글 캘린더
+          <Icon name="external" size={12} />
+        </button>
+      </div>
     </div>
   )
 }
