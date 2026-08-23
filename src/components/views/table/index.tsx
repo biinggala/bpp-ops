@@ -1740,7 +1740,7 @@ function Row({
  * 어긋납니다.
  */
 const MS_NAME_W = 200   // 한글 15~16자
-const MS_DATE_W = 88
+const MS_DATE_W = 58    // 26.12.18
 const MS_DDAY_W = 46
 
 function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, minWidth, onToggle, onToggleDone, onUpdate, onDelete }: {
@@ -1848,6 +1848,22 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
         </div>
       )}
 
+      {/*
+        D-n이 날짜 앞에 옵니다.
+
+        비는 건 D-n 쪽입니다(가까울 때만 뜨니까). 그게 날짜와 진행률 사이에
+        있으면 한가운데가 뻥 뚫린 줄이 되는데, 이름 바로 뒤로 옮기면 같은
+        빈칸이 그냥 들여쓰기처럼 읽힙니다. 구멍은 가장자리에 두는 편이
+        낫습니다.
+      */}
+      <span style={{ width: MS_DDAY_W, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+        {showDday && (
+          <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--r1)', background: overdue ? 'rgba(212,76,71,.1)' : close ? 'rgba(217,115,13,.1)' : 'rgba(139,92,246,.1)', color: accent }}>
+            {overdue ? `D+${Math.abs(diff)}` : diff === 0 ? 'D-Day' : `D-${diff}`}
+          </span>
+        )}
+      </span>
+
       {/* The date opens its picker on the first click. There used to be an
           in-between state — click once to turn the text into a field, click
           again to open the calendar — which bought nothing and cost a click. */}
@@ -1858,19 +1874,11 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
       >
         <DateField
           value={milestone.dueDate}
-          format="full"
+          format="compact"
           context={{ projectId: milestone.projectId }}
           onChange={v => onUpdate({ dueDate: v })}
           style={{ fontSize: 11, color: 'var(--t3)', padding: '1px 4px', borderRadius: 3, borderBottom: '1px dashed transparent', transition: 'background .1s, border-color .1s' }}
         />
-      </span>
-
-      <span style={{ width: MS_DDAY_W, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
-        {showDday && (
-          <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--r1)', background: overdue ? 'rgba(212,76,71,.1)' : close ? 'rgba(217,115,13,.1)' : 'rgba(139,92,246,.1)', color: accent }}>
-            {overdue ? `D+${Math.abs(diff)}` : diff === 0 ? 'D-Day' : `D-${diff}`}
-          </span>
-        )}
       </span>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 4, flexShrink: 0 }}>
