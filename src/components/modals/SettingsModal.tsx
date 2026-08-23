@@ -368,24 +368,20 @@ function ChimeRow() {
  */
 function OrgSection() {
   const email = useAuthStore(s => s.email)
-  const { orgId, name, rooms, ready, createOrg, addRoom, updateRoom, error } = useOrgStore()
+  const { orgId, name, domain, rooms, admins, ready, createOrg, addRoom, updateRoom, setAdmin, error } = useOrgStore()
   const [orgName, setOrgName] = useState('')
   const [roomName, setRoomName] = useState('')
+  const [adminMail, setAdminMail] = useState('')
   const [busy, setBusy] = useState(false)
-  const domain = email?.split('@')[1] ?? ''
+  const myDomain = email?.split('@')[1] ?? ''
 
   if (!email || !ready) return null
 
   if (!orgId) {
     return (
-      <Section title="조직" note={`${domain} 로 로그인한 사람들이 함께 쓰는 회의실을 등록해 둘 수 있습니다. 만들면 같은 도메인 전원이 바로 씁니다 — 초대는 없습니다.`}>
+      <Section title="조직" note={`${myDomain} 로 로그인한 사람들이 함께 쓰는 회의실을 등록해 둘 수 있습니다. 만든 사람이 첫 관리자가 되고, 같은 도메인 전원은 초대 없이 예약할 수 있습니다.`}>
         <div style={{ display: 'flex', gap: 6 }}>
-          <input
-            value={orgName}
-            onChange={e => setOrgName(e.target.value)}
-            placeholder="조직 이름 (예: 블랙페이퍼)"
-            style={INPUT}
-          />
+          <input value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="조직 이름 (예: 블랙페이퍼)" style={INPUT} />
           <button
             onClick={async () => { setBusy(true); await createOrg(orgName, email); setBusy(false) }}
             disabled={busy}
@@ -397,45 +393,103 @@ function OrgSection() {
     )
   }
 
+  const isAdmin = admins.includes(email.toLowerCase())
+
   return (
-    <Section title="회의실" note={`${name || domain} 전체가 함께 보는 목록입니다. 여기서 고치면 모두의 화면이 바뀝니다.`}>
-      {rooms.length === 0 && (
-        <div style={{ fontSize: 11, color: 'var(--t3)', padding: '2px 0 8px' }}>
-          아직 등록된 회의실이 없습니다
-        </div>
-      )}
-      {rooms.map(room => (
-        <div key={room.id} style={{ ...ROW, opacity: room.active === false ? .5 : 1 }}>
-          <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
-            {room.name}
-            {room.note && (
-              <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>{room.note}</span>
+    <>
+      {/*
+        ── 관리자만 고칩니다 ─────────────────────────────────────────────────
+        회의실 목록은 쉰 명이 함께 보는 값입니다. 누구나 방을 지울 수 있으면
+        어제 잡아 둔 회의실이 오늘 없어져 있을 수 있고, 그걸 되돌릴 사람도
+        정해져 있지 않습니다.
+
+        **예약은 그대로 전원입니다.** 잠글 곳은 목록이지 사용이 아닙니다 —
+        회의실을 쓰려고 관리자에게 부탁해야 한다면 이 기능은 없는 게 낫습니다.
+      */}
+      <Section
+        title="회의실"
+        note={isAdmin
+          ? `${name || myDomain} 전체가 함께 보는 목록입니다. 여기서 고치면 모두의 화면이 바뀝니다. 예약은 전원이 할 수 있습니다.`
+          : '목록은 관리자만 바꿉니다. 예약은 누구나 할 수 있습니다.'}
+      >
+        {rooms.length === 0 && (
+          <div style={{ fontSize: 11, color: 'var(--t3)', padding: '2px 0 8px' }}>
+            아직 등록된 회의실이 없습니다
+          </div>
+        )}
+        {rooms.map(room => (
+          <div key={room.id} style={{ ...ROW, opacity: room.active === false ? .5 : 1 }}>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+              {room.name}
+              {room.note && <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>{room.note}</span>}
+            </span>
+            {/* 지우지 않고 끕니다 — 지나간 예약이 이름을 잃으면 안 됩니다. */}
+            {isAdmin
+              ? <MiniSwitch on={room.active !== false} onClick={() => void updateRoom(room.id, { active: room.active === false })} />
+              : room.active === false && <span style={{ fontSize: 11, color: 'var(--t3)' }}>사용 안 함</span>}
+          </div>
+        ))}
+        {isAdmin && (
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <input
+              value={roomName}
+              onChange={e => setRoomName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && roomName.trim()) { void addRoom(roomName); setRoomName('') } }}
+              placeholder="회의실 이름 (예: 대회의실)"
+              style={INPUT}
+            />
+            <button onClick={() => { if (roomName.trim()) { void addRoom(roomName); setRoomName('') } }} style={navBtn}>추가</button>
+          </div>
+        )}
+      </Section>
+
+      {/*
+        관리자가 아닌 사람에게도 **누가 관리자인지** 보여줍니다. 잠긴 버튼만
+        있고 누구에게 말해야 하는지 없으면 그건 막다른 길입니다.
+      */}
+      <Section
+        title="조직 관리자"
+        note={isAdmin
+          ? `${domain} 주소만 관리자가 될 수 있습니다. 회의실 목록에만 미치고, 업무나 프로젝트를 더 볼 수 있게 되지는 않습니다.`
+          : '회의실을 바꿔야 하면 이분들에게 말하면 됩니다.'}
+      >
+        {admins.map(mail => (
+          <div key={mail} style={ROW}>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {mail}
+              {mail === email.toLowerCase() && (
+                <span style={{ fontSize: 11, color: 'var(--t3)', marginLeft: 6 }}>나</span>
+              )}
+            </span>
+            {isAdmin && (
+              <button
+                onClick={() => void setAdmin(mail, false)}
+                style={{ ...navBtn, padding: '3px 9px', fontSize: 11, borderColor: 'transparent', color: 'var(--danger)' }}
+              >해제</button>
             )}
-          </span>
-          {/* 지우지 않고 끕니다 — 지나간 예약이 이름을 잃으면 안 됩니다. */}
-          <MiniSwitch
-            on={room.active !== false}
-            onClick={() => void updateRoom(room.id, { active: room.active === false })}
-          />
-        </div>
-      ))}
-      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-        <input
-          value={roomName}
-          onChange={e => setRoomName(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && roomName.trim()) { void addRoom(roomName); setRoomName('') }
-          }}
-          placeholder="회의실 이름 (예: 대회의실)"
-          style={INPUT}
-        />
-        <button
-          onClick={() => { if (roomName.trim()) { void addRoom(roomName); setRoomName('') } }}
-          style={navBtn}
-        >추가</button>
-      </div>
-      {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6 }}>{error}</div>}
-    </Section>
+          </div>
+        ))}
+        {isAdmin && (
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <input
+              value={adminMail}
+              onChange={e => setAdminMail(e.target.value)}
+              onKeyDown={async e => {
+                if (e.key !== 'Enter' || !adminMail.trim()) return
+                if (await setAdmin(adminMail, true)) setAdminMail('')
+              }}
+              placeholder={`이메일 (@${domain})`}
+              style={INPUT}
+            />
+            <button
+              onClick={async () => { if (adminMail.trim() && await setAdmin(adminMail, true)) setAdminMail('') }}
+              style={navBtn}
+            >지정</button>
+          </div>
+        )}
+        {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6, lineHeight: 1.5 }}>{error}</div>}
+      </Section>
+    </>
   )
 }
 
