@@ -486,7 +486,7 @@ function MobileTableView() {
                 <span style={{ fontSize: 10, color: accent }}>◆</span>
                 <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--t1)', textDecoration: ms.done ? 'line-through' : 'none' }}>{ms.name}</span>
                 {!ms.done && <span style={{ fontSize: 11, color: 'var(--t3)', marginRight: 2 }}>{dateLabel}</span>}
-                {!ms.done && <span style={{ fontSize: 11, fontWeight: 600, color: dColor, background: overdue ? 'rgba(212,76,71,.08)' : diff <= 7 ? 'rgba(217,115,13,.1)' : 'var(--bg3)', borderRadius: 6, padding: '1px 6px', marginRight: 4 }}>{dLabel}</span>}
+                {!ms.done && (overdue || diff <= 30) && <span style={{ fontSize: 11, fontWeight: 600, color: dColor, background: overdue ? 'rgba(212,76,71,.08)' : diff <= 7 ? 'rgba(217,115,13,.1)' : 'var(--bg3)', borderRadius: 6, padding: '1px 6px', marginRight: 4 }}>{dLabel}</span>}
                 <span style={{ fontSize: 11, color: 'var(--t3)', marginRight: 6 }}>{doneTasks}/{msTasks.length}</span>
                 <span style={{ fontSize: 9, color: 'var(--t3)' }}>{isCollapsed ? '▶' : '▼'}</span>
               </div>
@@ -1724,6 +1724,25 @@ function Row({
 
 // ── MilestoneHeader ───────────────────────────────────────────────────────────
 
+/**
+ * ── 마일스톤 줄의 칸 ─────────────────────────────────────────────────────────
+ *
+ * 이름 뒤에 오는 값들 — 날짜, D-n, 막대, 완료 수 — 은 그 줄에서 유일하게
+ * **마일스톤끼리 비교하는** 값입니다. '뭐가 제일 급하지', '어디가 밀렸지'는
+ * 세로로 훑어서 답하는 질문이고, 세로로 훑는 값은 칸이어야 합니다. 이름은
+ * 반대로 하나씩 읽는 값이라 비교 대상이 아닙니다.
+ *
+ * 그래서 이름에 고정 폭을 줍니다. 그러면 뒤의 값들이 모든 줄에서 같은 자리에
+ * 놓입니다. 예전에는 이름 길이만큼 밀려서, 값들이 줄마다 다른 x에 있었습니다.
+ *
+ * 오른쪽 끝에 붙이는 방법은 쓸 수 없습니다. 이 줄의 내용은 `sticky left: 17`
+ * 로 뷰포트에 붙어 표를 가로로 스크롤해도 따라오는데, 오른쪽 정렬은 그 순간
+ * 어긋납니다.
+ */
+const MS_NAME_W = 200   // 한글 15~16자
+const MS_DATE_W = 88
+const MS_DDAY_W = 46
+
 function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, minWidth, onToggle, onToggleDone, onUpdate, onDelete }: {
   milestone: Milestone; taskCount: number; completed: number; diff: number
   collapsed: boolean; minWidth?: number; onToggle: () => void; onToggleDone: () => void
@@ -1743,6 +1762,17 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
   const close = !isDone && diff >= 0 && diff <= 7
   const accent = milestoneAccent(isDone, diff)
   const progress = taskCount ? Math.round(completed / taskCount * 100) : 0
+  /**
+   * D-n은 가까울 때만.
+   *
+   * 날짜와 D-n은 같은 사실을 두 번 말합니다. 278일 남은 마일스톤에서 의미
+   * 있는 쪽은 날짜고(무슨 달인지, 무슨 요일인지), 사흘 남은 쪽에서 의미 있는
+   * 건 D-n입니다. 모든 줄에 배지를 달면 배지가 경고가 아니라 장식이 됩니다.
+   *
+   * 칸 자체는 비워둘지언정 남겨둡니다 — 없다고 뒤엣것이 당겨 오면 정렬이
+   * 깨지고, 그게 이 칸을 만든 이유였습니다.
+   */
+  const showDday = !isDone && (overdue || diff <= 30)
 
   const saveName = () => { if (tempName.trim()) onUpdate({ name: tempName.trim() }); setEditingName(false) }
 
@@ -1792,18 +1822,30 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
           onBlur={saveName}
           onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) saveName(); if (e.key === 'Escape') { setTempName(milestone.name); setEditingName(false) } }}
           onClick={e => e.stopPropagation()}
-          style={{ ...inlineInput, fontSize: 13, fontWeight: 600, width: 160 }}
+          style={{ ...inlineInput, fontSize: 13, fontWeight: 600, width: MS_NAME_W }}
         />
       ) : (
-        <span
-          onClick={e => { e.stopPropagation(); setTempName(milestone.name); setEditingName(true) }}
-          title="클릭해서 이름 수정"
-          style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--t1)', cursor: 'text', borderBottom: '1px solid transparent', transition: 'border-color .1s', textDecoration: isDone ? 'line-through' : 'none' }}
-          onMouseEnter={e => e.currentTarget.style.borderBottomColor = 'var(--bd)'}
-          onMouseLeave={e => e.currentTarget.style.borderBottomColor = 'transparent'}
-        >
-          {milestone.name}
-        </span>
+        // The slot is fixed; the text inside it is not, so the hover underline
+        // hugs the name rather than running to the end of an empty column.
+        // A name too long for the slot is cut with an ellipsis — and clicking it
+        // opens the rename field above, which holds the whole thing. (A title=
+        // tooltip would not do: it is silent in the desktop webview.)
+        <div style={{ width: MS_NAME_W, flexShrink: 0, minWidth: 0, display: 'flex' }}>
+          <span
+            onClick={e => { e.stopPropagation(); setTempName(milestone.name); setEditingName(true) }}
+            title="클릭해서 이름 수정"
+            style={{
+              fontSize: 12.5, fontWeight: 600, color: 'var(--t1)', cursor: 'text',
+              borderBottom: '1px solid transparent', transition: 'border-color .1s',
+              textDecoration: isDone ? 'line-through' : 'none',
+              maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}
+            onMouseEnter={e => e.currentTarget.style.borderBottomColor = 'var(--bd)'}
+            onMouseLeave={e => e.currentTarget.style.borderBottomColor = 'transparent'}
+          >
+            {milestone.name}
+          </span>
+        </div>
       )}
 
       {/* The date opens its picker on the first click. There used to be an
@@ -1812,7 +1854,7 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
       <span
         onClick={e => e.stopPropagation()}
         title="클릭해서 날짜 수정"
-        style={{ display: 'inline-flex', flexShrink: 0 }}
+        style={{ display: 'inline-flex', width: MS_DATE_W, flexShrink: 0 }}
       >
         <DateField
           value={milestone.dueDate}
@@ -1823,8 +1865,12 @@ function MilestoneHeader({ milestone, taskCount, completed, diff, collapsed, min
         />
       </span>
 
-      <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--r1)', flexShrink: 0, background: overdue ? 'rgba(212,76,71,.1)' : close ? 'rgba(217,115,13,.1)' : 'rgba(139,92,246,.1)', color: accent }}>
-        {overdue ? `D+${Math.abs(diff)}` : `D-${diff}`}
+      <span style={{ width: MS_DDAY_W, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+        {showDday && (
+          <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--r1)', background: overdue ? 'rgba(212,76,71,.1)' : close ? 'rgba(217,115,13,.1)' : 'rgba(139,92,246,.1)', color: accent }}>
+            {overdue ? `D+${Math.abs(diff)}` : diff === 0 ? 'D-Day' : `D-${diff}`}
+          </span>
+        )}
       </span>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 4, flexShrink: 0 }}>
