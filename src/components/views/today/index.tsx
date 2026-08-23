@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -14,6 +14,7 @@ import { isAssignedTo, daysFrom, fmtYMD, addDays, toDate } from '../../../lib/ut
 import { haptic } from '../../../lib/haptics'
 import { TaskRef, TASK_DND } from './TaskRef'
 import { MarkdownTasks } from './markdown'
+import { BlockTools } from './BlockTools'
 import type { Task } from '../../../types'
 
 /**
@@ -48,11 +49,12 @@ export function TodayView() {
    */
   const [noteIds, setNoteIds] = useState<Set<string>>(() => new Set())
   const [dropping, setDropping] = useState(false)
+  const noteRef = useRef<HTMLDivElement>(null)
 
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        heading: { levels: [2, 3] },
+        heading: { levels: [1, 2, 3] },
         link: {
           openOnClick: false, autolink: true, defaultProtocol: 'https',
           HTMLAttributes: { target: '_blank', rel: 'noopener noreferrer' },
@@ -70,25 +72,41 @@ export function TodayView() {
       /**
        * 왼쪽에서 끌어다 놓기.
        *
-       * 떨어뜨린 자리가 문단 한가운데일 수 있는데, 업무 줄은 블록이라 문단
-       * 안에 못 들어갑니다. 그래서 그 문단 **뒤에** 놓습니다 — 문단을 반으로
-       * 쪼개는 것보다 예측 가능합니다.
+       * 업무 줄은 블록이라 문단 안에는 못 들어갑니다. 그래서 떨어뜨린 줄의
+       * 위나 아래에 놓는데, **어느 쪽인지는 포인터가 그 줄의 위 절반이었는지
+       * 아래 절반이었는지로** 정합니다. 처음에는 늘 아래에 넣었더니 조준한
+       * 줄과 한 칸 어긋나서, 겨냥한 자리와 생긴 자리가 달랐습니다.
+       *
+       * 빈 줄에 떨어뜨리면 그 줄을 대신합니다 — 빈 줄을 겨냥한 사람은 거기
+       * 넣고 싶은 것이지 그 옆에 빈 줄을 하나 더 갖고 싶은 게 아닙니다.
        */
       handleDrop(view, event, _slice, moved) {
         if (moved) return false
-        const dt = (event as DragEvent).dataTransfer
-        const taskId = dt?.getData(TASK_DND)
+        const ev = event as DragEvent
+        const taskId = ev.dataTransfer?.getData(TASK_DND)
         if (!taskId) return false
         event.preventDefault()
-        const at = view.posAtCoords({ left: (event as DragEvent).clientX, top: (event as DragEvent).clientY })
         const doc = view.state.doc
         const node = view.state.schema.nodes.taskRef.create({ taskId })
-        let pos = doc.content.size
-        if (at) {
-          const $p = doc.resolve(at.pos)
-          pos = $p.depth > 0 ? $p.after(1) : at.pos
+        const at = view.posAtCoords({ left: ev.clientX, top: ev.clientY })
+        const $p = at ? doc.resolve(at.pos) : null
+
+        if (!$p || $p.depth === 0) {
+          view.dispatch(view.state.tr.insert(doc.content.size, node))
+          return true
         }
-        view.dispatch(view.state.tr.insert(pos, node))
+
+        const start = $p.before(1)
+        const block = doc.nodeAt(start)
+        if (block?.type.name === 'paragraph' && block.content.size === 0) {
+          view.dispatch(view.state.tr.replaceWith(start, start + block.nodeSize, node))
+          return true
+        }
+
+        const dom = view.nodeDOM(start)
+        const box = dom instanceof HTMLElement ? dom.getBoundingClientRect() : null
+        const below = box ? ev.clientY > box.top + box.height / 2 : true
+        view.dispatch(view.state.tr.insert(below ? $p.after(1) : start, node))
         return true
       },
     },
@@ -156,7 +174,9 @@ export function TodayView() {
           onDragOver={e => { if (e.dataTransfer.types.includes(TASK_DND)) { e.preventDefault(); setDropping(true) } }}
           onDragLeave={e => { if (e.target === e.currentTarget) setDropping(false) }}
           onDrop={() => setDropping(false)}
+          ref={noteRef}
           style={{
+            position: 'relative',
             flex: 1, minHeight: 0, overflowY: 'auto',
             padding: isMobile ? '4px 16px 24px' : '4px 28px 40px',
             // 끌고 오는 동안만. 놓을 곳이 어디까지인지 말해 줍니다.
@@ -164,9 +184,12 @@ export function TodayView() {
             transition: 'box-shadow .12s',
           }}
         >
-          <div style={{ maxWidth: 720 }}>
+          {/* 손잡이가 설 자리를 왼쪽에 비워 둡니다. 폰에는 여백도 손도 없어서
+              손잡이가 없고, 그래서 자리도 안 비웁니다. */}
+          <div style={{ maxWidth: 720, marginLeft: isMobile ? 0 : 46 }}>
             <EditorContent editor={editor} />
           </div>
+          {!isMobile && <BlockTools editor={editor} boundary={noteRef} />}
         </div>
       </div>
     </div>
@@ -270,22 +293,19 @@ function PullRow({ task, onAdd, taken }: { task: Task; onAdd: (t: Task) => void;
           {task.name || '(이름 없음)'}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2, fontSize: 11, color: 'var(--t3)' }}>
-          {taken ? (
-            <span style={{ color: 'var(--ac)', fontWeight: 600 }}>오늘 목록에 있음</span>
-          ) : (
-            <>
-              {diff !== null && (
-                <span style={{ fontWeight: 700, color: late ? 'var(--danger)' : diff <= 2 ? '#D9730D' : 'var(--t3)' }}>
-                  {late ? `D+${Math.abs(diff)}` : diff === 0 ? 'D-Day' : `D-${diff}`}
-                </span>
-              )}
-              {project && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: project.color, flexShrink: 0 }} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.name}</span>
-                </span>
-              )}
-            </>
+          {/* 담긴 줄에도 마감과 프로젝트는 그대로 둡니다. 그 자리에 '오늘
+              목록에 있음'을 넣었더니 이미 흐림과 ✓가 하고 있는 말을 한 번 더
+              하면서, 정작 필요한 정보를 밀어냈습니다. */}
+          {diff !== null && (
+            <span style={{ fontWeight: 700, color: late ? 'var(--danger)' : diff <= 2 && !taken ? '#D9730D' : 'var(--t3)' }}>
+              {late ? `D+${Math.abs(diff)}` : diff === 0 ? 'D-Day' : `D-${diff}`}
+            </span>
+          )}
+          {project && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: project.color, flexShrink: 0 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.name}</span>
+            </span>
           )}
         </div>
       </div>

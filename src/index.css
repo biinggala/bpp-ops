@@ -272,6 +272,14 @@ input, select, textarea, button {
 .ProseMirror li + li { margin-top: 0.15em; }
 .ProseMirror li p { margin: 0; }
 
+/* 구분선. 기본 <hr>은 브라우저가 그리는 입체 테두리라 어두운 화면에서 특히
+   두껍고 진합니다 — 노션의 그것은 글줄보다 옅은 선 하나입니다. */
+.ProseMirror hr {
+  border: none;
+  border-top: 1px solid var(--bd);
+  margin: 1.4em 0;
+}
+
 .ProseMirror blockquote {
   border-left: 3px solid var(--bd2);
   padding-left: 1em;
