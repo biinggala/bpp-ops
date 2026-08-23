@@ -158,6 +158,20 @@ const list = <T,>(node: Record<string, Omit<T, 'id'>> | null | undefined): (T & 
 export const overlaps = (a: { from: number; to: number }, b: { from: number; to: number }) =>
   a.from < b.to && b.from < a.to
 
+/**
+ * 내가 승인할 수 있는 요청 수.
+ *
+ * 내가 멤버인 프로젝트로 온 것만 셉니다. 남의 프로젝트에 온 요청은 목록에서
+ * 보이긴 하지만 내가 할 수 있는 게 없고, 할 수 없는 일을 배지로 알리면
+ * 배지가 '눌러도 아무 일 없는 것'이 됩니다.
+ *
+ * 훅이 아니라 계산 함수입니다 — 부르는 쪽이 이미 두 스토어를 보고 있고,
+ * 여기서 또 구독하면 같은 값을 두 번 듣습니다.
+ */
+export function pendingJoinCount(joinRequests: JoinRequest[], myProjectIds: Set<string>): number {
+  return joinRequests.filter(r => myProjectIds.has(r.projectId)).length
+}
+
 export const useOrgStore = create<OrgState>((set, get) => ({
   orgId: null,
   name: '',

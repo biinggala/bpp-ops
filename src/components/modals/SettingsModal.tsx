@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { setTheme, themeChoice, type ThemeChoice } from '../../lib/theme'
 import { haptic } from '../../lib/haptics'
 import { useMobile } from '../../hooks/useMobile'
@@ -8,7 +8,7 @@ import { chimeEnabled, playChime, setChimeEnabled } from '../../lib/chime'
 import { fileWatchEnabled, setFileWatchEnabled } from '../../lib/driveWatch'
 import { useDriveStore } from '../../store/driveStore'
 import { useMailStore } from '../../store/mailStore'
-import { useOrgStore } from '../../store/orgStore'
+import { useOrgStore, pendingJoinCount } from '../../store/orgStore'
 import { useProjectStore } from '../../store/projectStore'
 import { askConfirm } from '../shared/Confirm'
 import { showTestNotice } from '../layout/NoticeToast'
@@ -33,31 +33,72 @@ const THEMES: { value: ThemeChoice; label: string; icon: IconName }[] = [
   { value: 'system', label: '시스템', icon: 'monitor' },
 ]
 
+/**
+ * ── 설정 ─────────────────────────────────────────────────────────────────────
+ *
+ * 왼쪽에 항목, 오른쪽에 그 항목만. 한 장에 다 쌓아 두었더니 화면 밝기부터
+ * 조직 프로젝트까지 여섯 덩어리가 한 줄로 늘어서서, 뭘 고치러 왔든 스크롤을
+ * 먼저 해야 했습니다. **한 번에 한 가지만 보이면 그 한 가지가 짧습니다.**
+ *
+ * 나뉜 기준은 **누구의 것인가**입니다. 앞의 세 장(일반·알림·연동)은 이 기기와
+ * 내 계정의 것이고, 뒤의 세 장(조직·회의실·프로젝트)은 회사가 함께 쓰는
+ * 것입니다. 같은 창에 있으면서 하나는 나만의 것이고 하나는 전원의 것이면,
+ * 모르고 고치는 사람이 나옵니다 — 그래서 줄로 갈라 놓았습니다.
+ *
+ * 폰에서는 왼쪽 대신 위에 가로로 놓습니다. 390pt에서 세로 목록에 132px을
+ * 내주면 본문이 250px가 되고, 그건 설정 한 줄이 안 들어가는 폭입니다.
+ */
+
+type Page = 'general' | 'notify' | 'link' | 'org' | 'rooms' | 'projects'
+
 export function SettingsModal({ onClose }: { onClose: () => void }) {
+  const isMobile = useMobile()
+  const [page, setPage] = useState<Page>('general')
+  const email = useAuthStore(s => s.email)
+  const orgId = useOrgStore(s => s.orgId)
+  const joinRequests = useOrgStore(s => s.joinRequests)
+  const myProjects = useProjectStore(s => s.projects)
+  const pending = useMemo(
+    () => pendingJoinCount(joinRequests, new Set(myProjects.map(p => p.id))),
+    [joinRequests, myProjects],
+  )
+
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', esc)
     return () => window.removeEventListener('keydown', esc)
   }, [onClose])
 
+  /** 조직이 없으면 조직 장 하나만 보입니다 — 만들기 전에는 방도 목록도 없습니다. */
+  const pages: { id: Page; label: string; badge?: number }[] = [
+    { id: 'general', label: '일반' },
+    { id: 'notify', label: '알림' },
+    { id: 'link', label: '연동' },
+    { id: 'org', label: '조직' },
+    ...(orgId ? [
+      { id: 'rooms' as Page, label: '회의실' },
+      { id: 'projects' as Page, label: '프로젝트', badge: pending },
+    ] : []),
+  ]
+
   return (
     <div
       onClick={onClose}
       style={{
         position: 'fixed', inset: 0, zIndex: 9600, background: 'rgba(15,15,15,.45)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? 12 : 24,
       }}
     >
       <div
         onClick={e => e.stopPropagation()}
         style={{
           background: 'var(--bg)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-lg)',
-          border: '1px solid var(--bd)', width: '100%', maxWidth: 440,
-          maxHeight: '86vh', overflowY: 'auto',
-          padding: '20px 22px 22px', boxSizing: 'border-box',
+          border: '1px solid var(--bd)', width: '100%', maxWidth: isMobile ? 520 : 640,
+          height: isMobile ? '88vh' : 520, maxHeight: '90vh',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden', boxSizing: 'border-box',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '16px 18px 14px', borderBottom: '1px solid var(--bd)', flexShrink: 0 }}>
           <span style={{ color: 'var(--t2)', display: 'flex' }}><Icon name="settings" size={16} /></span>
           <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--t1)', flex: 1 }}>설정</div>
           <button
@@ -72,27 +113,104 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           >✕</button>
         </div>
 
-        <Section title="화면 밝기" note="이 기기에서만 적용됩니다. 다른 사람 화면은 바뀌지 않습니다.">
-          <ThemeChoiceRow />
-        </Section>
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: isMobile ? 'column' : 'row' }}>
+          <div style={{
+            flexShrink: 0,
+            display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: 1,
+            padding: isMobile ? '8px 10px' : '10px 8px',
+            width: isMobile ? 'auto' : 140,
+            borderRight: isMobile ? 'none' : '1px solid var(--bd)',
+            borderBottom: isMobile ? '1px solid var(--bd)' : 'none',
+            overflowX: isMobile ? 'auto' : 'visible',
+          }}>
+            {pages.map(p => (
+              <PageTab
+                key={p.id}
+                label={p.label}
+                badge={p.badge}
+                on={page === p.id}
+                wide={!isMobile}
+                onClick={() => setPage(p.id)}
+              />
+            ))}
+          </div>
 
-        <Section title="알림" note="켜 두는 것이 기본입니다. 기기마다 따로 정합니다 — 노트북에서 켠다고 폰이 켜지지는 않습니다.">
-          <PushRow />
-          <ChimeRow />
-          <FileWatchRow />
-        </Section>
+          <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '16px 18px 20px' }}>
+            {page === 'general' && (
+              <>
+                <Section title="화면 밝기" note="이 기기에서만 적용됩니다. 다른 사람 화면은 바뀌지 않습니다.">
+                  <ThemeChoiceRow />
+                </Section>
+                <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 6, paddingTop: 12, borderTop: '1px solid var(--bd)', userSelect: 'text' }}>
+                  빌드 {__BUILD_ID__}
+                </div>
+              </>
+            )}
 
-        <Section title="연동" note="받은 알림에 밖에서 온 소식을 들이는 통로입니다. 이 기기가 아니라 계정에 붙습니다.">
-          <MailLinkRow />
-        </Section>
+            {page === 'notify' && (
+              <Section title="알림" note="켜 두는 것이 기본입니다. 기기마다 따로 정합니다 — 노트북에서 켠다고 폰이 켜지지는 않습니다.">
+                <PushRow />
+                <ChimeRow />
+                <FileWatchRow />
+              </Section>
+            )}
 
-        <OrgSection />
+            {page === 'link' && (
+              <Section title="연동" note="받은 알림에 밖에서 온 소식을 들이는 통로입니다. 이 기기가 아니라 계정에 붙습니다.">
+                <MailLinkRow />
+              </Section>
+            )}
 
-        <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 18, paddingTop: 12, borderTop: '1px solid var(--bd)', userSelect: 'text' }}>
-          빌드 {__BUILD_ID__}
+            {page === 'org' && <OrgSection />}
+            {page === 'rooms' && <RoomsSection />}
+            {page === 'projects' && <OrgProjects />}
+
+            {!email && (
+              <div style={{ fontSize: 12, color: 'var(--t3)' }}>로그인이 필요합니다</div>
+            )}
+          </div>
         </div>
       </div>
     </div>
+  )
+}
+
+function PageTab({ label, badge, on, wide, onClick }: {
+  label: string
+  badge?: number
+  on: boolean
+  wide: boolean
+  onClick: () => void
+}) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        width: wide ? '100%' : 'auto', flexShrink: 0,
+        padding: wide ? '6px 9px' : '5px 11px',
+        borderRadius: 'var(--r1)', border: 'none', cursor: 'pointer',
+        fontFamily: 'var(--font)', fontSize: 13, textAlign: 'left',
+        fontWeight: on ? 600 : 400,
+        color: on ? 'var(--t1)' : 'var(--t2)',
+        background: on ? 'var(--bg3)' : hovered ? 'var(--bg2)' : 'transparent',
+        whiteSpace: 'nowrap', transition: 'background .1s',
+      }}
+    >
+      {label}
+      {/* 승인을 기다리는 요청. 설정을 열지 않아도 알아야 하는 값이라 사이드바
+          기어에도 같은 숫자가 붙습니다. */}
+      {!!badge && (
+        <span style={{
+          marginLeft: 'auto', minWidth: 16, height: 16, padding: '0 4px',
+          borderRadius: 8, background: 'var(--danger)', color: '#fff',
+          fontSize: 10, fontWeight: 700, lineHeight: '16px', textAlign: 'center',
+        }}>{badge > 99 ? '99+' : badge}</span>
+      )}
+    </button>
   )
 }
 
@@ -368,20 +486,27 @@ function ChimeRow() {
  *
  * 소속은 이메일 도메인입니다. 초대도 승인도 없습니다.
  */
+/**
+ * ── 조직 ─────────────────────────────────────────────────────────────────────
+ *
+ * 조직 자체와 관리자. 회의실은 옆 장으로 나갔습니다 — 한 장에 있으면 방 목록이
+ * 길어질수록 관리자 목록이 스크롤 아래로 밀려서, 관리자가 누군지 보려면 방을
+ * 다 지나가야 했습니다.
+ */
 function OrgSection() {
   const email = useAuthStore(s => s.email)
-  const { orgId, name, domain, rooms, admins, ready, createOrg, addRoom, updateRoom, removeRoom, setAdmin, error } = useOrgStore()
+  const { orgId, name, domain, admins, ready, createOrg, setAdmin, error } = useOrgStore()
   const [orgName, setOrgName] = useState('')
-  const [roomName, setRoomName] = useState('')
   const [adminMail, setAdminMail] = useState('')
   const [busy, setBusy] = useState(false)
   const myDomain = email?.split('@')[1] ?? ''
 
-  if (!email || !ready) return null
+  if (!email) return null
+  if (!ready) return <div style={{ fontSize: 12, color: 'var(--t3)' }}>불러오는 중…</div>
 
   if (!orgId) {
     return (
-      <Section title="조직" note={`${myDomain} 로 로그인한 사람들이 함께 쓰는 회의실을 등록해 둘 수 있습니다. 만든 사람이 첫 관리자가 되고, 같은 도메인 전원은 초대 없이 예약할 수 있습니다.`}>
+      <Section title="조직" note={`${myDomain} 로 로그인한 사람들이 함께 쓰는 회의실과 프로젝트 목록을 둘 수 있습니다. 만든 사람이 첫 관리자가 되고, 같은 도메인 전원은 초대 없이 들어옵니다.`}>
         <div style={{ display: 'flex', gap: 6 }}>
           <input value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="조직 이름 (예: 블랙페이퍼)" style={INPUT} />
           <button
@@ -399,78 +524,13 @@ function OrgSection() {
 
   return (
     <>
-      {/*
-        ── 관리자만 고칩니다 ─────────────────────────────────────────────────
-        회의실 목록은 쉰 명이 함께 보는 값입니다. 누구나 방을 지울 수 있으면
-        어제 잡아 둔 회의실이 오늘 없어져 있을 수 있고, 그걸 되돌릴 사람도
-        정해져 있지 않습니다.
-
-        **예약은 그대로 전원입니다.** 잠글 곳은 목록이지 사용이 아닙니다 —
-        회의실을 쓰려고 관리자에게 부탁해야 한다면 이 기능은 없는 게 낫습니다.
-      */}
-      <OrgProjects />
-
-      <Section
-        title="회의실"
-        note={isAdmin
-          ? `${name || myDomain} 전체가 함께 보는 목록입니다. 여기서 고치면 모두의 화면이 바뀝니다. 예약은 전원이 할 수 있습니다.`
-          : '목록은 관리자만 바꿉니다. 예약은 누구나 할 수 있습니다.'}
-      >
-        {rooms.length === 0 && (
-          <div style={{ fontSize: 11, color: 'var(--t3)', padding: '2px 0 8px' }}>
-            아직 등록된 회의실이 없습니다
-          </div>
-        )}
-        {rooms.map(room => (
-          <div key={room.id} style={{ ...ROW, opacity: room.active === false ? .5 : 1 }}>
-            <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
-              {room.name}
-              {room.note && <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>{room.note}</span>}
-            </span>
-            {/* 지우지 않고 끕니다 — 지나간 예약이 이름을 잃으면 안 됩니다. */}
-            {isAdmin ? (
-              <>
-                <MiniSwitch on={room.active !== false} onClick={() => void updateRoom(room.id, { active: room.active === false })} />
-                {/* 끄기와 지우기는 다른 일입니다. 끄는 것은 '지금은 못 쓴다'(공사
-                    중), 지우는 것은 '이런 방은 없다'(오타로 만든 것). 예약이
-                    잡을 때의 방 이름을 들고 있으므로 지워도 지난 예약은 읽힙니다. */}
-                <button
-                  /* window.confirm은 안 씁니다 — 데스크톱 웹뷰에서 호스트가
-                     대화상자를 안 그려주면 항상 false라, 아무도 못 본 확인창이
-                     이미 거절돼 있습니다. docs/desktop-updates.md의 그 표. */
-                  onClick={async () => {
-                    const ok = await askConfirm({
-                      message: `'${room.name}'을 목록에서 지웁니다`,
-                      detail: '지난 예약은 그대로 남습니다. 잠깐 못 쓰는 것이라면 지우지 말고 스위치를 끄세요.',
-                      confirmLabel: '지우기',
-                    })
-                    if (ok) void removeRoom(room.id)
-                  }}
-                  aria-label={`${room.name} 지우기`}
-                  style={{
-                    marginLeft: 4, width: 22, height: 22, flexShrink: 0, borderRadius: 'var(--r1)',
-                    border: 'none', background: 'transparent', color: 'var(--t3)',
-                    cursor: 'pointer', fontFamily: 'var(--font)', fontSize: 13, lineHeight: 1,
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-l)'; e.currentTarget.style.color = 'var(--danger)' }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
-                >×</button>
-              </>
-            ) : room.active === false && <span style={{ fontSize: 11, color: 'var(--t3)' }}>사용 안 함</span>}
-          </div>
-        ))}
-        {isAdmin && (
-          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-            <input
-              value={roomName}
-              onChange={e => setRoomName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && roomName.trim()) { void addRoom(roomName); setRoomName('') } }}
-              placeholder="회의실 이름 (예: 대회의실)"
-              style={INPUT}
-            />
-            <button onClick={() => { if (roomName.trim()) { void addRoom(roomName); setRoomName('') } }} style={navBtn}>추가</button>
-          </div>
-        )}
+      <Section title="조직" note="같은 도메인으로 로그인한 사람이 곧 조직원입니다. 초대도 승인도 없습니다.">
+        <div style={ROW}>
+          <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+            {name || myDomain}
+            <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>@{domain}</span>
+          </span>
+        </div>
       </Section>
 
       {/*
@@ -478,25 +538,11 @@ function OrgSection() {
         있고 누구에게 말해야 하는지 없으면 그건 막다른 길입니다.
       */}
       <Section
-        title="조직 관리자"
-        note={admins.length === 0
-          ? '이 조직에는 아직 관리자가 없습니다. 조직원 누구나 맡을 수 있습니다.'
-          : isAdmin
-            ? `${domain} 주소만 관리자가 될 수 있습니다. 회의실 목록에만 미치고, 업무나 프로젝트를 더 볼 수 있게 되지는 않습니다.`
-            : '회의실을 바꿔야 하면 이분들에게 말하면 됩니다.'}
+        title="관리자"
+        note={isAdmin
+          ? `${domain} 주소만 관리자가 될 수 있습니다. 회의실 목록에만 미치고, 업무나 프로젝트를 더 볼 수 있게 되지는 않습니다.`
+          : '회의실을 바꿔야 하면 이분들에게 말하면 됩니다.'}
       >
-        {/*
-          '관리자 되기' 버튼이 여기 있었습니다.
-
-          관리자 개념이 조직보다 늦게 생겨서, 먼저 만들어진 조직에 관리자가
-          아무도 없던 그 한 번을 위한 것이었습니다. 이제 조직을 만드는 사람이
-          첫 관리자가 되고 마지막 관리자는 스스로 못 나가므로, 앱을 통해서는
-          관리자 0명이 될 수 없습니다.
-
-          규칙에는 그 길이 그대로 있습니다(claimAdmin도 남겨 뒀습니다) —
-          영원히 손 못 대는 조직이 남지 않게 하는 안전장치니까요. 다만 평소에
-          쓸 일이 없는 버튼을 매일 보는 자리에 두지는 않습니다.
-        */}
         {admins.map(mail => (
           <div key={mail} style={ROW}>
             <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -534,6 +580,86 @@ function OrgSection() {
         {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6, lineHeight: 1.5 }}>{error}</div>}
       </Section>
     </>
+  )
+}
+
+/**
+ * ── 회의실 ───────────────────────────────────────────────────────────────────
+ *
+ * 목록은 관리자만 바꿉니다. **예약은 전원입니다** — 잠글 곳은 목록이지 사용이
+ * 아닙니다. 회의실을 쓰려고 관리자에게 부탁해야 한다면 이 기능은 없는 게
+ * 낫습니다.
+ */
+function RoomsSection() {
+  const email = useAuthStore(s => s.email)
+  const { name, domain, rooms, admins, addRoom, updateRoom, removeRoom, error } = useOrgStore()
+  const [roomName, setRoomName] = useState('')
+  if (!email) return null
+  const isAdmin = admins.includes(email.toLowerCase())
+
+  return (
+    <Section
+      title="회의실"
+      note={isAdmin
+        ? `${name || domain} 전체가 함께 보는 목록입니다. 여기서 고치면 모두의 화면이 바뀝니다. 예약은 전원이 할 수 있습니다.`
+        : '목록은 관리자만 바꿉니다. 예약은 누구나 할 수 있습니다.'}
+    >
+      {rooms.length === 0 && (
+        <div style={{ fontSize: 11, color: 'var(--t3)', padding: '2px 0 8px' }}>
+          아직 등록된 회의실이 없습니다
+        </div>
+      )}
+      {rooms.map(room => (
+        <div key={room.id} style={{ ...ROW, opacity: room.active === false ? .5 : 1 }}>
+          <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+            {room.name}
+            {room.note && <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>{room.note}</span>}
+          </span>
+          {isAdmin ? (
+            <>
+              {/* 끄기와 지우기는 다른 일입니다. 끄는 것은 '지금은 못 쓴다'(공사
+                  중), 지우는 것은 '이런 방은 없다'(오타로 만든 것). 예약이
+                  잡을 때의 방 이름을 들고 있으므로 지워도 지난 예약은 읽힙니다. */}
+              <MiniSwitch on={room.active !== false} onClick={() => void updateRoom(room.id, { active: room.active === false })} />
+              <button
+                /* window.confirm은 안 씁니다 — 데스크톱 웹뷰에서 호스트가
+                   대화상자를 안 그려주면 항상 false라, 아무도 못 본 확인창이
+                   이미 거절돼 있습니다. docs/desktop-updates.md의 그 표. */
+                onClick={async () => {
+                  const ok = await askConfirm({
+                    message: `'${room.name}'을 목록에서 지웁니다`,
+                    detail: '지난 예약은 그대로 남습니다. 잠깐 못 쓰는 것이라면 지우지 말고 스위치를 끄세요.',
+                    confirmLabel: '지우기',
+                  })
+                  if (ok) void removeRoom(room.id)
+                }}
+                aria-label={`${room.name} 지우기`}
+                style={{
+                  marginLeft: 4, width: 22, height: 22, flexShrink: 0, borderRadius: 'var(--r1)',
+                  border: 'none', background: 'transparent', color: 'var(--t3)',
+                  cursor: 'pointer', fontFamily: 'var(--font)', fontSize: 13, lineHeight: 1,
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-l)'; e.currentTarget.style.color = 'var(--danger)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
+              >×</button>
+            </>
+          ) : room.active === false && <span style={{ fontSize: 11, color: 'var(--t3)' }}>사용 안 함</span>}
+        </div>
+      ))}
+      {isAdmin && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+          <input
+            value={roomName}
+            onChange={e => setRoomName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && roomName.trim()) { void addRoom(roomName); setRoomName('') } }}
+            placeholder="회의실 이름 (예: 대회의실)"
+            style={INPUT}
+          />
+          <button onClick={() => { if (roomName.trim()) { void addRoom(roomName); setRoomName('') } }} style={navBtn}>추가</button>
+        </div>
+      )}
+      {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6 }}>{error}</div>}
+    </Section>
   )
 }
 

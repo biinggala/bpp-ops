@@ -13,7 +13,7 @@ import { haptic } from '../../lib/haptics'
 import { Icon, type IconName } from '../shared/Icon'
 import { SettingsModal } from '../modals/SettingsModal'
 import { useNoticeInbox, NoticeList } from './Notices'
-import { useOrgStore } from '../../store/orgStore'
+import { useOrgStore, pendingJoinCount } from '../../store/orgStore'
 import { useTodayCount } from '../views/today/count'
 import { useNoticeToast } from './NoticeToast'
 import { MEMBERS } from '../../types'
@@ -106,7 +106,12 @@ export function Sidebar() {
   const orgId = useOrgStore(s => s.orgId)
   const setProjectShared = useOrgStore(s => s.setProjectShared)
   const orgProjects = useOrgStore(s => s.orgProjects)
+  const joinRequests = useOrgStore(s => s.joinRequests)
   const sharedProjectIds = useMemo(() => new Set(orgProjects.map(p => p.id)), [orgProjects])
+  const pendingJoins = useMemo(
+    () => pendingJoinCount(joinRequests, new Set(projects.map(p => p.id))),
+    [joinRequests, projects],
+  )
   const todayOpen = useTodayCount()
   const profileRef = useRef<HTMLDivElement>(null)
 
@@ -423,12 +428,33 @@ export function Sidebar() {
               the two on the always-visible button was backwards. */}
           <button
             onClick={() => { haptic('tap'); setProfileOpen(false); setSettingsOpen(true) }}
-            title="설정"
-            style={{ width: 24, height: 24, borderRadius: 'var(--r1)', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--sb-t3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background .1s, color .1s' }}
+            title={pendingJoins ? `설정 · 참여 요청 ${pendingJoins}건` : '설정'}
+            style={{ position: 'relative', width: 24, height: 24, borderRadius: 'var(--r1)', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--sb-t3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background .1s, color .1s' }}
             onMouseEnter={e => { e.currentTarget.style.background = 'var(--sb-hover)'; e.currentTarget.style.color = 'var(--sb-t1)' }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--sb-t3)' }}
           >
             <Icon name="settings" size={15} />
+            {/*
+              내 프로젝트로 온 참여 요청.
+
+              요청은 설정 창 안에만 있어서, 아무도 설정을 안 열면 며칠이고
+              방치됩니다. 원래는 받은 알림에 넣는 게 맞는데 요청하는 사람은
+              그 프로젝트의 멤버 목록을 읽을 수 없습니다 — 아직 멤버가 아니니까
+              당연하고, 그래서 누구의 알림함에 써야 할지 모릅니다. 서버가
+              생기면 서버가 남기는 게 답이고, 그때까지는 이 점이 그 자리입니다.
+
+              숫자를 안 씁니다. 24px 버튼에 숫자를 얹으면 기어가 안 보이고,
+              몇 건인지는 눌러서 알면 됩니다 — 이 점이 해야 하는 말은 '볼 게
+              있다' 하나입니다.
+            */}
+            {pendingJoins > 0 && (
+              <span aria-label={`참여 요청 ${pendingJoins}건`} style={{
+                position: 'absolute', top: 1, right: 1,
+                width: 7, height: 7, borderRadius: '50%',
+                background: 'var(--danger)',
+                boxShadow: '0 0 0 1.5px var(--sb-bg)',
+              }} />
+            )}
           </button>
 
         </div>
