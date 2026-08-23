@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { installExternalLinkHandler } from './lib/desktopLinks'
+import { installTheme } from './lib/theme'
 import { isDesktopShell } from './lib/desktopAuth'
 import { installServiceWorker } from './lib/push'
 
@@ -84,5 +85,8 @@ installExternalLinkHandler()
 // somebody turns notifications on, so the one that is already subscribed keeps
 // receiving after a redeploy replaces the file.
 void installServiceWorker()
+
+// Before the first paint, so nothing flashes white on the way into dark.
+installTheme()
 
 createRoot(document.getElementById('root')!).render(<App />)

@@ -10,6 +10,7 @@ import { usePresenceStore } from '../../store/presenceStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
+import { setTheme, themeChoice, type ThemeChoice } from '../../lib/theme'
 import { MEMBERS } from '../../types'
 import { buildInviteToken } from '../../lib/paths'
 import type { MemberKey, Project } from '../../types'
@@ -307,7 +308,7 @@ export function Sidebar() {
       )}
       <aside style={{
         width: 240, background: 'var(--sb-bg)', display: 'flex', flexDirection: 'column', flexShrink: 0,
-        borderRight: '1px solid rgba(255,255,255,.06)',
+        borderRight: '1px solid var(--sb-bd)',
         ...(isMobile ? {
           position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 1000,
           transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
@@ -317,7 +318,7 @@ export function Sidebar() {
       }}>
 
         {/* Workspace header */}
-        <div style={{ padding: '14px 12px 10px', paddingTop: isMobile ? 'calc(env(safe-area-inset-top, 0px) + 14px)' : '14px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(255,255,255,.06)', position: 'relative' }} ref={profileRef}>
+        <div style={{ padding: '14px 12px 10px', paddingTop: isMobile ? 'calc(env(safe-area-inset-top, 0px) + 14px)' : '14px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--sb-bd)', position: 'relative' }} ref={profileRef}>
           {/* Profile avatar — clickable */}
           <div
             onClick={() => setProfileOpen(o => !o)}
@@ -403,7 +404,7 @@ export function Sidebar() {
         {/* Search */}
         <div style={{ padding: '8px 10px' }}>
           <input
-            style={{ width: '100%', background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 'var(--r2)', padding: '5px 9px', fontSize: 12, color: 'var(--sb-t2)', outline: 'none' }}
+            style={{ width: '100%', background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r2)', padding: '5px 9px', fontSize: 12, color: 'var(--sb-t2)', outline: 'none' }}
             placeholder="검색..."
             value={filters.search}
             onChange={e => setFilters({ search: e.target.value })}
@@ -466,7 +467,7 @@ export function Sidebar() {
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
                         <input
                           ref={projectEditRef}
-                          style={{ flex: 1, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)', borderRadius: 'var(--r1)', padding: '2px 6px', fontSize: 12, color: 'var(--sb-t1)', outline: 'none' }}
+                          style={{ flex: 1, background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r1)', padding: '2px 6px', fontSize: 12, color: 'var(--sb-t1)', outline: 'none' }}
                           value={editProjectName}
                           onChange={e => setEditProjectName(e.target.value)}
                           onBlur={() => handleRenameProject(p.id)}
@@ -514,7 +515,7 @@ export function Sidebar() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px 4px 14px', margin: '1px 0' }}>
               <input
                 ref={projectNameRef}
-                style={{ flex: 1, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 'var(--r1)', padding: '3px 7px', fontSize: 12, color: 'var(--sb-t1)', outline: 'none' }}
+                style={{ flex: 1, background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r1)', padding: '3px 7px', fontSize: 12, color: 'var(--sb-t1)', outline: 'none' }}
                 placeholder="프로젝트 이름..."
                 value={newProjectName}
                 onChange={e => setNewProjectName(e.target.value)}
@@ -566,9 +567,11 @@ export function Sidebar() {
 
         </div>
 
+        <ThemeSwitch />
+
         {/* Online users */}
         {onlineUsers.length > 0 && (
-          <div style={{ borderTop: '1px solid rgba(255,255,255,.06)', padding: '8px 10px' }}>
+          <div style={{ borderTop: '1px solid var(--sb-bd)', padding: '8px 10px' }}>
             <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--sb-t3)', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>
               접속 중
             </div>
@@ -791,7 +794,7 @@ function GroupPicker({ name, value, options, onSave, onCancel }: {
 
         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 18 }}>
           {value && (
-            <button onClick={() => onSave('')} style={{ marginRight: 'auto', padding: '6px 12px', fontSize: 13, borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', color: '#D44C47', cursor: 'pointer', fontFamily: 'var(--font)' }}>
+            <button onClick={() => onSave('')} style={{ marginRight: 'auto', padding: '6px 12px', fontSize: 13, borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', color: 'var(--danger)', cursor: 'pointer', fontFamily: 'var(--font)' }}>
               그룹에서 빼기
             </button>
           )}
@@ -853,7 +856,7 @@ function GroupHeader({ name, count, collapsed, onToggle, onRename, onDropProject
             if (e.key === 'Enter') { e.preventDefault(); commit() }
             if (e.key === 'Escape') { setDraft(name); setEditing(false) }
           }}
-          style={{ flex: 1, minWidth: 0, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)', borderRadius: 'var(--r1)', padding: '1px 5px', fontSize: 11, color: 'var(--sb-t1)', outline: 'none' }}
+          style={{ flex: 1, minWidth: 0, background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r1)', padding: '1px 5px', fontSize: 11, color: 'var(--sb-t1)', outline: 'none' }}
         />
       ) : (
         <span style={{
@@ -997,7 +1000,7 @@ function ActionIcon({ children, onClick, danger, title }: { children: React.Reac
       onClick={onClick}
       title={title}
       style={{ width: 18, height: 18, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, cursor: 'pointer', color: danger ? '#f87171' : 'var(--sb-t3)', transition: 'background .1s' }}
-      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.1)' }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'var(--sb-active)' }}
       onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
     >
       {children}
@@ -1108,8 +1111,8 @@ function DeleteConfirmModal({ name, onConfirm, onCancel }: {
             disabled={typed !== name}
             style={{
               padding: '7px 16px', borderRadius: 'var(--r2)', border: 'none',
-              background: typed === name ? '#D44C47' : 'rgba(212,76,71,.3)',
-              color: typed === name ? '#fff' : 'rgba(255,255,255,.35)',
+              background: typed === name ? 'var(--danger)' : 'rgba(212,76,71,.3)',
+              color: typed === name ? 'var(--sb-t1)' : 'var(--sb-t3)',
               fontSize: 13, fontWeight: 600,
               cursor: typed === name ? 'pointer' : 'not-allowed',
               transition: 'background .15s, color .15s',
@@ -1309,6 +1312,49 @@ function MemberManageModal({ project, currentEmail, suggestable, onAddMember, on
               : '같이 일하는 사람 중에는 없습니다. 이메일 주소 전체를 입력하면 초대할 수 있습니다.'}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * ── 화면 밝기 ────────────────────────────────────────────────────────────────
+ *
+ * Three segments rather than a toggle, because the honest default is neither
+ * light nor dark: it is whatever the machine already decided, and a two-state
+ * switch cannot say that.
+ *
+ * It sits in the sidebar's foot with the other things that belong to this
+ * device rather than to the team — nobody shares a screen, or the room it is
+ * in.
+ */
+function ThemeSwitch() {
+  const [choice, setChoice] = useState<ThemeChoice>(() => themeChoice())
+  const options: { value: ThemeChoice; label: string }[] = [
+    { value: 'light', label: '밝게' },
+    { value: 'dark', label: '어둡게' },
+    { value: 'system', label: '시스템' },
+  ]
+  return (
+    <div style={{ borderTop: '1px solid var(--sb-bd)', padding: '8px 10px' }}>
+      <div style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 'var(--r2)', background: 'var(--sb-field)' }}>
+        {options.map(o => {
+          const on = choice === o.value
+          return (
+            <button
+              key={o.value}
+              onClick={() => { setTheme(o.value); setChoice(o.value); haptic('tap') }}
+              style={{
+                flex: 1, padding: '4px 0', borderRadius: 'var(--r1)', border: 'none',
+                cursor: 'pointer', fontFamily: 'var(--font)', fontSize: 11,
+                fontWeight: on ? 600 : 400,
+                color: on ? 'var(--sb-t1)' : 'var(--sb-t3)',
+                background: on ? 'var(--sb-active)' : 'transparent',
+                transition: 'background .1s, color .1s',
+              }}
+            >{o.label}</button>
+          )
+        })}
       </div>
     </div>
   )

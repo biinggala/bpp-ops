@@ -326,7 +326,7 @@ function WeekStrip({ weekStart, selected, due, countFor, onSelect, onShift }: {
               onMouseEnter={e => { if (!on) e.currentTarget.style.background = 'var(--bg3)' }}
               onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}
             >
-              <span style={{ fontSize: 9, color: dow === 0 ? '#D44C47' : dow === 6 ? '#487CA5' : 'var(--t3)' }}>{DOW[dow]}</span>
+              <span style={{ fontSize: 9, color: dow === 0 ? 'var(--danger)' : dow === 6 ? '#487CA5' : 'var(--t3)' }}>{DOW[dow]}</span>
               <span style={{
                 fontSize: 12, fontWeight: on || isToday ? 700 : 400,
                 color: on ? 'var(--ac)' : isToday ? 'var(--t1)' : 'var(--t2)',

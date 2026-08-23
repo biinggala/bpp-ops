@@ -212,7 +212,7 @@ export function FileRow({ link, file, onRemove, onNote, compact = false }: {
           onClick={e => { e.stopPropagation(); onRemove() }}
           aria-label="첨부 해제"
           style={{ flexShrink: 0, width: 20, height: 20, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--t3)', fontSize: 12, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
-          onMouseEnter={e => { e.currentTarget.style.color = '#D44C47'; e.currentTarget.style.background = 'rgba(212,76,71,.1)' }}
+          onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'rgba(212,76,71,.1)' }}
           onMouseLeave={e => { e.currentTarget.style.color = 'var(--t3)'; e.currentTarget.style.background = 'transparent' }}
         >✕</button>
       )}
@@ -293,7 +293,7 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
         >
           {connecting ? '연결 중...' : needsReconnect ? '다시 연결' : '드라이브 연결'}
         </button>
-        {error && <div style={{ fontSize: 11, color: '#D44C47', marginTop: 8 }}>{error}</div>}
+        {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 8 }}>{error}</div>}
       </div>
     )
   }
@@ -325,7 +325,7 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
           </div>
         )}
         {error && (
-          <div style={{ padding: '10px 8px', fontSize: 12, color: '#D44C47', lineHeight: 1.5, wordBreak: 'break-word' }}>
+          <div style={{ padding: '10px 8px', fontSize: 12, color: 'var(--danger)', lineHeight: 1.5, wordBreak: 'break-word' }}>
             {error}
           </div>
         )}

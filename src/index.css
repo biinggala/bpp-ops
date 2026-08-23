@@ -2,13 +2,24 @@
 @import "tailwindcss";
 
 /* ── Design tokens ──
-   Aligned to Notion's light palette. Its ink, rgba(55,53,47,…), was already the
-   basis of the greys here and --ac was already Notion's blue; the text and
-   divider values now follow the same system instead of Tailwind's, so nothing
-   competes with it. Secondary and tertiary text are alpha on the ink rather
-   than separate greys, which keeps them consistent over any background. */
+   Notion's palette, both halves of it.
+   
+   Light is what it always was: the ink rgba(55,53,47,…) with alpha for the
+   quieter text, so secondary and tertiary stay consistent over any background.
+   Dark is Notion's own — #191919 for the page, #202020 for the surfaces beside
+   it, and white at low alpha for everything drawn on top. The two are the same
+   system with the ink inverted, which is why almost every rule below is one
+   line in each block rather than a separate design.
+
+   **The sidebar is a token set, not a colour.** It used to be dark in both, and
+   in Notion's light mode it is a warm grey — the panel belongs to the page it
+   is beside. So it has its own tokens and they flip with the theme.
+
+   Nothing here is chosen per component. If a value is needed twice it is a
+   token; a literal in a component is a bug waiting for the other theme. */
 :root {
   --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color-scheme: light;
 
   /* Text */
   --t1: #37352f;                  /* Notion default ink */
@@ -31,13 +42,32 @@
   --ac-l: rgba(35,131,226,.10);
   --ac-d: #1a73d1;
 
+  /* The one red, for everything destructive. */
+  --danger:   #D44C47;
+  --danger-l: rgba(212,76,71,.10);
+
   /* Sidebar */
-  --sb-bg:    #191919;
-  --sb-t1:    rgba(255,255,255,.90);
-  --sb-t2:    rgba(255,255,255,.62);
-  --sb-t3:    rgba(255,255,255,.36);
-  --sb-hover: rgba(255,255,255,.08);
-  --sb-active:rgba(255,255,255,.13);
+  --sb-bg:     #f7f7f5;           /* Notion's light sidebar */
+  --sb-t1:     #37352f;
+  --sb-t2:     rgba(55,53,47,.65);
+  --sb-t3:     rgba(55,53,47,.45);
+  --sb-hover:  rgba(55,53,47,.055);
+  --sb-active: rgba(55,53,47,.09);
+  --sb-bd:     rgba(55,53,47,.09);
+  --sb-bd2:    rgba(55,53,47,.16);
+  --sb-field:  rgba(55,53,47,.045);
+
+  /* Notion's tag palette. Named here rather than in types.ts so a tag, a
+     status pill and a milestone diamond all change together with the theme. */
+  --n-gray-bg:   #EBECED;  --n-gray-tx:   #787774;
+  --n-brown-bg:  #EEE0DA;  --n-brown-tx:  #9F6B53;
+  --n-orange-bg: #FAEBDD;  --n-orange-tx: #D9730D;
+  --n-yellow-bg: #FBF3DB;  --n-yellow-tx: #CB912F;
+  --n-green-bg:  #DBEDDB;  --n-green-tx:  #448361;
+  --n-blue-bg:   #E7F3F8;  --n-blue-tx:   #487CA5;
+  --n-purple-bg: #EAE4F2;  --n-purple-tx: #9065B0;
+  --n-pink-bg:   #F4DFEB;  --n-pink-tx:   #C14C8A;
+  --n-red-bg:    #FFE2DD;  --n-red-tx:    #D44C47;
 
   /* Shadow */
   --sh-sm: 0 1px 3px rgba(0,0,0,.07), 0 1px 8px rgba(0,0,0,.05);
@@ -49,6 +79,59 @@
   --r2: 6px;
   --r3: 8px;
   --r4: 12px;
+}
+
+/* The theme is resolved in JS and stamped here, so 'system' never leaves CSS
+   guessing — see lib/theme.ts. One selector, one block. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --t1: rgba(255,255,255,.81);
+  --t2: rgba(255,255,255,.46);
+  --t3: rgba(255,255,255,.28);
+
+  --bg:   #191919;                /* Notion's dark page */
+  --bg2:  #202020;
+  --bg3:  rgba(255,255,255,.055);
+  --bg4:  rgba(255,255,255,.094);
+
+  --bd:   rgba(255,255,255,.094);
+  --bd2:  rgba(255,255,255,.16);
+
+  /* The accent stays the same blue — it is a fill with white on it, and it
+     reads on both. Its tint has to be stronger to register against #191919. */
+  --ac:   #2383e2;
+  --ac-l: rgba(35,131,226,.22);
+  --ac-d: #3a92e8;
+
+  --danger:   #FF7369;            /* Notion's dark red, legible on #191919 */
+  --danger-l: rgba(255,115,105,.16);
+
+  --sb-bg:     #202020;
+  --sb-t1:     rgba(255,255,255,.81);
+  --sb-t2:     rgba(255,255,255,.46);
+  --sb-t3:     rgba(255,255,255,.28);
+  --sb-hover:  rgba(255,255,255,.055);
+  --sb-active: rgba(255,255,255,.094);
+  --sb-bd:     rgba(255,255,255,.094);
+  --sb-bd2:    rgba(255,255,255,.16);
+  --sb-field:  rgba(255,255,255,.055);
+
+  --n-gray-bg:   #2F2F2F;  --n-gray-tx:   #9B9B9B;
+  --n-brown-bg:  #4A3228;  --n-brown-tx:  #BA856F;
+  --n-orange-bg: #5C3B23;  --n-orange-tx: #C77D48;
+  --n-yellow-bg: #56452F;  --n-yellow-tx: #CA9849;
+  --n-green-bg:  #243D30;  --n-green-tx:  #529E72;
+  --n-blue-bg:   #1F3A4D;  --n-blue-tx:   #5E87C9;
+  --n-purple-bg: #3C2D49;  --n-purple-tx: #9A6DD7;
+  --n-pink-bg:   #4E2C3C;  --n-pink-tx:   #C75F96;
+  --n-red-bg:    #522E2A;  --n-red-tx:    #FF7369;
+
+  /* Shadows carry no light in a dark room; they are depth, so they go darker
+     and wider rather than being softened. */
+  --sh-sm: 0 1px 3px rgba(0,0,0,.30), 0 1px 8px rgba(0,0,0,.22);
+  --sh-md: 0 4px 20px rgba(0,0,0,.40), 0 2px 6px rgba(0,0,0,.28);
+  --sh-lg: 0 10px 48px rgba(0,0,0,.55), 0 2px 10px rgba(0,0,0,.35);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -109,8 +192,8 @@ body {
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(55,53,47,.12); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(55,53,47,.2); }
+::-webkit-scrollbar-thumb { background: var(--bd2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--t3); }
 
 /* Form elements */
 input, select, textarea, button {
@@ -193,7 +276,7 @@ input, select, textarea, button {
   padding: 0.15em 0.35em;
   font-size: 0.88em;
   font-family: 'Fira Mono', 'Menlo', 'Consolas', monospace;
-  color: #e55353;
+  color: var(--n-red-tx);
 }
 
 .ProseMirror pre {
@@ -211,8 +294,11 @@ input, select, textarea, button {
   color: #d4d4d4;
 }
 
+/* The ink has to come with the highlight. Left to inherit, white-on-pale-yellow
+   is what a highlighted sentence became in dark mode — invisible. */
 .ProseMirror mark {
-  background: #fef08a;
+  background: var(--n-yellow-bg);
+  color: var(--t1);
   border-radius: 2px;
   padding: 0 2px;
 }

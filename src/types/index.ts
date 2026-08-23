@@ -150,16 +150,23 @@ export const PRIORITY_LIST: Priority[] = ['높음', '중간', '낮음']
  * #487CA5), green (#DBEDDB) and brown (#EEE0DA); the rest are the same published
  * set, which could not be fetched here.
  */
+/**
+ * Notion's tag palette, as tokens rather than hexes.
+ *
+ * The values live in index.css so that a tag, a status pill and a milestone
+ * diamond all turn over together when the theme does. A literal here would have
+ * been a colour that only works in one of the two.
+ */
 export const NOTION = {
-  gray:   { bg: '#EBECED', text: '#787774' },
-  brown:  { bg: '#EEE0DA', text: '#9F6B53' },
-  orange: { bg: '#FAEBDD', text: '#D9730D' },
-  yellow: { bg: '#FBF3DB', text: '#CB912F' },
-  green:  { bg: '#DBEDDB', text: '#448361' },
-  blue:   { bg: '#E7F3F8', text: '#487CA5' },
-  purple: { bg: '#EAE4F2', text: '#9065B0' },
-  pink:   { bg: '#F4DFEB', text: '#C14C8A' },
-  red:    { bg: '#FFE2DD', text: '#D44C47' },
+  gray:   { bg: 'var(--n-gray-bg)',   text: 'var(--n-gray-tx)' },
+  brown:  { bg: 'var(--n-brown-bg)',  text: 'var(--n-brown-tx)' },
+  orange: { bg: 'var(--n-orange-bg)', text: 'var(--n-orange-tx)' },
+  yellow: { bg: 'var(--n-yellow-bg)', text: 'var(--n-yellow-tx)' },
+  green:  { bg: 'var(--n-green-bg)',  text: 'var(--n-green-tx)' },
+  blue:   { bg: 'var(--n-blue-bg)',   text: 'var(--n-blue-tx)' },
+  purple: { bg: 'var(--n-purple-bg)', text: 'var(--n-purple-tx)' },
+  pink:   { bg: 'var(--n-pink-bg)',   text: 'var(--n-pink-tx)' },
+  red:    { bg: 'var(--n-red-bg)',    text: 'var(--n-red-tx)' },
 } as const
 
 export const STATUS_COLORS: Record<Status, { bg: string; text: string }> = {
@@ -191,7 +198,7 @@ export const STATUS_COLORS: Record<Status, { bg: string; text: string }> = {
  */
 export const STATUS_SOLID: Record<Status, { fill: string; text: string; ring: string }> = {
   진행중: { fill: '#2383E2', text: '#ffffff', ring: 'transparent' },
-  대기:   { fill: 'transparent', text: '#787774', ring: 'rgba(55,53,47,.22)' },
+  대기:   { fill: 'transparent', text: 'var(--n-gray-tx)', ring: 'var(--bd2)' },
   검토중: { fill: '#D9730D', text: '#ffffff', ring: 'transparent' },
   완료:   { fill: '#448361', text: '#ffffff', ring: 'transparent' },
 }
@@ -204,9 +211,9 @@ export const STATUS_SOLID: Record<Status, { fill: string; text: string; ring: st
  * it, which inverted the order the field exists to express.
  */
 export const PRIORITY_ORDER: Record<Priority, { color: string; weight: number; bar: number }> = {
-  높음: { color: '#D44C47', weight: 600, bar: 1 },
+  높음: { color: 'var(--danger)', weight: 600, bar: 1 },
   중간: { color: '#D9730D', weight: 500, bar: .55 },
-  낮음: { color: 'rgba(55,53,47,.45)', weight: 400, bar: .35 },
+  낮음: { color: 'var(--t3)', weight: 400, bar: .35 },
 }
 
 /** The one colour that stands for a status, wherever a status is not a pill. */
@@ -218,12 +225,12 @@ export function statusAccent(status: Status): string {
 // Notion's icon-strength colours: saturated enough to identify a dot at 8px,
 // still from the same family as the badge tints so nothing clashes.
 export const SPACE_PALETTE = [
-  '#337EA9','#D44C47','#448361','#CB912F','#9065B0',
+  '#337EA9','var(--danger)','#448361','#CB912F','#9065B0',
   '#9F6B53','#C14C8A','#787774','#D9730D','#2383E2',
 ]
 
 export const PROJECT_PALETTE = [
-  '#2383E2','#9065B0','#448361','#D44C47','#D9730D',
+  '#2383E2','#9065B0','#448361','var(--danger)','#D9730D',
   '#337EA9','#C14C8A','#CB912F','#9F6B53','#787774',
 ]
 
@@ -248,7 +255,7 @@ export function getCatColor(spaceName: string): { bg: string; text: string } {
 }
 
 export const TAG_PALETTE = [
-  '#487CA5','#9065B0','#C14C8A','#D44C47','#D9730D',
+  '#487CA5','#9065B0','#C14C8A','var(--danger)','#D9730D',
   '#CB912F','#448361','#337EA9','#9F6B53','#787774',
 ]
 

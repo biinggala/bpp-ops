@@ -143,7 +143,7 @@ function CardBtn({ children, onClick, danger }: { children: React.ReactNode; onC
   return (
     <span
       onClick={onClick}
-      style={{ width: 20, height: 20, borderRadius: 3, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, cursor: 'pointer', color: danger ? '#D44C47' : 'var(--t3)', background: 'var(--bg2)', transition: 'background .08s' }}
+      style={{ width: 20, height: 20, borderRadius: 3, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, cursor: 'pointer', color: danger ? 'var(--danger)' : 'var(--t3)', background: 'var(--bg2)', transition: 'background .08s' }}
       onMouseEnter={e => { e.currentTarget.style.background = danger ? 'rgba(212,76,71,.1)' : 'var(--bg4)' }}
       onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg2)' }}
     >

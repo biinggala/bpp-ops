@@ -476,8 +476,8 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
                 />
               ))}
               {date === todayStr && (
-                <div style={{ position: 'absolute', top: nowMinutes * PX_PER_MIN, left: 0, right: 0, height: 2, background: '#D44C47', zIndex: 3 }}>
-                  <div style={{ position: 'absolute', left: -4, top: -3, width: 8, height: 8, borderRadius: '50%', background: '#D44C47' }} />
+                <div style={{ position: 'absolute', top: nowMinutes * PX_PER_MIN, left: 0, right: 0, height: 2, background: 'var(--danger)', zIndex: 3 }}>
+                  <div style={{ position: 'absolute', left: -4, top: -3, width: 8, height: 8, borderRadius: '50%', background: 'var(--danger)' }} />
                 </div>
               )}
             </div>
@@ -671,7 +671,7 @@ function DueTask({ task, overdue, onToggle, onOpen }: {
         display: 'flex', alignItems: 'center', gap: 4,
         fontSize: 10, lineHeight: 1.3, padding: '2px 4px', borderRadius: 3,
         border: '1px solid var(--bd)',
-        borderLeft: `3px solid ${late ? '#D44C47' : done ? 'var(--bd2)' : 'var(--ac)'}`,
+        borderLeft: `3px solid ${late ? 'var(--danger)' : done ? 'var(--bd2)' : 'var(--ac)'}`,
         background: 'var(--bg)', cursor: 'pointer', minWidth: 0,
         opacity: done ? .55 : 1,
       }}
@@ -687,12 +687,12 @@ function DueTask({ task, overdue, onToggle, onOpen }: {
         }}
       >{done ? '✓' : ''}</button>
       {task.priority === '높음' && !done && (
-        <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#D44C47', flexShrink: 0 }} />
+        <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--danger)', flexShrink: 0 }} />
       )}
       <span style={{
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         textDecoration: done ? 'line-through' : 'none',
-        color: late ? '#D44C47' : 'var(--t1)',
+        color: late ? 'var(--danger)' : 'var(--t1)',
       }}>{task.name}</span>
     </div>
   )
@@ -874,7 +874,7 @@ function EventCard({
             {saving ? '저장 중…' : '저장'}
           </button>
           {onDelete && (
-            <button onClick={onDelete} style={{ ...navStyle, borderColor: 'rgba(212,76,71,.4)', color: '#D44C47' }}>삭제</button>
+            <button onClick={onDelete} style={{ ...navStyle, borderColor: 'rgba(212,76,71,.4)', color: 'var(--danger)' }}>삭제</button>
           )}
           {openLink && (
             <a href={openLink} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--t3)' }}>
