@@ -29,6 +29,9 @@ import { daysFrom } from '../../../lib/utils'
  * 결정이 사는 곳입니다.
  */
 
+/** 왼쪽 목록에서 노트로 끌어올 때 실려 오는 것. 업무 id 하나면 충분합니다. */
+export const TASK_DND = 'application/x-bpp-task'
+
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     taskRef: {
