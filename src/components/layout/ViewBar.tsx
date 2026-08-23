@@ -551,7 +551,7 @@ function BottomNav({ view, onPick }: { view: ViewType; onPick: (v: ViewType) => 
       // A whisper of a shadow, so the bar reads as sitting over the content
       // rather than as a white strip the content stopped short of.
       boxShadow: 'var(--sh-sm)',
-      background: 'rgba(252,252,251,.88)',
+      background: 'var(--bar-bg)',
       backdropFilter: 'saturate(180%) blur(20px)',
       WebkitBackdropFilter: 'saturate(180%) blur(20px)',
       display: 'flex',

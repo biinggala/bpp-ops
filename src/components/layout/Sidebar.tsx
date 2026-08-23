@@ -10,7 +10,8 @@ import { usePresenceStore } from '../../store/presenceStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
-import { setTheme, themeChoice, type ThemeChoice } from '../../lib/theme'
+import { Icon, type IconName } from '../shared/Icon'
+import { SettingsModal } from '../modals/SettingsModal'
 import { MEMBERS } from '../../types'
 import { buildInviteToken } from '../../lib/paths'
 import type { MemberKey, Project } from '../../types'
@@ -59,6 +60,7 @@ export function Sidebar() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
   const [memberModal, setMemberModal] = useState<{ id: string; name: string } | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const profileRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { if (addingProject) projectNameRef.current?.focus() }, [addingProject])
@@ -338,14 +340,17 @@ export function Sidebar() {
               <div style={{ fontSize: 11, color: 'var(--sb-t3)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName}</div>
             )}
           </div>
+          {/* 설정 rather than 로그아웃: signing out already lives one click away
+              in the profile popover, and putting the rarer, more destructive of
+              the two on the always-visible button was backwards. */}
           <button
-            onClick={() => signOutUser()}
-            title="로그아웃"
-            style={{ width: 22, height: 22, borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--sb-t3)', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--sb-hover)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            onClick={() => { haptic('tap'); setSettingsOpen(true) }}
+            title="설정"
+            style={{ width: 24, height: 24, borderRadius: 'var(--r1)', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--sb-t3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background .1s, color .1s' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--sb-hover)'; e.currentTarget.style.color = 'var(--sb-t1)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--sb-t3)' }}
           >
-            ↩
+            <Icon name="settings" size={15} />
           </button>
 
           {/* Profile popover */}
@@ -391,11 +396,8 @@ export function Sidebar() {
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg2)'; e.currentTarget.style.color = 'var(--t1)' }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t2)' }}
                 >
-                  <span style={{ fontSize: 13 }}>↩</span> 로그아웃
+                  <Icon name="exit" size={14} /> 로그아웃
                 </button>
-                <div style={{ fontSize: 10, color: 'var(--t3)', padding: '6px 8px 0', userSelect: 'text' }}>
-                  빌드 {__BUILD_ID__}
-                </div>
               </div>
             </div>
           )}
@@ -567,8 +569,6 @@ export function Sidebar() {
 
         </div>
 
-        <ThemeSwitch />
-
         {/* Online users */}
         {onlineUsers.length > 0 && (
           <div style={{ borderTop: '1px solid var(--sb-bd)', padding: '8px 10px' }}>
@@ -607,42 +607,42 @@ export function Sidebar() {
             top: contextMenu.y,
             left: contextMenu.x,
             zIndex: 9999,
-            background: 'var(--bg2)',
+            background: 'var(--bg)',
             border: '1px solid var(--bd)',
-            borderRadius: 'var(--r2)',
-            boxShadow: '0 4px 20px rgba(0,0,0,.35)',
-            minWidth: 148,
+            borderRadius: 'var(--r3)',
+            boxShadow: 'var(--sh-md)',
+            minWidth: 168,
             overflow: 'hidden',
-            padding: '4px 0',
+            padding: 4,
           }}
           onClick={e => e.stopPropagation()}
         >
           {isProjectCreator(contextMenu.id) ? (
             <>
-              <ContextMenuItem onClick={() => { setEditingProjectId(contextMenu.id); setEditProjectName(contextMenu.name); setContextMenu(null) }}>
-                ✎&nbsp;&nbsp;이름 수정
+              <ContextMenuItem icon="pencil" onClick={() => { setEditingProjectId(contextMenu.id); setEditProjectName(contextMenu.name); setContextMenu(null) }}>
+                이름 수정
               </ContextMenuItem>
-              <ContextMenuItem onClick={() => { setMemberModal({ id: contextMenu.id, name: contextMenu.name }); setContextMenu(null) }}>
-                👥&nbsp;&nbsp;멤버 관리
+              <ContextMenuItem icon="users" onClick={() => { setMemberModal({ id: contextMenu.id, name: contextMenu.name }); setContextMenu(null) }}>
+                멤버 관리
               </ContextMenuItem>
-              <ContextMenuItem onClick={() => {
+              <ContextMenuItem icon="layers" onClick={() => {
                 const project = projects.find(p => p.id === contextMenu.id)
                 setGroupFor({ id: contextMenu.id, name: contextMenu.name, group: project?.group ?? '' })
                 setContextMenu(null)
               }}>
-                ▤&nbsp;&nbsp;그룹 지정
+                그룹 지정
               </ContextMenuItem>
-              <ContextMenuItem onClick={() => handleArchiveProject(contextMenu.id, !contextMenu.archived)}>
-                {contextMenu.archived ? '↩  아카이브 해제' : '📦  아카이브'}
+              <ContextMenuItem icon={contextMenu.archived ? 'unarchive' : 'archive'} onClick={() => handleArchiveProject(contextMenu.id, !contextMenu.archived)}>
+                {contextMenu.archived ? '아카이브 해제' : '아카이브'}
               </ContextMenuItem>
-              <div style={{ height: 1, background: 'var(--bd)', margin: '4px 0' }} />
-              <ContextMenuItem danger onClick={() => { setDeleteConfirm({ id: contextMenu.id, name: contextMenu.name }); setContextMenu(null) }}>
-                ×&nbsp;&nbsp;삭제
+              <div style={{ height: 1, background: 'var(--bd)', margin: '4px -4px' }} />
+              <ContextMenuItem icon="trash" danger onClick={() => { setDeleteConfirm({ id: contextMenu.id, name: contextMenu.name }); setContextMenu(null) }}>
+                삭제
               </ContextMenuItem>
             </>
           ) : (
-            <ContextMenuItem danger onClick={() => handleLeaveProject(contextMenu.id)}>
-              →&nbsp;&nbsp;나가기
+            <ContextMenuItem icon="exit" danger onClick={() => handleLeaveProject(contextMenu.id)}>
+              나가기
             </ContextMenuItem>
           )}
         </div>
@@ -668,6 +668,8 @@ export function Sidebar() {
           onCancel={() => setGroupFor(null)}
         />
       )}
+
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
 
       {/* Member management modal */}
       {memberModal && (() => {
@@ -1022,21 +1024,35 @@ function AddBtn({ children, onClick }: { children: React.ReactNode; onClick: () 
   )
 }
 
-function ContextMenuItem({ children, onClick, danger }: { children: React.ReactNode; onClick: () => void; danger?: boolean }) {
+/**
+ * One row of the project menu.
+ *
+ * The icon is drawn rather than typed, and it takes its colour from the row, so
+ * the red item goes red whole instead of a grey glyph sitting next to red text.
+ */
+function ContextMenuItem({ children, onClick, danger, icon }: {
+  children: React.ReactNode; onClick: () => void; danger?: boolean; icon?: IconName
+}) {
+  const [hovered, setHovered] = useState(false)
   return (
     <div
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        padding: '7px 14px',
+        display: 'flex', alignItems: 'center', gap: 9,
+        padding: '6px 9px', borderRadius: 'var(--r1)',
         fontSize: 13,
-        color: danger ? '#f87171' : 'var(--t2)',
+        color: danger ? 'var(--danger)' : 'var(--t1)',
+        background: hovered ? (danger ? 'var(--danger-l)' : 'var(--bg3)') : 'transparent',
         cursor: 'pointer',
-        transition: 'background .1s',
+        transition: 'background .06s',
         whiteSpace: 'nowrap',
       }}
-      onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)' }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
     >
+      {icon && (
+        <span style={{ display: 'flex', opacity: danger ? 1 : .65 }}><Icon name={icon} size={15} /></span>
+      )}
       {children}
     </div>
   )
@@ -1312,49 +1328,6 @@ function MemberManageModal({ project, currentEmail, suggestable, onAddMember, on
               : '같이 일하는 사람 중에는 없습니다. 이메일 주소 전체를 입력하면 초대할 수 있습니다.'}
           </div>
         )}
-      </div>
-    </div>
-  )
-}
-
-/**
- * ── 화면 밝기 ────────────────────────────────────────────────────────────────
- *
- * Three segments rather than a toggle, because the honest default is neither
- * light nor dark: it is whatever the machine already decided, and a two-state
- * switch cannot say that.
- *
- * It sits in the sidebar's foot with the other things that belong to this
- * device rather than to the team — nobody shares a screen, or the room it is
- * in.
- */
-function ThemeSwitch() {
-  const [choice, setChoice] = useState<ThemeChoice>(() => themeChoice())
-  const options: { value: ThemeChoice; label: string }[] = [
-    { value: 'light', label: '밝게' },
-    { value: 'dark', label: '어둡게' },
-    { value: 'system', label: '시스템' },
-  ]
-  return (
-    <div style={{ borderTop: '1px solid var(--sb-bd)', padding: '8px 10px' }}>
-      <div style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 'var(--r2)', background: 'var(--sb-field)' }}>
-        {options.map(o => {
-          const on = choice === o.value
-          return (
-            <button
-              key={o.value}
-              onClick={() => { setTheme(o.value); setChoice(o.value); haptic('tap') }}
-              style={{
-                flex: 1, padding: '4px 0', borderRadius: 'var(--r1)', border: 'none',
-                cursor: 'pointer', fontFamily: 'var(--font)', fontSize: 11,
-                fontWeight: on ? 600 : 400,
-                color: on ? 'var(--sb-t1)' : 'var(--sb-t3)',
-                background: on ? 'var(--sb-active)' : 'transparent',
-                transition: 'background .1s, color .1s',
-              }}
-            >{o.label}</button>
-          )
-        })}
       </div>
     </div>
   )

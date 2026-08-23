@@ -708,9 +708,9 @@ function EventRow({ ev, busy, onDetach }: { ev: GCalEvent; busy: boolean; onDeta
           x={menu.x} y={menu.y}
           onClose={() => setMenu(null)}
           actions={[
-            ...(ev.htmlLink ? [{ label: '구글 캘린더에서 열기', icon: '↗', onSelect: () => openExternal(ev.htmlLink) }] : []),
+            ...(ev.htmlLink ? [{ label: '구글 캘린더에서 열기', icon: 'external' as const, onSelect: () => openExternal(ev.htmlLink) }] : []),
             {
-              label: '연결 해제', icon: '✕', danger: true,
+              label: '연결 해제', icon: 'unlink' as const, danger: true,
               // The event itself is not touched — unpinning an interview from a
               // task must never read as cancelling the interview.
               onSelect: () => { if (!busy) onDetach() },

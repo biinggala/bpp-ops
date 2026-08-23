@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react'
-import { STATUS_LIST, STATUS_COLORS, NOTION } from '../../types'
+import { STATUS_LIST, STATUS_COLORS } from '../../types'
 import { haptic } from '../../lib/haptics'
+import { Icon, type IconName } from './Icon'
 import type { Task, Status } from '../../types'
 
 interface ContextMenuProps {
@@ -61,7 +62,8 @@ function panelStyle(x: number, y: number, height: number): React.CSSProperties {
  */
 export interface MenuAction {
   label: string
-  icon?: string
+  /** Drawn, not typed — one family across every menu. */
+  icon?: IconName
   danger?: boolean
   onSelect: () => void
 }
@@ -75,7 +77,7 @@ export function ActionMenu({ x, y, actions, onClose }: {
       {actions.map((action, i) => (
         <Item
           key={i}
-          icon={action.icon ?? '·'}
+          icon={action.icon}
           label={action.label}
           danger={action.danger}
           onClick={() => { haptic(action.danger ? 'warn' : 'tap'); action.onSelect(); onClose() }}
@@ -90,8 +92,8 @@ export function ContextMenu({ x, y, task, onClose, onEdit, onAddSubtask, onStatu
 
   return (
     <div ref={ref} style={panelStyle(x, y, 260)}>
-      <Item icon="✎" label="수정" onClick={() => { haptic('tap'); onEdit(); onClose() }} />
-      <Item icon="+" label="하위 업무 추가" onClick={() => { haptic('tap'); onAddSubtask(); onClose() }} />
+      <Item icon="pencil" label="수정" onClick={() => { haptic('tap'); onEdit(); onClose() }} />
+      <Item icon="plus" label="하위 업무 추가" onClick={() => { haptic('tap'); onAddSubtask(); onClose() }} />
 
       <Divider />
       <div style={{ padding: '4px 8px 2px', fontSize: 10, fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em' }}>상태 변경</div>
@@ -107,13 +109,13 @@ export function ContextMenu({ x, y, task, onClose, onEdit, onAddSubtask, onStatu
       ))}
 
       <Divider />
-      <Item icon="✕" label="삭제" danger onClick={() => { haptic('warn'); onDelete(); onClose() }} />
+      <Item icon="trash" label="삭제" danger onClick={() => { haptic('warn'); onDelete(); onClose() }} />
     </div>
   )
 }
 
 function Item({ icon, dot, label, onClick, active, danger }: {
-  icon?: string; dot?: string; label: string; onClick: () => void; active?: boolean; danger?: boolean
+  icon?: IconName; dot?: string; label: string; onClick: () => void; active?: boolean; danger?: boolean
 }) {
   const [hovered, setHovered] = React.useState(false)
   return (
@@ -124,8 +126,8 @@ function Item({ icon, dot, label, onClick, active, danger }: {
       style={{
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '6px 8px', borderRadius: 'var(--r1)', cursor: 'pointer', fontSize: 13,
-        color: danger ? NOTION.red.text : 'var(--t1)',
-        background: hovered ? (danger ? NOTION.red.bg : 'var(--bg3)') : 'transparent',
+        color: danger ? 'var(--danger)' : 'var(--t1)',
+        background: hovered ? (danger ? 'var(--danger-l)' : 'var(--bg3)') : 'transparent',
         fontWeight: active ? 500 : 400,
         transition: 'background .06s',
       }}
@@ -134,7 +136,9 @@ function Item({ icon, dot, label, onClick, active, danger }: {
         ? <span style={{ width: 14, display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: dot }} />
           </span>
-        : <span style={{ fontSize: 12, width: 14, textAlign: 'center', flexShrink: 0, color: 'var(--t3)' }}>{icon}</span>}
+        : <span style={{ width: 14, display: 'flex', justifyContent: 'center', flexShrink: 0, opacity: danger ? 1 : .65 }}>
+            {icon && <Icon name={icon} size={15} />}
+          </span>}
       {label}
       {active && <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--ac)' }}>✓</span>}
     </div>
