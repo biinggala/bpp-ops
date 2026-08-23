@@ -10,8 +10,34 @@ import { useUserProfileStore } from '../../store/userProfileStore'
 import { useToast } from '../shared/Toast'
 import { useMobile } from '../../hooks/useMobile'
 import { DateField } from '../shared/DatePicker'
+import { AssigneePicker } from '../shared/AssigneePicker'
+import { BadgeSelect } from '../shared/BadgeSelect'
+import { StatusPill, PriorityLabel } from '../shared/StatusPill'
+import { PropCell, OptionPicker, STATUS_STYLE, PRIORITY_STYLE } from '../shared/PropRow'
 import { STATUS_LIST, PRIORITY_LIST, getTagColor } from '../../types'
-import type { Task } from '../../types'
+import type { Task, Status, Priority } from '../../types'
+
+/**
+ * ── 새 업무 ──────────────────────────────────────────────────────────────────
+ *
+ * **Why this still exists.** The list has an add row, and it is the faster way
+ * in when you are already looking at the project. But it files into *that*
+ * project, and the app now opens on 내 할 일 — which is not a project and has no
+ * add row. The calendar, the gantt and 자료 have no row either. So this is the
+ * one door that works from anywhere, and it is the only place a task can be
+ * created without first choosing where you are standing.
+ *
+ * **What it is not, any more.** It used to be a form: fourteen fields, `<select>`
+ * elements that matched nothing else in the app, a 진행률 slider on a task that
+ * did not exist yet, and a 선행/후행 picker behind an `editing` branch that
+ * nothing ever reached — 수정 has gone to the detail screen for a long time.
+ *
+ * What it is now is a name and the handful of facts worth stating at the moment
+ * of writing it down: whose it is, when it is due, where it belongs. Everything
+ * else is set on the task afterwards, in the detail screen, using the same
+ * controls — which are literally the same components now (shared/PropRow), so
+ * the two screens cannot drift apart again.
+ */
 
 const EMPTY: Omit<Task, 'id'> = {
   type: '상위', name: '', cat: '', assignee: '',
@@ -19,20 +45,21 @@ const EMPTY: Omit<Task, 'id'> = {
 }
 
 export function TaskModal() {
-  const { isTaskModalOpen, editTaskId, newTaskParentId, newTaskMilestoneId, newTaskProjectId, closeTaskModal, projectId: uiProjectId } = useUiStore()
-  const { tasks, addTask, updateTask } = useTaskStore()
-  const allProjects = useProjectStore(s => s.projects)
+  const { isTaskModalOpen, newTaskParentId, newTaskMilestoneId, newTaskProjectId, closeTaskModal, projectId: uiProjectId } = useUiStore()
+  const { tasks, addTask } = useTaskStore()
+  const projects = useProjectStore(s => s.projects)
   const milestones = useMilestoneStore(s => s.milestones)
   const email = useAuthStore(s => s.email)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const isMobile = useMobile()
+
+  const [form, setForm] = useState<Omit<Task, 'id'>>(EMPTY)
   /** Extra projects to file a copy of this new task into. */
   const [alsoProjects, setAlsoProjects] = useState<string[]>([])
+  /** 메모와 태그는 접혀 있습니다 — 대부분의 새 업무에는 이름과 담당자뿐입니다. */
+  const [more, setMore] = useState(false)
 
-  const projects = allProjects.filter(p =>
-    true
-  )
-  const [form, setForm] = useState<Omit<Task, 'id'>>(EMPTY)
+  const parentTask = newTaskParentId ? tasks.find(t => t.id === newTaskParentId) : null
 
   // Fallback: union of all accessible project members (never exposes global profiles)
   const accessibleMemberEmails = useMemo(() => {
@@ -42,13 +69,17 @@ export function TaskModal() {
   }, [projects])
 
   const assigneeOptions = useMemo(() => {
-    const selectedProject = projects.find(p => p.id === form.projectId)
-    const memberEmails = selectedProject?.memberEmails ?? []
-    if (memberEmails.length > 0) {
-      return memberEmails.map(e => ({ value: e, label: getNameByEmail(e) }))
-    }
-    return accessibleMemberEmails.map(e => ({ value: e, label: getNameByEmail(e) }))
+    const selected = projects.find(p => p.id === form.projectId)
+    const emails = selected?.memberEmails?.length ? selected.memberEmails : accessibleMemberEmails
+    return emails.map(e => ({ value: e, label: getNameByEmail(e) }))
   }, [form.projectId, projects, accessibleMemberEmails, getNameByEmail])
+
+  const projectMilestones = useMemo(
+    () => milestones
+      .filter(m => m.projectId === form.projectId)
+      .sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
+    [milestones, form.projectId],
+  )
 
   const dateContext = useMemo(() => ({
     projectId: form.projectId ?? undefined,
@@ -56,39 +87,32 @@ export function TaskModal() {
     assignee: form.assignee,
   }), [form.projectId, form.milestoneId, form.assignee])
 
-  const editing = editTaskId ? tasks.find(t => t.id === editTaskId) : null
-  const parentTask = newTaskParentId ? tasks.find(t => t.id === newTaskParentId) : null
-
   useEffect(() => {
     if (!isTaskModalOpen) return
     // A previous row's extra projects must not follow the next one in.
     setAlsoProjects([])
-    if (editing) {
-      setForm({ ...editing })
-    } else {
-      const defaultCat = parentTask?.cat ?? ''
-      const defaultProjectId = parentTask?.projectId ?? newTaskProjectId ?? uiProjectId ?? undefined
-      const defaultMilestoneId = parentTask?.milestoneId ?? newTaskMilestoneId ?? undefined
-      setForm({
-        ...EMPTY,
-        cat: defaultCat,
-        type: newTaskParentId ? '세부' : EMPTY.type,
-        ...(newTaskParentId ? { parentId: newTaskParentId } : {}),
-        ...(defaultProjectId ? { projectId: defaultProjectId } : {}),
-        ...(defaultMilestoneId ? { milestoneId: defaultMilestoneId } : {}),
-      })
-    }
-  }, [isTaskModalOpen, editTaskId])
+    setMore(false)
+    const defaultProjectId = parentTask?.projectId ?? newTaskProjectId ?? uiProjectId ?? undefined
+    const defaultMilestoneId = parentTask?.milestoneId ?? newTaskMilestoneId ?? undefined
+    setForm({
+      ...EMPTY,
+      cat: parentTask?.cat ?? '',
+      type: newTaskParentId ? '세부' : EMPTY.type,
+      ...(newTaskParentId ? { parentId: newTaskParentId } : {}),
+      ...(defaultProjectId ? { projectId: defaultProjectId } : {}),
+      ...(defaultMilestoneId ? { milestoneId: defaultMilestoneId } : {}),
+    })
+  }, [isTaskModalOpen, newTaskParentId, newTaskMilestoneId, newTaskProjectId])
 
   if (!isTaskModalOpen) return null
 
   const upd = <K extends keyof Omit<Task, 'id'>>(k: K, v: Omit<Task, 'id'>[K]) =>
     setForm(f => ({ ...f, [k]: v }))
 
-  const submit = () => {
-    if (!form.name.trim()) return
-    if (editing) { updateTask(editing.id, form); closeTaskModal(); return }
+  const ready = !!form.name.trim()
 
+  const submit = () => {
+    if (!ready) return
     addTask({ ...form, createdBy: email ?? undefined })
     // One copy per extra project. A single record cannot sit in two projects —
     // it lives at its project's path and access is that project's membership —
@@ -107,258 +131,174 @@ export function TaskModal() {
   return (
     <div
       onClick={e => { if (e.target === e.currentTarget) closeTaskModal() }}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(2px)' }}
+      onKeyDown={e => { if (e.key === 'Escape') closeTaskModal() }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(15,15,15,.45)', zIndex: 100, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 24 }}
     >
       <div style={{
-        background: 'var(--bg)', borderRadius: isMobile ? 0 : 'var(--r4)',
-        width: isMobile ? '100%' : 560, maxHeight: isMobile ? '100%' : '88vh',
-        height: isMobile ? '100%' : undefined,
-        overflow: 'auto', display: 'flex', flexDirection: 'column',
-        boxShadow: isMobile ? 'none' : '0 24px 64px rgba(0,0,0,.18), 0 0 0 1px var(--bd)',
+        background: 'var(--bg)', borderRadius: isMobile ? 'var(--r4) var(--r4) 0 0' : 'var(--r4)',
+        width: '100%', maxWidth: isMobile ? undefined : 520,
+        maxHeight: isMobile ? '92vh' : '86vh',
+        display: 'flex', flexDirection: 'column', boxSizing: 'border-box',
+        border: '1px solid var(--bd)', boxShadow: 'var(--sh-lg)', overflow: 'hidden',
       }}>
 
-        {/* Header */}
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--bd)', display: 'flex', alignItems: 'center', position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1 }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--t1)' }}>
-              {editing ? '업무 수정' : parentTask ? '하위 업무 추가' : '새 업무'}
+        {/* The name is the header. A modal whose first line is the word "새 업무"
+            spends its most valuable row saying what the button that opened it
+            already said. */}
+        <div style={{ padding: isMobile ? '18px 20px 12px' : '20px 24px 14px', flexShrink: 0 }}>
+          {parentTask && (
+            <div style={{ fontSize: 11, color: 'var(--t3)', marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              ↳ {parentTask.name} 의 하위 업무
             </div>
-            {parentTask && !editing && (
-              <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
-                ↳ {parentTask.name}
-              </div>
-            )}
-          </div>
-          <CloseBtn onClick={closeTaskModal} />
+          )}
+          <input
+            autoFocus
+            value={form.name}
+            onChange={e => upd('name', e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) submit() }}
+            placeholder="무엇을 해야 하나요?"
+            style={{
+              width: '100%', border: 'none', outline: 'none', background: 'transparent',
+              fontSize: isMobile ? 17 : 19, fontWeight: 600, color: 'var(--t1)',
+              fontFamily: 'var(--font)', padding: 0, lineHeight: 1.35,
+            }}
+          />
         </div>
 
-        {/* Body */}
-        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <Field label="업무명">
-            <input
-              autoFocus
-              style={inputStyle}
-              value={form.name}
-              onChange={e => upd('name', e.target.value)}
-              placeholder="업무명을 입력하세요"
-              onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) submit() }}
-            />
-          </Field>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMobile ? '0 20px 16px' : '0 24px 18px' }}>
+          {/* The same rows, in the same order, drawn by the same components as
+              the detail screen. One column here — the modal is half as wide. */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', rowGap: 2 }}>
+            <PropCell label="프로젝트">
+              <OptionPicker
+                value={form.projectId}
+                empty="없음"
+                options={projects.filter(p => !p.archived).map(p => ({ value: p.id, label: p.name, dot: p.color }))}
+                onChange={v => { upd('projectId', v); upd('milestoneId', undefined); setAlsoProjects([]) }}
+              />
+            </PropCell>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Field label="유형">
-              <select style={inputStyle} value={form.type} onChange={e => upd('type', e.target.value as Task['type'])}>
-                <option value="상위">상위</option>
-                <option value="세부">세부</option>
-              </select>
-            </Field>
-
-            <Field label="프로젝트">
-              <select
-                style={inputStyle}
-                value={form.projectId ?? ''}
-                onChange={e => {
-                  upd('projectId', e.target.value || undefined)
-                  upd('milestoneId', undefined)
-                  setAlsoProjects([])
-                }}
-              >
-                <option value="">선택 안 함</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </Field>
-
-            {/* Only when creating, and only once a project is chosen: 'the same
-                task, in these too'. Editing has nothing to duplicate. */}
-            {!editing && form.projectId && projects.length > 1 && (
-              <div style={{ gridColumn: '1 / -1' }}>
-                <div style={{ fontSize: 11, color: 'var(--t3)', marginBottom: 6 }}>
-                  같은 업무를 다른 프로젝트에도 추가
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {projects.filter(p => p.id !== form.projectId).map(p => {
-                    const on = alsoProjects.includes(p.id)
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => setAlsoProjects(prev =>
-                          on ? prev.filter(id => id !== p.id) : [...prev, p.id])}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 5,
-                          padding: '4px 9px', borderRadius: 999, cursor: 'pointer',
-                          fontFamily: 'var(--font)', fontSize: 12,
-                          color: on ? '#fff' : 'var(--t2)',
-                          background: on ? 'var(--ac)' : 'transparent',
-                          border: `1px solid ${on ? 'var(--ac)' : 'var(--bd2)'}`,
-                        }}
-                      >
-                        <span style={{
-                          width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-                          background: on ? '#fff' : p.color,
-                        }} />
-                        {p.name}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
+            {projectMilestones.length > 0 && (
+              <PropCell label="마일스톤">
+                <OptionPicker
+                  value={form.milestoneId}
+                  empty="없음"
+                  options={projectMilestones.map(m => ({ value: m.id, label: m.name, sub: m.dueDate }))}
+                  onChange={v => upd('milestoneId', v)}
+                />
+              </PropCell>
             )}
 
-            {form.projectId && milestones.some(m => m.projectId === form.projectId) && (
-              <Field label="마일스톤">
-                <select
-                  style={inputStyle}
-                  value={form.milestoneId ?? ''}
-                  onChange={e => upd('milestoneId', e.target.value || undefined)}
-                >
-                  <option value="">선택 안 함</option>
-                  {milestones
-                    .filter(m => m.projectId === form.projectId)
-                    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-                    .map(m => <option key={m.id} value={m.id}>◆ {m.name}  ({m.dueDate})</option>)
-                  }
-                </select>
-              </Field>
-            )}
+            <PropCell label="담당자">
+              <AssigneePicker assignee={form.assignee} options={assigneeOptions} onChange={v => upd('assignee', v)} />
+            </PropCell>
 
-            <Field label="상태">
-              <select style={inputStyle} value={form.status} onChange={e => upd('status', e.target.value as Task['status'])}>
-                {STATUS_LIST.map(s => <option key={s}>{s}</option>)}
-              </select>
-            </Field>
+            <PropCell label="마감일">
+              <DateField value={form.due} context={dateContext} onChange={v => upd('due', v)} placeholder="—" format="full" style={{ fontSize: 13 }} />
+            </PropCell>
 
-            <Field label="우선순위">
-              <select style={inputStyle} value={form.priority} onChange={e => upd('priority', e.target.value as Task['priority'])}>
-                {PRIORITY_LIST.map(p => <option key={p}>{p}</option>)}
-              </select>
-            </Field>
+            <PropCell label="시작일">
+              <DateField value={form.start} context={dateContext} onChange={v => upd('start', v)} placeholder="—" format="full" style={{ fontSize: 13 }} />
+            </PropCell>
 
-            <Field label="시작일">
-              <div style={{ ...inputStyle, display: 'flex', alignItems: 'center' }}>
-                <DateField value={form.start} context={dateContext} onChange={v => upd('start', v)} placeholder="—" format="full" />
-              </div>
-            </Field>
+            <PropCell label="상태">
+              <BadgeSelect value={form.status} options={STATUS_LIST as Status[]} styleMap={STATUS_STYLE} renderValue={v => <StatusPill status={v} />} onChange={v => upd('status', v as Status)} />
+            </PropCell>
 
-            <Field label="마감일">
-              <div style={{ ...inputStyle, display: 'flex', alignItems: 'center' }}>
-                <DateField value={form.due} context={dateContext} onChange={v => upd('due', v)} placeholder="—" format="full" />
-              </div>
-            </Field>
+            <PropCell label="우선순위">
+              <BadgeSelect value={form.priority} options={PRIORITY_LIST as Priority[]} styleMap={PRIORITY_STYLE} renderValue={v => <PriorityLabel priority={v} />} onChange={v => upd('priority', v as Priority)} />
+            </PropCell>
           </div>
 
-          <Field label="담당자">
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {assigneeOptions.map(({ value, label }) => {
-                const on = form.assignee.split(',').map(s => s.trim()).includes(value)
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => {
-                      const keys = form.assignee.split(',').map(s => s.trim()).filter(Boolean)
-                      upd('assignee', on ? keys.filter(k => k !== value).join(',') : [...keys, value].join(','))
-                    }}
-                    style={{ padding: '5px 14px', borderRadius: 'var(--r2)', fontSize: 12, fontWeight: 500, cursor: 'pointer', border: `1px solid ${on ? 'var(--ac)' : 'var(--bd)'}`, background: on ? 'var(--ac)' : 'transparent', color: on ? '#fff' : 'var(--t2)', transition: 'all .1s', fontFamily: 'var(--font)' }}
-                  >
-                    {label}
-                  </button>
-                )
-              })}
+          {/* Only once a project is chosen: 'the same task, in these too'. */}
+          {form.projectId && projects.filter(p => !p.archived).length > 1 && (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--bd)' }}>
+              <div style={{ fontSize: 11, color: 'var(--t3)', marginBottom: 7 }}>
+                같은 업무를 다른 프로젝트에도
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {projects.filter(p => !p.archived && p.id !== form.projectId).map(p => {
+                  const on = alsoProjects.includes(p.id)
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setAlsoProjects(prev => on ? prev.filter(id => id !== p.id) : [...prev, p.id])}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 5,
+                        padding: '4px 9px', borderRadius: 999, cursor: 'pointer',
+                        fontFamily: 'var(--font)', fontSize: 12,
+                        color: on ? '#fff' : 'var(--t2)',
+                        background: on ? 'var(--ac)' : 'transparent',
+                        border: `1px solid ${on ? 'var(--ac)' : 'var(--bd2)'}`,
+                      }}
+                    >
+                      <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: on ? '#fff' : p.color }} />
+                      {p.name}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-          </Field>
+          )}
 
-          <Field label={`진행률  ${form.progress}%`}>
-            <input
-              type="range" min={0} max={100} step={5}
-              value={form.progress}
-              onChange={e => upd('progress', Number(e.target.value))}
-              style={{ width: '100%', accentColor: 'var(--ac)' }}
-            />
-          </Field>
-
-          <Field label="메모">
-            <textarea
-              style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.65 }}
-              rows={3}
-              value={form.memo}
-              onChange={e => upd('memo', e.target.value)}
-              placeholder="메모..."
-            />
-          </Field>
-
-          <Field label="태그">
-            <TagInput
-              value={form.tags ?? []}
-              onChange={tags => upd('tags', tags)}
-            />
-          </Field>
-
-          {editing && (
-            <>
-              <Field label="선행 태스크 (Blocked by)">
-                <DependencyPicker
-                  type="blockedBy"
-                  taskId={editing.id}
-                  selected={form.blockedBy ?? []}
-                  onChange={ids => upd('blockedBy', ids)}
-                />
-              </Field>
-              <Field label="후행 태스크 (Blocking)">
-                <DependencyPicker
-                  type="blocking"
-                  taskId={editing.id}
-                  selected={form.blocking ?? []}
-                  onChange={ids => upd('blocking', ids)}
-                />
-              </Field>
-            </>
+          {/* Folded away, because most new tasks are a name and a person. */}
+          {more ? (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--bd)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <textarea
+                rows={3}
+                value={form.memo}
+                onChange={e => upd('memo', e.target.value)}
+                placeholder="메모..."
+                style={{
+                  width: '100%', boxSizing: 'border-box', padding: '8px 10px', resize: 'vertical',
+                  border: '1px solid var(--bd)', borderRadius: 'var(--r2)', background: 'var(--bg)',
+                  fontSize: 13, lineHeight: 1.65, color: 'var(--t1)', outline: 'none', fontFamily: 'var(--font)',
+                }}
+              />
+              <TagInput value={form.tags ?? []} onChange={tags => upd('tags', tags)} />
+            </div>
+          ) : (
+            <button
+              onClick={() => setMore(true)}
+              style={{
+                marginTop: 10, padding: 0, border: 'none', background: 'transparent',
+                fontSize: 12, color: 'var(--t3)', cursor: 'pointer', fontFamily: 'var(--font)',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.color = 'var(--t2)')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'var(--t3)')}
+            >+ 메모·태그</button>
           )}
         </div>
 
-        {/* Footer */}
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--bd)', display: 'flex', gap: 8, justifyContent: 'flex-end', position: 'sticky', bottom: 0, background: 'var(--bg)' }}>
-          <button onClick={closeTaskModal} style={{ padding: '6px 14px', borderRadius: 'var(--r2)', border: '1px solid var(--bd)', background: 'transparent', fontSize: 13, color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)' }}>
-            취소
-          </button>
+        <div style={{
+          padding: isMobile ? '12px 20px calc(env(safe-area-inset-bottom, 0px) + 12px)' : '12px 24px',
+          borderTop: '1px solid var(--bd)', background: 'var(--bg2)',
+          display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+        }}>
+          {!isMobile && (
+            <span style={{ fontSize: 11, color: 'var(--t3)', marginRight: 'auto' }}>
+              ⏎ 추가 · esc 취소
+            </span>
+          )}
+          <button
+            onClick={closeTaskModal}
+            style={{ marginLeft: isMobile ? 'auto' : undefined, padding: '7px 14px', borderRadius: 'var(--r2)', border: '1px solid var(--bd)', background: 'var(--bg)', fontSize: 13, color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)' }}
+          >취소</button>
           <button
             onClick={submit}
-            style={{ padding: '6px 16px', borderRadius: 'var(--r2)', border: 'none', background: 'var(--ac)', color: '#fff', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font)' }}
-          >
-            {editing ? '저장' : '추가'}
-          </button>
+            disabled={!ready}
+            style={{
+              padding: '7px 18px', borderRadius: 'var(--r2)', border: 'none',
+              background: ready ? 'var(--ac)' : 'var(--bd2)', color: '#fff',
+              fontSize: 13, fontWeight: 500, cursor: ready ? 'pointer' : 'not-allowed',
+              fontFamily: 'var(--font)', transition: 'background .12s',
+            }}
+          >추가</button>
         </div>
       </div>
     </div>
   )
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t3)', letterSpacing: '.03em' }}>{label}</div>
-      {children}
-    </div>
-  )
-}
-
-function CloseBtn({ onClick }: { onClick: () => void }) {
-  return (
-    <button onClick={onClick} style={{ marginLeft: 'auto', width: 26, height: 26, borderRadius: 'var(--r1)', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--t3)', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, fontFamily: 'var(--font)' }}
-      onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; e.currentTarget.style.color = 'var(--t1)' }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
-    >
-      ×
-    </button>
-  )
-}
-
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '7px 10px',
-  border: '1px solid var(--bd)', borderRadius: 'var(--r2)',
-  fontSize: 13, outline: 'none', color: 'var(--t1)',
-  background: 'var(--bg)', fontFamily: 'var(--font)',
-  transition: 'border-color .1s',
 }
 
 function TagInput({ value, onChange }: { value: string[]; onChange: (tags: string[]) => void }) {
@@ -398,7 +338,7 @@ function TagInput({ value, onChange }: { value: string[]; onChange: (tags: strin
     <div ref={ref} style={{ position: 'relative' }}>
       <div
         onClick={() => { setOpen(true); (ref.current?.querySelector('input') as HTMLInputElement)?.focus() }}
-        style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '5px 8px', border: '1px solid var(--bd)', borderRadius: 'var(--r2)', background: 'var(--bg)', minHeight: 38, cursor: 'text', alignItems: 'center' }}
+        style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '5px 8px', border: '1px solid var(--bd)', borderRadius: 'var(--r2)', background: 'var(--bg)', minHeight: 36, cursor: 'text', alignItems: 'center' }}
       >
         {value.map(tag => {
           const c = getTagColor(tag)
@@ -417,9 +357,9 @@ function TagInput({ value, onChange }: { value: string[]; onChange: (tags: strin
           onChange={e => { setInput(e.target.value); setOpen(true) }}
           onFocus={() => setOpen(true)}
           onKeyDown={e => {
-            if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); if (input.trim()) add(input) }
+            if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); e.stopPropagation(); if (input.trim()) add(input) }
             if (e.key === 'Backspace' && !input && value.length) remove(value[value.length - 1])
-            if (e.key === 'Escape') setOpen(false)
+            if (e.key === 'Escape') { e.stopPropagation(); setOpen(false) }
           }}
           placeholder={value.length ? '' : '태그 추가... (Enter로 생성)'}
           style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 12, color: 'var(--t1)', fontFamily: 'var(--font)', minWidth: 100, flex: 1 }}
@@ -452,85 +392,6 @@ function TagInput({ value, onChange }: { value: string[]; onChange: (tags: strin
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-// ── DependencyPicker ──────────────────────────────────────────────────────────
-
-function DependencyPicker({ taskId, type, selected, onChange }: {
-  taskId: string
-  type: 'blocking' | 'blockedBy'
-  selected: string[]
-  onChange: (ids: string[]) => void
-}) {
-  const accessibleTasks = useAccessibleTasks()
-  const [query, setQuery] = useState('')
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  const candidates = accessibleTasks.filter(t =>
-    t.id !== taskId &&
-    !selected.includes(t.id) &&
-    (query === '' || t.name.toLowerCase().includes(query.toLowerCase()))
-  )
-
-  const selectedTasks = accessibleTasks.filter(t => selected.includes(t.id))
-
-  useEffect(() => {
-    if (!open) return
-    const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [open])
-
-  const add = (id: string) => { onChange([...selected, id]); setQuery('') }
-  const remove = (id: string) => onChange(selected.filter(s => s !== id))
-
-  const depColor = type === 'blockedBy' ? 'var(--danger)' : '#D9730D'
-  const depIcon = type === 'blockedBy' ? '⛔' : '⚡'
-
-  return (
-    <div ref={ref} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {selectedTasks.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-          {selectedTasks.map(t => (
-            <span key={t.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 'var(--r2)', fontSize: 11, background: depColor + '14', border: `1px solid ${depColor}30`, color: depColor }}>
-              {depIcon} {t.name}
-              <span onClick={() => remove(t.id)} style={{ cursor: 'pointer', fontSize: 13, opacity: .6 }}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '1'}
-                onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '.6'}
-              >×</span>
-            </span>
-          ))}
-        </div>
-      )}
-
-      <div style={{ position: 'relative' }}>
-        <input
-          value={query}
-          onChange={e => { setQuery(e.target.value); setOpen(true) }}
-          onFocus={() => setOpen(true)}
-          placeholder="태스크 검색..."
-          style={{ ...inputStyle, fontSize: 12 }}
-        />
-        {open && candidates.length > 0 && (
-          <div style={{ position: 'absolute', top: 'calc(100% + 3px)', left: 0, right: 0, background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', zIndex: 300, padding: '4px 0', maxHeight: 200, overflowY: 'auto' }}>
-            {candidates.slice(0, 20).map(t => (
-              <div key={t.id} onMouseDown={e => { e.preventDefault(); add(t.id) }}
-                style={{ padding: '7px 12px', fontSize: 12, cursor: 'pointer', color: 'var(--t1)', transition: 'background .07s', display: 'flex', alignItems: 'center', gap: 8 }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-              >
-                <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.cat || '—'}</span>
-                {t.name}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   )
 }

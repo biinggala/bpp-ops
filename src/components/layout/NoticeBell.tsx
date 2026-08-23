@@ -9,9 +9,7 @@ import { haptic } from '../../lib/haptics'
 import { NOTICE_LABEL as LABEL, NOTICE_TONE as TONE, type Notice } from '../../lib/notify'
 import { StatusMark } from '../shared/StatusMark'
 import { statusAccent } from '../../types'
-import { disablePush, enablePush, pushEnabledHere, pushSupport, showLocalNotice } from '../../lib/push'
-import { showTestNotice, useNoticeToast } from './NoticeToast'
-import { chimeEnabled, playChime, setChimeEnabled } from '../../lib/chime'
+import { useNoticeToast } from './NoticeToast'
 
 /**
  * ── 알림 ─────────────────────────────────────────────────────────────────────
@@ -202,8 +200,6 @@ function NoticeList({ notices, onClose }: { notices: Notice[]; onClose: () => vo
         )}
       </div>
 
-      <PushToggle />
-      <ChimeToggle />
 
       <div style={{ overflowY: 'auto', flex: 1 }}>
         {notices.length === 0 && (
@@ -265,154 +261,5 @@ function NoticeList({ notices, onClose }: { notices: Notice[]; onClose: () => vo
         })}
       </div>
     </>
-  )
-}
-
-/**
- * The switch for push, where the notifications already are.
- *
- * It has to be a tap on this device: a subscription belongs to one browser on
- * one machine, so turning it on on the laptop says nothing about the phone. And
- * the reason it cannot be turned on — an iPhone not yet added to the home
- * screen, a desktop shell with no Push API — is written out rather than left as
- * a dead switch.
- */
-/** The switch used by both rows below, so they cannot drift apart. */
-function MiniSwitch({ on, busy, onClick }: { on: boolean; busy?: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={busy}
-      role="switch"
-      aria-checked={on}
-      style={{
-        width: 38, height: 22, borderRadius: 999, flexShrink: 0, padding: 2,
-        border: 'none', cursor: busy ? 'default' : 'pointer',
-        background: on ? 'var(--ac)' : 'var(--bd2)',
-        display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start',
-        transition: 'background .15s', opacity: busy ? .6 : 1,
-      }}
-    >
-      <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.25)', transition: 'all .15s' }} />
-    </button>
-  )
-}
-
-const ROW: React.CSSProperties = {
-  padding: '8px 14px', borderBottom: '1px solid var(--bd)',
-  display: 'flex', alignItems: 'center', gap: 8,
-}
-
-/**
- * 알림 소리 — 배너가 뜰 때만.
- *
- * A push that arrives with the app closed uses the phone's own notification
- * sound; nothing here reaches that, and no web app can choose it. So this is
- * about the banner, and it is a per-device choice like the push switch: the
- * laptop in a shared room and the phone in a pocket do not want the same answer.
- */
-function ChimeToggle() {
-  const [on, setOn] = useState(chimeEnabled())
-  return (
-    <div style={ROW}>
-      <span style={{ fontSize: 12, color: 'var(--t2)', flex: 1, minWidth: 0 }}>알림 소리</span>
-      <MiniSwitch
-        on={on}
-        onClick={() => {
-          const next = !on
-          setChimeEnabled(next); setOn(next)
-          // Hearing it is the only way to judge it.
-          if (next) playChime()
-        }}
-      />
-    </div>
-  )
-}
-
-function PushToggle() {
-  const isMobile = useMobile()
-  const [on, setOn] = useState(pushEnabledHere())
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const me = useAuthStore(s => s.displayName || s.email?.split('@')[0] || '나')
-  const support = pushSupport()
-
-  /**
-   * Two notifications from one press, because they can fail separately.
-   *
-   * The banner is drawn by the app and always works. The OS notification needs
-   * a real notification permission and a live worker — and *not* a push — so
-   * when it fails it says which of the two is broken, which is the question
-   * 'permission denied' on its own never answered.
-   */
-  const runTest = async () => {
-    // The sheet stays put on a phone: it is at the bottom, the banner is at the
-    // top, and the note below has to remain readable while both happen.
-    showTestNotice(me, !isMobile)
-    const res = await showLocalNotice('테스트 알림', '이게 보이면 폰 알림은 정상입니다')
-
-    // Measured rather than assumed. Four wrong guesses about the bottom bar
-    // ended with one screenshot of real numbers; 'it does not appear' is the
-    // same kind of claim and deserves the same treatment. If the card is in the
-    // document at a sane y and still invisible, the fault is not our layout.
-    await new Promise(r => setTimeout(r, 300))
-    const card = document.querySelector('[data-notice-banner]')
-    const box = card?.getBoundingClientRect()
-    const where = box
-      ? `배너 y=${Math.round(box.top)} h=${Math.round(box.height)} w=${Math.round(box.width)}`
-      : '배너 없음(DOM에 안 그려짐)'
-    setError(`${where} · OS 알림 ${res.ok ? 'ok' : `실패 — ${res.reason}`}`)
-  }
-
-  // Offered even where push cannot work at all — on the desktop app the banner
-  // *is* the notification, and this is the only way to see it without waiting
-  // for a colleague to assign something.
-  const test = (
-    <button
-      onClick={() => void runTest()}
-      style={{
-        fontSize: 11, color: 'var(--ac)', background: 'transparent', border: 'none',
-        cursor: 'pointer', fontFamily: 'var(--font)', padding: 0, flexShrink: 0,
-      }}
-    >테스트</button>
-  )
-
-  if (!support.ok) {
-    return (
-      <div style={{
-        padding: '8px 14px', borderBottom: '1px solid var(--bd)', fontSize: 11,
-        color: 'var(--t3)', lineHeight: 1.5, display: 'flex', gap: 10, alignItems: 'flex-start',
-      }}>
-        <span style={{ flex: 1, minWidth: 0 }}>
-          {support.reason}
-          {error && <span style={{ display: 'block', color: error.includes('실패') ? 'var(--danger)' : 'var(--t3)', marginTop: 3 }}>{error}</span>}
-        </span>
-        {test}
-      </div>
-    )
-  }
-
-  const toggle = async () => {
-    setBusy(true); setError(null)
-    if (on) {
-      await disablePush()
-      setOn(false)
-    } else {
-      const res = await enablePush()
-      if (res.ok) setOn(true)
-      else setError(res.reason)
-    }
-    setBusy(false)
-  }
-
-  return (
-    <div style={ROW}>
-      <span style={{ fontSize: 12, color: 'var(--t2)', flex: 1, minWidth: 0 }}>
-        이 기기에서 푸시 받기
-        {error && <span style={{ display: 'block', fontSize: 11, color: error.includes('실패') ? 'var(--danger)' : 'var(--t3)', lineHeight: 1.45 }}>{error}</span>}
-      </span>
-      {test}
-      <MiniSwitch on={on} busy={busy} onClick={() => void toggle()} />
-    </div>
   )
 }

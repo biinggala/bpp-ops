@@ -4,7 +4,7 @@ import App from './App.tsx'
 import { installExternalLinkHandler } from './lib/desktopLinks'
 import { installTheme } from './lib/theme'
 import { isDesktopShell } from './lib/desktopAuth'
-import { installServiceWorker } from './lib/push'
+import { autoEnablePush, installServiceWorker } from './lib/push'
 
 // iOS standalone PWAs mis-report the layout viewport height, leaving a gap
 // below the app. Take the max of every height the browser reports; installed
@@ -85,6 +85,10 @@ installExternalLinkHandler()
 // somebody turns notifications on, so the one that is already subscribed keeps
 // receiving after a redeploy replaces the file.
 void installServiceWorker()
+
+// 알림은 켜져 있는 게 기본입니다. 권한이 이미 있는 기기는 아무것도 묻지 않고
+// 구독하고, 명시적으로 끈 기기는 꺼진 채로 둡니다 — 자세한 사정은 push.ts.
+void autoEnablePush()
 
 // Before the first paint, so nothing flashes white on the way into dark.
 installTheme()
