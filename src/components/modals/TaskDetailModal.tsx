@@ -96,8 +96,32 @@ function AssetsPanel({ links, projectId, onChange }: {
     [links],
   )
 
-  const add = (link: TaskLink) => onChange([...links, link])
+  /**
+   * Attaching closes the picker.
+   *
+   * It used to stay open, which made the panel read as a form with something
+   * still pending — and clicking away then *looked* like confirming it, while
+   * the same click in the calendar cancels a draft event. One gesture, two
+   * meanings, in one app.
+   *
+   * There was never anything pending: the file is attached the instant it is
+   * picked, and it appears in the list above. Closing says exactly that, and
+   * the question of what an outside click means stops being asked.
+   */
+  const add = (link: TaskLink) => { onChange([...links, link]); setAdding(false) }
   const remove = (id: string) => onChange(links.filter(l => l.id !== id))
+
+  // And an untouched picker closes on an outside click, like every menu in the
+  // app. Nothing is lost — nothing was entered.
+  const addBox = React.useRef<HTMLDivElement>(null)
+  React.useEffect(() => {
+    if (!adding) return
+    const h = (e: MouseEvent) => {
+      if (addBox.current && !addBox.current.contains(e.target as Node)) setAdding(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [adding])
 
   return (
     <div style={{ borderTop: '1px solid var(--bd)', paddingTop: 12, marginTop: 8 }}>
@@ -132,7 +156,7 @@ function AssetsPanel({ links, projectId, onChange }: {
       </div>
 
       {adding && (
-        <div style={{
+        <div ref={addBox} style={{
           marginTop: 8, padding: 4, borderRadius: 'var(--r3)',
           border: '1px solid var(--bd)', background: 'var(--bg)',
           display: 'flex', flexDirection: 'column', maxHeight: 300, overflow: 'hidden',
