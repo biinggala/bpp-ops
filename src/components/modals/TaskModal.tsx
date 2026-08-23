@@ -99,13 +99,25 @@ export function TaskModal() {
       cat: parentTask?.cat ?? '',
       type: newTaskParentId ? '세부' : EMPTY.type,
       ...(newTaskParentId ? { parentId: newTaskParentId } : {}),
+      /**
+       * 담당자는 **나**입니다.
+       *
+       * 비워 두고 있었습니다. 그런데 담당자 없는 업무는 '오늘'의 가져올 것에도,
+       * '내 할 일'에도 안 나옵니다 — 두 화면 다 나에게 배정된 것만 보니까요.
+       * 방금 만든 업무가 만든 사람 화면 어디에도 없는 상태가 됩니다.
+       *
+       * 안 정했으면 내 것입니다. 남의 일로 만들려면 바로 아래 담당자 칸에서
+       * 바꾸면 되고, 그건 한 번 더 누르는 일이지 못 하는 일이 아닙니다.
+       * 리스트의 한 줄 추가는 이미 이렇게 하고 있었고, 창만 달랐습니다.
+       */
+      ...(email ? { assignee: email } : {}),
       ...(defaultProjectId ? { projectId: defaultProjectId } : {}),
       ...(defaultMilestoneId ? { milestoneId: defaultMilestoneId } : {}),
       // 캘린더에서 날짜를 눌러 왔으면 그 날이 마감일입니다. 누른 날짜를
       // 다시 고르게 하는 건 방금 한 말을 한 번 더 시키는 것입니다.
       ...(newTaskDue ? { due: newTaskDue } : {}),
     })
-  }, [isTaskModalOpen, newTaskParentId, newTaskMilestoneId, newTaskProjectId, newTaskDue])
+  }, [isTaskModalOpen, newTaskParentId, newTaskMilestoneId, newTaskProjectId, newTaskDue, email])
 
   if (!isTaskModalOpen) return null
 
