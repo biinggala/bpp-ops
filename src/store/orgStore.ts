@@ -167,6 +167,19 @@ const list = <T,>(node: Record<string, Omit<T, 'id'>> | null | undefined): (T & 
  * 끝과 시작이 같은 것은 겹침이 아닙니다 — 2시에 끝나는 회의와 2시에
  * 시작하는 회의는 같은 방을 쓸 수 있고, 그게 회의실이 돌아가는 방식입니다.
  */
+/**
+ * 조직의 도메인이 될 수 없는 것들 — 아무나 가질 수 있는 주소.
+ *
+ * database.rules.json의 orgs/$org/meta와 orgByDomain/$domain에 같은 목록이
+ * 있습니다. 여기 있는 건 사람에게 이유를 말하기 위한 사본이고, 실제로 막는
+ * 것은 규칙입니다.
+ */
+const PUBLIC_DOMAINS = new Set([
+  'gmail.com', 'googlemail.com', 'naver.com', 'hanmail.net', 'daum.net', 'kakao.com',
+  'nate.com', 'outlook.com', 'hotmail.com', 'live.com', 'yahoo.com', 'yahoo.co.kr',
+  'icloud.com', 'me.com', 'protonmail.com', 'proton.me', 'aol.com',
+])
+
 export const overlaps = (a: { from: number; to: number }, b: { from: number; to: number }) =>
   a.from < b.to && b.from < a.to
 
@@ -328,6 +341,22 @@ export const useOrgStore = create<OrgState>((set, get) => ({
   createOrg: async (name, email) => {
     const key = domainKey(email)
     if (!key) return false
+
+    /**
+     * 조직의 경계는 도메인입니다. 그 도메인이 회사 것일 때만 경계가 됩니다.
+     *
+     * gmail.com으로 조직을 만들면 이 앱을 쓰는 **모든 지메일 사용자**가
+     * 그 조직의 구성원이 됩니다 — 회의실 목록을 읽고, 예약을 잡고, 조직에
+     * 공개된 프로젝트 목록을 봅니다. 도메인이 회사를 뜻하지 않는 곳에서는
+     * '같은 도메인 = 같은 회사'라는 전제가 통째로 무너집니다.
+     *
+     * 데이터베이스 규칙에도 같은 목록이 있습니다. 이 검사는 사람에게 이유를
+     * 말해 주기 위한 것이고, 막는 것은 규칙입니다 — 화면을 우회해도 안 됩니다.
+     */
+    if (PUBLIC_DOMAINS.has(key.replace(/,/g, '.'))) {
+      set({ error: '회사 도메인으로만 조직을 만들 수 있습니다. 지메일·네이버 같은 주소는 같은 회사를 뜻하지 않습니다.' })
+      return false
+    }
     const orgId = gid()
     try {
       // meta를 먼저 씁니다. 규칙이 도메인을 meta에서 읽으므로, 색인이 먼저
