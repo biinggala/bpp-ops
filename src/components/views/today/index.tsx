@@ -17,6 +17,7 @@ import { haptic } from '../../../lib/haptics'
 import { TaskRef, TASK_DND } from './TaskRef'
 import { FileRef } from './FileRef'
 import { MarkdownTasks } from './markdown'
+import { DayTimeline } from './DayTimeline'
 import { BlockTools } from './BlockTools'
 import { LoadingChips } from '../../shared/Loading'
 import type { Task } from '../../../types'
@@ -157,6 +158,15 @@ export function TodayView() {
   const shift = (days: number) => setDate(d => fmtYMD(addDays(toDate(d), days)))
   const isToday = date === TODAY()
 
+  /**
+   * 시간 축은 자리가 있을 때만 섭니다.
+   *
+   * 왼쪽 가져올 것(264)과 사이드바(240)에 이것까지 서면 좁은 화면에서 노트가
+   * 한 뼘으로 줄어듭니다. 하루가 어떻게 생겼는지 보려다 적을 곳을 잃는 건
+   * 거꾸로입니다 — 창이 좁아지면 이쪽이 먼저 비켜섭니다.
+   */
+  const roomy = !useMobile(1240)
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', minHeight: 0, overflow: 'hidden' }}>
       {!isMobile && <PullRail onAdd={add} inNote={noteIds} />}
@@ -219,6 +229,12 @@ export function TodayView() {
           {!isMobile && <BlockTools editor={editor} boundary={noteRef} />}
         </div>
       </div>
+
+      {/*
+        노트가 '무엇을'이라면 이쪽은 '자리가 있나'입니다. 읽기만 하고,
+        여기에 무언가를 놓는 동작은 없습니다 — DayTimeline 맨 위 주석 참고.
+      */}
+      {roomy && <DayTimeline date={date} />}
     </div>
   )
 }

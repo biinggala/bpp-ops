@@ -32,7 +32,7 @@ import type { GCalEvent } from '../../../store/gcalStore'
 // text stays dark enough to read at 11px.
 // (Reference values confirmed from Notion light mode: blue text #487CA5,
 // blue background #E7F3F8, green #DBEDDB, brown #EEE0DA.)
-function tint(hex: string, alpha: number): string {
+export function tint(hex: string, alpha: number): string {
   const clean = hex.replace('#', '')
   if (clean.length !== 6) return `rgba(55,53,47,${alpha})`
   const [r, g, b] = [0, 2, 4].map(i => parseInt(clean.slice(i, i + 2), 16))
@@ -46,7 +46,7 @@ function tint(hex: string, alpha: number): string {
  * colours are the same hue pulled toward its default ink (#37352F), which is
  * what keeps a coloured label legible at 10px.
  */
-function readable(hex: string): string {
+export function readable(hex: string): string {
   const clean = hex.replace('#', '')
   if (clean.length !== 6) return '#37352F'
   const mixed = [0, 2, 4].map(i => {
@@ -749,7 +749,7 @@ function Track({ lead, count, fill, children }: {
 }
 
 /** Where an event sits and how tall it is, from its own start and end. */
-function geometry(event: GCalEvent): { from: number; to: number } | null {
+export function geometry(event: GCalEvent): { from: number; to: number } | null {
   if (!event.startIso) return null
   const start = new Date(event.startIso)
   const end = event.endIso ? new Date(event.endIso) : new Date(start.getTime() + 30 * 60000)
@@ -760,7 +760,7 @@ function geometry(event: GCalEvent): { from: number; to: number } | null {
   return { from, to: Math.max(from + MIN_DURATION, to) }
 }
 
-interface Placed {
+export interface Placed {
   event: GCalEvent
   from: number
   to: number
@@ -774,7 +774,7 @@ interface Placed {
  * Two meetings at the same hour is exactly the case this view exists for, so
  * one hiding the other would defeat the point.
  */
-function place(events: GCalEvent[]): Placed[] {
+export function place(events: GCalEvent[]): Placed[] {
   const spans = events
     .map(event => ({ event, ...(geometry(event) ?? { from: -1, to: -1 }) }))
     .filter(s => s.from >= 0)
