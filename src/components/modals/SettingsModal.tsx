@@ -9,6 +9,7 @@ import { fileWatchEnabled, setFileWatchEnabled } from '../../lib/driveWatch'
 import { useDriveStore } from '../../store/driveStore'
 import { useMailStore } from '../../store/mailStore'
 import { useOrgStore } from '../../store/orgStore'
+import { askConfirm } from '../shared/Confirm'
 import { showTestNotice } from '../layout/NoticeToast'
 import { Icon, type IconName } from '../shared/Icon'
 
@@ -368,7 +369,7 @@ function ChimeRow() {
  */
 function OrgSection() {
   const email = useAuthStore(s => s.email)
-  const { orgId, name, domain, rooms, admins, ready, createOrg, addRoom, updateRoom, setAdmin, error } = useOrgStore()
+  const { orgId, name, domain, rooms, admins, ready, createOrg, addRoom, updateRoom, removeRoom, setAdmin, claimAdmin, error } = useOrgStore()
   const [orgName, setOrgName] = useState('')
   const [roomName, setRoomName] = useState('')
   const [adminMail, setAdminMail] = useState('')
@@ -424,9 +425,35 @@ function OrgSection() {
               {room.note && <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>{room.note}</span>}
             </span>
             {/* 지우지 않고 끕니다 — 지나간 예약이 이름을 잃으면 안 됩니다. */}
-            {isAdmin
-              ? <MiniSwitch on={room.active !== false} onClick={() => void updateRoom(room.id, { active: room.active === false })} />
-              : room.active === false && <span style={{ fontSize: 11, color: 'var(--t3)' }}>사용 안 함</span>}
+            {isAdmin ? (
+              <>
+                <MiniSwitch on={room.active !== false} onClick={() => void updateRoom(room.id, { active: room.active === false })} />
+                {/* 끄기와 지우기는 다른 일입니다. 끄는 것은 '지금은 못 쓴다'(공사
+                    중), 지우는 것은 '이런 방은 없다'(오타로 만든 것). 예약이
+                    잡을 때의 방 이름을 들고 있으므로 지워도 지난 예약은 읽힙니다. */}
+                <button
+                  /* window.confirm은 안 씁니다 — 데스크톱 웹뷰에서 호스트가
+                     대화상자를 안 그려주면 항상 false라, 아무도 못 본 확인창이
+                     이미 거절돼 있습니다. docs/desktop-updates.md의 그 표. */
+                  onClick={async () => {
+                    const ok = await askConfirm({
+                      message: `'${room.name}'을 목록에서 지웁니다`,
+                      detail: '지난 예약은 그대로 남습니다. 잠깐 못 쓰는 것이라면 지우지 말고 스위치를 끄세요.',
+                      confirmLabel: '지우기',
+                    })
+                    if (ok) void removeRoom(room.id)
+                  }}
+                  aria-label={`${room.name} 지우기`}
+                  style={{
+                    marginLeft: 4, width: 22, height: 22, flexShrink: 0, borderRadius: 'var(--r1)',
+                    border: 'none', background: 'transparent', color: 'var(--t3)',
+                    cursor: 'pointer', fontFamily: 'var(--font)', fontSize: 13, lineHeight: 1,
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-l)'; e.currentTarget.style.color = 'var(--danger)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
+                >×</button>
+              </>
+            ) : room.active === false && <span style={{ fontSize: 11, color: 'var(--t3)' }}>사용 안 함</span>}
           </div>
         ))}
         {isAdmin && (
@@ -449,10 +476,23 @@ function OrgSection() {
       */}
       <Section
         title="조직 관리자"
-        note={isAdmin
-          ? `${domain} 주소만 관리자가 될 수 있습니다. 회의실 목록에만 미치고, 업무나 프로젝트를 더 볼 수 있게 되지는 않습니다.`
-          : '회의실을 바꿔야 하면 이분들에게 말하면 됩니다.'}
+        note={admins.length === 0
+          ? '이 조직에는 아직 관리자가 없습니다. 조직원 누구나 맡을 수 있습니다.'
+          : isAdmin
+            ? `${domain} 주소만 관리자가 될 수 있습니다. 회의실 목록에만 미치고, 업무나 프로젝트를 더 볼 수 있게 되지는 않습니다.`
+            : '회의실을 바꿔야 하면 이분들에게 말하면 됩니다.'}
       >
+        {/* 관리자가 없는 조직은 규칙상 조직원 누구나 맡을 수 있습니다. 화면에
+            그 길이 없어서, 자기가 만든 조직을 읽기만 하는 상태가 됐습니다 —
+            관리자 개념이 조직보다 늦게 생겼기 때문입니다. 규칙이 허용하는
+            일은 화면에도 있어야 합니다. */}
+        {admins.length === 0 && (
+          <button
+            onClick={async () => { setBusy(true); await claimAdmin(email); setBusy(false) }}
+            disabled={busy}
+            style={{ ...navBtn, borderColor: 'var(--ac)', background: 'var(--ac)', color: '#fff', opacity: busy ? .6 : 1 }}
+          >{busy ? '…' : '관리자 되기'}</button>
+        )}
         {admins.map(mail => (
           <div key={mail} style={ROW}>
             <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
