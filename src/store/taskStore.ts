@@ -45,6 +45,7 @@ type UndoOp =
 const MAX_HISTORY = 50
 
 import { noticeAssigneeChange, noticeDueChange, noticeStatusChange, noticeSubtask } from '../lib/notify'
+import { logChanged, logCreated, logDeleted } from '../lib/activity'
 
 interface TaskState {
   tasks: Task[]
@@ -131,6 +132,7 @@ export const useTaskStore = create<TaskState>((set, get) => {
       if (parent) noticeSubtask(parent, task)
       // A task created already assigned to somebody else is an assignment.
       if (task.assignee) noticeAssigneeChange(task, '', task.assignee)
+      logCreated(task)
       return task
     },
 
@@ -160,6 +162,10 @@ export const useTaskStore = create<TaskState>((set, get) => {
         noticeStatusChange(next, current.status, patch.status)
       }
 
+      // Notices go to the few people who need telling; the log keeps the rest,
+      // for whoever opens the task later and asks who moved this.
+      logChanged(next, patch, before)
+
       // Moving between projects changes where the record lives, so the old copy
       // has to go rather than being patched in place.
       if ('projectId' in patch && patch.projectId !== current.projectId) {
@@ -176,6 +182,10 @@ export const useTaskStore = create<TaskState>((set, get) => {
       if (!task) return
       set({ tasks: get().tasks.filter(t => t.id !== id), history: pushHistory({ kind: 'delete', task }) })
       removeTask(task)
+      // The task is gone; the record of it going is not. It sits beside the
+      // project rather than inside the task, so removing one does not remove
+      // the other.
+      logDeleted(task)
     },
 
     reorderTasks: (tasks) => {

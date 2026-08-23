@@ -25,6 +25,7 @@ import { SchedulePanel } from './SchedulePanel'
 import { StatusPill, PriorityLabel } from '../shared/StatusPill'
 import { useMenu, Menu, MenuList, MenuItem, CellTrigger, Dot } from '../shared/Menu'
 import { STATUS_LIST, PRIORITY_LIST, NOTION } from '../../types'
+import { ActivityList } from '../shared/ActivityList'
 import { openExternal } from '../../lib/desktopLinks'
 import type { Task, Status, Priority, TaskLink } from '../../types'
 import { isComposing } from '../../lib/utils'
@@ -572,11 +573,8 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
           )}
 
           {tab === 'activity' && (
-            <div style={{ padding: '24px 20px' }}>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', color: 'var(--t3)' }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--bd2)', marginTop: 7, flexShrink: 0 }} />
-                <span style={{ fontSize: 14 }}>태스크가 생성됐습니다.</span>
-              </div>
+            <div style={{ padding: '20px' }}>
+              <ActivityList taskId={task.id} projectId={task.projectId} />
             </div>
           )}
         </div>
@@ -888,8 +886,19 @@ export function TaskDetailModal() {
             <AssetsPanel links={task.links ?? []} projectId={task.projectId} onChange={links => upd({ links })} />
           </div>
 
-          <div style={{ borderTop: '1px solid var(--bd)', padding: '18px 28px 28px' }}>
+          <div style={{ borderTop: '1px solid var(--bd)', padding: '18px 28px' }}>
             <SchedulePanel task={task} memberEmails={currentProject?.memberEmails ?? []} />
+          </div>
+
+          {/* Last, and quiet. It answers a question that gets asked after the
+              fact — who moved this — rather than one anybody opens the task
+              for. */}
+          <div style={{ borderTop: '1px solid var(--bd)', padding: '18px 28px 28px' }}>
+            <div style={{
+              fontSize: 11, fontWeight: 600, color: 'var(--t3)',
+              textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12,
+            }}>활동</div>
+            <ActivityList taskId={task.id} projectId={task.projectId} compact />
           </div>
         </div>
       </div>
