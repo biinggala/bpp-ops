@@ -14,6 +14,11 @@ export function Topbar() {
   const toggleSidebarHidden = useUiStore(s => s.toggleSidebarHidden)
   const projects = useProjectStore(s => s.projects)
   const isMobile = useMobile()
+  const dayRail = useUiStore(s => s.dayRail)
+  const toggleDayRail = useUiStore(s => s.toggleDayRail)
+  // 정말로 못 그리는 폭에서만 버튼도 함께 사라집니다 — 눌러도 아무 일이
+  // 없는 버튼은 고장 난 버튼입니다.
+  const tooNarrow = useMobile(1000)
 
   const activeProject = projectId ? projects.find(p => p.id === projectId) : null
   const personalOnly = useUiStore(s => s.personalOnly)
@@ -87,6 +92,29 @@ export function Topbar() {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
         <UpdateButton />
+        {/* 오늘 화면의 오른쪽 칸. 왼쪽 사이드바 버튼과 같은 모양·같은 크기로,
+            창 툴바의 양 끝에 하나씩 — 맥의 창들이 두 칸을 여닫는 방식입니다.
+            글자로 '하루'라고 써 두었을 땐 옆의 ◀ ▶와 섞여서 날짜를 옮기는
+            버튼처럼 보였습니다. */}
+        {!isMobile && screen === 'today' && !tooNarrow && (
+          <Tip label={dayRail ? '시간 축 숨기기' : '시간 축 보이기'} keys={[CMD, '⇧', '\\']}>
+            <button
+              onClick={toggleDayRail}
+              aria-label={dayRail ? '시간 축 숨기기' : '시간 축 보이기'}
+              aria-pressed={dayRail}
+              style={{
+                width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                borderRadius: 'var(--r2)', flexShrink: 0, padding: 0,
+                color: dayRail ? 'var(--t2)' : 'var(--t3)',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              <Icon name="panelRight" size={17} />
+            </button>
+          </Tip>
+        )}
         {/* One door to everything that narrows or reorders the view. The ✓ that
             used to sit here toggled only 완료 숨기기, and left the other six
             controls with nowhere to live on a phone. */}

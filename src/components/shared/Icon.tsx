@@ -15,7 +15,7 @@
 export type IconName =
   | 'pencil' | 'users' | 'layers' | 'archive' | 'unarchive' | 'trash'
   | 'exit' | 'settings' | 'plus' | 'external' | 'unlink' | 'sun' | 'moon' | 'monitor'
-  | 'inbox' | 'home' | 'today' | 'calendar' | 'file' | 'panel' | 'mail' | 'search'
+  | 'inbox' | 'home' | 'today' | 'calendar' | 'file' | 'panel' | 'panelRight' | 'mail' | 'search'
 
 /** The ones a single path can say. */
 const PATHS: Partial<Record<IconName, string>> = {
@@ -82,6 +82,16 @@ export function Icon({ name, size = 15, strokeWidth = 1.7 }: {
       <svg {...common}>
         <rect x="3.2" y="5.4" width="17.6" height="13.2" rx="2.2" />
         <path d="m3.8 7.2 7.1 5.1a2 2 0 0 0 2.2 0l7.1-5.1" />
+      </svg>
+    )
+  }
+  // 왼쪽 것과 짝입니다 — 같은 상자에 칸막이만 반대쪽. 오른쪽 칸을 여닫는
+  // 버튼이 왼쪽 것과 다르게 생기면 같은 종류의 동작으로 안 읽힙니다.
+  if (name === 'panelRight') {
+    return (
+      <svg {...common}>
+        <rect x="3.2" y="4.8" width="17.6" height="14.4" rx="2.4" />
+        <path d="M14.6 4.8v14.4" />
       </svg>
     )
   }

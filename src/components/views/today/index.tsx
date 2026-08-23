@@ -17,7 +17,6 @@ import { haptic } from '../../../lib/haptics'
 import { TaskRef, TASK_DND } from './TaskRef'
 import { FileRef } from './FileRef'
 import { MarkdownTasks } from './markdown'
-import { Icon } from '../../shared/Icon'
 import { DayTimeline } from './DayTimeline'
 import { BlockTools } from './BlockTools'
 import { LoadingChips } from '../../shared/Loading'
@@ -167,12 +166,12 @@ export function TodayView() {
    * 기능이 됐습니다. 자동으로 사라지는 것과 없는 것은 화면에서 구별되지
    * 않습니다.
    *
-   * 그래서 **켜고 끄는 건 사람이** 합니다(머리줄의 버튼, 이 기기에 기억).
-   * 너비는 정말로 못 그리는 폭에서만 개입합니다.
+   * 그래서 **켜고 끄는 건 사람이** 합니다 — 툴바 오른쪽 끝의 칸 버튼(⌘⇧\),
+   * 왼쪽 사이드바 버튼과 짝입니다. 너비는 정말로 못 그리는 폭에서만 개입합니다.
    */
   const tooNarrow = useMobile(1000)
-  const [railOn, setRailOn] = useState(loadRail)
-  const showRail = railOn && !tooNarrow && !isMobile
+  const dayRail = useUiStore(s => s.dayRail)
+  const showRail = dayRail && !tooNarrow && !isMobile
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', minHeight: 0, overflow: 'hidden' }}>
@@ -195,22 +194,6 @@ export function TodayView() {
             </span>
             <button onClick={() => shift(-1)} style={GHOST} aria-label="어제">◀</button>
             <button onClick={() => shift(1)} style={GHOST} aria-label="내일">▶</button>
-            {!isMobile && !tooNarrow && (
-              <button
-                onClick={() => { setRailOn(v => { saveRail(!v); return !v }) }}
-                aria-pressed={showRail}
-                title={showRail ? '시간 축 감추기' : '시간 축 보기'}
-                style={{
-                  ...GHOST,
-                  marginLeft: 4,
-                  color: showRail ? 'var(--ac)' : 'var(--t3)',
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                }}
-              >
-                <Icon name="calendar" size={13} />
-                하루
-              </button>
-            )}
           </span>
         </div>
 
@@ -293,19 +276,6 @@ function useMine(): Task[] {
  * 여남은 개 되는 사람에게는 이쪽이 더 자주 필요합니다.
  */
 type RailGroup = 'due' | 'project'
-
-/**
- * 시간 축을 켜 두었는가. 이 기기의 것입니다 — 사이드바 폭·순서와 같은 이유로,
- * 27인치에서 펴 놓은 사람과 13인치에서 접어 둔 사람이 서로를 밀어낼 일이
- * 없어야 합니다.
- */
-const RAIL_ON_KEY = 'today_daygrid_on'
-function loadRail(): boolean {
-  try { return localStorage.getItem(RAIL_ON_KEY) !== '0' } catch { return true }
-}
-function saveRail(on: boolean) {
-  try { localStorage.setItem(RAIL_ON_KEY, on ? '1' : '0') } catch { /* private mode */ }
-}
 
 const RAIL_KEY = 'today_rail_group'
 

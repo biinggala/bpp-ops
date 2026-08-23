@@ -2,9 +2,15 @@ import { create } from 'zustand'
 import type { ViewType, Status, CalRange } from '../types'
 
 const HIDDEN_KEY = 'sidebar_hidden'
+const DAY_RAIL_KEY = 'today_daygrid_on'
 
 function loadSidebarHidden(): boolean {
   try { return localStorage.getItem(HIDDEN_KEY) === '1' } catch { return false }
+}
+
+/** 오늘 화면 오른쪽 시간 축. 기본은 펴져 있음 — 없으면 만든 줄도 모릅니다. */
+function loadDayRail(): boolean {
+  try { return localStorage.getItem(DAY_RAIL_KEY) !== '0' } catch { return true }
 }
 
 interface Filters {
@@ -100,6 +106,14 @@ interface UiState {
    * 사이드바 폭과 같은 줄입니다.
    */
   sidebarHidden: boolean
+  /**
+   * 오늘 화면 오른쪽 시간 축이 펴져 있는가.
+   *
+   * 사이드바와 같은 줄의 값입니다 — 이 기기의 것이고, 켜고 끄는 건 사람이
+   * 합니다. 창 너비로 알아서 감췄더니 노트북에서는 늘 없는 것이 됐습니다.
+   */
+  dayRail: boolean
+  toggleDayRail: () => void
   /** Calendar: how much is shown at once, and the date it starts from. */
   calRange: CalRange
   calAnchor: string
@@ -184,6 +198,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   isCommandPaletteOpen: false,
   sidebarOpen: false,
   sidebarHidden: loadSidebarHidden(),
+  dayRail: loadDayRail(),
   calRange: 7,
   calAnchor: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
 
@@ -262,6 +277,11 @@ export const useUiStore = create<UiState>((set, get) => ({
     const sidebarHidden = !s.sidebarHidden
     try { localStorage.setItem(HIDDEN_KEY, sidebarHidden ? '1' : '0') } catch { /* private mode */ }
     return { sidebarHidden }
+  }),
+  toggleDayRail: () => set(s => {
+    const dayRail = !s.dayRail
+    try { localStorage.setItem(DAY_RAIL_KEY, dayRail ? '1' : '0') } catch { /* private mode */ }
+    return { dayRail }
   }),
   setCalRange: (calRange) => set({ calRange }),
   setCalAnchor: (calAnchor) => set({ calAnchor }),

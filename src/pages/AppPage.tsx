@@ -148,7 +148,10 @@ export function AppPage() {
        */
       if ((e.metaKey || e.ctrlKey) && (e.key === '\\' || e.key === '₩' || e.code === 'Backslash')) {
         e.preventDefault()
-        useUiStore.getState().toggleSidebarHidden()
+        // 왼쪽 칸은 ⌘\, 오른쪽 칸은 ⇧를 더해서. 짝이 되는 두 칸이라 자판에서도
+        // 같은 자리를 씁니다.
+        if (e.shiftKey) useUiStore.getState().toggleDayRail()
+        else useUiStore.getState().toggleSidebarHidden()
       }
 
       if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !isEditing) {

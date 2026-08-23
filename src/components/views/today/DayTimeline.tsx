@@ -116,12 +116,29 @@ export function DayTimeline({ date }: { date: string }) {
     return { busy: b, free: (WORK_END - WORK_START) * 60 - b, count: confirmed.length }
   }, [timed])
 
-  /** 지금 이후로 가장 가까운 일정. 오늘 것이 없으면 내일, 모레까지 넘어갑니다. */
-  const next = useMemo(() => {
-    if (!isToday) return null
-    return events
-      .filter(e => !e.allDay && e.startIso && new Date(e.startIso).getTime() > now.getTime())
-      .sort((a, b) => a.startIso!.localeCompare(b.startIso!))[0] ?? null
+  /**
+   * ── 다가오는 일정 ──────────────────────────────────────────────────────────
+   *
+   * 아래 격자는 하루치입니다. 이 목록은 거기서 잘리는 것 — 내일, 모레 —
+   * 을 맡습니다. 그래서 둘이 겹치는 건 '오늘 남은 것'뿐이고, 그건 겹쳐도
+   * 되는 부분입니다: 격자에서는 몇 시인지가, 여기서는 무엇인지가 보입니다.
+   *
+   * 사이드바에 목록을 따로 세우지 않는 이유이기도 합니다. 프로젝트 수십 개가
+   * 깔린 열을 더 길게 만드는 대신, 하루를 들여다보는 자리에 붙여 둡니다.
+   */
+  const upcoming = useMemo(() => {
+    if (!isToday) return []
+    const from = now.getTime()
+    const dated = events
+      .map(e => ({
+        e,
+        // 종일 일정은 시각이 없으므로 그날 0시로 세웁니다 — 목록 안에서
+        // 그날의 맨 앞에 서면 됩니다.
+        at: e.allDay ? new Date(`${e.start}T00:00:00`).getTime() : new Date(e.startIso!).getTime(),
+      }))
+      .filter(x => (x.e.allDay ? x.e.end >= fmtYMD(now) : x.at > from))
+      .sort((a, b) => a.at - b.at)
+    return dated.slice(0, UPCOMING_MAX).map(x => x.e)
   }, [events, isToday, now])
 
   return (
@@ -157,24 +174,31 @@ export function DayTimeline({ date }: { date: string }) {
         ) : (
           <>
             {/*
-              하루의 크기를 한 줄로.
+              하루의 크기는 한 줄이면 충분합니다.
+              큰 숫자로 세워 뒀더니 아래 목록보다 커서, 정작 무슨 회의가 있는지가
+              뒤로 밀렸습니다. 알아야 하는 건 '얼마나 남았나'와 '뭐가 오나' 둘 다고,
+              둘의 크기가 같아야 둘 다 읽힙니다.
 
-              '회의 4건'만으로는 아무것도 못 정합니다 — 15분짜리 넷과 두 시간짜리
-              넷은 완전히 다른 하루입니다. 그래서 건수가 아니라 시간을 앞에 둡니다.
+              그래도 건수가 아니라 시간이 앞입니다 — 15분짜리 넷과 두 시간짜리
+              넷은 완전히 다른 하루입니다.
             */}
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 3 }}>
-              <span style={{ fontSize: 19, fontWeight: 700, color: 'var(--t1)', fontVariantNumeric: 'tabular-nums' }}>
-                {free > 0 ? span(free) : '0분'}
-              </span>
-              <span style={{ fontSize: 12, color: 'var(--t3)' }}>비어 있음</span>
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--t3)' }}>
+            <div style={{ fontSize: 12, color: 'var(--t2)', fontVariantNumeric: 'tabular-nums' }}>
               {count === 0
-                ? `${WORK_START}시–${WORK_END}시에 잡힌 일정이 없습니다`
-                : `일정 ${count}건 · ${span(busy)} 나감`}
+                ? `${WORK_START}–${WORK_END}시에 잡힌 일정 없음`
+                : <>
+                    <span style={{ color: 'var(--t1)', fontWeight: 600 }}>{free > 0 ? span(free) : '0분'}</span>
+                    {' 비어 있음 · '}{span(busy)} 나감
+                  </>}
             </div>
 
-            {next && <NextUp event={next} now={now} today={isToday} />}
+            {upcoming.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--t3)', letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: 4 }}>
+                  다가오는 일정
+                </div>
+                {upcoming.map(e => <UpcomingRow key={e.id} event={e} now={now} />)}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -195,53 +219,58 @@ export function DayTimeline({ date }: { date: string }) {
   )
 }
 
-/**
- * 다음 일정 한 줄.
- *
- * 사이드바에 '다가오는 일정' 목록을 따로 세우는 대신 여기 한 줄로 둡니다.
- * 목록이었다면 프로젝트 수십 개가 깔린 사이드바를 더 길게 만들었을 텐데,
- * 실제로 알고 싶은 건 대개 '다음 것 언제'까지입니다.
- */
-function NextUp({ event, now, today }: { event: GCalEvent; now: Date; today: boolean }) {
-  const start = new Date(event.startIso!)
-  const sameDay = fmtYMD(start) === fmtYMD(now)
-  const tomorrow = fmtYMD(start) === fmtYMD(addDays(now, 1))
-  const minutesAway = Math.round((start.getTime() - now.getTime()) / 60000)
+/** 목록에 세우는 개수. 더 늘리면 격자가 화면 밖으로 밀립니다. */
+const UPCOMING_MAX = 6
 
-  const when = sameDay
-    // 한 시간 안쪽이면 시각보다 '몇 분 뒤'가 더 쓸모 있습니다.
-    ? (minutesAway <= 60 ? `${minutesAway}분 뒤` : clock(start))
-    : tomorrow ? `내일 ${clock(start)}`
-    : `${start.getMonth() + 1}/${start.getDate()} ${clock(start)}`
+const WEEKDAY = ['일', '월', '화', '수', '목', '금', '토']
+
+/**
+ * 한 줄, 세 조각: 어느 캘린더인지(네모) · 무엇인지(제목) · 언제인지(시각).
+ *
+ * 수락 안 한 초대는 속을 안 칠한 점선 네모입니다 — 격자에서 쓰는 표시와 같게
+ * 둡니다. 같은 사실을 두 곳에서 다르게 그리면 둘 중 하나는 다른 뜻으로 읽힙니다.
+ */
+function UpcomingRow({ event, now }: { event: GCalEvent; now: Date }) {
+  const [hovered, setHovered] = useState(false)
+  const colour = event.calendarColor || '#337EA9'
+  const pending = awaitingMe(event)
+
+  const start = event.allDay ? new Date(`${event.start}T00:00:00`) : new Date(event.startIso!)
+  const days = Math.round(
+    (new Date(fmtYMD(start) + 'T00:00:00').getTime() - new Date(fmtYMD(now) + 'T00:00:00').getTime()) / 86400000,
+  )
+  const day = days === 0 ? '' : days === 1 ? '내일 ' : days < 7 ? `${WEEKDAY[start.getDay()]} ` : `${start.getMonth() + 1}/${start.getDate()} `
+  const when = event.allDay ? `${day}종일` : `${day}${clock(start)}`
 
   return (
     <button
       onClick={() => void openExternal(event.htmlLink)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       title={event.summary}
       style={{
-        marginTop: 10, width: '100%', textAlign: 'left',
-        display: 'flex', alignItems: 'center', gap: 7,
-        padding: '6px 8px', borderRadius: 'var(--r2)',
-        border: '1px solid var(--bd)', background: 'var(--bg2)',
-        cursor: 'pointer', fontFamily: 'var(--font)', minWidth: 0,
+        width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+        padding: '4px 6px', margin: '1px 0', borderRadius: 'var(--r1)',
+        border: 'none', background: hovered ? 'var(--bg3)' : 'transparent',
+        cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left',
+        transition: 'background .08s',
       }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--bd2)' }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--bd)' }}
     >
       <span style={{
-        width: 3, alignSelf: 'stretch', borderRadius: 2, flexShrink: 0,
-        background: event.calendarColor || '#337EA9',
+        width: 10, height: 10, borderRadius: 3, flexShrink: 0, boxSizing: 'border-box',
+        background: pending ? 'transparent' : colour,
+        border: pending ? `1.5px dashed ${colour}` : 'none',
       }} />
-      <span style={{ minWidth: 0, flex: 1 }}>
-        <span style={{ display: 'block', fontSize: 10, color: 'var(--t3)' }}>
-          {today ? '다음' : '다음 일정'} · {when}
-        </span>
-        <span style={{
-          display: 'block', fontSize: 12, color: 'var(--t1)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {event.summary || '(제목 없음)'}
-        </span>
+      <span style={{
+        flex: 1, minWidth: 0, fontSize: 13, fontWeight: 500, color: 'var(--t1)',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>
+        {event.summary || '(제목 없음)'}
+      </span>
+      <span style={{
+        flexShrink: 0, fontSize: 11, color: 'var(--t3)', fontVariantNumeric: 'tabular-nums',
+      }}>
+        {when}
       </span>
     </button>
   )
