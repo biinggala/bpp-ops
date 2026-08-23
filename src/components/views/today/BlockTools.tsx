@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NodeSelection, TextSelection } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
 import { Icon } from '../../shared/Icon'
@@ -40,24 +40,42 @@ export function BlockTools({ editor, boundary }: {
   const [menu, setMenu] = useState<{ x: number; y: number; pos: number } | null>(null)
   const [slash, setSlash] = useState<{ x: number; y: number; from: number } | null>(null)
 
-  /** 어느 줄 위에 있는지. 좌표는 기준 상자 안쪽으로 옮겨 둡니다. */
-  const track = useCallback((e: React.MouseEvent) => {
-    if (!editor || menu || slash) return
+  /**
+   * 어느 줄 위에 있는지.
+   *
+   * 노트 상자에 직접 겁니다. 처음에는 손잡이를 담은 덮개에 걸었는데, 그
+   * 덮개가 `pointer-events: none`이라 마우스가 지나가도 아무 일이 없었습니다 —
+   * 손잡이가 영영 안 뜨던 이유입니다. 통과시키는 요소는 이벤트도 통과시킵니다.
+   */
+  const frozen = useRef(false)
+  frozen.current = !!menu || !!slash
+
+  useEffect(() => {
     const host = boundary.current
-    if (!host) return
-    const pos = blockAt(editor, e.clientX, e.clientY)
-    if (pos === null) { setSlot(null); return }
-    const dom = editor.view.nodeDOM(pos)
-    if (!(dom instanceof HTMLElement)) { setSlot(null); return }
-    const box = dom.getBoundingClientRect()
-    const base = host.getBoundingClientRect()
-    setSlot({
-      pos,
-      top: box.top - base.top + host.scrollTop,
-      left: box.left - base.left,
-      height: box.height,
-    })
-  }, [editor, boundary, menu, slash])
+    if (!host || !editor) return
+    const move = (e: MouseEvent) => {
+      if (frozen.current) return
+      const pos = blockAt(editor, e.clientX, e.clientY)
+      if (pos === null) { setSlot(null); return }
+      const dom = editor.view.nodeDOM(pos)
+      if (!(dom instanceof HTMLElement)) { setSlot(null); return }
+      const box = dom.getBoundingClientRect()
+      const base = host.getBoundingClientRect()
+      setSlot({
+        pos,
+        top: box.top - base.top + host.scrollTop,
+        left: box.left - base.left,
+        height: box.height,
+      })
+    }
+    const leave = () => { if (!frozen.current) setSlot(null) }
+    host.addEventListener('mousemove', move)
+    host.addEventListener('mouseleave', leave)
+    return () => {
+      host.removeEventListener('mousemove', move)
+      host.removeEventListener('mouseleave', leave)
+    }
+  }, [editor, boundary])
 
   /**
    * 줄 끌기.
@@ -85,6 +103,7 @@ export function BlockTools({ editor, boundary }: {
     const onContext = (e: MouseEvent) => {
       const pos = blockAt(editor, e.clientX, e.clientY)
       if (pos === null) return
+      if (editor.state.doc.nodeAt(pos)?.type.name === 'taskRef') return
       e.preventDefault()
       setMenu({ x: e.clientX, y: e.clientY, pos })
     }
@@ -119,12 +138,11 @@ export function BlockTools({ editor, boundary }: {
 
   return (
     <>
-      <div onMouseMove={track} onMouseLeave={() => setSlot(null)} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-        {slot && !menu && (
+      {slot && !menu && (
           <div style={{
             position: 'absolute', top: slot.top, left: slot.left - 46,
             height: Math.min(slot.height, 30), display: 'flex', alignItems: 'center', gap: 1,
-            pointerEvents: 'auto',
+            zIndex: 2,
           }}>
             <HandleBtn
               title="아래에 새 줄"
@@ -140,13 +158,13 @@ export function BlockTools({ editor, boundary }: {
               draggable
               onDragStart={beginDrag}
               onClick={e => {
+                if (editor.state.doc.nodeAt(slot.pos)?.type.name === 'taskRef') return
                 const box = (e.currentTarget as HTMLElement).getBoundingClientRect()
                 setMenu({ x: box.right + 4, y: box.top, pos: slot.pos })
               }}
             >⠿</HandleBtn>
           </div>
-        )}
-      </div>
+      )}
 
       {menu && <BlockMenu editor={editor} {...menu} onClose={() => setMenu(null)} />}
       {slash && <SlashMenu editor={editor} {...slash} onClose={() => setSlash(null)} />}
@@ -222,35 +240,26 @@ function BlockMenu({ editor, x, y, pos, onClose }: {
 
   const act = (run: () => void) => { if (inside()) { run(); haptic('tap') } onClose() }
 
-  const node = editor.state.doc.nodeAt(pos)
-  const isRef = node?.type.name === 'taskRef'
-
+  /*
+   * 이 메뉴에는 전환밖에 없습니다.
+   *
+   * 삭제와 복제도 있었는데, 줄 하나를 지우는 건 커서 놓고 Backspace고 복제는
+   * 복사·붙여넣기입니다. 둘 다 이미 손이 아는 일이라 메뉴에서는 자리만
+   * 차지하면서, 정작 다른 방법이 없는 '전환'을 아래로 밀어냈습니다.
+   *
+   * 업무 줄은 메뉴 자체가 안 뜹니다. 태스크를 문단으로 만들 수는 없고,
+   * 노트에서 빼는 건 그 줄의 × 가 합니다.
+   */
   return (
     <div ref={ref} style={{
       position: 'fixed', left: Math.min(x, window.innerWidth - 188), top: Math.min(y, window.innerHeight - 300),
       width: 180, zIndex: 600, background: 'var(--bg)', border: '1px solid var(--bd)',
       borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', padding: 4, userSelect: 'none',
     }}>
-      {/* 업무 줄은 전환할 게 없습니다 — 태스크를 문단으로 만들 수는 없으니까요. */}
-      {!isRef && (
-        <>
-          <Label>전환</Label>
-          {TURNS.map(t => (
-            <Item key={t.label} onClick={() => act(() => t.run(editor))}>{t.label}</Item>
-          ))}
-          <Rule />
-        </>
-      )}
-      <Item onClick={() => act(() => {
-        const n = editor.state.doc.nodeAt(pos)
-        if (!n) return
-        editor.view.dispatch(editor.state.tr.insert(pos + n.nodeSize, n.copy(n.content)))
-      })}>복제</Item>
-      <Item danger onClick={() => act(() => {
-        const n = editor.state.doc.nodeAt(pos)
-        if (!n) return
-        editor.view.dispatch(editor.state.tr.delete(pos, pos + n.nodeSize))
-      })}>삭제</Item>
+      <Label>전환</Label>
+      {TURNS.map(t => (
+        <Item key={t.label} onClick={() => act(() => t.run(editor))}>{t.label}</Item>
+      ))}
     </div>
   )
 }
@@ -335,10 +344,6 @@ function SlashMenu({ editor, x, y, from, onClose }: {
 
 function Label({ children }: { children: React.ReactNode }) {
   return <div style={{ padding: '6px 9px 3px', fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: 'var(--t3)' }}>{children}</div>
-}
-
-function Rule() {
-  return <div style={{ height: 1, background: 'var(--bd)', margin: '4px -4px' }} />
 }
 
 function Item({ children, onClick, danger }: { children: React.ReactNode; onClick: () => void; danger?: boolean }) {

@@ -72,13 +72,15 @@ export function TodayView() {
       /**
        * 왼쪽에서 끌어다 놓기.
        *
-       * 업무 줄은 블록이라 문단 안에는 못 들어갑니다. 그래서 떨어뜨린 줄의
-       * 위나 아래에 놓는데, **어느 쪽인지는 포인터가 그 줄의 위 절반이었는지
-       * 아래 절반이었는지로** 정합니다. 처음에는 늘 아래에 넣었더니 조준한
-       * 줄과 한 칸 어긋나서, 겨냥한 자리와 생긴 자리가 달랐습니다.
+       * **좌표로 묻지 않고 줄들의 상자를 직접 잽니다.** `posAtCoords`는 편집
+       * 가능한 곳만 답합니다 — 업무 줄은 contentEditable=false 라 그 위에
+       * 떨어뜨리면 null이 오고, 그러면 문서 끝으로 밀려납니다. 업무 사이에
+       * 놓으려던 게 매번 맨 아래에 생기던 이유입니다.
        *
-       * 빈 줄에 떨어뜨리면 그 줄을 대신합니다 — 빈 줄을 겨냥한 사람은 거기
-       * 넣고 싶은 것이지 그 옆에 빈 줄을 하나 더 갖고 싶은 게 아닙니다.
+       * 대신 최상위 줄들을 훑어 포인터에 가장 가까운 줄을 찾고, 그 줄의
+       * 위 절반이면 앞에, 아래 절반이면 뒤에 놓습니다. 빈 줄이면 그 줄을
+       * 대신합니다 — 빈 줄을 겨냥한 사람은 거기 넣고 싶은 것이지 그 옆에
+       * 빈 줄을 하나 더 갖고 싶은 게 아닙니다.
        */
       handleDrop(view, event, _slice, moved) {
         if (moved) return false
@@ -86,27 +88,34 @@ export function TodayView() {
         const taskId = ev.dataTransfer?.getData(TASK_DND)
         if (!taskId) return false
         event.preventDefault()
+
         const doc = view.state.doc
         const node = view.state.schema.nodes.taskRef.create({ taskId })
-        const at = view.posAtCoords({ left: ev.clientX, top: ev.clientY })
-        const $p = at ? doc.resolve(at.pos) : null
 
-        if (!$p || $p.depth === 0) {
+        let near: { start: number; size: number; mid: number; empty: boolean } | null = null
+        doc.forEach((child, offset) => {
+          const dom = view.nodeDOM(offset)
+          if (!(dom instanceof HTMLElement)) return
+          const box = dom.getBoundingClientRect()
+          const mid = box.top + box.height / 2
+          if (!near || Math.abs(ev.clientY - mid) < Math.abs(ev.clientY - near.mid)) {
+            near = {
+              start: offset, size: child.nodeSize, mid,
+              empty: child.type.name === 'paragraph' && child.content.size === 0,
+            }
+          }
+        })
+
+        const t = near as { start: number; size: number; mid: number; empty: boolean } | null
+        if (!t) {
           view.dispatch(view.state.tr.insert(doc.content.size, node))
           return true
         }
-
-        const start = $p.before(1)
-        const block = doc.nodeAt(start)
-        if (block?.type.name === 'paragraph' && block.content.size === 0) {
-          view.dispatch(view.state.tr.replaceWith(start, start + block.nodeSize, node))
+        if (t.empty) {
+          view.dispatch(view.state.tr.replaceWith(t.start, t.start + t.size, node))
           return true
         }
-
-        const dom = view.nodeDOM(start)
-        const box = dom instanceof HTMLElement ? dom.getBoundingClientRect() : null
-        const below = box ? ev.clientY > box.top + box.height / 2 : true
-        view.dispatch(view.state.tr.insert(below ? $p.after(1) : start, node))
+        view.dispatch(view.state.tr.insert(ev.clientY > t.mid ? t.start + t.size : t.start, node))
         return true
       },
     },
@@ -216,33 +225,139 @@ function useMine(): Task[] {
  * 잘라내지 않고 스크롤합니다. 아래쪽 페이드는 '여기까지가 전부'가 아니라 '아래
  * 더 있다'는 뜻이어야 합니다 — 가려 놓고 갈 수 없게 만들면 그건 거짓말입니다.
  */
+/**
+ * 묶는 방법.
+ *
+ * 기본은 마감순입니다 — 아침에 답해야 하는 질문이 '뭐가 급하지'니까요. 다만
+ * 그냥 죽 늘어놓으면 스무 개째부터 지금 보는 게 이번 주인지 다음 달인지
+ * 모르게 되므로, 얇은 머리글로 끊습니다.
+ *
+ * 프로젝트별은 다른 질문에 답합니다: '오늘은 프렌즈룸만 볼래'. 프로젝트가
+ * 여남은 개 되는 사람에게는 이쪽이 더 자주 필요합니다.
+ */
+type RailGroup = 'due' | 'project'
+
+const RAIL_KEY = 'today_rail_group'
+
+function loadRailGroup(): RailGroup {
+  try { return localStorage.getItem(RAIL_KEY) === 'project' ? 'project' : 'due' } catch { return 'due' }
+}
+
+/** 마감이 언제냐를 사람이 쓰는 말로. */
+function dueBucket(due: string | undefined): { key: string; label: string; tone?: string } {
+  if (!due) return { key: 'none', label: '날짜 없음' }
+  const d = daysFrom(due)
+  if (d < 0) return { key: 'late', label: '지남', tone: 'var(--danger)' }
+  if (d === 0) return { key: 'today', label: '오늘', tone: '#D9730D' }
+  if (d <= 7) return { key: 'week', label: '이번 주' }
+  if (d <= 30) return { key: 'month', label: '이번 달' }
+  return { key: 'later', label: '나중' }
+}
+
 function PullRail({ onAdd, inNote }: { onAdd: (t: Task) => void; inNote: Set<string> }) {
   const mine = useMine()
+  const projects = useProjectStore(s => s.projects)
+  const [group, setGroup] = useState<RailGroup>(loadRailGroup)
+  /**
+   * 아래가 더 있는지.
+   *
+   * 페이드를 늘 걸어 두면 끝까지 내려도 마지막 줄이 흐린 채로 남습니다 —
+   * 더 있다는 신호여야 할 것이 '여기는 못 간다'는 말이 됩니다.
+   */
+  const [more, setMore] = useState(false)
+
   const taken = mine.filter(t => inNote.has(t.id)).length
+
+  const sections = useMemo(() => {
+    if (group === 'project') {
+      const by = new Map<string, { label: string; dot?: string; tasks: Task[] }>()
+      for (const t of mine) {
+        const p = t.projectId ? projects.find(pr => pr.id === t.projectId) : undefined
+        const key = p?.id ?? '__none__'
+        if (!by.has(key)) by.set(key, { label: p?.name ?? '프로젝트 없음', dot: p?.color, tasks: [] })
+        by.get(key)!.tasks.push(t)
+      }
+      // 남은 게 많은 프로젝트가 위로. 오늘 신경 쓸 게 많은 쪽입니다.
+      return [...by.values()].sort((a, b) => b.tasks.length - a.tasks.length)
+    }
+    const by = new Map<string, { label: string; tone?: string; tasks: Task[] }>()
+    for (const t of mine) {
+      const b = dueBucket(t.due)
+      if (!by.has(b.key)) by.set(b.key, { label: b.label, tone: b.tone, tasks: [] })
+      by.get(b.key)!.tasks.push(t)
+    }
+    return [...by.values()]
+  }, [mine, group, projects])
+
+  const pick = (g: RailGroup) => {
+    setGroup(g)
+    try { localStorage.setItem(RAIL_KEY, g) } catch { /* private mode */ }
+  }
+
+  const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 4)
+  }
 
   return (
     <div style={{
       width: 264, flexShrink: 0, borderRight: '1px solid var(--bd)',
       display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg2)',
     }}>
-      <div style={{ padding: '14px 14px 8px', flexShrink: 0 }}>
+      <div style={{ padding: '14px 12px 8px', flexShrink: 0 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--t2)' }}>가져올 것</div>
         <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
           {mine.length
-            ? `내 업무 ${mine.length}개${taken ? ` · 오늘 ${taken}개` : ' · 마감 가까운 순'}`
+            ? `내 업무 ${mine.length}개${taken ? ` · 오늘 ${taken}개` : ''}`
             : '남은 게 없습니다'}
         </div>
+        {mine.length > 0 && (
+          <div style={{ display: 'flex', gap: 2, marginTop: 8, padding: 2, borderRadius: 'var(--r2)', background: 'var(--bg3)' }}>
+            <RailTab on={group === 'due'} onClick={() => pick('due')}>마감순</RailTab>
+            <RailTab on={group === 'project'} onClick={() => pick('project')}>프로젝트별</RailTab>
+          </div>
+        )}
       </div>
 
-      <div style={{
-        flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 8px 20px',
-        // 마지막 몇 픽셀만 흐려집니다. 스크롤이 끝까지 가면 아무것도 안 가립니다.
-        maskImage: 'linear-gradient(to bottom, #000 calc(100% - 28px), transparent)',
-        WebkitMaskImage: 'linear-gradient(to bottom, #000 calc(100% - 28px), transparent)',
-      }}>
-        {mine.map(t => <PullRow key={t.id} task={t} onAdd={onAdd} taken={inNote.has(t.id)} />)}
+      <div
+        ref={el => { if (el) setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 4) }}
+        onScroll={onScroll}
+        style={{
+          flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 8px 20px',
+          maskImage: more ? 'linear-gradient(to bottom, #000 calc(100% - 26px), transparent)' : 'none',
+          WebkitMaskImage: more ? 'linear-gradient(to bottom, #000 calc(100% - 26px), transparent)' : 'none',
+        }}
+      >
+        {sections.map(sec => (
+          <div key={sec.label}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              padding: '10px 6px 3px', fontSize: 10, fontWeight: 700, letterSpacing: '.05em',
+              color: ('tone' in sec && sec.tone) ? sec.tone : 'var(--t3)',
+            }}>
+              {'dot' in sec && sec.dot && (
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: sec.dot, flexShrink: 0 }} />
+              )}
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sec.label}</span>
+              <span style={{ marginLeft: 'auto', opacity: .7, letterSpacing: 0 }}>{sec.tasks.length}</span>
+            </div>
+            {sec.tasks.map(t => <PullRow key={t.id} task={t} onAdd={onAdd} taken={inNote.has(t.id)} />)}
+          </div>
+        ))}
       </div>
     </div>
+  )
+}
+
+function RailTab({ children, on, onClick }: { children: React.ReactNode; on: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick} style={{
+      flex: 1, padding: '4px 0', borderRadius: 'var(--r1)', border: 'none', cursor: 'pointer',
+      fontFamily: 'var(--font)', fontSize: 11, fontWeight: on ? 600 : 400,
+      color: on ? 'var(--t1)' : 'var(--t3)',
+      background: on ? 'var(--bg)' : 'transparent',
+      transition: 'background .1s, color .1s',
+    }}>{children}</button>
   )
 }
 
@@ -339,7 +454,7 @@ function PullStrip({ onAdd, inNote }: { onAdd: (t: Task) => void; inNote: Set<st
       display: 'flex', gap: 6, overflowX: 'auto', flexShrink: 0,
       padding: '4px 16px 10px', borderBottom: '1px solid var(--bd)',
     }}>
-      {mine.slice(0, 20).map(t => {
+      {mine.map(t => {
         const taken = inNote.has(t.id)
         const diff = t.due ? daysFrom(t.due) : null
         const late = diff !== null && diff < 0 && !taken
