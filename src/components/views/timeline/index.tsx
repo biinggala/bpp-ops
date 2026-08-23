@@ -15,6 +15,8 @@ import { MoreMenu } from '../../shared/MoreMenu'
 import { useToast } from '../../shared/Toast'
 import { useOrgStore, clashesFor, NO_BOOKINGS, type Room, type Booking } from '../../../store/orgStore'
 import { addDays, toDate, fmtYMD, isComposing } from '../../../lib/utils'
+import { openExternal } from '../../../lib/desktopLinks'
+import { splitAgenda, joinAgenda } from '../../../lib/googleCalendar'
 import type { GCalEvent } from '../../../store/gcalStore'
 
 /**
@@ -146,6 +148,17 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
   const [draft, setDraft] = useState<Draft | null>(null)
   const [naming, setNaming] = useState<Draft | null>(null)
   const [title, setTitle] = useState('')
+  /**
+   * 아젠다와 회의록 링크.
+   *
+   * 새 일정은 그냥 빈 칸에서 시작합니다. 이미 있는 일정은 **고르는 순간의
+   * 값**이 아니라 초안을 들고 있어야 합니다 — 제목과 같은 이유로, 구글에서
+   * 온 값과 지금 치고 있는 값이 다를 수 있고 다른 일정을 고르면 초안은
+   * 버려져야 합니다. 그래서 id를 함께 들고 다닙니다.
+   */
+  const [agenda, setAgenda] = useState('')
+  const [notesUrl, setNotesUrl] = useState('')
+  const [agendaDraft, setAgendaDraft] = useState<{ id: string; agenda: string; notesUrl: string } | null>(null)
   const [saving, setSaving] = useState(false)
   const ghostRef = useRef<{ id: string; from: number; to: number } | null>(null)
   const dragging = useRef<{ date: string; anchorMinutes: number } | null>(null)
@@ -269,7 +282,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
       window.removeEventListener('mouseup', up)
       dragging.current = null
       setCardAt({ x: ev.clientX, y: ev.clientY })
-      setDraft(current => { if (current) { setNaming(current); setTitle(''); setGuests([]) } return null })
+      setDraft(current => { if (current) { setNaming(current); setTitle(''); setAgenda(''); setNotesUrl(''); setGuests([]) } return null })
     }
     window.addEventListener('mousemove', move)
     window.addEventListener('mouseup', up)
@@ -330,9 +343,11 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
     const roomName = draftRoom
       ? useOrgStore.getState().rooms.find(r => r.id === draftRoom)?.name
       : undefined
+    const description = joinAgenda(notesUrl, agenda)
     const eventId = await createEvent({
       summary: name,
       ...(roomName ? { location: roomName } : {}),
+      ...(description ? { description } : {}),
       startDateTime: localIso(naming.date, naming.fromMinutes),
       endDateTime: localIso(naming.date, naming.toMinutes),
       attendees: guests,
@@ -355,7 +370,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
       })
     }
     setSaving(false)
-    if (eventId) { setNaming(null); setTitle(''); setGuests([]); setDraftRoom(null) }
+    if (eventId) { setNaming(null); setTitle(''); setAgenda(''); setNotesUrl(''); setGuests([]); setDraftRoom(null) }
   }
 
   // ── Layout ────────────────────────────────────────────────────────────────
@@ -420,6 +435,15 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
     ? (titleDraft?.id === selectedInfo.event.id ? titleDraft.text : (selectedInfo.event.summary ?? ''))
     : ''
 
+  /** 구글이 아는 설명을 아젠다와 회의록 링크로 갈라 놓은 것. */
+  const savedAgenda = useMemo(
+    () => splitAgenda(selectedInfo?.event.description),
+    [selectedInfo?.event.description],
+  )
+  const shownAgenda = selectedInfo && agendaDraft?.id === selectedInfo.event.id
+    ? agendaDraft
+    : { agenda: savedAgenda.agenda, notesUrl: savedAgenda.notesUrl }
+
   /**
    * 고른 일정에서 실제로 고친 게 있는가 — 이름이나 참석자.
    *
@@ -429,13 +453,14 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
   const selectedDirty = useMemo(() => {
     if (!selectedInfo) return false
     if (shownTitle.trim() !== (selectedInfo.event.summary ?? '')) return true
+    if (joinAgenda(shownAgenda.notesUrl, shownAgenda.agenda) !== (selectedInfo.event.description ?? '')) return true
     const was = (selectedInfo.event.attendees ?? [])
       .map(a => a.email)
       .filter(email => email !== myEmail?.toLowerCase())
       .sort()
     const now = [...guests].sort()
     return was.length !== now.length || was.some((email, i) => email !== now[i])
-  }, [selectedInfo, shownTitle, guests, myEmail])
+  }, [selectedInfo, shownTitle, shownAgenda, guests, myEmail])
 
   const todayStr = fmtYMD(now)
   const nowMinutes = now.getHours() * 60 + now.getMinutes()
@@ -557,6 +582,10 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
           heading={`${hhmm(naming.fromMinutes)} – ${hhmm(naming.toMinutes)}`}
           title={title}
           onTitle={setTitle}
+          agenda={agenda}
+          onAgenda={setAgenda}
+          notesUrl={notesUrl}
+          onNotesUrl={setNotesUrl}
           saving={saving}
           teammates={teammates}
           guests={guests}
@@ -568,7 +597,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
           booking={draftRoom ? { id: '', roomId: draftRoom, from: naming.fromMinutes, to: naming.toMinutes, by: '', at: 0 } : null}
           onRoom={setDraftRoom}
           onSave={save}
-          onClose={() => { setNaming(null); setTitle(''); setGuests([]); setDraftRoom(null) }}
+          onClose={() => { setNaming(null); setTitle(''); setAgenda(''); setNotesUrl(''); setGuests([]); setDraftRoom(null) }}
         />
       )}
 
@@ -578,6 +607,10 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
           heading={`${hhmm(selectedInfo.from)} – ${hhmm(selectedInfo.to)}`}
           title={shownTitle}
           onTitle={text => setTitleDraft({ id: selectedInfo.event.id, text })}
+          agenda={shownAgenda.agenda}
+          onAgenda={text => setAgendaDraft({ id: selectedInfo.event.id, agenda: text, notesUrl: shownAgenda.notesUrl })}
+          notesUrl={shownAgenda.notesUrl}
+          onNotesUrl={url => setAgendaDraft({ id: selectedInfo.event.id, agenda: shownAgenda.agenda, notesUrl: url })}
           saving={saving}
           teammates={teammates}
           guests={guests}
@@ -602,7 +635,10 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
               ? [...guests, myEmail.toLowerCase()]
               : guests
             const summary = shownTitle.trim() || selectedInfo.event.summary
-            await updateEvent(selectedInfo.event.id, { summary, attendees: withMe })
+            await updateEvent(selectedInfo.event.id, {
+              summary, attendees: withMe,
+              description: joinAgenda(shownAgenda.notesUrl, shownAgenda.agenda),
+            })
             // 예약에 적힌 제목도 같이. 사본은 늙습니다 — 남들이 방 목록에서
             // 읽는 '무슨 회의로 찼는지'가 그 사본입니다.
             await retitleForEvent(selectedInfo.date, selectedInfo.event.id, summary)
@@ -1268,11 +1304,18 @@ const linkBtn: React.CSSProperties = {
 function EventCard({
   at, heading, title, onTitle, saving, teammates, guests, nameOf, onToggleGuest,
   onSave, onDelete, onClose, openLink, slot, booking, onRoom, responses, myResponse, onRespond, dirty = true,
+  agenda, onAgenda, notesUrl, onNotesUrl,
 }: {
   at: { x: number; y: number }
   heading: string
   title: string
   onTitle: (v: string) => void
+  /** 회의 아젠다. 구글 일정의 설명 칸에 그대로 들어갑니다. */
+  agenda: string
+  onAgenda: (v: string) => void
+  /** 회의록 링크. 설명의 첫 줄에 적힙니다 — splitAgenda 참고. */
+  notesUrl: string
+  onNotesUrl: (v: string) => void
   saving: boolean
   teammates: string[]
   guests: string[]
@@ -1388,6 +1431,12 @@ function EventCard({
 
         {onRoom && <RoomRow slot={slot} booking={booking ?? null} onPick={onRoom} />}
 
+        <AgendaRow
+          agenda={agenda} onAgenda={onAgenda}
+          notesUrl={notesUrl} onNotesUrl={onNotesUrl}
+          disabled={saving}
+        />
+
         {onRespond && myResponse && (
           <RsvpRow current={myResponse} onRespond={onRespond} />
         )}
@@ -1404,6 +1453,104 @@ function EventCard({
             </a>
           )}
         </div>
+      </div>
+    </>
+  )
+}
+
+/**
+ * ── 아젠다와 회의록 ──────────────────────────────────────────────────────────
+ *
+ * 여기서 만드는 일정의 대부분은 회의입니다. 회의에는 두 가지가 따라다닙니다 —
+ * 무슨 얘기를 할 건지, 어디에 적을 건지.
+ *
+ * 둘 다 구글 일정의 **설명** 칸으로 갑니다. 우리 데이터베이스에 따로 두지
+ * 않습니다: 초대받은 사람 중에는 이 앱을 안 쓰는 사람도, 도메인 밖 사람도
+ * 있고, 그들이 볼 수 있는 유일한 자리가 거기입니다. 그리고 사본은 늙습니다.
+ *
+ * 비어 있으면 한 줄로 접혀 있습니다. 대부분의 일정에는 아젠다가 없고, 늘
+ * 펴져 있는 빈 상자는 카드를 두 배로 만들 뿐입니다. 적힌 게 있으면 펴집니다 —
+ * 접혀 있는데 안에 뭐가 있으면 없는 것과 같으니까요.
+ */
+function AgendaRow({ agenda, onAgenda, notesUrl, onNotesUrl, disabled }: {
+  agenda: string
+  onAgenda: (v: string) => void
+  notesUrl: string
+  onNotesUrl: (v: string) => void
+  disabled: boolean
+}) {
+  const filled = !!agenda.trim() || !!notesUrl.trim()
+  const [open, setOpen] = useState(filled)
+
+  // 다른 일정을 골라 카드 내용이 통째로 바뀌면 펼침 상태도 그 일정을 따라야
+  // 합니다. 안 그러면 아젠다가 있는 일정이 접힌 채로 열립니다.
+  useEffect(() => { setOpen(filled) }, [filled])
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        style={{
+          marginTop: 10, padding: 0, border: 'none', background: 'transparent',
+          color: 'var(--t3)', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)',
+        }}
+      >
+        + 아젠다 · 회의록 링크
+      </button>
+    )
+  }
+
+  return (
+    <>
+      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--t2)', margin: '10px 0 4px' }}>아젠다</div>
+      <textarea
+        value={agenda}
+        disabled={disabled}
+        onChange={e => onAgenda(e.target.value)}
+        rows={3}
+        placeholder={'· 지난 주 정리\n· 이번 주 할 것'}
+        style={{
+          width: '100%', boxSizing: 'border-box', padding: '6px 8px',
+          borderRadius: 'var(--r1)', border: '1px solid var(--bd)',
+          background: 'var(--bg)', color: 'var(--t1)',
+          fontSize: 12, lineHeight: 1.6, fontFamily: 'var(--font)',
+          outline: 'none', resize: 'vertical', minHeight: 56,
+        }}
+      />
+
+      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--t2)', margin: '10px 0 4px' }}>회의록</div>
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+        <input
+          value={notesUrl}
+          disabled={disabled}
+          onChange={e => onNotesUrl(e.target.value)}
+          placeholder="링크 붙여넣기"
+          style={{
+            flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '5px 8px',
+            borderRadius: 'var(--r1)', border: '1px solid var(--bd)',
+            background: 'var(--bg)', color: 'var(--t1)',
+            fontSize: 12, fontFamily: 'var(--font)', outline: 'none',
+          }}
+        />
+        {/* 이미 적혀 있으면 열어 볼 수 있어야 합니다 — 링크를 적어 두고
+            그 링크로 못 가는 칸은 반쪽입니다. */}
+        {notesUrl.trim() && (
+          <button
+            onClick={() => void openExternal(notesUrl.trim())}
+            title="회의록 열기"
+            style={{
+              flexShrink: 0, width: 26, height: 26, borderRadius: 'var(--r1)',
+              border: '1px solid var(--bd)', background: 'transparent',
+              color: 'var(--t2)', cursor: 'pointer', fontSize: 11,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Icon name="external" size={13} />
+          </button>
+        )}
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--t3)', marginTop: 4, lineHeight: 1.5 }}>
+        초대받은 사람 모두가 구글 일정에서 봅니다.
       </div>
     </>
   )

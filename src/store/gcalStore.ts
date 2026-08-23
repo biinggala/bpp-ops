@@ -11,6 +11,11 @@ export interface GCalEvent {
   summary: string
   /** 구글 일정의 장소. 회의실을 잡으면 방 이름이 여기 적힙니다. */
   location?: string
+  /**
+   * 구글 일정의 설명. 아젠다와 회의록 링크가 여기 삽니다 — 초대받은 모두가
+   * 보는 유일한 칸이라서요. splitAgenda/joinAgenda 참고.
+   */
+  description?: string
   start: string      // YYYY-MM-DD
   end: string        // YYYY-MM-DD
   startTime?: string // e.g. "9:30am", "8pm" — only for timed (non-all-day) events
@@ -127,14 +132,14 @@ interface GCalState {
   setTargetCalendar: (id: string) => void
   /** Creates an event, asking for write permission the first time. */
   /** 만들어진 일정의 id(캘린더id:일정id). 실패하면 null. */
-  createEvent: (input: { summary: string; location?: string; startDateTime: string; endDateTime: string; attendees?: string[]; taskId?: string }) => Promise<string | null>
+  createEvent: (input: { summary: string; location?: string; description?: string; startDateTime: string; endDateTime: string; attendees?: string[]; taskId?: string }) => Promise<string | null>
   /** The events linked to a task, as this person's calendars have them. */
   eventsForTask: (taskId: string) => Promise<GCalEvent[]>
   /** Events to choose from when attaching one that already exists. */
   findLinkableEvents: (query: string) => Promise<GCalEvent[]>
   /** Attaches or detaches an event. The event itself is never touched. */
   setEventTask: (eventId: string, taskId: string | null) => Promise<boolean>
-  updateEvent: (eventId: string, patch: { summary?: string; location?: string; startDateTime?: string; endDateTime?: string; attendees?: string[] }) => Promise<boolean>
+  updateEvent: (eventId: string, patch: { summary?: string; location?: string; description?: string; startDateTime?: string; endDateTime?: string; attendees?: string[] }) => Promise<boolean>
   /** 초대에 수락·미정·거절로 답합니다. */
   respond: (eventId: string, response: Rsvp) => Promise<boolean>
   removeEvent: (eventId: string) => Promise<void>
@@ -189,6 +194,7 @@ function toGCalEvent(item: RawCalendarEvent): GCalEvent | null {
     startIso: item.start?.dateTime,
     endIso: item.end?.dateTime,
     location: item.location,
+    description: item.description,
     attendees: item.attendees,
     taskId: item.extendedProperties?.private?.[TASK_LINK_KEY],
   }
@@ -467,7 +473,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
    * a consent screen is warranted — and it needs the click that triggered it, so
    * this must be called straight from the interaction.
    */
-  createEvent: async ({ summary, location, startDateTime, endDateTime, attendees, taskId }) => {
+  createEvent: async ({ summary, location, description, startDateTime, endDateTime, attendees, taskId }) => {
     const { calendars, targetCalendarId } = get()
     const target = targetCalendarId
       ?? calendars.find(c => c.primary)?.id
@@ -481,7 +487,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     if (!token) return null
 
     try {
-      const created = await createCalendarEvent(token, { calendarId: target, summary, location, startDateTime, endDateTime, attendees, taskId })
+      const created = await createCalendarEvent(token, { calendarId: target, summary, location, description, startDateTime, endDateTime, attendees, taskId })
       const colour = calendars.find(c => c.id === target)?.backgroundColor ?? '#4285f4'
       const ev = toGCalEvent({ ...created, calendarId: target, calendarColor: colour })
       // Show it straight away; the next fetch will confirm it.
@@ -542,6 +548,9 @@ export const useGCalStore = create<GCalState>((set, get) => ({
         ...e,
         summary: patch.summary ?? e.summary,
         location: patch.location ?? e.location,
+        // ?? 가 아니라 !== undefined 입니다 — 빈 문자열은 '지웠다'는 뜻이고,
+        // ??로 받으면 지운 아젠다가 화면에 계속 남습니다.
+        description: patch.description !== undefined ? patch.description : e.description,
         attendees: patch.attendees ? patch.attendees.map(email => ({ email })) : e.attendees,
         startIso: patch.startDateTime ?? e.startIso,
         endIso: patch.endDateTime ?? e.endIso,

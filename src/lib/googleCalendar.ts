@@ -26,6 +26,7 @@ export interface RawCalendarEvent {
   calendarId: string
   calendarColor: string
   summary?: string
+  description?: string
   location?: string
   start: { dateTime?: string; date?: string }
   end: { dateTime?: string; date?: string }
@@ -138,6 +139,8 @@ export interface NewEvent {
   summary: string
   /** 회의실 이름. 조직 밖 사람도 이건 봅니다 — EventPatch.location 참고. */
   location?: string
+  /** 아젠다와 회의록 링크. joinAgenda가 만드는 문자열입니다. */
+  description?: string
   /** Local wall-clock ISO without a zone, e.g. "2026-08-18T14:00:00". */
   startDateTime: string
   endDateTime: string
@@ -175,6 +178,7 @@ export async function createCalendarEvent(token: string, event: NewEvent): Promi
       body: JSON.stringify({
         summary: event.summary,
         ...(event.location ? { location: event.location } : {}),
+        ...(event.description ? { description: event.description } : {}),
         start: { dateTime: event.startDateTime, timeZone },
         end: { dateTime: event.endDateTime, timeZone },
         ...(event.attendees?.length ? { attendees: event.attendees.map(email => ({ email })) } : {}),
@@ -200,6 +204,8 @@ export interface EventPatch {
    * 장소 칸입니다. 예약은 우리가 관리하고, 결과는 모두가 보는 곳에 적습니다.
    */
   location?: string
+  /** 아젠다와 회의록 링크. 빈 문자열은 '지운다'는 뜻이라 undefined와 다릅니다. */
+  description?: string
   startDateTime?: string
   endDateTime?: string
   timeZone?: string
@@ -214,6 +220,7 @@ export async function updateCalendarEvent(
   const body: Record<string, unknown> = {}
   if (patch.summary !== undefined) body.summary = patch.summary
   if (patch.location !== undefined) body.location = patch.location
+  if (patch.description !== undefined) body.description = patch.description
   if (patch.startDateTime) body.start = { dateTime: patch.startDateTime, timeZone }
   if (patch.endDateTime) body.end = { dateTime: patch.endDateTime, timeZone }
   if (patch.attendees) body.attendees = patch.attendees.map(email => ({ email }))
@@ -404,6 +411,40 @@ export async function setEventTaskLink(
 }
 
 /** Calendars this account may actually add events to. */
+/**
+ * ── 아젠다와 회의록 링크 ─────────────────────────────────────────────────────
+ *
+ * 구글 일정에는 '회의록' 칸이 없습니다. 있는 건 설명 하나뿐이고, 그건 초대받은
+ * 모두가 봅니다 — 우리 앱을 안 쓰는 사람, 도메인 밖 사람까지. 회의록 링크가
+ * 있어야 할 자리는 정확히 거기입니다.
+ *
+ * 그래서 링크를 **설명의 첫 줄**에 고정된 모양으로 적습니다. 우리 데이터베이스에
+ * 따로 들고 있지 않습니다 — 사본은 늙고, 구글에서 설명을 고친 사람과 앱에서
+ * 고친 사람이 서로 다른 것을 보게 됩니다. 한 군데에만 있으면 그럴 일이 없습니다.
+ *
+ * 대신 첫 줄이 이 모양이 아니면 그냥 아젠다의 일부로 읽습니다. 구글 쪽에서
+ * 자유롭게 고쳐도 글자가 사라지지는 않는다는 뜻입니다.
+ */
+const NOTES_MARK = '회의록: '
+
+export function splitAgenda(description?: string): { notesUrl: string; agenda: string } {
+  const text = description ?? ''
+  const nl = text.indexOf('\n')
+  const first = nl === -1 ? text : text.slice(0, nl)
+  if (!first.startsWith(NOTES_MARK)) return { notesUrl: '', agenda: text }
+  const url = first.slice(NOTES_MARK.length).trim()
+  // 링크 줄 다음의 빈 줄은 우리가 넣은 것이라 다시 읽을 때 걷어냅니다.
+  const rest = nl === -1 ? '' : text.slice(nl + 1).replace(/^\n/, '')
+  return { notesUrl: url, agenda: rest }
+}
+
+export function joinAgenda(notesUrl: string, agenda: string): string {
+  const url = notesUrl.trim()
+  const body = agenda.trim()
+  if (!url) return body
+  return body ? `${NOTES_MARK}${url}\n\n${body}` : `${NOTES_MARK}${url}`
+}
+
 export function writableCalendars(calendars: GoogleCalendar[]): GoogleCalendar[] {
   return calendars.filter(c => c.accessRole === 'owner' || c.accessRole === 'writer')
 }
