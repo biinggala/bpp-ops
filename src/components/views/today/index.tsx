@@ -36,6 +36,15 @@ import type { Task } from '../../../types'
 
 const TODAY = () => fmtYMD(new Date())
 
+/**
+ * 손잡이가 서는 자리.
+ *
+ * 글줄은 이만큼 안으로 들어가 있고, 날짜 제목도 같이 들어가야 합니다 — 제목이
+ * 왼쪽으로 튀어나와 있으면 노트 전체가 한 칸 밀린 것처럼 보입니다. 한 군데서
+ * 정해 두 곳이 같이 씁니다.
+ */
+const GUTTER = 46
+
 export function TodayView() {
   const isMobile = useMobile()
   const [date, setDate] = useState(TODAY)
@@ -146,7 +155,7 @@ export function TodayView() {
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
-          padding: isMobile ? '10px 16px 6px' : '14px 28px 8px',
+          padding: isMobile ? '10px 16px 6px' : `14px 28px 8px ${28 + GUTTER}px`,
         }}>
           <span style={{ fontSize: isMobile ? 16 : 18, fontWeight: 700, color: 'var(--t1)' }}>
             {dayLabel(date)}
@@ -195,7 +204,7 @@ export function TodayView() {
         >
           {/* 손잡이가 설 자리를 왼쪽에 비워 둡니다. 폰에는 여백도 손도 없어서
               손잡이가 없고, 그래서 자리도 안 비웁니다. */}
-          <div style={{ maxWidth: 720, marginLeft: isMobile ? 0 : 46 }}>
+          <div style={{ maxWidth: 720, marginLeft: isMobile ? 0 : GUTTER }}>
             <EditorContent editor={editor} />
           </div>
           {!isMobile && <BlockTools editor={editor} boundary={noteRef} />}

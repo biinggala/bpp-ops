@@ -165,7 +165,7 @@ export function BlockTools({ editor, boundary }: {
     <>
       {slot && !menu && (
           <div ref={handleRef} style={{
-            position: 'absolute', top: slot.top, left: slot.left - 46,
+            position: 'absolute', top: slot.top, left: slot.left - 46,  // index.tsx의 GUTTER와 같은 값
             height: Math.min(slot.height, 30), display: 'flex', alignItems: 'center', gap: 1,
             zIndex: 2,
           }}>
