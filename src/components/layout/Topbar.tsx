@@ -7,12 +7,12 @@ import { MobileFilterButton } from './MobileFilterSheet'
 import { pendingUpdate, installUpdate, openInBrowser, type DesktopRelease } from '../../lib/desktopUpdate'
 
 export function Topbar() {
-  const { space, projectId, myTasksOnly, openTaskModal, toggleSidebar, view } = useUiStore()
+  const { space, projectId, myTasksOnly, openTaskModal, toggleSidebar, view, screen } = useUiStore()
   const projects = useProjectStore(s => s.projects)
   const isMobile = useMobile()
 
   const activeProject = projectId ? projects.find(p => p.id === projectId) : null
-  const title = activeProject?.name ?? space ?? (myTasksOnly ? '내 할 일' : '전체 업무')
+  const title = screen === 'today' ? '오늘' : (activeProject?.name ?? space ?? (myTasksOnly ? '내 할 일' : '전체 업무'))
 
   return (
     <header style={{
@@ -58,7 +58,7 @@ export function Topbar() {
         {/* One door to everything that narrows or reorders the view. The ✓ that
             used to sit here toggled only 완료 숨기기, and left the other six
             controls with nowhere to live on a phone. */}
-        {isMobile && view !== 'f' && <MobileFilterButton />}
+        {isMobile && screen === 'work' && view !== 'f' && <MobileFilterButton />}
         {isMobile ? (
           <button
             onClick={() => { haptic('tap'); openTaskModal() }}

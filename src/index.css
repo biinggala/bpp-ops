@@ -222,6 +222,10 @@ input, select, textarea, button {
   word-break: break-all;
 }
 
+/* 오늘 노트는 화면 하나를 통째로 씁니다 — 빈 노트가 한 줄짜리 입력칸처럼
+   보이면 아무도 거기에 하루를 적지 않습니다. */
+.ProseMirror.today-note { min-height: 340px; font-size: 14px; }
+
 /* ── Tiptap / ProseMirror editor ── */
 .ProseMirror {
   outline: none;

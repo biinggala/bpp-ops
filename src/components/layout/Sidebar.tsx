@@ -46,7 +46,7 @@ function saveCollapsedGroups(next: Set<string>) {
 }
 
 export function Sidebar() {
-  const { filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly, sidebarOpen, setSidebarOpen } = useUiStore()
+  const { filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly, sidebarOpen, setSidebarOpen, screen, setScreen } = useUiStore()
   const isMobile = useMobile()
   const tasks = useTaskStore(s => s.tasks)
   const { projects, addProject, updateProject, deleteProject, addMember, removeMember } = useProjectStore()
@@ -476,11 +476,26 @@ export function Sidebar() {
         {pane === 'home' && (
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 6px' }}>
 
-          {/* 내 할 일 comes first and is the only nav row carrying a number.
-              It is where the day starts, and "how many are still mine" is the
-              one count in this sidebar that changes what someone does next. */}
+          {/*
+            오늘이 먼저입니다.
+
+            내 할 일은 나에게 배정된 것 전부를 세워 놓은 목록 — 재고입니다.
+            아침에 필요한 건 재고가 아니라 '오늘 이것들'이라는 결정이고,
+            그 결정이 내려지는 곳이 오늘입니다.
+          */}
           <NavItem
-            active={myTasksOnly}
+            active={screen === 'today'}
+            onClick={() => { setScreen('today'); closeSidebar() }}
+            node={<Icon name="today" size={14} />}
+          >
+            오늘
+          </NavItem>
+
+          {/* 내 할 일 is the only nav row carrying a number — "how many are
+              still mine" is the one count in this sidebar that changes what
+              somebody does next. */}
+          <NavItem
+            active={screen === 'work' && myTasksOnly}
             onClick={() => { setMyTasksOnly(!myTasksOnly); setProject(null); closeSidebar() }}
             count={myOpenCount}
             emphasis
@@ -490,7 +505,7 @@ export function Sidebar() {
           </NavItem>
 
           <NavItem
-            active={!myTasksOnly && projectId === null}
+            active={screen === 'work' && !myTasksOnly && projectId === null}
             onClick={() => { setProject(null); setMyTasksOnly(false); closeSidebar() }}
             icon="◈"
           >
@@ -545,7 +560,7 @@ export function Sidebar() {
                   return (
                     <ProjectItem
                       key={p.id}
-                      active={projectId === p.id}
+                      active={screen === 'work' && projectId === p.id}
                       dot={p.color}
                       overdue={overdueByProject.get(p.id) ?? 0}
                       daysInfo={daysInfo}
@@ -610,7 +625,7 @@ export function Sidebar() {
                 return (
                   <ProjectItem
                     key={p.id}
-                    active={projectId === p.id}
+                    active={screen === 'work' && projectId === p.id}
                     dot={p.color}
                     overdue={0}
                     daysInfo={null}
@@ -764,13 +779,15 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-function NavItem({ children, active, onClick, count, emphasis, icon }: {
+function NavItem({ children, active, onClick, count, emphasis, icon, node }: {
   children: React.ReactNode; active: boolean; onClick: () => void
   /** Omitted where a number would be decoration rather than information. */
   count?: number
   /** Draws the count as a filled pill — the row you are meant to start from. */
   emphasis?: boolean
   icon?: string
+  /** A drawn icon, where a glyph will not do. */
+  node?: React.ReactNode
 }) {
   return (
     <div
@@ -786,7 +803,9 @@ function NavItem({ children, active, onClick, count, emphasis, icon }: {
       onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--sb-hover)' }}
       onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
     >
-      {icon && <span style={{ fontSize: 11, opacity: emphasis ? .85 : .6, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>}
+      {node
+        ? <span style={{ width: 16, display: 'flex', justifyContent: 'center', flexShrink: 0, opacity: .75 }}>{node}</span>
+        : icon && <span style={{ fontSize: 11, opacity: emphasis ? .85 : .6, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>}
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
       {count !== undefined && count > 0 && (
         emphasis ? (

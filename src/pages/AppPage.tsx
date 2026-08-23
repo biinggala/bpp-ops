@@ -20,6 +20,7 @@ import { CalendarView } from '../components/views/calendar'
 import { StatsView } from '../components/views/stats'
 import { FilesView } from '../components/views/files'
 import { GanttView } from '../components/views/gantt'
+import { TodayView } from '../components/views/today'
 import { TaskModal } from '../components/modals/TaskModal'
 import { TaskDetailModal } from '../components/modals/TaskDetailModal'
 import { CommandPalette } from '../components/modals/CommandPalette'
@@ -50,6 +51,7 @@ class TaskDetailErrorBoundary extends React.Component<
 export function AppPage() {
   const isMobile = useMobile()
   const view = useUiStore(s => s.view)
+  const screen = useUiStore(s => s.screen)
   const tasks = useTaskStore(s => s.tasks)
   const subscribeWorkspace = useSyncStore(s => s.subscribe)
   const joinProject = useProjectStore(s => s.joinProject)
@@ -148,10 +150,12 @@ export function AppPage() {
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <Topbar />
-        {!isMobile && <ViewBar />}
+        {!isMobile && screen === 'work' && <ViewBar />}
 
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-          {isEmpty ? (
+          {screen === 'today' ? (
+            <TodayView />
+          ) : isEmpty ? (
             <EmptyState />
           ) : (
             <>
