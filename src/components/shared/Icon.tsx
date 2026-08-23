@@ -15,7 +15,7 @@
 export type IconName =
   | 'pencil' | 'users' | 'layers' | 'archive' | 'unarchive' | 'trash'
   | 'exit' | 'settings' | 'plus' | 'external' | 'unlink' | 'sun' | 'moon' | 'monitor'
-  | 'inbox' | 'home'
+  | 'inbox' | 'home' | 'today'
 
 /** The ones a single path can say. */
 const PATHS: Partial<Record<IconName, string>> = {
@@ -78,6 +78,16 @@ export function Icon({ name, size = 15, strokeWidth = 1.7 }: {
       <svg {...common}>
         <path d="M3.6 10.4 12 3.8l8.4 6.6v8.2a1.8 1.8 0 0 1-1.8 1.8H5.4a1.8 1.8 0 0 1-1.8-1.8z" />
         <path d="M9.4 20.4v-7h5.2v7" />
+      </svg>
+    )
+  }
+  // 오늘 — 달력 한 장에 오늘 칸만 채워져 있습니다.
+  if (name === 'today') {
+    return (
+      <svg {...common}>
+        <rect x="3.4" y="5.2" width="17.2" height="15.2" rx="2.6" />
+        <path d="M3.4 9.6h17.2M8.2 3.4v3.4M15.8 3.4v3.4" />
+        <rect x="10.4" y="12.6" width="3.2" height="3.2" rx=".8" fill="currentColor" stroke="none" />
       </svg>
     )
   }

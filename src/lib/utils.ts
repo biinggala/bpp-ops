@@ -130,6 +130,12 @@ export function parseAssignees(assignee: string): string[] {
  * without a legacy MemberKey counted zero — while the view matched on substring
  * and by email. The badge and the list were answering different questions.
  */
+/** 오늘로부터 며칠. 음수는 지났다는 뜻입니다. */
+export function daysFrom(dateStr: string, base: Date = new Date()): number {
+  const from = new Date(base).setHours(0, 0, 0, 0)
+  return Math.round((new Date(dateStr).setHours(0, 0, 0, 0) - from) / 86400000)
+}
+
 export function isAssignedTo(
   assignee: string,
   memberKey: string | null | undefined,

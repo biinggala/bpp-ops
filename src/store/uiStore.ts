@@ -29,6 +29,15 @@ interface UiState {
   myTasksOnly: boolean          // quick filter: my tasks
   hideCompleted: boolean        // hide tasks with status === '완료'
   filters: Filters
+  /**
+   * 지금 보고 있는 게 '오늘'인가, 업무 화면인가.
+   *
+   * 뷰 탭(리스트·보드·캘린더…)은 *한 프로젝트의 업무를 보는 방법들*이라 오늘이
+   * 낄 자리가 아닙니다. 오늘은 프로젝트에 속하지도, 남과 공유되지도 않습니다.
+   * 그래서 한 층 위에 둡니다.
+   */
+  screen: 'today' | 'work'
+  setScreen: (s: 'today' | 'work') => void
   detailTaskId: string | null
   editTaskId: string | null
   newTaskParentId: string | null
@@ -98,6 +107,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   myTasksOnly: true,
   hideCompleted: false,
   filters: { ...defaultFilters },
+  // 아침에 여는 화면. 내 할 일은 재고이고, 오늘은 계획입니다.
+  screen: 'today',
   detailTaskId: null,
   editTaskId: null,
   newTaskParentId: null,
@@ -116,18 +127,20 @@ export const useUiStore = create<UiState>((set, get) => ({
     try { localStorage.setItem(LIST_GROUP_KEY, listGroup) } catch { /* ignore */ }
     set({ listGroup })
   },
-  setSpace: (space) => set({ space, projectId: null }),
+  setSpace: (space) => set({ space, projectId: null, screen: 'work' }),
   // Entering a project makes the project filter meaningless at best and
   // self-contradicting at worst — filtering to project B while inside project A
   // can only ever return nothing. Same for 내 할 일 and the assignee filter.
   // Dropping the conflicting selection here means no caller can produce the
   // contradiction, and the bar has nothing incoherent left to render.
+  // 업무를 고르는 모든 길은 업무 화면으로 데려갑니다. 오늘에 서서 프로젝트를
+  // 눌렀는데 아무 일도 안 일어나면 그 줄은 고장 난 것으로 보입니다.
   setProject: (projectId) => set(st => ({
-    projectId, space: null,
+    projectId, space: null, screen: 'work',
     filters: projectId ? { ...st.filters, projects: [] } : st.filters,
   })),
   setMyTasksOnly: (myTasksOnly) => set(st => ({
-    myTasksOnly,
+    myTasksOnly, screen: 'work',
     filters: myTasksOnly ? { ...st.filters, assignees: [] } : st.filters,
   })),
   // 완료 숨기기 and a 완료 status filter are a guaranteed empty list. The
@@ -140,6 +153,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   })),
   setFilters: (f) => set(s => ({ filters: { ...s.filters, ...f } })),
   resetFilters: () => set(st => ({ filters: { ...defaultFilters, sort: st.filters.sort } })),
+  setScreen: (screen) => set({ screen }),
   setDetailTaskId: (id) => set({ detailTaskId: id }),
   openTaskDetail: (id: string) => set({ detailTaskId: id }),
   closeTaskDetail: () => set({ detailTaskId: null }),

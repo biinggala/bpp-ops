@@ -20,7 +20,7 @@ import { useMobile } from '../../../hooks/useMobile'
 import { TagBadge } from '../../shared/Badge'
 import { AssigneeAvatar } from '../../shared/Avatar'
 import { ActionMenu, ContextMenu } from '../../shared/ContextMenu'
-import { fmtDate, isOverdue, parseAssignees, assigneeKeyToEmail, stripHtml, isComposing } from '../../../lib/utils'
+import { fmtDate, isOverdue, parseAssignees, assigneeKeyToEmail, stripHtml, isComposing, daysFrom } from '../../../lib/utils'
 import { NOTION, STATUS_LIST, PRIORITY_LIST, getTagColor, statusAccent } from '../../../types'
 import {
   FileRow, DriveSearch, UrlAdd, AttachTabs,
@@ -115,9 +115,6 @@ function milestoneAccent(done: boolean, diff: number): string {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function daysFrom(dateStr: string, base: Date) {
-  return Math.round((new Date(dateStr).setHours(0, 0, 0, 0) - base.getTime()) / 86400000)
-}
 type Bucket = { key: string; label: string; accent?: string; tasks: Task[] }
 
 /**

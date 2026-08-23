@@ -11,6 +11,7 @@ import { NavIcon } from './NavIcons'
 import { MEMBERS, STATUS_COLORS } from '../../types'
 import type { ViewType, Status, MemberKey } from '../../types'
 import { STATUS_LIST } from '../../types'
+import { Icon } from '../shared/Icon'
 
 // The icon each of these is drawn with lives in NavIcons, keyed by the same id.
 const VIEWS: { id: ViewType; label: string }[] = [
@@ -534,7 +535,9 @@ function MultiSelect<T extends string>({ label, options, selected, onChange }: {
  * iOS while the address bar animated.
  */
 function BottomNav({ view, onPick }: { view: ViewType; onPick: (v: ViewType) => void }) {
-  const [pressed, setPressed] = React.useState<ViewType | null>(null)
+  const [pressed, setPressed] = React.useState<string | null>(null)
+  const screen = useUiStore(s => s.screen)
+  const setScreen = useUiStore(s => s.setScreen)
 
   // The view is remembered across devices, so somebody who left the desktop on
   // 보드 would arrive here with no tab lit and no way to tell where they are.
@@ -557,12 +560,24 @@ function BottomNav({ view, onPick }: { view: ViewType; onPick: (v: ViewType) => 
       display: 'flex',
       boxSizing: 'border-box',
     }}>
+      {/* 오늘은 뷰가 아니라 화면입니다 — 옆의 넷은 업무를 보는 방법들이고,
+          이건 하루를 계획하는 곳입니다. 그래도 폰에서 갈 수 있는 곳은 이 바가
+          전부이므로 여기 자리를 하나 내줍니다. */}
+      <Tab
+        label="오늘"
+        on={screen === 'today'}
+        pressed={pressed === 'today'}
+        setPressed={setPressed}
+        id="today"
+        onClick={() => { haptic('tap'); setScreen('today') }}
+        icon={<Icon name="today" size={20} strokeWidth={screen === 'today' ? 2 : 1.7} />}
+      />
       {MOBILE_VIEWS.map(v => {
-        const on = view === v.id
+        const on = screen === 'work' && view === v.id
         return (
           <button
             key={v.id}
-            onClick={() => onPick(v.id)}
+            onClick={() => { setScreen('work'); onPick(v.id) }}
             onPointerDown={() => setPressed(v.id)}
             onPointerUp={() => setPressed(null)}
             onPointerCancel={() => setPressed(null)}
@@ -594,5 +609,49 @@ function BottomNav({ view, onPick }: { view: ViewType; onPick: (v: ViewType) => 
         )
       })}
     </nav>
+  )
+}
+
+/** 하단 바의 탭 한 장. 오늘과 뷰 탭들이 같은 모양이어야 해서 밖으로 냅니다. */
+function Tab({ id, label, on, pressed, setPressed, onClick, icon }: {
+  id: string
+  label: string
+  on: boolean
+  pressed: boolean
+  setPressed: (v: string | null) => void
+  onClick: () => void
+  icon: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      onPointerDown={() => setPressed(id)}
+      onPointerUp={() => setPressed(null)}
+      onPointerCancel={() => setPressed(null)}
+      onPointerLeave={() => setPressed(null)}
+      aria-current={on ? 'page' : undefined}
+      style={{
+        flex: 1, height: '100%',
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', gap: 1,
+        background: 'transparent', border: 'none', cursor: 'pointer',
+        padding: 0, WebkitTapHighlightColor: 'transparent',
+        color: on ? 'var(--ac)' : 'var(--t3)',
+        fontSize: 10, lineHeight: 1.2, fontWeight: on ? 600 : 400,
+        fontFamily: 'var(--font)', letterSpacing: '-.01em',
+        transition: 'color .12s',
+      }}
+    >
+      <span style={{
+        width: 32, height: 24, borderRadius: 999,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: on ? 'var(--ac-l)' : 'transparent',
+        transform: pressed ? 'scale(.9)' : 'scale(1)',
+        transition: 'background .12s, transform .12s',
+      }}>
+        {icon}
+      </span>
+      {label}
+    </button>
   )
 }

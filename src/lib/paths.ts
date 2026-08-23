@@ -45,6 +45,14 @@ export const P = {
   // that list is thin. Rules check `auth.token.email`, so the key is one the
   // recipient can prove without anybody looking anything up.
   notices:          (email: string) => `notices/${emailKey(email)}`,
+  /**
+   * 데일리 노트. 하루에 하나, 사람마다 하나.
+   *
+   * 프로젝트 밑이 아니라 개인 가지에 삽니다. 여기 적히는 건 '커피 주문' 같은,
+   * 오늘 하루가 지나면 아무 의미 없는 것들입니다 — 50명이 함께 보는 곳에 두면
+   * 아무도 거기에 그런 걸 안 씁니다. 규칙도 본인만 읽고 씁니다.
+   */
+  dailyNote:        (email: string, date: string) => `dailyNotes/${emailKey(email)}/${date}`,
   /** Where a device's push subscription lives, so the server can reach it. */
   pushSubs:         (uid: string) => `pushSubs/${uid}`,
   pushSub:          (uid: string, id: string) => `pushSubs/${uid}/${id}`,

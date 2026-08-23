@@ -64,6 +64,15 @@
         }
       }
     },
+    "dailyNotes": {
+      "$mail": {
+        ".read": "auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $mail",
+        ".write": "auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $mail",
+        "$date": {
+          ".validate": "newData.hasChildren(['html', 'at']) && newData.child('html').isString() && newData.child('html').val().length <= 200000 && newData.child('at').isNumber()"
+        }
+      }
+    },
     "pushSubs": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
