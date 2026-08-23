@@ -955,7 +955,7 @@ export function TableView() {
             childCount={kids.length} doneCount={kids.filter(c => c.status === '완료').length}
             milestones={milestonesOf(task.projectId)} showMilestonePicker={!!task.projectId}
             onMilestoneCreate={task.projectId ? (n, d) => addMilestone(task.projectId!, n, d).id : undefined}
-            assigneeOptions={opts} allTags={allTags}
+            assigneeOptions={opts} allTags={allTags} flat
             events={taskEvents.get(task.id)}
             // A child drawn under its parent does not need to be told who its
             // parent is; the indentation already said so.
@@ -1393,6 +1393,7 @@ function Row({
   assigneeOptions = [],
   allTags = [],
   groupAccent,
+  flat = false,
   breadcrumb,
   events,
   onToggle, onOpen, onUpdate, onMilestoneChange, onContextMenu,
@@ -1409,6 +1410,15 @@ function Row({
   allTags?: string[]
   /** Colour of the milestone this row sits under, drawn as a rail on the left. */
   groupAccent?: string
+  /**
+   * 위에 마일스톤 머리글이 없는 평면 목록의 줄인가.
+   *
+   * 들여쓰기 64는 머리글 밑에 줄을 세우려고 잡은 값입니다. 세울 머리글이
+   * 없는 평면 목록에서는 그냥 왼쪽에 빈 손바닥만 한 여백이 생깁니다 —
+   * 화면에서 제일 좁은 이름 칸을 그만큼 깎아 먹으면서요. 손잡이와 펼침
+   * 화살표가 들어갈 만큼만 둡니다.
+   */
+  flat?: boolean
   /** Linked calendar events, if any are in the loaded window. */
   events?: GCalEvent[]
   /**
@@ -1461,7 +1471,7 @@ function Row({
             onDoubleClick={e => { e.stopPropagation(); stopEdit(); onOpen() }}
             style={{
               ...cellBase(col, isLast),
-              paddingLeft: isChild ? 88 : 64,
+              paddingLeft: flat ? (isChild ? 72 : 48) : (isChild ? 88 : 64),
               gap: 5,
               position: 'sticky',
               left: 0,
