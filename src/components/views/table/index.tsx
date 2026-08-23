@@ -2587,6 +2587,9 @@ function InlineTextEdit({ value, onCommit, onCancel, fontSize = 13, bold = false
 
 // ── LinksCell — a task's materials ────────────────────────────────────────────
 
+/** One compact FileRow: 5px padding twice, a name line and a subtitle line. */
+const ATTACHED_ROW = 46
+
 function LinksCell({ links, projectId, onChange }: {
   links: TaskLink[]
   projectId?: string
@@ -2626,12 +2629,15 @@ function LinksCell({ links, projectId, onChange }: {
 
       {m.open && (
         <Menu pos={m.pos} panelRef={m.panelRef} width={340} maxHeight={480}>
-          {/* Two scroll areas, each with its own floor. Sharing one meant the
-              search results grew until what was already attached was a sliver —
-              and what is already attached is the thing you check before adding. */}
+          {/* What is already attached does not give up space.
+              It was `flex: 0 1 auto` with a 40px floor — one row — so the search
+              results below squeezed it down and two attached files looked like
+              one. Wrong way round: the list you check before adding is the one
+              that keeps its height, and the results are what shrink. Three rows,
+              then it scrolls. */}
           {links.length > 0 && (
             <>
-              <div style={{ flex: '0 1 auto', minHeight: 40, maxHeight: 150, overflowY: 'auto', margin: '0 -4px', padding: '0 4px' }}>
+              <div style={{ flex: '0 0 auto', maxHeight: 3 * ATTACHED_ROW, overflowY: 'auto', margin: '0 -4px', padding: '0 4px' }}>
                 {links.map(l => (
                   <FileRow key={l.id} link={l} compact
                     file={resolved.get(driveIdOf(l) ?? '')}
