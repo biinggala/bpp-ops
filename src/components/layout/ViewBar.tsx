@@ -13,26 +13,33 @@ import type { ViewType, Status, MemberKey } from '../../types'
 import { STATUS_LIST } from '../../types'
 import { Icon } from '../shared/Icon'
 
-// The icon each of these is drawn with lives in NavIcons, keyed by the same id.
-const VIEWS: { id: ViewType; label: string }[] = [
-  { id: 't', label: '리스트' },
-  { id: 'b', label: '보드' },
-  { id: 'c', label: '캘린더' },
-  { id: 'g', label: '간트' },
-  { id: 's', label: '통계' },
-  { id: 'f', label: '자료' },
+/**
+ * 뷰 탭. 묶음 단위로 적습니다 — 사이의 세로선이 곧 이 묶음의 경계라,
+ * 인덱스로 선을 그리면 탭 하나가 빠질 때마다 선이 엉뚱한 데로 갑니다.
+ *
+ * 보드는 뺐습니다. 코드는 남아 있고(`view === 'b'`로 열리면 그려집니다) 탭에서만
+ * 내렸습니다 — 리스트가 하던 일과 겹쳐서, 쓰이지 않는 탭 하나가 나머지 다섯의
+ * 자리를 좁히고 있었습니다.
+ *
+ * The icon each of these is drawn with lives in NavIcons, keyed by the same id.
+ */
+const VIEW_GROUPS: { id: ViewType; label: string }[][] = [
+  [{ id: 't', label: '리스트' }, { id: 'c', label: '캘린더' }],
+  [{ id: 'g', label: '간트' }],
+  [{ id: 's', label: '통계' }, { id: 'f', label: '자료' }],
 ]
+
+const VIEWS = VIEW_GROUPS.flat()
 
 /**
  * What the phone gets. Fewer, on purpose.
  *
- * 보드 wants columns side by side and 통계 wants a wide canvas; both are things
- * people open at a desk. Six tabs across 390pt leaves each one a thumb-width
- * with no room for its label, so the two that are worst on a phone give up
- * their slots to make the other four legible. Nothing is lost — the desktop
- * bar still has all six, and a link into either still opens.
+ * 통계 wants a wide canvas — a thing people open at a desk. Tabs across 390pt
+ * leave each one a thumb-width with no room for its label, so the one that is
+ * worst on a phone gives up its slot to make the others legible. Nothing is
+ * lost — the desktop bar still has it, and a link into it still opens.
  */
-const MOBILE_VIEWS = VIEWS.filter(v => v.id !== 'b' && v.id !== 's')
+const MOBILE_VIEWS = VIEWS.filter(v => v.id !== 's')
 
 const SORT_OPTIONS = [
   { value: 'due_asc' as const, label: '마감 가까운 순' },
@@ -56,7 +63,7 @@ export function ViewBar() {
   const {
     view, setView, filters, setFilters, resetFilters,
     hideCompleted, setHideCompleted,
-    listGroup, setListGroup, myTasksOnly, projectId,
+    listGroup, setListGroup, myTasksOnly, personalOnly, projectId,
   } = useUiStore()
   const isMobile = useMobile()
   // Options come from the current scope, not from everything the user can see:
@@ -127,6 +134,28 @@ export function ViewBar() {
   // status or assignee filter has nothing to say about a 계약서.
   const showFilters = view !== 'f'
 
+  /**
+   * 통계는 전체 업무와 프로젝트에만 답이 있습니다.
+   *
+   * 이 화면의 절반은 '담당자별 현황'입니다. 내 할 일과 개인에서는 담당자가
+   * 나 하나라 막대가 하나뿐인 차트가 되고, 나머지 숫자들은 위의 목록을 세어
+   * 다시 쓴 것에 가깝습니다. 답이 정해진 질문을 위해 탭을 하나 내주지 않습니다.
+   */
+  const showStats = !myTasksOnly && !personalOnly
+
+  // 통계에 서 있는데 범위가 내 할 일로 바뀌면 탭이 사라집니다 — 아무 탭도
+  // 켜지지 않은 화면에 남기지 않고 리스트로 데려옵니다.
+  React.useEffect(() => {
+    if (view === 's' && !showStats) setView('t')
+  }, [view, showStats, setView])
+
+  const groups = React.useMemo(
+    () => VIEW_GROUPS
+      .map(g => g.filter(v => v.id !== 's' || showStats))
+      .filter(g => g.length > 0),
+    [showStats],
+  )
+
   // ── Active filters, as chips ────────────────────────────────────────────────
   // Everything narrowing the view gets a chip, including 검색 (set from the
   // sidebar) and 완료 숨기기. Previously those two could be on with nothing in
@@ -177,12 +206,14 @@ export function ViewBar() {
         height: 44, padding: '0 20px',
         display: 'flex', alignItems: 'center', gap: 2, overflowX: 'auto',
       }}>
-        {VIEWS.map((v, i) => (
-          <React.Fragment key={v.id}>
-            {(i === 3 || i === 4) && <Divider />}
-            <ViewTab active={view === v.id} onClick={() => setView(v.id)}>
-              {v.label}
-            </ViewTab>
+        {groups.map((g, gi) => (
+          <React.Fragment key={g[0].id}>
+            {gi > 0 && <Divider />}
+            {g.map(v => (
+              <ViewTab key={v.id} active={view === v.id} onClick={() => setView(v.id)}>
+                {v.label}
+              </ViewTab>
+            ))}
           </React.Fragment>
         ))}
 
@@ -573,7 +604,11 @@ function BottomNav({ view, onPick }: { view: ViewType; onPick: (v: ViewType) => 
         icon={<Icon name="today" size={20} strokeWidth={screen === 'today' ? 2 : 1.7} />}
       />
       {MOBILE_VIEWS.map(v => {
-        const on = screen === 'work' && view === v.id
+        // 사이드바로 들어간 '캘린더'(범위 없는 화면)도 이 탭이 받습니다 —
+        // 폰에서 아래 바는 지금 어디인지 말하는 유일한 자리입니다.
+        const on = v.id === 'c'
+          ? screen === 'calendar' || (screen === 'work' && view === 'c')
+          : screen === 'work' && view === v.id
         return (
           <button
             key={v.id}

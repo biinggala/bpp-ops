@@ -183,6 +183,10 @@ export function AppPage() {
             <TodayView />
           ) : !ready ? (
             <LoadingRows />
+          ) : screen === 'calendar' ? (
+            /* 범위 없는 캘린더. 뷰 탭의 캘린더와 같은 화면을 그리지만,
+               걸린 필터가 없어서 보이는 것이 곧 내 앞의 전부입니다. */
+            <CalendarView />
           ) : isEmpty ? (
             <EmptyState />
           ) : (

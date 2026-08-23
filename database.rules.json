@@ -126,6 +126,13 @@
         }
       }
     },
+    "userPrefs": {
+      "$mail": {
+        ".read": "auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $mail",
+        ".write": "auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $mail",
+        ".validate": "newData.hasChildren()"
+      }
+    },
     "driveWatch": {
       "$mail": {
         ".read": "auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $mail",

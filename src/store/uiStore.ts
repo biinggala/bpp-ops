@@ -54,8 +54,20 @@ interface UiState {
    * 낄 자리가 아닙니다. 오늘은 프로젝트에 속하지도, 남과 공유되지도 않습니다.
    * 그래서 한 층 위에 둡니다.
    */
-  screen: 'today' | 'work'
-  setScreen: (s: 'today' | 'work') => void
+  screen: 'today' | 'work' | 'calendar'
+  setScreen: (s: 'today' | 'work' | 'calendar') => void
+  /**
+   * 캘린더를 '뷰'가 아니라 '가는 곳'으로 여는 문.
+   *
+   * 뷰 탭의 캘린더는 *이 프로젝트의* 마감을 그립니다. 하지만 사람들이 하루에도
+   * 몇 번씩 열고 싶은 캘린더는 그게 아니라 **내 일정 전부**입니다. 그걸 보려면
+   * 지금은 아무 업무 목록에 들어가서 → 범위를 전체로 바꾸고 → 캘린더 탭을
+   * 눌러야 합니다. 자주 가는 곳으로 가는 길로는 너무 깁니다.
+   *
+   * 그래서 범위를 걷어내고 한 층 위로 올립니다. 여기 서 있는 동안은 프로젝트도
+   * 담당자도 걸려 있지 않아서, 보이는 것이 곧 '내 앞의 전부'입니다.
+   */
+  openCalendar: () => void
   /** 오늘 화면이 펼쳐 놓은 날짜. null이면 진짜 오늘입니다. */
   noteDate: string | null
   openNote: (date: string | null) => void
@@ -214,6 +226,13 @@ export const useUiStore = create<UiState>((set, get) => ({
   setFilters: (f) => set(s => ({ filters: { ...s.filters, ...f } })),
   resetFilters: () => set(st => ({ filters: { ...defaultFilters, sort: st.filters.sort } })),
   setScreen: (screen) => set({ screen }),
+  openCalendar: () => set(st => ({
+    screen: 'calendar',
+    // 범위를 지우고 들어갑니다 — '전체 일정'이라 해 놓고 지난번에 보던
+    // 프로젝트만 그려 주면 그건 다른 화면입니다.
+    projectId: null, space: null, myTasksOnly: false, personalOnly: false,
+    filters: { ...st.filters, projects: [], assignees: [] },
+  })),
   openNote: (noteDate) => set({ noteDate, screen: 'today' }),
   setDetailTaskId: (id) => set({ detailTaskId: id }),
   openTaskDetail: (id: string) => set({ detailTaskId: id }),

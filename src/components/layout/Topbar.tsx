@@ -19,6 +19,8 @@ export function Topbar() {
   const personalOnly = useUiStore(s => s.personalOnly)
   const title = screen === 'today'
     ? '오늘'
+    : screen === 'calendar'
+    ? '캘린더'
     : (activeProject?.name ?? space ?? (personalOnly ? '개인' : myTasksOnly ? '내 할 일' : '전체 업무'))
 
   return (
