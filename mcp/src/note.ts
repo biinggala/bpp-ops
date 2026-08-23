@@ -35,6 +35,13 @@ export function noteToMarkdown(html: string, tasks: Task[]): string {
         if (!t) return '- [ ] (삭제된 업무)\n'
         return `- [${t.status === '완료' ? 'x' : ' '}] ${t.name} <!-- 업무 ${t.id} -->\n`
       })
+    // 자료 줄 — 이름과 주소가 태그에 들어 있습니다. 그냥 벗기면 이름만 남고
+    // 어디를 가리키는지가 사라집니다.
+    .replace(/<div([^>]*data-file-ref[^>]*)>[\s\S]*?<\/div>/gi, (_m, attrs: string) => {
+      const title = unescape(/data-title="([^"]*)"/.exec(attrs)?.[1] ?? '') || '파일'
+      const url = unescape(/data-url="([^"]*)"/.exec(attrs)?.[1] ?? '')
+      return url ? `\n- [${title}](${url})\n` : `\n- ${title}\n`
+    })
     .replace(/<li[^>]*data-checked="true"[^>]*>/gi, '\n- [x] ')
     .replace(/<li[^>]*data-checked="false"[^>]*>/gi, '\n- [ ] ')
     .replace(/<h1[^>]*>/gi, '\n# ')

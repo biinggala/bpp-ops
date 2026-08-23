@@ -15,6 +15,7 @@ import { useDailyNote } from '../../../hooks/useDailyNote'
 import { isAssignedTo, daysFrom, fmtYMD, addDays, toDate } from '../../../lib/utils'
 import { haptic } from '../../../lib/haptics'
 import { TaskRef, TASK_DND } from './TaskRef'
+import { FileRef } from './FileRef'
 import { MarkdownTasks } from './markdown'
 import { BlockTools } from './BlockTools'
 import { LoadingChips } from '../../shared/Loading'
@@ -80,6 +81,7 @@ export function TodayView() {
       TaskList,
       TaskItem.configure({ nested: true }),
       TaskRef,
+      FileRef,
       MarkdownTasks,
     ],
     content: '',

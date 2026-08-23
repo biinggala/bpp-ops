@@ -3,6 +3,9 @@ import { NodeSelection, TextSelection } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
 import { Icon } from '../../shared/Icon'
 import { haptic } from '../../../lib/haptics'
+import { DriveSearch } from '../../shared/DriveFiles'
+import type { DriveFile } from '../../../lib/googleDrive'
+import { driveUrl } from '../../../lib/googleDrive'
 
 /**
  * ── 블록 손잡이와 슬래시 메뉴 ────────────────────────────────────────────────
@@ -60,6 +63,8 @@ export function BlockTools({ editor, boundary }: {
   const [slot, setSlot] = useState<Slot | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; pos: number } | null>(null)
   const [slash, setSlash] = useState<{ x: number; y: number; from: number } | null>(null)
+  /** `/자료`로 연 드라이브 찾기 창. 열려 있는 동안은 손잡이도 멈춥니다. */
+  const [finder, setFinder] = useState<{ x: number; y: number } | null>(null)
 
   /**
    * 어느 줄 위에 있는지.
@@ -69,7 +74,7 @@ export function BlockTools({ editor, boundary }: {
    * 손잡이가 영영 안 뜨던 이유입니다. 통과시키는 요소는 이벤트도 통과시킵니다.
    */
   const frozen = useRef(false)
-  frozen.current = !!menu || !!slash
+  frozen.current = !!menu || !!slash || !!finder
   const handleRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -200,7 +205,32 @@ export function BlockTools({ editor, boundary }: {
       )}
 
       {menu && <BlockMenu editor={editor} {...menu} onClose={() => setMenu(null)} />}
-      {slash && <SlashMenu editor={editor} {...slash} onClose={() => setSlash(null)} />}
+      {slash && (
+        <SlashMenu
+          editor={editor} {...slash}
+          onClose={() => setSlash(null)}
+          onFinder={at => { setSlash(null); setFinder(at) }}
+        />
+      )}
+      {finder && (
+        <DriveFinder
+          {...finder}
+          onClose={() => setFinder(null)}
+          onPick={f => {
+            editor.chain().focus().insertContent({
+              type: 'fileRef',
+              attrs: {
+                driveId: f.id,
+                title: f.name,
+                mimeType: f.mimeType,
+                url: f.webViewLink || driveUrl(f.id, f.mimeType),
+              },
+            }).run()
+            haptic('tap')
+            setFinder(null)
+          }}
+        />
+      )}
     </>
   )
 }
@@ -299,8 +329,17 @@ function BlockMenu({ editor, x, y, pos, onClose }: {
 
 /* ── 슬래시 메뉴 ── */
 
-const SLASH: { label: string; hint: string; run: (e: Editor) => void }[] = [
+interface SlashItem {
+  label: string
+  hint: string
+  run?: (e: Editor) => void
+  /** 줄을 바로 만들지 않고 창을 하나 여는 항목. 지금은 자료 찾기 하나. */
+  opens?: 'drive'
+}
+
+const SLASH: SlashItem[] = [
   { label: '간단한 할 일', hint: '체크박스 한 줄', run: e => e.chain().focus().toggleTaskList().run() },
+  { label: '자료',       hint: '드라이브에서 찾기', opens: 'drive' },
   { label: '제목 1',     hint: '가장 큰 제목',     run: e => e.chain().focus().setNode('heading', { level: 1 }).run() },
   { label: '제목 2',     hint: '',                run: e => e.chain().focus().setNode('heading', { level: 2 }).run() },
   { label: '제목 3',     hint: '',                run: e => e.chain().focus().setNode('heading', { level: 3 }).run() },
@@ -311,8 +350,10 @@ const SLASH: { label: string; hint: string; run: (e: Editor) => void }[] = [
   { label: '코드',       hint: '',                run: e => e.chain().focus().toggleCodeBlock().run() },
 ]
 
-function SlashMenu({ editor, x, y, from, onClose }: {
-  editor: Editor; x: number; y: number; from: number; onClose: () => void
+function SlashMenu({ editor, x, y, from, onClose, onFinder }: {
+  editor: Editor; x: number; y: number; from: number
+  onClose: () => void
+  onFinder: (at: { x: number; y: number }) => void
 }) {
   const [pick, setPick] = useState(0)
   const query = editor.state.selection.$from.parent
@@ -327,7 +368,9 @@ function SlashMenu({ editor, x, y, from, onClose }: {
     if (!item) { onClose(); return }
     // 친 `/…`는 지웁니다. 남겨 두면 명령어가 글로 남습니다.
     editor.chain().focus().deleteRange({ from, to: editor.state.selection.$from.pos }).run()
-    item.run(editor)
+    // 창을 여는 항목은 여기서 끝내지 않습니다 — 고른 다음에 줄이 생깁니다.
+    if (item.opens === 'drive') { onFinder({ x, y }); return }
+    item.run?.(editor)
     haptic('tap')
     onClose()
   }
@@ -374,6 +417,64 @@ function SlashMenu({ editor, x, y, from, onClose }: {
     </div>
   )
 }
+
+/**
+ * ── 자료 찾기 ────────────────────────────────────────────────────────────────
+ *
+ * `/`를 치고 '자료'를 고르면 여기가 뜹니다. 검색 상자는 업무 상세 창에서 파일을
+ * 붙일 때 쓰는 것과 **같은 것**입니다(DriveSearch) — 같은 일을 두 군데서 다르게
+ * 하면 두 가지를 배워야 합니다.
+ *
+ * 폴더를 좁히지 않고 드라이브 전체에서 찾습니다. 노트는 프로젝트에 속하지
+ * 않으니까요 — 오늘 하루가 프로젝트 하나로만 이뤄지는 사람은 없습니다.
+ */
+function DriveFinder({ x, y, onPick, onClose }: {
+  x: number; y: number
+  onPick: (f: DriveFile) => void
+  onClose: () => void
+}) {
+  const panel = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const away = (e: MouseEvent) => {
+      if (panel.current?.contains(e.target as Node)) return
+      onClose()
+    }
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    // 다음 클릭부터. 이 창을 연 그 클릭이 곧바로 닫아 버리지 않게.
+    const t = setTimeout(() => document.addEventListener('mousedown', away), 0)
+    document.addEventListener('keydown', key)
+    return () => {
+      clearTimeout(t)
+      document.removeEventListener('mousedown', away)
+      document.removeEventListener('keydown', key)
+    }
+  }, [onClose])
+
+  return (
+    <div
+      ref={panel}
+      style={{
+        position: 'fixed', left: Math.min(x, window.innerWidth - 340),
+        top: Math.min(y + 4, window.innerHeight - 340),
+        width: 328, height: 320, zIndex: 600,
+        background: 'var(--bg)', border: '1px solid var(--bd)',
+        borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', padding: 8,
+        display: 'flex', flexDirection: 'column', minHeight: 0,
+      }}
+    >
+      <DriveSearch
+        folderId={null}
+        attachedIds={EMPTY}
+        onPick={f => onPick(f)}
+        onClose={onClose}
+      />
+    </div>
+  )
+}
+
+/** 노트에는 '이미 붙어 있는 것' 개념이 없습니다 — 같은 파일을 두 번 적어도 됩니다. */
+const EMPTY = new Set<string>()
 
 function Label({ children }: { children: React.ReactNode }) {
   return <div style={{ padding: '6px 9px 3px', fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: 'var(--t3)' }}>{children}</div>
