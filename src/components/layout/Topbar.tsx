@@ -5,9 +5,13 @@ import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import { MobileFilterButton } from './MobileFilterSheet'
 import { pendingUpdate, installUpdate, openInBrowser, type DesktopRelease } from '../../lib/desktopUpdate'
+import { Icon } from '../shared/Icon'
+import { Tip, CMD } from '../shared/Tip'
 
 export function Topbar() {
   const { space, projectId, myTasksOnly, openTaskModal, toggleSidebar, view, screen } = useUiStore()
+  const sidebarHidden = useUiStore(s => s.sidebarHidden)
+  const toggleSidebarHidden = useUiStore(s => s.toggleSidebarHidden)
   const projects = useProjectStore(s => s.projects)
   const isMobile = useMobile()
 
@@ -28,6 +32,29 @@ export function Topbar() {
         alignItems: 'center',
         gap: 10,
       }}>
+      {/* 넓은 화면에서 사이드바를 접었다 폈다. 접혀 있든 펴져 있든 자리가
+          같습니다 — 접는 버튼과 펴는 버튼이 다른 데 있으면 접고 나서 되돌릴
+          것을 찾아야 합니다. */}
+      {!isMobile && (
+        <Tip label={sidebarHidden ? '사이드바 보이기' : '사이드바 숨기기'} keys={[CMD, '\\']}>
+          <button
+            onClick={toggleSidebarHidden}
+            aria-label={sidebarHidden ? '사이드바 보이기' : '사이드바 숨기기'}
+            style={{
+              width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              borderRadius: 'var(--r2)', flexShrink: 0, padding: 0,
+              color: sidebarHidden ? 'var(--t3)' : 'var(--t2)',
+              marginLeft: -6, marginRight: 2,
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            <Icon name="panel" size={17} />
+          </button>
+        </Tip>
+      )}
+
       {isMobile && (
         <button
           onClick={() => { haptic('tap'); toggleSidebar() }}

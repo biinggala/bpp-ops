@@ -1,6 +1,12 @@
 import { create } from 'zustand'
 import type { ViewType, Status, CalRange } from '../types'
 
+const HIDDEN_KEY = 'sidebar_hidden'
+
+function loadSidebarHidden(): boolean {
+  try { return localStorage.getItem(HIDDEN_KEY) === '1' } catch { return false }
+}
+
 interface Filters {
   assignees: string[]
   statuses: Status[]
@@ -51,6 +57,17 @@ interface UiState {
   isColorSettingsOpen: boolean
   isCommandPaletteOpen: boolean
   sidebarOpen: boolean
+  /**
+   * 넓은 화면에서 사이드바를 접어 뒀는가.
+   *
+   * `sidebarOpen`과 따로입니다. 폰에서 그건 '서랍이 열려 있다'는 뜻이고 기본이
+   * 닫힘인데, 넓은 화면에서 사이드바의 기본은 **보이는 것**입니다. 같은 값에
+   * 두 뜻을 담으면 앱을 켤 때마다 노트북에서 사이드바가 사라져 있게 됩니다.
+   *
+   * 이 기기에만 남습니다. 50명이 같은 값을 놓고 다투게 할 일이 아닙니다 —
+   * 사이드바 폭과 같은 줄입니다.
+   */
+  sidebarHidden: boolean
   /** Calendar: how much is shown at once, and the date it starts from. */
   calRange: CalRange
   calAnchor: string
@@ -73,6 +90,7 @@ interface UiState {
   closeCommandPalette: () => void
   setSidebarOpen: (v: boolean) => void
   toggleSidebar: () => void
+  toggleSidebarHidden: () => void
   setCalRange: (r: CalRange) => void
   setCalAnchor: (date: string) => void
 }
@@ -123,6 +141,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   isColorSettingsOpen: false,
   isCommandPaletteOpen: false,
   sidebarOpen: false,
+  sidebarHidden: loadSidebarHidden(),
   calRange: 7,
   calAnchor: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
 
@@ -169,6 +188,11 @@ export const useUiStore = create<UiState>((set, get) => ({
   closeCommandPalette: () => set({ isCommandPaletteOpen: false }),
   setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
   toggleSidebar: () => set(s => ({ sidebarOpen: !s.sidebarOpen })),
+  toggleSidebarHidden: () => set(s => {
+    const sidebarHidden = !s.sidebarHidden
+    try { localStorage.setItem(HIDDEN_KEY, sidebarHidden ? '1' : '0') } catch { /* private mode */ }
+    return { sidebarHidden }
+  }),
   setCalRange: (calRange) => set({ calRange }),
   setCalAnchor: (calAnchor) => set({ calAnchor }),
 }))
