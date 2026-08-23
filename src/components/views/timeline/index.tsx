@@ -12,6 +12,8 @@ import type { Task } from '../../../types'
 import type { Rsvp } from '../../../lib/googleCalendar'
 import { Icon } from '../../shared/Icon'
 import { RsvpPicker } from '../../shared/RsvpPicker'
+import { useToast } from '../../shared/Toast'
+import { useOrgStore, clashesFor, type Room, type Booking } from '../../../store/orgStore'
 import { addDays, toDate, fmtYMD, isComposing } from '../../../lib/utils'
 import type { GCalEvent } from '../../../store/gcalStore'
 
@@ -213,6 +215,17 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
         startDateTime: localIso(held.date, settled.from),
         endDateTime: localIso(held.date, settled.to),
       })
+      /**
+       * 회의를 옮기면 회의실 예약도 따라갑니다.
+       *
+       * 안 따라가면 예약은 옛 시간에 남습니다 — 3시로 미룬 회의의 방이 2시에
+       * 잡혀 있고, 3시에는 남이 그 방을 잡을 수 있습니다. 화면에는 아무
+       * 문제가 없어 보이고, 회의 시간에 방에 가면 다른 팀이 있습니다.
+       *
+       * 옮긴 시간에 이미 남의 예약이 있으면 **옮기지 않고 말해 줍니다.** 조용히
+       * 풀면 방이 없는 회의가 되고, 억지로 겹치면 두 팀이 같은 방에 갑니다.
+       */
+      await moveBookingWith(held.id, held.date, settled)
     }
     window.addEventListener('mousemove', move)
     window.addEventListener('mouseup', up)
@@ -249,19 +262,71 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
     window.addEventListener('mouseup', up)
   }
 
+  // ── 회의실 ────────────────────────────────────────────────────────────────
+  const orgId = useOrgStore(s => s.orgId)
+  const watchDates = useOrgStore(s => s.watchDates)
+  const bookingsByDate = useOrgStore(s => s.bookings)
+  const bookRoom = useOrgStore(s => s.book)
+  const releaseRoom = useOrgStore(s => s.release)
+  const releaseForEvent = useOrgStore(s => s.releaseForEvent)
+  /** 새 일정에서 고른 방. 일정이 아직 없으므로 저장할 때까지 여기 있습니다. */
+  const [draftRoom, setDraftRoom] = useState<string | null>(null)
+
+  // 보고 있는 날짜의 예약만 구독합니다.
+  useEffect(() => {
+    if (orgId) watchDates(days)
+  }, [orgId, days.join(','), watchDates])
+
+  const bookingFor = (date: string, eventId: string): Booking | null =>
+    (bookingsByDate[date] ?? []).find(b => b.eventId === eventId) ?? null
+
+  /** 일정의 시간이 바뀌었을 때, 그 일정에 붙은 예약을 같은 시간으로. */
+  const moveBookingWith = async (eventId: string, date: string, next: { from: number; to: number }) => {
+    const held = bookingFor(date, eventId)
+    if (!held || !myEmail) return
+    const clashes = clashesFor(bookingsByDate[date] ?? [], held.roomId, next, eventId)
+    const room = useOrgStore.getState().rooms.find(r => r.id === held.roomId)
+    if (clashes.length) {
+      useToast.getState().show(`${room?.name ?? '회의실'} 예약은 옮기지 못했습니다 — 그 시간에 이미 잡혀 있습니다`)
+      return
+    }
+    await releaseRoom(date, held.id)
+    await bookRoom({
+      date, roomId: held.roomId, from: next.from, to: next.to,
+      title: held.title, eventId, by: myEmail, byName: getNameByEmail(myEmail),
+    })
+  }
+
   const save = async () => {
     if (!naming || saving) return
     const name = title.trim()
     if (!name) { setNaming(null); return }
     setSaving(true)
-    const ok = await createEvent({
+    const eventId = await createEvent({
       summary: name,
       startDateTime: localIso(naming.date, naming.fromMinutes),
       endDateTime: localIso(naming.date, naming.toMinutes),
       attendees: guests,
     })
+    /**
+     * 일정이 생긴 뒤에 방을 잡습니다.
+     *
+     * 순서가 중요합니다 — 예약은 일정 id로 자기가 어느 회의의 것인지 기억하고,
+     * 그 id는 구글이 일정을 만들어 준 다음에야 존재합니다. 반대로 하면 주인
+     * 없는 예약이 남고, 회의를 지워도 방이 계속 잡혀 있게 됩니다.
+     *
+     * 일정 만들기가 실패하면 방도 안 잡습니다. 회의 없는 예약은 아무도
+     * 치울 수 없습니다.
+     */
+    if (eventId && draftRoom && myEmail) {
+      await bookRoom({
+        date: naming.date, roomId: draftRoom,
+        from: naming.fromMinutes, to: naming.toMinutes,
+        title: name, eventId, by: myEmail, byName: getNameByEmail(myEmail),
+      })
+    }
     setSaving(false)
-    if (ok) { setNaming(null); setTitle(''); setGuests([]) }
+    if (eventId) { setNaming(null); setTitle(''); setGuests([]); setDraftRoom(null) }
   }
 
   // ── Layout ────────────────────────────────────────────────────────────────
@@ -299,16 +364,32 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
     return map
   }, [events])
 
-  const [selectedTitle, setSelectedTitle] = useState('')
+  /**
+   * 고른 일정의 제목 — **효과가 아니라 파생 값입니다.**
+   *
+   * 예전에는 `selectedTitle` 상태를 두고 일정이 바뀔 때 useEffect로 채웠습니다.
+   * 그런데 효과는 그린 **다음에** 돕니다. 일정을 고른 첫 프레임에는 제목이
+   * 아직 이전 값이라, '고친 게 있다'로 판단돼서 파란 저장 버튼이 한 번 번쩍
+   * 하고 사라졌습니다. 일정을 누를 때마다요.
+   *
+   * 초안이 어느 일정 것인지 함께 들고 있으면 효과가 필요 없습니다. 아직 아무
+   * 것도 안 친 일정에서는 구글이 아는 제목이 곧 화면의 제목이고, 그러면 첫
+   * 프레임부터 '고친 것 없음'입니다.
+   */
+  const [titleDraft, setTitleDraft] = useState<{ id: string; text: string } | null>(null)
   const selectedInfo = useMemo(() => {
     if (!selected) return null
-    for (const list of eventsByDate.values()) {
+    // 날짜도 같이 들고 나옵니다 — 회의실이 비었는지 물으려면 필요하고,
+    // 여기서만 알 수 있는 값입니다(이 map의 키입니다).
+    for (const [date, list] of eventsByDate) {
       const found = place(list).find(p => p.event.id === selected)
-      if (found) return found
+      if (found) return { ...found, date }
     }
     return null
   }, [selected, eventsByDate])
-  useEffect(() => { if (selectedInfo) setSelectedTitle(selectedInfo.event.summary) }, [selectedInfo?.event.id])
+  const shownTitle = selectedInfo
+    ? (titleDraft?.id === selectedInfo.event.id ? titleDraft.text : (selectedInfo.event.summary ?? ''))
+    : ''
 
   /**
    * 고른 일정에서 실제로 고친 게 있는가 — 이름이나 참석자.
@@ -318,14 +399,14 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
    */
   const selectedDirty = useMemo(() => {
     if (!selectedInfo) return false
-    if (selectedTitle.trim() !== (selectedInfo.event.summary ?? '')) return true
+    if (shownTitle.trim() !== (selectedInfo.event.summary ?? '')) return true
     const was = (selectedInfo.event.attendees ?? [])
       .map(a => a.email)
       .filter(email => email !== myEmail?.toLowerCase())
       .sort()
     const now = [...guests].sort()
     return was.length !== now.length || was.some((email, i) => email !== now[i])
-  }, [selectedInfo, selectedTitle, guests, myEmail])
+  }, [selectedInfo, shownTitle, guests, myEmail])
 
   const todayStr = fmtYMD(now)
   const nowMinutes = now.getHours() * 60 + now.getMinutes()
@@ -450,8 +531,13 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
           guests={guests}
           nameOf={getNameByEmail}
           onToggleGuest={email => setGuests(g => g.includes(email) ? g.filter(x => x !== email) : [...g, email])}
+          slot={{ date: naming.date, from: naming.fromMinutes, to: naming.toMinutes }}
+          /* 아직 일정이 없어서 예약도 없습니다. 고른 방만 기억해 두고, 저장할
+             때 새로 생긴 일정 id로 잡습니다. */
+          booking={draftRoom ? { id: '', roomId: draftRoom, from: naming.fromMinutes, to: naming.toMinutes, by: '', at: 0 } : null}
+          onRoom={setDraftRoom}
           onSave={save}
-          onClose={() => { setNaming(null); setTitle(''); setGuests([]) }}
+          onClose={() => { setNaming(null); setTitle(''); setGuests([]); setDraftRoom(null) }}
         />
       )}
 
@@ -459,8 +545,8 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
         <EventCard
           at={cardAt}
           heading={`${hhmm(selectedInfo.from)} – ${hhmm(selectedInfo.to)}`}
-          title={selectedTitle}
-          onTitle={setSelectedTitle}
+          title={shownTitle}
+          onTitle={text => setTitleDraft({ id: selectedInfo.event.id, text })}
           saving={saving}
           teammates={teammates}
           guests={guests}
@@ -485,15 +571,43 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
               ? [...guests, myEmail.toLowerCase()]
               : guests
             await updateEvent(selectedInfo.event.id, {
-              summary: selectedTitle.trim() || selectedInfo.event.summary,
+              summary: shownTitle.trim() || selectedInfo.event.summary,
               attendees: withMe,
             })
             setSaving(false)
             setSelected(null)
           }}
-          onDelete={async () => { await removeEvent(selectedInfo.event.id); setSelected(null) }}
+          onDelete={async () => {
+            // 방을 먼저 풉니다. 일정이 사라진 뒤에는 어느 예약이 그 일정
+            // 것이었는지 알 수 없고, 아무도 못 치우는 예약이 남습니다.
+            await releaseForEvent(selectedInfo.date, selectedInfo.event.id)
+            await removeEvent(selectedInfo.event.id)
+            setSelected(null)
+          }}
           openLink={selectedInfo.event.htmlLink}
           responses={selectedInfo.event.attendees}
+          slot={{ date: selectedInfo.date, from: selectedInfo.from, to: selectedInfo.to }}
+          booking={bookingFor(selectedInfo.date, selectedInfo.event.id)}
+          /**
+           * 이미 있는 일정은 **바로** 잡고 바로 풉니다.
+           *
+           * 제목과 달리 회의실은 '고치는 중'인 값이 아닙니다 — 고른 순간이
+           * 결정입니다. 저장을 눌러야 반영되면, 고르고 창을 닫은 사람은
+           * 방을 잡은 줄 알고 나갑니다. 그건 이 기능이 없애려던 실수와
+           * 정확히 같은 실수입니다.
+           */
+          onRoom={async roomId => {
+            const had = bookingFor(selectedInfo.date, selectedInfo.event.id)
+            if (had) await releaseForEvent(selectedInfo.date, selectedInfo.event.id)
+            if (roomId && myEmail) {
+              await bookRoom({
+                date: selectedInfo.date, roomId,
+                from: selectedInfo.from, to: selectedInfo.to,
+                title: selectedInfo.event.summary, eventId: selectedInfo.event.id,
+                by: myEmail, byName: getNameByEmail(myEmail),
+              })
+            }
+          }}
           dirty={selectedDirty}
           /* 주최자에게는 안 묻습니다 — myAttendance 참고. 응답 값이 아예
              없는 초대는 '아직 안 함'입니다. 없다고 버튼을 감추면 답할
@@ -1113,7 +1227,7 @@ const linkBtn: React.CSSProperties = {
  */
 function EventCard({
   at, heading, title, onTitle, saving, teammates, guests, nameOf, onToggleGuest,
-  onSave, onDelete, onClose, openLink, responses, myResponse, onRespond, dirty = true,
+  onSave, onDelete, onClose, openLink, slot, booking, onRoom, responses, myResponse, onRespond, dirty = true,
 }: {
   at: { x: number; y: number }
   heading: string
@@ -1128,6 +1242,15 @@ function EventCard({
   onDelete?: () => void
   onClose: () => void
   openLink?: string
+  /**
+   * 이 카드가 가리키는 시간. 회의실이 비었는지 물으려면 날짜와 구간이
+   * 필요하고, 머리글 문자열에서 그걸 다시 파싱하는 건 같은 값을 두 번
+   * 만드는 일입니다.
+   */
+  slot: { date: string; from: number; to: number }
+  /** 지금 잡혀 있는 회의실 예약. 새 일정에는 없습니다. */
+  booking?: Booking | null
+  onRoom?: (roomId: string | null) => void
   responses?: { email: string; responseStatus?: string }[]
   /** 내 응답. 초대받은 일정에만 있습니다 — 내가 만든 것에는 답할 게 없습니다. */
   myResponse?: string
@@ -1219,6 +1342,8 @@ function EventCard({
           onToggle={onToggleGuest} responses={responses}
         />
 
+        {onRoom && <RoomRow slot={slot} booking={booking ?? null} onPick={onRoom} />}
+
         {onRespond && myResponse && (
           <RsvpRow current={myResponse} onRespond={onRespond} />
         )}
@@ -1237,6 +1362,130 @@ function EventCard({
         </div>
       </div>
     </>
+  )
+}
+
+/**
+ * ── 회의실 ───────────────────────────────────────────────────────────────────
+ *
+ * 지금까지는 여기서 일정을 만들고, 예약 사이트에 따로 들어가 같은 시간을 한 번
+ * 더 입력했습니다. 같은 결정을 두 번 적는 일이고, 두 번째를 잊으면 회의실이
+ * 없는 회의가 됩니다.
+ *
+ * **빈 방과 찬 방을 같이 보여줍니다.** 빈 것만 남기면 '그 방이 왜 없지'를
+ * 알 수 없고, 회의 시간을 옮길지 방을 바꿀지 정하려면 누가 쓰고 있는지가
+ * 필요합니다. 찬 방은 누를 수 없고 누가 쓰는지 적힙니다.
+ *
+ * 조직이 없거나 등록된 방이 없으면 이 칸 자체가 없습니다. 회의실이 없는
+ * 회사에 회의실 칸을 보여줄 이유가 없습니다.
+ */
+function RoomRow({ slot, booking, onPick }: {
+  slot: { date: string; from: number; to: number }
+  booking: Booking | null
+  onPick: (roomId: string | null) => void
+}) {
+  const rooms = useOrgStore(s => s.rooms)
+  const bookings = useOrgStore(s => s.bookings[slot.date] ?? [])
+  const orgId = useOrgStore(s => s.orgId)
+  const watchDates = useOrgStore(s => s.watchDates)
+  const [open, setOpen] = useState(false)
+
+  // 이 카드가 보는 날짜의 예약을 확보합니다. 타임라인이 보는 날짜와 같을
+  // 때가 대부분이지만, 주 경계에서 카드만 다른 날을 볼 수 있습니다.
+  useEffect(() => {
+    if (orgId) watchDates([slot.date])
+  }, [orgId, slot.date, watchDates])
+
+  const usable = rooms.filter(r => r.active !== false)
+  if (!orgId || !usable.length) return null
+
+  const chosen = booking ? usable.find(r => r.id === booking.roomId) : undefined
+
+  return (
+    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--bd)' }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--t2)', marginBottom: 6 }}>회의실</div>
+
+      {!open ? (
+        <button
+          onClick={() => setOpen(true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+            padding: '6px 8px', borderRadius: 'var(--r1)', border: 'none', cursor: 'pointer',
+            background: 'var(--bg3)', color: chosen ? 'var(--t1)' : 'var(--t3)',
+            fontSize: 12.5, fontFamily: 'var(--font)', textAlign: 'left',
+          }}
+        >
+          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {chosen ? chosen.name : booking ? '(없어진 회의실)' : '고르지 않음'}
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0 }}>{chosen ? '바꾸기' : '고르기'}</span>
+        </button>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {usable.map(room => (
+            <RoomOption
+              key={room.id}
+              room={room}
+              clashes={clashesFor(bookings, room.id, slot, booking?.eventId)}
+              chosen={booking?.roomId === room.id}
+              onPick={() => { onPick(room.id); setOpen(false) }}
+            />
+          ))}
+          {booking && (
+            <button
+              onClick={() => { onPick(null); setOpen(false) }}
+              style={{
+                marginTop: 2, padding: '5px 8px', borderRadius: 'var(--r1)', border: 'none',
+                background: 'transparent', color: 'var(--danger)', fontSize: 12,
+                cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left',
+              }}
+            >회의실 예약 취소</button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function RoomOption({ room, clashes, chosen, onPick }: {
+  room: Room
+  clashes: Booking[]
+  chosen: boolean
+  onPick: () => void
+}) {
+  const [hovered, setHovered] = useState(false)
+  const taken = clashes.length > 0
+  return (
+    <button
+      onClick={taken ? undefined : onPick}
+      disabled={taken}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      title={taken ? clashes.map(c => `${hhmm(c.from)}–${hhmm(c.to)} ${c.byName ?? c.by}`).join('\n') : room.note}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+        padding: '5px 8px', borderRadius: 'var(--r1)', border: 'none',
+        cursor: taken ? 'default' : 'pointer', fontFamily: 'var(--font)', textAlign: 'left',
+        background: chosen ? 'var(--ac-l)' : hovered && !taken ? 'var(--bg3)' : 'transparent',
+        opacity: taken ? .55 : 1,
+      }}
+    >
+      <span style={{
+        fontSize: 12.5, color: chosen ? 'var(--ac)' : 'var(--t1)',
+        fontWeight: chosen ? 600 : 400,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>{room.name}</span>
+      {/* 왜 못 쓰는지까지 말해 줍니다. '사용 중'만 쓰면 시간을 옮길지 방을
+          바꿀지 정할 수가 없습니다. */}
+      {taken && (
+        <span style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--t3)', flexShrink: 0 }}>
+          {hhmm(clashes[0].from)}–{hhmm(clashes[0].to)} {clashes[0].byName ?? ''}
+        </span>
+      )}
+      {chosen && !taken && (
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--ac)', flexShrink: 0 }}>✓</span>
+      )}
+    </button>
   )
 }
 

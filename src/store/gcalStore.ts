@@ -124,7 +124,8 @@ interface GCalState {
   autoReconnect: () => Promise<void>
   setTargetCalendar: (id: string) => void
   /** Creates an event, asking for write permission the first time. */
-  createEvent: (input: { summary: string; startDateTime: string; endDateTime: string; attendees?: string[]; taskId?: string }) => Promise<boolean>
+  /** 만들어진 일정의 id(캘린더id:일정id). 실패하면 null. */
+  createEvent: (input: { summary: string; startDateTime: string; endDateTime: string; attendees?: string[]; taskId?: string }) => Promise<string | null>
   /** The events linked to a task, as this person's calendars have them. */
   eventsForTask: (taskId: string) => Promise<GCalEvent[]>
   /** Events to choose from when attaching one that already exists. */
@@ -470,11 +471,11 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       ?? writableCalendars(calendars)[0]?.id
     if (!target) {
       set({ error: '일정을 만들 수 있는 캘린더가 없습니다' })
-      return false
+      return null
     }
 
     const token = await ensureWriteToken(get, set)
-    if (!token) return false
+    if (!token) return null
 
     try {
       const created = await createCalendarEvent(token, { calendarId: target, summary, startDateTime, endDateTime, attendees, taskId })
@@ -482,7 +483,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       const ev = toGCalEvent({ ...created, calendarId: target, calendarColor: colour })
       // Show it straight away; the next fetch will confirm it.
       if (ev) set({ events: [...get().events, ev] })
-      return true
+      return ev?.id ?? null
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '일정 생성 실패'
       if (msg === TOKEN_EXPIRED) {
@@ -490,7 +491,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       } else {
         set({ error: msg })
       }
-      return false
+      return null
     }
   },
 

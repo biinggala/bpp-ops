@@ -241,10 +241,12 @@ export function SchedulePanel({ task, memberEmails }: {
               candidates={candidates}
               onCreate={async (input) => {
                 setBusy(true)
-                const ok = await createEvent({ ...input, taskId: task.id })
+                // createEvent가 만든 일정의 id를 돌려줍니다(회의실 예약을
+                // 그 일정에 묶기 위해서). 여기서는 성공 여부만 필요합니다.
+                const created = await createEvent({ ...input, taskId: task.id })
                 setBusy(false)
-                if (ok) { setAdding(null); await reload() }
-                return ok
+                if (created) { setAdding(null); await reload() }
+                return !!created
               }}
             />
           ) : (
