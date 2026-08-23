@@ -11,6 +11,7 @@ import { authorizedEmails } from '../../../lib/utils'
 import type { Task } from '../../../types'
 import type { Rsvp } from '../../../lib/googleCalendar'
 import { Icon } from '../../shared/Icon'
+import { RsvpPicker } from '../../shared/RsvpPicker'
 import { addDays, toDate, fmtYMD, isComposing } from '../../../lib/utils'
 import type { GCalEvent } from '../../../store/gcalStore'
 
@@ -1334,71 +1335,17 @@ function CardMenu({ onDelete }: { onDelete: () => void }) {
  * 있는 것은 같고 목소리만 다릅니다.
  */
 function RsvpRow({ current, onRespond }: { current: string; onRespond: (r: Rsvp) => void }) {
-  /**
-   * `soft`를 따로 두는 이유: `--danger`는 밝은 화면과 어두운 화면에서 값이
-   * 다릅니다. tint()에 넣으면 hex가 아니라서 회색으로 떨어집니다 — 거절만
-   * 색을 잃습니다. 빨강은 이미 있는 --danger-l을 씁니다.
-   */
-  const options: { value: Rsvp; label: string; tone: string; soft: string }[] = [
-    { value: 'accepted',  label: '수락', tone: '#448361',      soft: tint('#448361', .16) },
-    { value: 'tentative', label: '미정', tone: '#D9730D',      soft: tint('#D9730D', .16) },
-    { value: 'declined',  label: '거절', tone: 'var(--danger)', soft: 'var(--danger-l)' },
-  ]
   const undecided = current === 'needsAction'
-
   return (
     <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--bd)' }}>
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        fontSize: 11, color: undecided ? 'var(--t2)' : 'var(--t3)',
-        fontWeight: undecided ? 600 : 400, marginBottom: 6,
+        fontSize: 11, marginBottom: 6,
+        color: undecided ? 'var(--t2)' : 'var(--t3)',
+        fontWeight: undecided ? 600 : 400,
       }}>
         {undecided ? '초대받았습니다' : '내 응답'}
       </div>
-      <div style={{
-        display: 'flex', borderRadius: 'var(--r2)', overflow: 'hidden',
-        background: 'var(--bg3)', padding: 2,
-      }}>
-        {options.map((o, i) => {
-          const on = current === o.value
-          /**
-           * 칸 사이의 선은 **따로 그립니다.**
-           *
-           * 처음엔 버튼에 `inset` 그림자로 넣었는데, 버튼이 둥근 모서리를
-           * 갖고 있어서 그림자가 그 곡선을 따라갔습니다 — 선 끝이 살짝
-           * 꺾여 보이던 것이 그것입니다. 그림자는 상자의 모양을 따르고,
-           * 우리가 원하는 건 상자와 무관한 직선 하나입니다.
-           *
-           * 위아래를 조금 띄웁니다. 칸 높이를 꽉 채운 선은 칸을 나누는
-           * 것이 아니라 칸을 가르는 것으로 보입니다.
-           */
-          const rule = i > 0 && !on && current !== options[i - 1].value
-          return (
-            <React.Fragment key={o.value}>
-              {i > 0 && (
-                <span aria-hidden style={{
-                  width: 1, flexShrink: 0, margin: '5px 0',
-                  background: rule ? 'var(--bd)' : 'transparent',
-                }} />
-              )}
-              <button
-                onClick={() => onRespond(o.value)}
-                style={{
-                  flex: 1, padding: '5px 0', border: 'none', cursor: 'pointer',
-                  fontFamily: 'var(--font)', fontSize: 12,
-                  fontWeight: on ? 600 : 400,
-                  borderRadius: 'var(--r1)',
-                  background: on ? o.soft : 'transparent',
-                  color: on ? o.tone : 'var(--t2)',
-                  transition: 'background .1s, color .1s',
-                }}
-                onMouseEnter={e => { if (!on) e.currentTarget.style.background = 'var(--bg2)' }}
-                onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}
-              >{o.label}</button>
-            </React.Fragment>
-          )
-        })}
-      </div>
+      <RsvpPicker current={current} onRespond={onRespond} />
     </div>
   )
 }
