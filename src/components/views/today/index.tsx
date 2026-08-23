@@ -7,6 +7,7 @@ import TaskItem from '@tiptap/extension-task-item'
 import { useTaskStore } from '../../../store/taskStore'
 import { useAuthStore } from '../../../store/authStore'
 import { useProjectStore } from '../../../store/projectStore'
+import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useMobile } from '../../../hooks/useMobile'
 import { useDailyNote } from '../../../hooks/useDailyNote'
@@ -343,10 +344,16 @@ function PullRail({ onAdd, inNote }: { onAdd: (t: Task) => void; inNote: Set<str
       >
         {sections.map(sec => (
           <div key={sec.label}>
+            {/* 스크롤해도 붙어 있습니다. 열 개째 줄에서 지금 보는 게 어느
+                프로젝트인지 모르면 묶어 놓은 값이 없습니다. */}
             <div style={{
+              position: 'sticky', top: 0, zIndex: 1,
               display: 'flex', alignItems: 'center', gap: 5,
-              padding: '10px 6px 3px', fontSize: 10, fontWeight: 700, letterSpacing: '.05em',
-              color: ('tone' in sec && sec.tone) ? sec.tone : 'var(--t3)',
+              margin: '8px -8px 2px', padding: '5px 14px',
+              background: 'var(--bg2)',
+              borderTop: '1px solid var(--bd)',
+              fontSize: 11, fontWeight: 700,
+              color: ('tone' in sec && sec.tone) ? sec.tone : 'var(--t2)',
             }}>
               {'dot' in sec && sec.dot && (
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: sec.dot, flexShrink: 0 }} />
@@ -354,7 +361,9 @@ function PullRail({ onAdd, inNote }: { onAdd: (t: Task) => void; inNote: Set<str
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sec.label}</span>
               <span style={{ marginLeft: 'auto', opacity: .7, letterSpacing: 0 }}>{sec.tasks.length}</span>
             </div>
-            {sec.tasks.map(t => <PullRow key={t.id} task={t} onAdd={onAdd} taken={inNote.has(t.id)} />)}
+            {sec.tasks.map(t => (
+              <PullRow key={t.id} task={t} onAdd={onAdd} taken={inNote.has(t.id)} grouping={group} />
+            ))}
           </div>
         ))}
       </div>
@@ -384,14 +393,34 @@ function RailTab({ children, on, onClick }: { children: React.ReactNode; on: boo
  * 끌어다 놓기도 됩니다. 손이 하려는 일을 손이 하게 두는 편이 낫고, `+`는 그게
  * 안 되는 곳(폰)과 그걸 모르는 사람을 위해 남습니다.
  */
-function PullRow({ task, onAdd, taken }: { task: Task; onAdd: (t: Task) => void; taken: boolean }) {
+function PullRow({ task, onAdd, taken, grouping }: {
+  task: Task; onAdd: (t: Task) => void; taken: boolean; grouping: RailGroup
+}) {
   const [hovered, setHovered] = useState(false)
   const [dragging, setDragging] = useState(false)
   const projects = useProjectStore(s => s.projects)
+  const milestones = useMilestoneStore(s => s.milestones)
   const openTaskDetail = useUiStore(s => s.openTaskDetail)
-  const project = task.projectId ? projects.find(p => p.id === task.projectId) : undefined
   const diff = task.due ? daysFrom(task.due) : null
   const late = diff !== null && diff < 0 && !taken
+
+  /**
+   * 줄이 말해야 하는 건 **머리글이 안 말한 것**입니다.
+   *
+   * 프로젝트별로 묶어 놓고 줄마다 프로젝트 이름을 또 적으면, 스무 줄에 같은
+   * 이름이 스무 번 나오면서 정작 그 줄들을 구분해 주는 건 아무것도 없습니다.
+   * 그 안에서 다른 건 마일스톤이고요. 마감순으로 묶었을 때는 반대로 프로젝트가
+   * 그 줄을 구분해 줍니다.
+   */
+  const mark = grouping === 'project'
+    ? (() => {
+        const m = task.milestoneId ? milestones.find(ms => ms.id === task.milestoneId) : undefined
+        return m ? { label: m.name, dot: undefined, diamond: true } : null
+      })()
+    : (() => {
+        const p = task.projectId ? projects.find(pr => pr.id === task.projectId) : undefined
+        return p ? { label: p.name, dot: p.color, diamond: false } : null
+      })()
 
   return (
     <div
@@ -429,10 +458,12 @@ function PullRow({ task, onAdd, taken }: { task: Task; onAdd: (t: Task) => void;
               {late ? `D+${Math.abs(diff)}` : diff === 0 ? 'D-Day' : `D-${diff}`}
             </span>
           )}
-          {project && (
+          {mark && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-              <span style={{ width: 5, height: 5, borderRadius: '50%', background: project.color, flexShrink: 0 }} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.name}</span>
+              {mark.diamond
+                ? <span style={{ color: '#9065B0', fontSize: 9, flexShrink: 0 }}>◆</span>
+                : <span style={{ width: 5, height: 5, borderRadius: '50%', background: mark.dot, flexShrink: 0 }} />}
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{mark.label}</span>
             </span>
           )}
         </div>
