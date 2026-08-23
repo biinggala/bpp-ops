@@ -1119,16 +1119,29 @@ function CardMenu({ onDelete }: { onDelete: () => void }) {
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
 
+  /**
+   * 바깥을 누르면 닫힙니다 — **잡는 단계(capture)로** 듣습니다.
+   *
+   * 처음엔 평범하게 document에 걸었는데 안 닫혔습니다. 카드가 자기
+   * mousedown에 stopPropagation을 걸고 있기 때문입니다 — 카드 안을 눌렀을
+   * 때 뒤의 덮개가 카드를 닫아 버리지 않게 하려고요. 그 덕에 카드 안에서
+   * 일어난 mousedown은 document까지 못 올라오고, document에 걸어 둔 귀는
+   * 아무것도 못 듣습니다. 이벤트가 안 온 게 아니라 막힌 것인데, 코드에서는
+   * 둘이 똑같아 보입니다.
+   *
+   * 잡는 단계는 document에서 대상으로 **내려가는** 길이라 아래에서 무엇을
+   * 막든 먼저 지나갑니다. 제목 칸을 눌러도, 참석자를 눌러도 닫힙니다.
+   */
   useEffect(() => {
     if (!open) return
     const away = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
     // 이 메뉴를 연 클릭이 곧바로 닫지 않도록 다음 클릭부터.
-    const t = setTimeout(() => document.addEventListener('mousedown', away), 0)
+    const t = setTimeout(() => document.addEventListener('mousedown', away, true), 0)
     document.addEventListener('keydown', key)
     return () => {
       clearTimeout(t)
-      document.removeEventListener('mousedown', away)
+      document.removeEventListener('mousedown', away, true)
       document.removeEventListener('keydown', key)
     }
   }, [open])

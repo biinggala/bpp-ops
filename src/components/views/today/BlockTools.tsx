@@ -441,12 +441,13 @@ function DriveFinder({ x, y, onPick, onClose }: {
       onClose()
     }
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    // 다음 클릭부터. 이 창을 연 그 클릭이 곧바로 닫아 버리지 않게.
-    const t = setTimeout(() => document.addEventListener('mousedown', away), 0)
+    // 다음 클릭부터, 그리고 잡는 단계로. 사이에 stopPropagation을 거는
+    // 무언가가 있으면 올라오는 길에 걸어 둔 귀는 아무것도 못 듣습니다.
+    const t = setTimeout(() => document.addEventListener('mousedown', away, true), 0)
     document.addEventListener('keydown', key)
     return () => {
       clearTimeout(t)
-      document.removeEventListener('mousedown', away)
+      document.removeEventListener('mousedown', away, true)
       document.removeEventListener('keydown', key)
     }
   }, [onClose])
