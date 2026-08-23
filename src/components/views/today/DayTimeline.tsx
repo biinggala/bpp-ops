@@ -4,6 +4,7 @@ import { useUiStore } from '../../../store/uiStore'
 import { openExternal } from '../../../lib/desktopLinks'
 import { fmtYMD } from '../../../lib/utils'
 import { TimelineGrid } from '../timeline'
+import { WidthHandle } from '../../shared/WidthHandle'
 import type { GCalEvent } from '../../../store/gcalStore'
 
 /**
@@ -27,7 +28,29 @@ import type { GCalEvent } from '../../../store/gcalStore'
  * 그래서 날짜 머리줄(눌러서 업무 배치)과 마감 업무 칩은 빼고 붙였습니다.
  */
 
-export const RAIL_W = 320
+/**
+ * ── 칸 폭 ────────────────────────────────────────────────────────────────────
+ *
+ * 사이드바와 같은 줄의 값입니다 — 이 기기의 것이고, 남과 나누지 않습니다.
+ *
+ * 하한은 회의 이름이 두어 글자로 잘리기 시작하는 지점, 상한은 옆의 노트가
+ * 이 칸보다 좁아 보이기 시작하는 지점입니다.
+ */
+const W_KEY = 'today_rail_width'
+const W_DEFAULT = 320
+const W_MIN = 260
+const W_MAX = 560
+
+function loadWidth(): number {
+  try {
+    const saved = Number(localStorage.getItem(W_KEY))
+    if (saved >= W_MIN && saved <= W_MAX) return saved
+  } catch { /* private mode */ }
+  return W_DEFAULT
+}
+function saveWidth(next: number) {
+  try { localStorage.setItem(W_KEY, String(Math.round(next))) } catch { /* private mode */ }
+}
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
@@ -41,6 +64,7 @@ function clock(d: Date): string {
 }
 
 export function DayTimeline({ date }: { date: string }) {
+  const [width, setWidth] = useState(loadWidth)
   const events = useGCalStore(s => s.events)
   const token = useGCalStore(s => s.token)
   const wasConnected = useGCalStore(s => s.wasConnected)
@@ -76,11 +100,17 @@ export function DayTimeline({ date }: { date: string }) {
 
   return (
     <aside style={{
-      width: RAIL_W, flexShrink: 0,
+      width, flexShrink: 0,
       borderLeft: '1px solid var(--bd)',
       display: 'flex', flexDirection: 'column', minHeight: 0,
       background: 'var(--bg)',
+      // 손잡이가 이 칸의 왼쪽 모서리에 붙어야 해서.
+      position: 'relative',
     }}>
+      <WidthHandle
+        width={width} min={W_MIN} max={W_MAX} defaultWidth={W_DEFAULT}
+        side="left" onChange={setWidth} onCommit={saveWidth}
+      />
       <div style={{ padding: '12px 10px 8px', borderBottom: '1px solid var(--bd)', flexShrink: 0, maxHeight: '46%', overflowY: 'auto' }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--t3)', letterSpacing: '.05em', padding: '0 6px', marginBottom: 5 }}>
           {isToday ? '오늘의 일정' : '이 날의 일정'}
