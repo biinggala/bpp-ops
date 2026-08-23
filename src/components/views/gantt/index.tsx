@@ -562,10 +562,13 @@ export function GanttView() {
             같은 틈이 생겼습니다 — 그리로 아래 내용이 지나가는 게 보였고,
             왼쪽 업무 열에서 특히 눈에 띄었습니다.
 
-            이제 하나가 고정되고 두 띠는 그 안에 있습니다. 남는 건 머리글과
-            본문 사이 한 줄뿐이고, 그건 요소 바깥에 그려지는 그림자로 덮습니다.
+            이제 하나가 고정되고 두 띠는 그 안에 있습니다.
+
+            머리글 아래 경계는 날짜 띠가 가진 2px 한 줄이 전부입니다. 여기에
+            그림자로 한 줄을 더 얹었다가, 어두운 화면에서 3px짜리 밝은 띠가
+            돼서 그게 도로 '틈'으로 보였습니다.
           */}
-          <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg2)', boxShadow: '0 1px 0 var(--bd)' }}>
+          <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg2)' }}>
 
           {/* Month band */}
           <div style={{ display: 'flex', height: MONTH_H, background: 'var(--bg2)', borderBottom: '1px solid var(--bd)' }}>
@@ -618,9 +621,6 @@ export function GanttView() {
             markers={projectId ? milestoneMarkers : []} hoveredMilestoneId={hoveredMilestoneId}
           />
 
-          {todayCol >= 0 && (
-            <TodayLine left={leftW} top={HEADER_H} height={contentH} x={todayCol * dayW + Math.floor(dayW / 2)} />
-          )}
 
           {/* Dependencies, tucked behind the bars they connect. */}
           {arrows.length > 0 && (
@@ -645,6 +645,9 @@ export function GanttView() {
               flush against the bottom bar, which looks like the chart has been
               cut rather than finished. */}
           <div style={{ position: 'relative', zIndex: 2, paddingBottom: isMobile ? 20 : 8 }}>
+            {todayCol >= 0 && (
+              <TodayLine left={leftW} height={contentH} x={todayCol * dayW + Math.floor(dayW / 2)} />
+            )}
             {rows.map(row => row.kind === 'project' ? (
               <ProjectRow
                 key={row.key}
@@ -821,11 +824,16 @@ function Backdrop({ left, width, height, dayW, zoom, ticks, markers, hoveredMile
  *
  * 앞에 오는 대신 얇고 반투명합니다. 막대 위의 글자를 읽는 걸 방해하면
  * 앞으로 나온 값을 못 합니다.
+ *
+ * **줄들과 같은 층에 삽니다.** 바깥에 두면 이름 열보다도 위가 됩니다 —
+ * 이름 열은 왼쪽에 고정돼 있고 이 선은 가로로 스크롤하므로, 차트를 오른쪽으로
+ * 밀면 선이 업무 이름들을 가로질러 지나갑니다. 줄 컨테이너 안에서 3층이면
+ * 막대(그 아래)보다는 위, 고정된 이름 열(4층)보다는 아래가 됩니다.
  */
-function TodayLine({ left, top, height, x }: { left: number; top: number; height: number; x: number }) {
+function TodayLine({ left, height, x }: { left: number; height: number; x: number }) {
   return (
     <div style={{
-      position: 'absolute', left: left + x, top, height, width: 2,
+      position: 'absolute', left: left + x, top: 0, height, width: 2,
       background: 'var(--ac)', opacity: .5,
       zIndex: 3, pointerEvents: 'none',
     }} />
