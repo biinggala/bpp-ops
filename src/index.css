@@ -369,6 +369,14 @@ input, select, textarea, button {
   pointer-events: none;
   float: left;
   height: 0;
+  /* 데일리 노트의 안내문은 몇 초마다 바뀝니다. 글자가 갈리는 순간에만
+     투명해졌다 돌아오도록, 바뀌기 직전에 .hint-out이 붙습니다. */
+  opacity: 1;
+  transition: opacity .28s ease;
+}
+
+.ProseMirror.hint-out p.is-editor-empty:first-child::before {
+  opacity: 0;
 }
 
 /* Selection */

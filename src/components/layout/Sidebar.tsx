@@ -550,7 +550,7 @@ export function Sidebar() {
         {/* 홈 · 받은 알림 · 검색 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 10px' }}>
           <PaneTab icon="home" label="홈" active={pane === 'home'} onClick={() => setPane('home')} />
-          <PaneTab icon="inbox" label="받은 알림" active={pane === 'inbox'} count={unread + external} onClick={() => { setPane('inbox'); haptic('tap') }} />
+          <PaneTab icon="inbox" label="받은 알림" tour="inbox" active={pane === 'inbox'} count={unread + external} onClick={() => { setPane('inbox'); haptic('tap') }} />
           {/*
             여기 있던 검색 상자를 돋보기로 바꿨습니다.
 
@@ -563,6 +563,7 @@ export function Sidebar() {
             찾습니다. 상자보다 넓고, 무엇보다 어디서 눌러도 답이 나옵니다.
           */}
           <IconAction
+            tour="search"
             label={isMobile ? '검색' : `검색 · ${CMD}K`}
             // 폰에서 서랍은 화면을 덮고 있습니다. 검색 창을 그 위에 또 얹으면
             // 판 두 장이 겹쳐서, 닫고 나면 서랍이 아직 열려 있습니다.
@@ -587,6 +588,7 @@ export function Sidebar() {
             active={screen === 'today'}
             onClick={() => { setScreen('today'); closeSidebar() }}
             node={<Icon name="today" size={14} />}
+            tour="today"
             count={todayOpen}
             emphasis
             pill
@@ -610,6 +612,7 @@ export function Sidebar() {
             active={screen === 'calendar'}
             onClick={() => { openCalendar(); closeSidebar() }}
             node={<Icon name="calendar" size={14} />}
+            tour="calendar"
             emphasis
           >
             캘린더
@@ -638,6 +641,7 @@ export function Sidebar() {
                끄는 건 아래 '전체 업무'가 합니다. */
             onClick={() => { setPersonalOnly(false); setMyTasksOnly(true); setProject(null); closeSidebar() }}
             count={myOpenCount}
+            tour="mine"
             emphasis
             icon="☑"
           >
@@ -957,8 +961,10 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-function NavItem({ children, active, onClick, count, emphasis, pill, icon, node }: {
+function NavItem({ children, active, onClick, count, emphasis, pill, icon, node, tour }: {
   children: React.ReactNode; active: boolean; onClick: () => void
+  /** 소개 투어가 이 줄을 찾을 때 쓰는 이름. Welcome 참고. */
+  tour?: string
   /** Omitted where a number would be decoration rather than information. */
   count?: number
   /** Bolder than the rest — a row somebody uses every day, not now and then. */
@@ -972,6 +978,7 @@ function NavItem({ children, active, onClick, count, emphasis, pill, icon, node 
   return (
     <div
       onClick={onClick}
+      data-tour={tour}
       style={{
         display: 'flex', alignItems: 'center', gap: 7,
         minHeight: 28, boxSizing: 'border-box',
@@ -1631,11 +1638,12 @@ function MemberManageModal({ project, currentEmail, suggestable, onAddMember, on
  * 안 켜진 PaneTab과 같은 크기·모양이라 줄은 고르게 보이고, 오른쪽 끝에 혼자
  * 떨어져 있어서 왼쪽 둘과 성격이 다르다는 게 자리로 읽힙니다.
  */
-function IconAction({ label, onClick }: { label: string; onClick: () => void }) {
+function IconAction({ label, onClick, tour }: { label: string; onClick: () => void; tour?: string }) {
   const [hovered, setHovered] = useState(false)
   return (
     <button
       onClick={onClick}
+      data-tour={tour}
       aria-label={label}
       title={label}
       style={{
@@ -1655,13 +1663,15 @@ function IconAction({ label, onClick }: { label: string; onClick: () => void }) 
   )
 }
 
-function PaneTab({ icon, label, active, count = 0, onClick }: {
+function PaneTab({ icon, label, active, count = 0, onClick, tour }: {
   icon: IconName; label: string; active: boolean; count?: number; onClick: () => void
+  tour?: string
 }) {
   const [hovered, setHovered] = useState(false)
   return (
     <button
       onClick={onClick}
+      data-tour={tour}
       aria-label={label}
       aria-pressed={active}
       style={{

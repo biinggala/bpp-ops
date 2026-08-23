@@ -42,6 +42,20 @@ import type { Task } from '../../../types'
 const TODAY = () => fmtYMD(new Date())
 
 /**
+ * 빈 노트가 번갈아 하는 말.
+ *
+ * 첫 줄은 초대이고, 둘째는 안심이고, 셋째는 하나뿐인 조작법입니다. 셋 다
+ * 처음 온 사람에게 필요한데 한 줄에 다 넣으면 문단이 되고, 문단이 된 안내는
+ * 안 읽힙니다.
+ */
+const HINTS = [
+  '오늘 무엇부터 할까요?',
+  '여기 적는 것은 나만 볼 수 있습니다',
+  "'/'를 누르면 업무와 자료를 넣을 수 있습니다",
+]
+const HINT_MS = 4200
+
+/**
  * 손잡이가 서는 자리.
  *
  * 글줄은 이만큼 안으로 들어가 있고, 날짜 제목도 같이 들어가야 합니다 — 제목이
@@ -66,6 +80,7 @@ export function TodayView() {
    * 보입니다 — 왼쪽 칩이 눌렀는데 1초쯤 아무 반응이 없는 셈입니다.
    */
   const [noteIds, setNoteIds] = useState<Set<string>>(() => new Set())
+  const hintRef = useRef(0)
   const [dropping, setDropping] = useState(false)
   const noteRef = useRef<HTMLDivElement>(null)
 
@@ -78,7 +93,9 @@ export function TodayView() {
           HTMLAttributes: { target: '_blank', rel: 'noopener noreferrer' },
         },
       }),
-      Placeholder.configure({ placeholder: '오늘 무엇부터 할까요?' }),
+      // 안내문은 하나가 아니라 셋이 돌아갑니다 — HINTS 참고. 여기서는
+      // 지금 차례인 것을 읽어 주기만 합니다.
+      Placeholder.configure({ placeholder: () => HINTS[hintRef.current] }),
       TaskList,
       TaskItem.configure({ nested: true }),
       TaskRef,
@@ -154,6 +171,38 @@ export function TodayView() {
     haptic('tap')
     editor.chain().focus('end').insertTaskRef(task.id).run()
   }
+
+  /**
+   * ── 빈 노트가 하는 말 ──────────────────────────────────────────────────────
+   *
+   * 한 줄에 세 가지를 적으면 아무도 안 읽습니다. 그래서 한 번에 하나씩,
+   * 몇 초마다 갈아 끼웁니다 — 빈 화면은 어차피 아무 일도 안 일어나는
+   * 자리라, 거기서 천천히 바뀌는 글자는 방해가 아니라 유일한 움직임입니다.
+   *
+   * 안내문 자리는 Placeholder 확장이 그립니다(::before). 그 글자를 바꾸려면
+   * 장식을 다시 계산하게 해야 하는데, 타이머는 그럴 이유를 못 만듭니다 —
+   * 그래서 아무것도 바꾸지 않는 트랜잭션을 한 번 던집니다.
+   *
+   * 사라졌다 나타나는 건 CSS가 합니다. 글자를 갈기 직전에 .hint-out을 붙여
+   * 투명하게 만들고, 갈아 끼운 다음 떼어 냅니다(index.css).
+   */
+  useEffect(() => {
+    if (!editor) return
+    const dom = editor.view.dom
+    const timer = setInterval(() => {
+      // 뭔가 적기 시작하면 안내문은 이미 화면에 없습니다. 없는 글자를
+      // 갈아 끼우느라 편집기를 건드릴 이유가 없습니다.
+      if (!editor.isEmpty || editor.isDestroyed) return
+      dom.classList.add('hint-out')
+      window.setTimeout(() => {
+        if (editor.isDestroyed) return
+        hintRef.current = (hintRef.current + 1) % HINTS.length
+        editor.view.dispatch(editor.state.tr.setMeta('addToHistory', false))
+        dom.classList.remove('hint-out')
+      }, 280)
+    }, HINT_MS)
+    return () => clearInterval(timer)
+  }, [editor])
 
   const shift = (days: number) => setDate(d => fmtYMD(addDays(toDate(d), days)))
   const isToday = date === TODAY()

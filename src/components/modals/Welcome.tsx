@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuthStore } from '../../store/authStore'
+import { useUiStore } from '../../store/uiStore'
 import { usePrefsStore } from '../../store/prefsStore'
 import { useGCalStore } from '../../store/gcalStore'
 import { useDriveStore } from '../../store/driveStore'
@@ -27,38 +28,61 @@ import { RELEASES, LATEST } from '../../lib/whatsNew'
  * 하면 그건 안내가 아니라 방해입니다.
  */
 
-// ── 소개 네 장 ────────────────────────────────────────────────────────────────
+// ── 소개: 진짜 화면을 가리킵니다 ──────────────────────────────────────────────
 
-interface Page {
-  icon: IconName
+interface Step {
+  /** 사이드바·툴바에 붙여 둔 data-tour 이름. 없으면 화면 가운데에 섭니다. */
+  tour?: string
   eyebrow: string
   title: string
   body: string
-  /** 마지막 장에만. 여기서 실제로 연결까지 끝냅니다. */
+  /** 마지막 장. 여기서 실제로 연결까지 끝냅니다. */
   connect?: boolean
 }
 
-const PAGES: Page[] = [
+/**
+ * 그림이 아니라 **그 자리**를 가리킵니다.
+ *
+ * 처음엔 아이콘 하나와 설명 문단으로 만들었는데, 그건 코끼리를 본 적 없는
+ * 사람에게 "이게 다리고 이게 코야" 하고 코끼리를 그려 보라는 것과 같습니다.
+ * 읽고 나서도 어디를 눌러야 하는지는 여전히 모릅니다.
+ *
+ * 그래서 화면을 어둡게 덮고 **진짜 그 줄만 밝혀 둡니다.** 설명은 그 옆에
+ * 붙습니다. 소개가 끝나면 방금 본 그 자리가 그대로 거기 있습니다 — 옮겨
+ * 적을 것이 없습니다.
+ */
+const STEPS: Step[] = [
   {
-    icon: 'today',
+    tour: 'today',
     eyebrow: '아침에 여는 곳',
     title: '오늘',
     body: '날짜 하나에 노트 한 장입니다. 왼쪽에 오늘 봐야 할 업무가 서 있고, 끌어다 놓으면 오늘 할 일이 됩니다. 오른쪽에는 오늘의 일정이 있습니다.',
   },
   {
-    icon: 'layers',
-    eyebrow: '일이 사는 곳',
-    title: '내 할 일 · 프로젝트',
-    body: '내 할 일은 나에게 온 것 전부, 프로젝트는 그 일이 속한 곳입니다. 같은 업무를 리스트·캘린더·간트 어느 쪽으로 봐도 됩니다 — 보는 방법이 다를 뿐 같은 목록입니다.',
+    tour: 'calendar',
+    eyebrow: '내 일정 전부',
+    title: '캘린더',
+    body: '구글 캘린더 일정과 업무 마감이 한 화면에 놓입니다. 빈 시간을 끌면 그 자리에 일정이 만들어지고, 회의실도 같이 잡을 수 있습니다.',
   },
   {
-    icon: 'inbox',
+    tour: 'mine',
+    eyebrow: '일이 사는 곳',
+    title: '내 할 일, 그리고 아래 프로젝트들',
+    body: '내 할 일은 나에게 온 것 전부, 그 아래는 그 일이 속한 프로젝트입니다. 같은 업무를 리스트·캘린더·간트 어느 쪽으로 봐도 됩니다 — 보는 방법이 다를 뿐 같은 목록입니다.',
+  },
+  {
+    tour: 'inbox',
     eyebrow: '나를 부르는 것들',
     title: '받은 알림',
-    body: '나에게 배정된 업무, 멘션, 구글 캘린더 초대가 한곳에 모입니다. 캘린더 초대는 여기서 바로 수락하거나 거절할 수 있습니다.',
+    body: '나에게 배정된 업무, 멘션, 구글 캘린더 초대가 여기 모입니다. 초대는 이 목록에서 바로 수락하거나 거절할 수 있습니다.',
   },
   {
-    icon: 'external',
+    tour: 'search',
+    eyebrow: '기억이 안 날 때',
+    title: '검색',
+    body: '업무·프로젝트·데일리 노트에 더해 붙여 둔 자료와 드라이브 파일까지 한 번에 찾습니다. 어디에 뒀는지 몰라도 이름 일부만 알면 됩니다.',
+  },
+  {
     eyebrow: '한 번만 하면 됩니다',
     title: '구글 연결하기',
     body: '캘린더를 연결하면 일정이 보이고 회의실을 여기서 잡을 수 있습니다. 드라이브를 연결하면 문서를 업무에 붙이고 검색으로 찾을 수 있습니다.',
@@ -93,7 +117,6 @@ export function Welcome() {
 
 function Sheet({ mode, onClose }: { mode: 'intro' | 'whatsNew'; onClose: () => void }) {
   const isMobile = useMobile()
-  const [step, setStep] = useState(0)
 
   // 창이 떠 있는 동안은 Esc로 닫힙니다. 읽기 싫은 사람을 붙잡아 두지 않습니다.
   useEffect(() => {
@@ -101,6 +124,8 @@ function Sheet({ mode, onClose }: { mode: 'intro' | 'whatsNew'; onClose: () => v
     document.addEventListener('keydown', h)
     return () => document.removeEventListener('keydown', h)
   }, [onClose])
+
+  if (mode === 'intro') return <Tour onClose={onClose} isMobile={isMobile} />
 
   return (
     <>
@@ -120,89 +145,179 @@ function Sheet({ mode, onClose }: { mode: 'intro' | 'whatsNew'; onClose: () => v
           paddingBottom: isMobile ? 'env(safe-area-inset-bottom, 0px)' : 0,
         }}
       >
-        {mode === 'intro'
-          ? <Intro step={step} setStep={setStep} onClose={onClose} />
-          : <News onClose={onClose} />}
+        <News onClose={onClose} />
       </div>
     </>
   )
 }
 
-// ── 소개 ──────────────────────────────────────────────────────────────────────
+// ── 투어 ──────────────────────────────────────────────────────────────────────
 
-function Intro({ step, setStep, onClose }: { step: number; setStep: (n: number) => void; onClose: () => void }) {
-  const page = PAGES[step]
-  const last = step === PAGES.length - 1
+/** 밝힌 자리 둘레의 여백. 줄에 딱 붙으면 밝힌 게 아니라 잘라 낸 것처럼 보입니다. */
+const HALO = 6
+/** 설명 카드 폭. 사이드바(240 남짓) 옆에 놓여도 화면을 안 넘기는 크기. */
+const CARD_W = 320
+
+function findRect(tour: string | undefined): DOMRect | null {
+  if (!tour) return null
+  const el = document.querySelector(`[data-tour="${tour}"]`)
+  return el ? el.getBoundingClientRect() : null
+}
+
+function Tour({ onClose, isMobile }: { onClose: () => void; isMobile: boolean }) {
+  const [step, setStep] = useState(0)
+  const [rect, setRect] = useState<DOMRect | null>(null)
+  const sidebarHidden = useUiStore(s => s.sidebarHidden)
+  const toggleSidebarHidden = useUiStore(s => s.toggleSidebarHidden)
+
+  /**
+   * 가리킬 것이 화면에 있어야 가리킬 수 있습니다.
+   *
+   * 사이드바를 접어 둔 사람에게는 밝힐 줄 자체가 없습니다. 투어 동안만 펴
+   * 두고, 끝나면 원래대로 되돌립니다 — 남의 설정을 소개가 바꿔 놓고 가면
+   * 안 됩니다.
+   */
+  useEffect(() => {
+    if (isMobile || !sidebarHidden) return
+    toggleSidebarHidden()
+    return () => { if (useUiStore.getState().sidebarHidden === false) toggleSidebarHidden() }
+    // 처음 한 번만. 투어 도중 사람이 직접 접었다면 그건 그 사람의 뜻입니다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const current = STEPS[step]
+
+  /**
+   * 자리를 잽니다.
+   *
+   * 두 번 잽니다 — 지금 한 번, 그리고 다음 그림 뒤에 한 번. 사이드바를 방금
+   * 펴 준 경우 첫 번째 측정은 아직 접혀 있던 화면의 값입니다.
+   */
+  useEffect(() => {
+    const measure = () => setRect(findRect(current.tour))
+    measure()
+    const raf = requestAnimationFrame(measure)
+    window.addEventListener('resize', measure)
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', measure) }
+  }, [current.tour, sidebarHidden])
+
+  const last = step === STEPS.length - 1
+  const next = () => { haptic('tap'); last ? onClose() : setStep(step + 1) }
+
+  // 폰에는 사이드바가 서랍 안에 있어서 가리킬 자리가 없습니다. 거기서는
+  // 밝히지 않고 화면 가운데에 두되, 설명은 그대로입니다.
+  const spot = isMobile ? null : rect
+
+  const card: React.CSSProperties = spot
+    ? placeCard(spot)
+    : { top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: Math.min(CARD_W, window.innerWidth - 32) }
 
   return (
     <>
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '40px 32px 24px', textAlign: 'center' }}>
-        <div style={{
-          width: 56, height: 56, margin: '0 auto 20px', borderRadius: 16,
-          background: 'var(--ac-l)', color: 'var(--ac)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Icon name={page.icon} size={26} />
-        </div>
+      {/* 뒤를 못 누르게 막는 판. 밝힌 자리도 지금은 누르는 곳이 아닙니다 —
+          투어 중에 눌러서 화면이 바뀌면 다음 장이 가리킬 곳이 사라집니다. */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: 300 }} />
 
-        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--t3)', letterSpacing: '.06em', marginBottom: 6 }}>
-          {page.eyebrow}
+      {spot ? (
+        <div style={{
+          position: 'fixed', pointerEvents: 'none', zIndex: 301,
+          left: spot.left - HALO, top: spot.top - HALO,
+          width: spot.width + HALO * 2, height: spot.height + HALO * 2,
+          borderRadius: 8,
+          boxShadow: '0 0 0 9999px rgba(0,0,0,.58), 0 0 0 2px var(--ac)',
+          transition: 'left .2s, top .2s, width .2s, height .2s',
+        }} />
+      ) : (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.58)', zIndex: 301, pointerEvents: 'none' }} />
+      )}
+
+      <div
+        role="dialog"
+        aria-modal="true"
+        style={{
+          position: 'fixed', zIndex: 302, ...card,
+          background: 'var(--bg)', borderRadius: 'var(--r3)',
+          boxShadow: '0 24px 60px rgba(0,0,0,.34), 0 0 0 1px var(--bd)',
+          padding: 18, boxSizing: 'border-box',
+          maxHeight: 'calc(100vh - 32px)', overflowY: 'auto',
+        }}
+      >
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ac)', letterSpacing: '.05em', marginBottom: 5 }}>
+          {current.eyebrow}
         </div>
-        <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--t1)', marginBottom: 10 }}>
-          {page.title}
+        <h2 style={{ fontSize: 17, fontWeight: 700, color: 'var(--t1)', marginBottom: 7, lineHeight: 1.35 }}>
+          {current.title}
         </h2>
-        <p style={{ fontSize: 14, color: 'var(--t2)', lineHeight: 1.7, maxWidth: 360, margin: '0 auto' }}>
-          {page.body}
+        <p style={{ fontSize: 13, color: 'var(--t2)', lineHeight: 1.7 }}>
+          {current.body}
         </p>
 
-        {page.connect && <ConnectRow />}
-      </div>
+        {current.connect && <ConnectRow />}
 
-      <div style={{
-        flexShrink: 0, padding: '12px 16px', borderTop: '1px solid var(--bd)',
-        display: 'flex', alignItems: 'center', gap: 10,
-      }}>
-        <button
-          onClick={onClose}
-          style={{
-            border: 'none', background: 'transparent', color: 'var(--t3)',
-            fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font)', padding: '6px 4px',
-          }}
-        >
-          {/* 마지막 장에서까지 '건너뛰기'라고 하면 다 읽은 사람에게 안 읽은
-              것처럼 말하는 셈입니다. */}
-          {last ? '나중에' : '건너뛰기'}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16 }}>
+          <button
+            onClick={onClose}
+            style={{
+              border: 'none', background: 'transparent', color: 'var(--t3)',
+              fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)', padding: '4px 2px',
+            }}
+          >
+            {/* 마지막 장에서까지 '건너뛰기'라고 하면 다 읽은 사람에게 안 읽은
+                것처럼 말하는 셈입니다. */}
+            {last ? '나중에' : '건너뛰기'}
+          </button>
 
-        <div style={{ margin: '0 auto', display: 'flex', gap: 6 }}>
-          {PAGES.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setStep(i)}
-              aria-label={`${i + 1}번째`}
-              style={{
-                width: i === step ? 18 : 6, height: 6, borderRadius: 999, padding: 0,
-                border: 'none', cursor: 'pointer',
-                background: i === step ? 'var(--ac)' : 'var(--bd2)',
-                transition: 'width .16s, background .16s',
-              }}
-            />
-          ))}
+          <div style={{ margin: '0 auto', display: 'flex', gap: 5 }}>
+            {STEPS.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setStep(i)}
+                aria-label={`${i + 1}번째`}
+                style={{
+                  width: i === step ? 16 : 5, height: 5, borderRadius: 999, padding: 0,
+                  border: 'none', cursor: 'pointer',
+                  background: i === step ? 'var(--ac)' : 'var(--bd2)',
+                  transition: 'width .16s, background .16s',
+                }}
+              />
+            ))}
+          </div>
+
+          <button
+            onClick={next}
+            style={{
+              padding: '7px 14px', borderRadius: 'var(--r2)', border: 'none',
+              background: 'var(--ac)', color: '#fff', fontSize: 13, fontWeight: 600,
+              cursor: 'pointer', fontFamily: 'var(--font)',
+            }}
+          >
+            {last ? '시작하기' : '다음'}
+          </button>
         </div>
-
-        <button
-          onClick={() => { haptic('tap'); last ? onClose() : setStep(step + 1) }}
-          style={{
-            padding: '8px 16px', borderRadius: 'var(--r2)', border: 'none',
-            background: 'var(--ac)', color: '#fff', fontSize: 13, fontWeight: 600,
-            cursor: 'pointer', fontFamily: 'var(--font)',
-          }}
-        >
-          {last ? '시작하기' : '다음'}
-        </button>
       </div>
     </>
   )
+}
+
+/**
+ * 밝힌 자리 **옆**에 붙입니다. 위나 아래가 아니라 옆인 이유는, 여기서
+ * 가리키는 것들이 전부 왼쪽 열의 줄들이기 때문입니다 — 아래에 놓으면
+ * 다음 장에서 가리킬 줄을 카드가 덮습니다.
+ *
+ * 오른쪽이 좁으면 왼쪽으로, 세로로는 그 줄 높이에 맞춰 두되 화면을
+ * 넘지 않게 당깁니다.
+ */
+function placeCard(spot: DOMRect): React.CSSProperties {
+  const M = 12
+  const w = Math.min(CARD_W, window.innerWidth - M * 2)
+  const rightRoom = window.innerWidth - spot.right - M * 2
+  const left = rightRoom >= w
+    ? spot.right + M
+    : Math.max(M, spot.left - w - M)
+  // 카드 높이를 모르므로 240쯤으로 보고 화면 안에 넣습니다. 넘치면 카드가
+  // 제 안에서 스크롤합니다 — 재서 다시 놓으면 열릴 때 한 번 덜컹거립니다.
+  const top = Math.max(M, Math.min(window.innerHeight - 240 - M, spot.top - 8))
+  return { left, top, width: w }
 }
 
 /**
