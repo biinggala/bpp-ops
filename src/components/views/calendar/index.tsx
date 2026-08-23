@@ -72,12 +72,13 @@ function GCalButton() {
           onClick={() => setPickerOpen(o => !o)}
           title="표시할 캘린더 선택"
           style={{
+            height: CTRL_H, boxSizing: 'border-box',
             display: 'flex', alignItems: 'center', gap: 5,
             fontSize: 12, color: error ? 'var(--danger)' : 'var(--t2)',
             background: 'transparent',
             border: `1px solid ${error ? 'rgba(212,76,71,.35)' : 'var(--bd2)'}`,
-            cursor: 'pointer', padding: '3px 9px', borderRadius: 'var(--r2)',
-            fontFamily: 'var(--font)', whiteSpace: 'nowrap',
+            cursor: 'pointer', padding: '0 9px', borderRadius: 'var(--r2)',
+            fontFamily: 'var(--font)', whiteSpace: 'nowrap', lineHeight: 1,
           }}
         >
           <GoogleDot />
@@ -148,7 +149,7 @@ function GCalButton() {
   // Silent reconnect in progress
   if (autoRefreshing) {
     return (
-      <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--t3)', background: 'var(--bg3)', padding: '3px 8px', borderRadius: 20 }}>
+      <span style={{ height: CTRL_H, boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--t3)', background: 'var(--bg3)', padding: '0 8px', borderRadius: 20 }}>
         <GoogleDot /> 갱신 중…
       </span>
     )
@@ -163,8 +164,9 @@ function GCalButton() {
           disabled={loading}
           title={error ?? undefined}
           style={{
+            height: CTRL_H, boxSizing: 'border-box',
             display: 'flex', alignItems: 'center', gap: 5,
-            padding: '3px 8px', borderRadius: 20,
+            padding: '0 8px', borderRadius: 20,
             border: `1px solid ${error ? 'rgba(212,76,71,.35)' : 'rgba(68,131,97,.35)'}`,
             background: error ? 'rgba(212,76,71,.07)' : 'rgba(68,131,97,.07)',
             fontSize: 12, color: error ? 'var(--danger)' : '#448361',
@@ -192,8 +194,9 @@ function GCalButton() {
         onClick={connect}
         disabled={loading}
         style={{
+          height: CTRL_H, boxSizing: 'border-box',
           display: 'flex', alignItems: 'center', gap: 5,
-          padding: '4px 10px', borderRadius: 'var(--r1)',
+          padding: '0 10px', borderRadius: 'var(--r1)',
           border: `1px solid ${error ? '#fca5a5' : 'var(--bd)'}`,
           background: error ? 'rgba(212,76,71,.07)' : 'transparent',
           fontSize: 12, color: error ? 'var(--danger)' : 'var(--t2)',
@@ -847,7 +850,7 @@ function DesktopCalendar() {
             value={target}
             onChange={e => setTargetCalendar(e.target.value)}
             title={canWrite ? '새 일정을 넣을 캘린더' : '첫 생성 시 구글 권한을 요청합니다'}
-            style={{ padding: '3px 6px', borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', fontSize: 12, color: 'var(--t2)', fontFamily: 'var(--font)', maxWidth: 170 }}
+            style={{ height: CTRL_H, boxSizing: 'border-box', padding: '0 6px', borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', fontSize: 12, color: 'var(--t2)', fontFamily: 'var(--font)', maxWidth: 170, lineHeight: 1 }}
           >
             {writable.map(c => <option key={c.id} value={c.id}>{c.summary}에 추가</option>)}
           </select>
@@ -864,6 +867,16 @@ function DesktopCalendar() {
   )
 }
 
+/**
+ * 캘린더 바에 서는 컨트롤의 키.
+ *
+ * 넷이 서로 다른 방식으로 높이가 정해지고 있었습니다 — 버튼은 padding과
+ * lineHeight로, 알약은 안쪽 버튼 + 바깥 padding으로, select는 브라우저가
+ * 알아서. 같은 줄에 선 것들이 1~3px씩 어긋나면 줄 자체가 흔들려 보입니다.
+ * 하나로 못박고 안에서 가운데 정렬합니다.
+ */
+const CTRL_H = 26
+
 /** 일 / 3일 / 주 / 월, as one segmented control. */
 function RangeSwitch({ value, onChange }: { value: CalRange; onChange: (r: CalRange) => void }) {
   const options: { key: CalRange; label: string }[] = [
@@ -874,6 +887,7 @@ function RangeSwitch({ value, onChange }: { value: CalRange; onChange: (r: CalRa
   ]
   return (
     <div style={{
+      height: CTRL_H, boxSizing: 'border-box',
       display: 'inline-flex', alignItems: 'center', gap: 2, padding: 2,
       background: 'var(--bg3)', borderRadius: 999, flexShrink: 0,
     }}>
@@ -884,7 +898,9 @@ function RangeSwitch({ value, onChange }: { value: CalRange; onChange: (r: CalRa
             key={String(o.key)}
             onClick={() => onChange(o.key)}
             style={{
-              padding: '3px 12px', borderRadius: 999, border: 'none', cursor: 'pointer',
+              height: '100%', boxSizing: 'border-box',
+              display: 'inline-flex', alignItems: 'center',
+              padding: '0 12px', borderRadius: 999, border: 'none', cursor: 'pointer',
               background: on ? 'var(--bg)' : 'transparent',
               color: on ? 'var(--t1)' : 'var(--t2)',
               fontWeight: on ? 600 : 400, fontSize: 12,
@@ -1236,7 +1252,7 @@ function NavBtn({ children, onClick }: { children: React.ReactNode; onClick: () 
   return (
     <button
       onClick={onClick}
-      style={{ padding: '4px 10px', borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', fontSize: 12, color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)', lineHeight: 1.5 }}
+      style={{ height: CTRL_H, boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', padding: '0 10px', borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'transparent', fontSize: 12, color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)', lineHeight: 1 }}
       onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg2)'; e.currentTarget.style.color = 'var(--t1)' }}
       onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t2)' }}
     >

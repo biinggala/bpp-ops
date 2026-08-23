@@ -90,7 +90,7 @@ export function Topbar() {
         {/* One door to everything that narrows or reorders the view. The ✓ that
             used to sit here toggled only 완료 숨기기, and left the other six
             controls with nowhere to live on a phone. */}
-        {isMobile && screen === 'work' && view !== 'f' && <MobileFilterButton />}
+        {isMobile && (screen === 'calendar' || (screen === 'work' && view !== 'f')) && <MobileFilterButton />}
         {isMobile ? (
           <button
             onClick={() => { haptic('tap'); openTaskModal() }}

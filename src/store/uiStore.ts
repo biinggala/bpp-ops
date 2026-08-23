@@ -212,7 +212,10 @@ export const useUiStore = create<UiState>((set, get) => ({
     filters: personalOnly ? { ...st.filters, projects: [] } : st.filters,
   })),
   setMyTasksOnly: (myTasksOnly) => set(st => ({
-    myTasksOnly, screen: 'work',
+    myTasksOnly,
+    // 캘린더 화면에도 이 토글이 있습니다. 거기서 누른 사람을 업무 목록으로
+    // 끌고 가면, 화면을 좁히려다 화면이 통째로 바뀝니다.
+    screen: st.screen === 'calendar' ? 'calendar' : 'work',
     filters: myTasksOnly ? { ...st.filters, assignees: [] } : st.filters,
   })),
   // 완료 숨기기 and a 완료 status filter are a guaranteed empty list. The
@@ -228,9 +231,13 @@ export const useUiStore = create<UiState>((set, get) => ({
   setScreen: (screen) => set({ screen }),
   openCalendar: () => set(st => ({
     screen: 'calendar',
-    // 범위를 지우고 들어갑니다 — '전체 일정'이라 해 놓고 지난번에 보던
-    // 프로젝트만 그려 주면 그건 다른 화면입니다.
-    projectId: null, space: null, myTasksOnly: false, personalOnly: false,
+    // 프로젝트는 걷어내되 '내 것'은 켜 둡니다.
+    //
+    // 처음엔 범위를 전부 지웠습니다. 그랬더니 볼 수 있는 모든 프로젝트의 모든
+    // 마감이 한 달 위에 쏟아져서, 정작 내 일정이 남의 마감에 묻혔습니다.
+    // 이 화면의 질문은 '무슨 일들이 있나'가 아니라 '나 언제 뭐 하지'입니다.
+    // 넓히고 싶으면 위 줄의 '내 업무만'을 끄면 됩니다.
+    projectId: null, space: null, myTasksOnly: true, personalOnly: false,
     filters: { ...st.filters, projects: [], assignees: [] },
   })),
   openNote: (noteDate) => set({ noteDate, screen: 'today' }),

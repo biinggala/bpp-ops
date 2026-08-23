@@ -177,6 +177,8 @@ export function AppPage() {
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <Topbar />
         {!isMobile && screen === 'work' && <ViewBar />}
+        {/* 캘린더 화면은 뷰 탭 없이 거르개만. ViewBar 주석 참고. */}
+        {!isMobile && screen === 'calendar' && <ViewBar filtersOnly />}
 
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
           {screen === 'today' ? (

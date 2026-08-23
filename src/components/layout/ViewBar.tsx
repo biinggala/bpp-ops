@@ -59,11 +59,23 @@ const GROUP_OPTIONS = [
   { value: 'tag' as const, label: '태그' },
 ]
 
-export function ViewBar() {
+/**
+ * `filtersOnly`는 캘린더 화면이 쓰는 모드입니다.
+ *
+ * 거기서는 뷰 탭이 틀립니다 — 캘린더 화면은 뷰가 아니라 장소라, 탭을 두면
+ * 자기가 서 있는 곳에서 나가는 문이 됩니다. 하지만 거르개는 오히려 거기가 더
+ * 필요합니다: 한 달치 달력 위에 볼 수 있는 모든 마감이 쏟아지면 아무것도 안
+ * 보이는 것과 같습니다.
+ *
+ * 그래서 같은 바의 오른쪽 절반만 씁니다. 새 필터 UI를 하나 더 만들지 않는
+ * 편이 낫습니다 — 프로젝트·담당자·상태·태그를 고르는 법이 앱 안에 두 가지가
+ * 되면 둘 다 반쯤만 익히게 됩니다.
+ */
+export function ViewBar({ filtersOnly = false }: { filtersOnly?: boolean }) {
   const {
     view, setView, filters, setFilters, resetFilters,
     hideCompleted, setHideCompleted,
-    listGroup, setListGroup, myTasksOnly, personalOnly, projectId,
+    listGroup, setListGroup, myTasksOnly, setMyTasksOnly, personalOnly, projectId,
   } = useUiStore()
   const isMobile = useMobile()
   // Options come from the current scope, not from everything the user can see:
@@ -128,11 +140,11 @@ export function ViewBar() {
   // Sorting only means anything where rows are listed; grouping is a property of
   // the list layout specifically (the board already groups by status, the
   // calendar by date); the calendar toggle only where calendar entries are drawn.
-  const showSort = view === 't' || view === 'b'
-  const showGroup = view === 't'
+  const showSort = !filtersOnly && (view === 't' || view === 'b')
+  const showGroup = !filtersOnly && view === 't'
   // The files view answers a different question and has its own search box: a
   // status or assignee filter has nothing to say about a 계약서.
-  const showFilters = view !== 'f'
+  const showFilters = filtersOnly || view !== 'f'
 
   /**
    * 통계는 전체 업무와 프로젝트에만 답이 있습니다.
@@ -206,7 +218,7 @@ export function ViewBar() {
         height: 44, padding: '0 20px',
         display: 'flex', alignItems: 'center', gap: 2, overflowX: 'auto',
       }}>
-        {groups.map((g, gi) => (
+        {!filtersOnly && groups.map((g, gi) => (
           <React.Fragment key={g[0].id}>
             {gi > 0 && <Divider />}
             {g.map(v => (
@@ -216,6 +228,16 @@ export function ViewBar() {
             ))}
           </React.Fragment>
         ))}
+
+        {/* 캘린더 화면의 기본은 '내 것'입니다. 넓히는 스위치는 켜져 있는
+            모습으로 여기 서 있어야 합니다 — 안 그러면 남의 일정이 안 보이는
+            게 설정이 아니라 고장으로 읽힙니다. 업무 화면에서는 이걸 사이드바가
+            정하므로 나타나지 않습니다. */}
+        {filtersOnly && (
+          <Toggle active={myTasksOnly} onClick={() => setMyTasksOnly(!myTasksOnly)}>
+            내 업무만
+          </Toggle>
+        )}
 
         {showFilters && (
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
