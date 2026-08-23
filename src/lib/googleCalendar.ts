@@ -245,19 +245,26 @@ export async function respondToEvent(
     {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      // email과 responseStatus만 보냅니다. displayName·organizer 같은 건 구글이
-      // 알고 있고, 우리가 다시 써 보내면 틀린 값으로 덮을 위험만 있습니다.
-      body: JSON.stringify({
-        attendees: next.map(a => ({
-          email: a.email,
-          ...(a.responseStatus ? { responseStatus: a.responseStatus } : {}),
-        })),
-      }),
+      // 받아 온 참석자 항목을 **그대로** 돌려보냅니다. 필요한 것만 골라
+      // 담으면 우리 타입에 없는 것들이 사라집니다 — 회의실(resource),
+      // 선택 참석(optional), 표시 이름 같은 것들요. 우리 타입이 모른다고
+      // 없는 값이 아니고, 지우면 회의에서 회의실이 빠집니다.
+      body: JSON.stringify({ attendees: next }),
     },
   )
   if (res.status === 401) throw new Error(TOKEN_EXPIRED)
   if (res.status === 403) throw new Error('이 일정에 응답할 권한이 없습니다')
-  if (!res.ok) throw new Error(`Calendar API ${res.status}`)
+  if (!res.ok) {
+    // 구글이 왜 거절했는지 그대로 보여 줍니다. '연동 오류' 같은 말로 덮으면
+    // 인증 문제로 읽히고, 실제로는 인증이 멀쩡한데 다른 게 틀린 경우가
+    // 대부분입니다.
+    let detail = ''
+    try {
+      const body = await res.json() as { error?: { message?: string } }
+      detail = body.error?.message ?? ''
+    } catch { /* not JSON */ }
+    throw new Error(detail ? `응답 실패: ${detail}` : `응답 실패 (${res.status})`)
+  }
   return next
 }
 
