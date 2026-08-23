@@ -84,6 +84,15 @@ export const P = {
    * 없습니다.
    */
   orgMeta:          (oid: string) => `orgs/${oid}/meta`,
+  /**
+   * 조직 설정을 고칠 수 있는 사람들. 이메일 키가 곧 목록입니다.
+   *
+   * **회의실 목록에만 미칩니다.** 업무·프로젝트가 누구에게 보이는지는 계속
+   * 프로젝트 멤버십만으로 정해집니다 — 조직 관리자가 남의 업무를 볼 수 있게
+   * 되면 접근 축이 두 개가 되고, 축이 두 개면 언젠가 어긋납니다.
+   */
+  orgAdmins:        (oid: string) => `orgs/${oid}/admins`,
+  orgAdmin:         (oid: string, email: string) => `orgs/${oid}/admins/${emailKey(email)}`,
   orgRooms:         (oid: string) => `orgs/${oid}/rooms`,
   orgRoom:          (oid: string, rid: string) => `orgs/${oid}/rooms/${rid}`,
   /** 예약은 **날짜가 먼저**입니다. 화면이 묻는 건 늘 '이 날 이 방 비었나'인데,

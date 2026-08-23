@@ -53,11 +53,18 @@
       "$org": {
         ".read": "auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ','))",
         "meta": {
-          ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && ((!data.exists() && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + newData.child('domain').val().replace('.', ','))) || (auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ','))))",
+          ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && ((!data.exists() && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + newData.child('domain').val().replace('.', ','))) || (auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ',')) && ((root.child('orgs/' + $org + '/admins/' + auth.token.email.toLowerCase().replace('.', ',')).val() === true) || (!root.child('orgs/' + $org + '/admins').exists()))))",
           ".validate": "newData.hasChildren(['name', 'domain']) && newData.child('name').isString() && newData.child('name').val().length <= 80 && newData.child('domain').isString() && newData.child('domain').val().length <= 64"
         },
+        "admins": {
+          ".read": "auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ','))",
+          "$mail": {
+            ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ',')) && $mail.endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ',')) && ((root.child('orgs/' + $org + '/admins/' + auth.token.email.toLowerCase().replace('.', ',')).val() === true) || (!root.child('orgs/' + $org + '/admins').exists()))",
+            ".validate": "newData.isBoolean() && newData.val() === true"
+          }
+        },
         "rooms": {
-          ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ','))",
+          ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ',')) && ((root.child('orgs/' + $org + '/admins/' + auth.token.email.toLowerCase().replace('.', ',')).val() === true) || (!root.child('orgs/' + $org + '/admins').exists()))",
           "$room": {
             ".validate": "newData.hasChildren(['name']) && newData.child('name').isString() && newData.child('name').val().length <= 60"
           }
