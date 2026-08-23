@@ -4,7 +4,7 @@ import { auth } from '../lib/firebase'
 import { requestGoogleToken, prepareGoogleAuthz, AuthzError, GIS_CONFIGURED } from '../lib/googleAuthz'
 import { isDesktopShell, forgetStoredGrant } from '../lib/desktopAuth'
 import { askConfirm } from '../components/shared/Confirm'
-import { fetchCalendarList, fetchEventsAcross, fetchEventsForTask, searchEvents, setEventTaskLink, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, writableCalendars, TASK_LINK_KEY, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent, type EventAttendee } from '../lib/googleCalendar'
+import { fetchCalendarList, fetchEventsAcross, fetchEventsForTask, searchEvents, setEventTaskLink, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, respondToEvent, type Rsvp, writableCalendars, TASK_LINK_KEY, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent, type EventAttendee } from '../lib/googleCalendar'
 
 export interface GCalEvent {
   id: string
@@ -115,6 +115,8 @@ interface GCalState {
   /** Attaches or detaches an event. The event itself is never touched. */
   setEventTask: (eventId: string, taskId: string | null) => Promise<boolean>
   updateEvent: (eventId: string, patch: { summary?: string; startDateTime?: string; endDateTime?: string; attendees?: string[] }) => Promise<boolean>
+  /** 초대에 수락·미정·거절로 답합니다. */
+  respond: (eventId: string, response: Rsvp) => Promise<boolean>
   removeEvent: (eventId: string) => Promise<void>
 }
 
@@ -455,6 +457,37 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       } else {
         set({ error: msg })
       }
+      return false
+    }
+  },
+
+  /**
+   * 초대에 답합니다 — 화면에서는 바로, 구글에는 곧.
+   *
+   * 참석자 목록을 통째로 다시 보내야 하는 API라, 우리가 들고 있는 목록이
+   * 필요합니다. 그게 비어 있으면(참석자 없는 일정) 답할 것도 없습니다.
+   */
+  respond: async (eventId, response) => {
+    const existing = get().events.find(e => e.id === eventId)
+    if (!existing?.attendees?.length) return false
+    const token = await ensureWriteToken(get, set)
+    if (!token) return false
+
+    const before = get().events
+    const optimistic = existing.attendees.map(a => (a.self ? { ...a, responseStatus: response } : a))
+    // 누른 순간 점선이 사라져야 합니다. 왕복을 기다리면 두 번 누릅니다.
+    set({ events: before.map(e => (e.id === eventId ? { ...e, attendees: optimistic } : e)) })
+
+    try {
+      await respondToEvent(token, existing.calendarId, eventId, existing.attendees, response)
+      return true
+    } catch (e: unknown) {
+      // 되돌립니다. 실패한 응답이 수락된 것처럼 남아 있으면, 안 간다고 한
+      // 회의에 사람들이 나를 기다립니다.
+      set({ events: before })
+      const msg = e instanceof Error ? e.message : '응답 실패'
+      if (msg === TOKEN_EXPIRED) set({ token: null, expiry: null, error: '토큰이 만료됐습니다. 다시 연동해 주세요.' })
+      else set({ error: msg })
       return false
     }
   },

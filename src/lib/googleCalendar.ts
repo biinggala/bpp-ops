@@ -217,6 +217,50 @@ export async function updateCalendarEvent(
   if (!res.ok) throw new Error(`Calendar API ${res.status}`)
 }
 
+/** 초대에 대한 대답. 미정은 '아마 간다'입니다 — 안 한 것과는 다릅니다. */
+export type Rsvp = 'accepted' | 'declined' | 'tentative'
+
+/**
+ * ── 초대에 답하기 ────────────────────────────────────────────────────────────
+ *
+ * 구글에는 '내 응답만 바꾸기' 같은 전용 통로가 없습니다. 참석자 목록을 통째로
+ * 다시 보내면서 내 칸의 responseStatus만 바꿔 넣는 게 방법입니다 — 그래서
+ * **기존 목록을 그대로 들고 와야 합니다.** 내 것만 담아 보내면 나머지 참석자가
+ * 일정에서 사라집니다. 회의에 답하려다 회의를 지우는 셈입니다.
+ *
+ * `sendUpdates`는 붙이지 않습니다(기본값 none). 붙일 수 있는 건 '전원'뿐이고,
+ * 수락 한 번이 다른 열한 명에게 메일을 보내는 건 주최자가 자기 캘린더에서
+ * 확인하는 것보다 나쁩니다. 응답 자체는 일정에 그대로 기록됩니다.
+ */
+export async function respondToEvent(
+  token: string,
+  calendarId: string,
+  eventId: string,
+  attendees: EventAttendee[],
+  response: Rsvp,
+): Promise<EventAttendee[]> {
+  const next = attendees.map(a => (a.self ? { ...a, responseStatus: response } : a))
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      // email과 responseStatus만 보냅니다. displayName·organizer 같은 건 구글이
+      // 알고 있고, 우리가 다시 써 보내면 틀린 값으로 덮을 위험만 있습니다.
+      body: JSON.stringify({
+        attendees: next.map(a => ({
+          email: a.email,
+          ...(a.responseStatus ? { responseStatus: a.responseStatus } : {}),
+        })),
+      }),
+    },
+  )
+  if (res.status === 401) throw new Error(TOKEN_EXPIRED)
+  if (res.status === 403) throw new Error('이 일정에 응답할 권한이 없습니다')
+  if (!res.ok) throw new Error(`Calendar API ${res.status}`)
+  return next
+}
+
 export async function deleteCalendarEvent(token: string, calendarId: string, eventId: string): Promise<void> {
   const res = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
