@@ -302,8 +302,23 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
     const name = title.trim()
     if (!name) { setNaming(null); return }
     setSaving(true)
+    /**
+     * 방 이름을 구글 일정의 **장소**에도 적습니다.
+     *
+     * 예약 자체는 우리 데이터베이스에 있고 그건 조직원만 읽습니다. 그런데
+     * 프로젝트에는 도메인 밖 사람도 있고, 애초에 이 앱을 안 쓰는 사람도
+     * 있습니다. 그들에게 '이 회의 어디서 하지'를 답해 줄 유일한 공통 자리가
+     * 구글 일정의 장소 칸입니다.
+     *
+     * 만들 때 같이 넣습니다 — 나중에 붙이면 이미 나간 초대 메일에는 장소가
+     * 없고, 메일만 보는 사람에게는 그게 전부입니다.
+     */
+    const roomName = draftRoom
+      ? useOrgStore.getState().rooms.find(r => r.id === draftRoom)?.name
+      : undefined
     const eventId = await createEvent({
       summary: name,
+      ...(roomName ? { location: roomName } : {}),
       startDateTime: localIso(naming.date, naming.fromMinutes),
       endDateTime: localIso(naming.date, naming.toMinutes),
       attendees: guests,
@@ -599,13 +614,28 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
           onRoom={async roomId => {
             const had = bookingFor(selectedInfo.date, selectedInfo.event.id)
             if (had) await releaseForEvent(selectedInfo.date, selectedInfo.event.id)
-            if (roomId && myEmail) {
+            const room = roomId ? useOrgStore.getState().rooms.find(r => r.id === roomId) : undefined
+            if (roomId && room && myEmail) {
               await bookRoom({
                 date: selectedInfo.date, roomId,
                 from: selectedInfo.from, to: selectedInfo.to,
                 title: selectedInfo.event.summary, eventId: selectedInfo.event.id,
                 by: myEmail, byName: getNameByEmail(myEmail),
               })
+            }
+            /**
+             * 장소 칸도 같이 맞춥니다 — 조직 밖 사람이 방을 알 수 있는 유일한
+             * 자리입니다.
+             *
+             * 풀 때는 **그 방 이름일 때만** 지웁니다. 사람이 손으로 적어 둔
+             * 장소('3층 로비', 줌 링크)를 예약을 취소했다는 이유로 지우면,
+             * 우리가 쓰지도 않은 값을 우리가 없앤 것입니다.
+             */
+            const location = room ? room.name
+              : had?.roomName && selectedInfo.event.location === had.roomName ? ''
+              : undefined
+            if (location !== undefined) {
+              await updateEvent(selectedInfo.event.id, { location })
             }
           }}
           dirty={selectedDirty}

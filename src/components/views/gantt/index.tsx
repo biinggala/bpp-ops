@@ -603,7 +603,7 @@ export function GanttView() {
                 </div>
               ))}
               {milestoneMarkers.map(m => (
-                <MilestonePin key={m.id} marker={m} dayW={dayW} forceShow={hoveredMilestoneId === m.id} />
+                <MilestonePin key={m.id} marker={m} dayW={dayW} forceShow={hoveredMilestoneId === m.id} onHoverChange={setHoveredMilestoneId} />
               ))}
             </div>
           </div>
@@ -675,6 +675,7 @@ export function GanttView() {
                 leftW={leftW}
                 dayW={dayW}
                 onHoverChange={setHoveredMilestoneId}
+                highlight={hoveredMilestoneId === row.milestone?.id}
                 onAdd={() => addInGroup(row.milestone)}
                 onContextMenu={row.milestone ? (x, y) => setMsCtxMenu({ x, y, milestone: row.milestone! }) : undefined}
                 rangeStart={rangeStart}
@@ -932,7 +933,7 @@ function ProjectRow({ project, expanded, onToggle, rollup, count, timelineW, lef
 
 function MilestoneRow({
   milestone, expanded, onToggle, rollup, timelineW, leftW, dayW,
-  onHoverChange, onAdd, onContextMenu, compact, depth,
+  onHoverChange, highlight, onAdd, onContextMenu, compact, depth,
   rangeStart, dragOffset, onDateMouseDown, onDateChange,
 }: {
   compact: boolean
@@ -951,6 +952,8 @@ function MilestoneRow({
   leftW: number
   dayW: number
   onHoverChange: (id: string | null) => void
+  /** 날짜 줄의 핀에 마우스가 올라가 있는가. 그 반대 방향은 onHoverChange. */
+  highlight?: boolean
   onAdd: () => void
   onContextMenu?: (x: number, y: number) => void
 }) {
@@ -993,7 +996,7 @@ function MilestoneRow({
   return (
     <div
       className="lp-row"
-      style={{ display: 'flex', height: GROUP_H, borderBottom: '1px solid var(--bd)', background: hovered && !isNull ? `${tintBg}.05)` : 'transparent' }}
+      style={{ display: 'flex', height: GROUP_H, borderBottom: '1px solid var(--bd)', background: (hovered || highlight) && !isNull ? `${tintBg}.05)` : 'transparent' }}
       onMouseEnter={() => { setHovered(true); onHoverChange(milestone?.id ?? null) }}
       onMouseLeave={() => { setHovered(false); onHoverChange(null) }}
       onContextMenu={onContextMenu ? e => { e.preventDefault(); onContextMenu(e.clientX, e.clientY) } : undefined}
@@ -1458,14 +1461,32 @@ function DateHandle({ left, accent, dim, dragging, hint, onMouseDown }: {
   )
 }
 
-function MilestonePin({ marker, dayW, forceShow }: { marker: { id: string; name: string; col: number; done: boolean }; dayW: number; forceShow?: boolean }) {
+/**
+ * ── 날짜 줄의 마일스톤 표시 ──────────────────────────────────────────────────
+ *
+ * **떠 있는 이름표를 뺐습니다.**
+ *
+ * 처음엔 핀 아래에 이름을 띄웠는데, 핀이 날짜 숫자 줄 안에 살기 때문에 그
+ * 상자가 날짜를 덮었습니다. 줄 밖으로 내리니 이번엔 차트 첫 줄과 '+ 업무'
+ * 버튼을 덮었습니다. 좁은 띠에 떠 있는 상자를 놓을 자리가 애초에 없습니다.
+ *
+ * 그래서 방향을 바꿉니다. 핀에 마우스를 올리면 **그 마일스톤의 줄이 켜집니다**
+ * — 이름은 이미 그 줄 왼쪽에 적혀 있고, 겹칠 상자가 없습니다. 줄에 올리면
+ * 핀이 빛나는 반대 방향은 원래 있었으니, 이제 양쪽이 서로를 가리킵니다.
+ */
+function MilestonePin({ marker, dayW, forceShow, onHoverChange }: {
+  marker: { id: string; name: string; col: number; done: boolean }
+  dayW: number
+  forceShow?: boolean
+  onHoverChange?: (id: string | null) => void
+}) {
   const [hovered, setHovered] = useState(false)
   const show = hovered || forceShow
   const left = marker.col * dayW + Math.floor(dayW / 2)
   return (
     <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={() => { setHovered(true); onHoverChange?.(marker.id) }}
+      onMouseLeave={() => { setHovered(false); onHoverChange?.(null) }}
       /* 숫자 위가 아니라 띠의 윗변에 겁니다. ◆는 이 칸 한가운데에 놓이는데
          날짜도 한가운데 있어서, 마일스톤이 있는 날은 며칠인지 읽을 수가
          없었습니다. 아래를 가리키는 작은 삼각형이면 같은 열을 가리키면서
@@ -1475,22 +1496,7 @@ function MilestonePin({ marker, dayW, forceShow }: { marker: { id: string; name:
       <svg width="10" height="6" viewBox="0 0 10 6" style={{ display: 'block', opacity: marker.done ? .5 : 1, filter: show ? `drop-shadow(0 0 4px ${MS_COLOR}aa)` : 'none', transition: 'filter .15s' }} aria-hidden>
         <path d="M0 0h10L5 6z" fill={MS_COLOR} />
       </svg>
-      {/*
-        이름은 **머리글 밖으로** 내려갑니다.
 
-        `top: 10`이었는데, 이 핀은 날짜 숫자 줄 안에 살기 때문에 10px 아래는
-        아직 그 줄입니다 — 마일스톤에 마우스를 올리면 이름이 며칠인지를 덮고
-        있었습니다. 날짜를 보려고 올린 마우스가 날짜를 지우는 셈입니다.
-
-        `100%`는 이 줄의 아래끝입니다. 줄 높이를 몰라도 늘 그 밑입니다. 거기서
-        차트 첫 줄을 조금 덮는데, 그건 잠깐 덮여도 되는 자리입니다 — 날짜
-        머리글과 달리 스크롤하면 다시 볼 수 있습니다.
-      */}
-      {show && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: '50%', transform: 'translateX(-50%)', background: '#1e1b4b', color: '#c4b5fd', fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 5, whiteSpace: 'nowrap', pointerEvents: 'none', boxShadow: '0 4px 12px rgba(0,0,0,.3)', zIndex: 20 }}>
-          ◆ {marker.name}
-        </div>
-      )}
     </div>
   )
 }

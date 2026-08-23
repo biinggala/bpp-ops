@@ -26,6 +26,7 @@ export interface RawCalendarEvent {
   calendarId: string
   calendarColor: string
   summary?: string
+  location?: string
   start: { dateTime?: string; date?: string }
   end: { dateTime?: string; date?: string }
   htmlLink?: string
@@ -135,6 +136,8 @@ export async function fetchEventsAcross(
 export interface NewEvent {
   calendarId: string
   summary: string
+  /** 회의실 이름. 조직 밖 사람도 이건 봅니다 — EventPatch.location 참고. */
+  location?: string
   /** Local wall-clock ISO without a zone, e.g. "2026-08-18T14:00:00". */
   startDateTime: string
   endDateTime: string
@@ -171,6 +174,7 @@ export async function createCalendarEvent(token: string, event: NewEvent): Promi
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         summary: event.summary,
+        ...(event.location ? { location: event.location } : {}),
         start: { dateTime: event.startDateTime, timeZone },
         end: { dateTime: event.endDateTime, timeZone },
         ...(event.attendees?.length ? { attendees: event.attendees.map(email => ({ email })) } : {}),
@@ -187,6 +191,15 @@ export async function createCalendarEvent(token: string, event: NewEvent): Promi
 
 export interface EventPatch {
   summary?: string
+  /**
+   * 회의실 이름이 여기 들어갑니다.
+   *
+   * 회의실 예약은 우리 데이터베이스에 있고, 그건 조직원만 읽습니다. 그런데
+   * 프로젝트에는 도메인 밖 사람도 있고, 애초에 이 앱을 안 쓰는 사람도 있습니다.
+   * 그들에게 '이 회의 어디서 하지'를 답해 줄 유일한 공통 자리가 구글 일정의
+   * 장소 칸입니다. 예약은 우리가 관리하고, 결과는 모두가 보는 곳에 적습니다.
+   */
+  location?: string
   startDateTime?: string
   endDateTime?: string
   timeZone?: string
@@ -200,6 +213,7 @@ export async function updateCalendarEvent(
   const timeZone = patch.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
   const body: Record<string, unknown> = {}
   if (patch.summary !== undefined) body.summary = patch.summary
+  if (patch.location !== undefined) body.location = patch.location
   if (patch.startDateTime) body.start = { dateTime: patch.startDateTime, timeZone }
   if (patch.endDateTime) body.end = { dateTime: patch.endDateTime, timeZone }
   if (patch.attendees) body.attendees = patch.attendees.map(email => ({ email }))
