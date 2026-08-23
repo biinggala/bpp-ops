@@ -369,7 +369,12 @@ function PullRail({ onAdd, inNote }: { onAdd: (t: Task) => void; inNote: Set<str
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: sec.dot, flexShrink: 0 }} />
               )}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sec.label}</span>
-              <span style={{ marginLeft: 'auto', opacity: .7, letterSpacing: 0 }}>{sec.tasks.length}</span>
+              {/* 아래 줄들의 `+`와 같은 22px 상자에 가운데로. 머리글은 오른쪽
+                  끝에 붙이고 `+`는 제 상자 안에 가운데 있어서, 둘이 11px씩
+                  어긋난 채로 세로로 늘어서 있었습니다. */}
+              <span style={{ marginLeft: 'auto', opacity: .7, letterSpacing: 0, width: 22, textAlign: 'center', flexShrink: 0 }}>
+                {sec.tasks.length}
+              </span>
             </div>
             {sec.tasks.map(t => (
               <PullRow key={t.id} task={t} onAdd={onAdd} taken={inNote.has(t.id)} grouping={group} />
