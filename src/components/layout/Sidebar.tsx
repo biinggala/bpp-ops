@@ -13,6 +13,7 @@ import { haptic } from '../../lib/haptics'
 import { Icon, type IconName } from '../shared/Icon'
 import { SettingsModal } from '../modals/SettingsModal'
 import { useNoticeInbox, NoticeList } from './Notices'
+import { useTodayCount } from '../views/today/count'
 import { useNoticeToast } from './NoticeToast'
 import { MEMBERS } from '../../types'
 import { buildInviteToken } from '../../lib/paths'
@@ -78,6 +79,7 @@ export function Sidebar() {
    */
   const [pane, setPane] = useState<'home' | 'inbox'>('home')
   const { unread } = useNoticeInbox()
+  const todayOpen = useTodayCount()
   const profileRef = useRef<HTMLDivElement>(null)
 
   // The banner hides itself while the list is on screen — reading a notice and
@@ -487,16 +489,24 @@ export function Sidebar() {
             active={screen === 'today'}
             onClick={() => { setScreen('today'); closeSidebar() }}
             node={<Icon name="today" size={14} />}
+            count={todayOpen}
+            emphasis
+            pill
           >
             오늘
           </NavItem>
 
-          {/* 내 할 일 is the only nav row carrying a number — "how many are
-              still mine" is the one count in this sidebar that changes what
-              somebody does next. */}
+          {/* 둘 다 매일 쓰는 줄이라 둘 다 굵습니다. 다른 건 숫자의 성격입니다 —
+              오늘의 숫자는 '지금 남은 것'이라 채워진 알약이고, 여기 숫자는
+              재고의 크기라 회색입니다. 채워진 알약이 둘이면 눈이 어디로 갈지
+              정하지 못합니다. */}
           <NavItem
             active={screen === 'work' && myTasksOnly}
-            onClick={() => { setMyTasksOnly(!myTasksOnly); setProject(null); closeSidebar() }}
+            /* 토글이 아니라 지정입니다. 뒤집기였을 때, 오늘에 서서 이 줄을
+               누르면 myTasksOnly가 이미 true라 false로 뒤집혀 전체 업무로
+               갔습니다 — 이름이 '내 할 일'인 줄이 하는 일로는 틀렸습니다.
+               끄는 건 아래 '전체 업무'가 합니다. */
+            onClick={() => { setMyTasksOnly(true); setProject(null); closeSidebar() }}
             count={myOpenCount}
             emphasis
             icon="☑"
@@ -779,12 +789,14 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-function NavItem({ children, active, onClick, count, emphasis, icon, node }: {
+function NavItem({ children, active, onClick, count, emphasis, pill, icon, node }: {
   children: React.ReactNode; active: boolean; onClick: () => void
   /** Omitted where a number would be decoration rather than information. */
   count?: number
-  /** Draws the count as a filled pill — the row you are meant to start from. */
+  /** Bolder than the rest — a row somebody uses every day, not now and then. */
   emphasis?: boolean
+  /** Draws the count as a filled pill. One row gets this: the one you start from. */
+  pill?: boolean
   icon?: string
   /** A drawn icon, where a glyph will not do. */
   node?: React.ReactNode
@@ -808,8 +820,8 @@ function NavItem({ children, active, onClick, count, emphasis, icon, node }: {
         : icon && <span style={{ fontSize: 11, opacity: emphasis ? .85 : .6, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>}
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
       {count !== undefined && count > 0 && (
-        emphasis ? (
-          <span title="아직 완료하지 않은 내 업무" style={{
+        pill ? (
+          <span title="아직 안 끝난 오늘 할 일" style={{
             marginLeft: 'auto', flexShrink: 0,
             minWidth: 18, padding: '0 6px', height: 17,
             borderRadius: 999, background: 'var(--ac)', color: '#fff',
