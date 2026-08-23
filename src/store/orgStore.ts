@@ -66,8 +66,17 @@ interface OrgState {
   error: string | null
 
   subscribe: (email: string) => () => void
-  /** 그 날짜의 예약을 구독합니다. 이미 보고 있으면 아무 일도 안 합니다. */
-  watchDates: (dates: string[]) => void
+  /**
+   * 그 날짜들의 예약을 구독합니다.
+   *
+   * `who`는 **부르는 쪽의 이름**입니다. 처음엔 날짜 배열만 받고 목록에 없는
+   * 날짜를 다 놓게 했는데, 부르는 곳이 둘이라(타임라인은 보이는 주 전체, 일정
+   * 카드는 그 하루) 나중에 부른 쪽이 앞의 것을 다 껐습니다. 카드를 여는
+   * 순간 나머지 날의 예약이 사라졌습니다.
+   *
+   * 각자 자기 몫만 말하고, 실제로 보는 것은 그 합집합입니다.
+   */
+  watchDates: (who: string, dates: string[]) => void
 
   createOrg: (name: string, email: string) => Promise<boolean>
   addRoom: (name: string, note?: string) => Promise<void>
@@ -142,14 +151,17 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       stop.forEach(fn => fn())
       for (const fn of Object.values(dateWatchers)) fn()
       for (const key of Object.keys(dateWatchers)) delete dateWatchers[key]
+      for (const key of Object.keys(wanted)) delete wanted[key]
       set({ orgId: null, name: '', domain: '', rooms: [], bookings: {}, ready: false })
     }
   },
 
-  watchDates: (dates) => {
+  watchDates: (who, dates) => {
     const { orgId } = get()
     if (!orgId) return
-    for (const date of dates) {
+    wanted[who] = dates
+    const union = [...new Set(Object.values(wanted).flat())]
+    for (const date of union) {
       if (dateWatchers[date]) continue
       const node = ref(db, P.orgBookings(orgId, date))
       const handler = onValue(node, s => {
@@ -159,9 +171,10 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       })
       dateWatchers[date] = () => off(node, 'value', handler)
     }
-    // 안 보는 날짜는 놓습니다. 한 달을 넘기며 스크롤하면 리스너가 계속 쌓입니다.
+    // 아무도 안 보는 날짜는 놓습니다. 한 달을 넘기며 스크롤하면 리스너가
+    // 계속 쌓입니다.
     for (const date of Object.keys(dateWatchers)) {
-      if (dates.includes(date)) continue
+      if (union.includes(date)) continue
       dateWatchers[date]()
       delete dateWatchers[date]
       set(state => {
@@ -251,6 +264,18 @@ export const useOrgStore = create<OrgState>((set, get) => ({
 
 /** 날짜별 리스너. 스토어 밖에 두는 이유는 이게 상태가 아니라 자원이기 때문입니다. */
 const dateWatchers: Record<string, () => void> = {}
+/** 누가 어느 날짜를 보고 있는가. 합집합이 실제로 구독하는 날짜입니다. */
+const wanted: Record<string, string[]> = {}
+
+/**
+ * 없는 날짜를 물었을 때 돌려주는 **같은** 빈 배열.
+ *
+ * `s.bookings[date] ?? []`로 쓰면 부를 때마다 새 배열이 나옵니다. zustand는
+ * 참조로 비교하므로 그건 '값이 매번 바뀐다'는 뜻이고, 그리면 또 바뀌고 또
+ * 그리게 됩니다 — React #185(무한 렌더). 업무를 눌렀을 때 '캘린더 로드 오류'가
+ * 뜬 것이 이것입니다. 빈 값도 같은 빈 값이어야 합니다.
+ */
+export const NO_BOOKINGS: Booking[] = []
 
 /**
  * 그 시간에 그 방을 쓰는 예약들.
