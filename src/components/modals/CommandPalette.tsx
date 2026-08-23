@@ -6,7 +6,10 @@ import { searchNotes, forgetNotes } from '../../lib/noteSearch'
 import { useTaskStore } from '../../store/taskStore'
 import { useSpaceStore } from '../../store/spaceStore'
 import { useProjectStore } from '../../store/projectStore'
-import type { ViewType } from '../../types'
+import { useDriveStore } from '../../store/driveStore'
+import { fileKind, driveUrl, type DriveSearchResult } from '../../lib/googleDrive'
+import { openExternal } from '../../lib/desktopLinks'
+import type { TaskLink, ViewType } from '../../types'
 
 // 보드는 뷰 탭에서 내렸으므로 여기서도 내립니다 — 팔레트에만 남으면
 // 화면 어디에도 없는 곳으로 가는 문이 됩니다. 코드는 그대로 있습니다.
@@ -30,9 +33,29 @@ function fuzzy(str: string, q: string): boolean {
   return true
 }
 
+/**
+ * 결과 묶음의 순서이자, 이름표입니다.
+ *
+ * 전에는 묶음을 손으로 하나씩 세었고, 그러다 데일리 노트 결과가 목록에는 들어
+ * 있는데 어느 묶음에도 안 들어가서 **화면에 아예 안 그려지고 있었습니다**
+ * (↑↓는 그 위를 지나갔습니다 — 빈 칸을 지나는 것처럼 보였을 겁니다).
+ * 표 하나로 두면 종류를 새로 만들 때 여기 한 줄을 빠뜨릴 수가 없습니다.
+ */
+const KINDS = [
+  { kind: 'action',  label: '빠른 실행' },
+  { kind: 'task',    label: '업무' },
+  { kind: 'project', label: '프로젝트' },
+  { kind: 'space',   label: '스페이스' },
+  { kind: 'link',    label: '붙여 둔 자료' },
+  { kind: 'note',    label: '데일리 노트' },
+  { kind: 'drive',   label: '드라이브' },
+] as const
+
+type Kind = typeof KINDS[number]['kind']
+
 type Item = {
   id: string
-  kind: 'action' | 'task' | 'space' | 'project' | 'note'
+  kind: Kind
   icon: string
   label: string
   sub?: string
@@ -78,6 +101,8 @@ export function CommandPalette() {
    */
   const email = useAuthStore(s => s.email)
   const [noteHits, setNoteHits] = useState<{ date: string; snippet: string }[]>([])
+  const [driveHits, setDriveHits] = useState<DriveSearchResult[]>([])
+  const driveConnected = useDriveStore(s => s.wasConnected && !s.needsReconnect)
 
   useEffect(() => { if (isCommandPaletteOpen) forgetNotes() }, [isCommandPaletteOpen])
 
@@ -90,6 +115,43 @@ export function CommandPalette() {
     }, 140)
     return () => { alive = false; clearTimeout(timer) }
   }, [query, email])
+
+  /**
+   * 드라이브는 남의 서버라 글자마다 물어볼 수 없습니다.
+   *
+   * 노트 검색과 같은 박자(140ms 뒤, 두 글자부터)로 묻고, 연결이 안 되어 있으면
+   * 아예 묻지 않습니다 — `search`는 조용히 빈 배열을 주도록 되어 있어서 팝업이
+   * 뜨거나 로그인 창이 튀어나오는 일은 없습니다.
+   */
+  useEffect(() => {
+    const q = query.trim()
+    if (!driveConnected || q.length < 2) { setDriveHits([]); return }
+    let alive = true
+    const timer = setTimeout(() => {
+      void useDriveStore.getState().search(q)
+        .then(files => { if (alive) setDriveHits(files.slice(0, 6)) })
+        .catch(() => { if (alive) setDriveHits([]) })
+    }, 260)
+    return () => { alive = false; clearTimeout(timer) }
+  }, [query, driveConnected])
+
+  /**
+   * 업무와 프로젝트에 붙여 둔 링크들.
+   *
+   * 자료 뷰는 '이 프로젝트의 자료'를 봅니다. 여기서는 프로젝트를 몰라도 됩니다 —
+   * 이름 일부만 기억나는 상태가 사람이 실제로 자료를 찾는 상태입니다.
+   * 같은 주소가 여러 업무에 붙어 있으면 한 줄로 합칩니다.
+   */
+  const allLinks = useMemo(() => {
+    const seen = new Map<string, { link: TaskLink; where: string }>()
+    const add = (link: TaskLink | undefined, where: string) => {
+      if (!link?.url) return
+      if (!seen.has(link.url)) seen.set(link.url, { link, where })
+    }
+    projects.forEach(p => p.links?.forEach(l => add(l, p.name)))
+    tasks.forEach(t => t.links?.forEach(l => add(l, t.name)))
+    return [...seen.values()]
+  }, [projects, tasks])
 
   const items: Item[] = useMemo(() => {
     const q = query.trim()
@@ -140,14 +202,44 @@ export function CommandPalette() {
         onSelect: () => { setProject(p.id); closeCommandPalette() },
       }))
 
+    if (q) {
+      allLinks
+        .filter(({ link }) => fuzzy(link.title, q) || (link.note ? fuzzy(link.note, q) : false))
+        .slice(0, 6)
+        .forEach(({ link, where }) => result.push({
+          id: `link-${link.url}`, kind: 'link',
+          icon: link.driveId ? fileKind(link.mimeType).icon : '🔗',
+          label: link.note || link.title,
+          sub: where,
+          onSelect: () => { void openExternal(link.url); closeCommandPalette() },
+        }))
+    }
+
     noteHits.forEach(h => result.push({
       id: `note-${h.date}`, kind: 'note', icon: '🗓', label: h.snippet,
       sub: noteDayLabel(h.date), hint: '노트로 이동',
       onSelect: () => { openNote(h.date); closeCommandPalette() },
     }))
 
-    return result
-  }, [query, tasks, spaces, projects, noteHits])
+    // 이미 앱 안에 붙어 있는 파일은 위의 '붙여 둔 자료'가 말했습니다. 같은
+    // 파일을 드라이브 쪽에서 한 번 더 세우면 같은 줄이 둘이 됩니다.
+    const attached = new Set(allLinks.map(({ link }) => link.driveId).filter(Boolean))
+    driveHits
+      .filter(f => !attached.has(f.id))
+      .forEach(f => result.push({
+        id: `drive-${f.id}`, kind: 'drive', icon: fileKind(f.mimeType).icon, label: f.name,
+        sub: f.contentMatch ? '내용에 있음' : fileKind(f.mimeType).label,
+        onSelect: () => {
+          void openExternal(f.webViewLink || driveUrl(f.id, f.mimeType))
+          closeCommandPalette()
+        },
+      }))
+
+    // KINDS 순서로 세워 둡니다. 화면의 묶음도 ↑↓가 세는 순서도 이 배열
+    // 하나에서 나와야 합니다 — 둘이 따로 정해지면 엔터가 다른 줄을 엽니다.
+    const rank = (k: Kind) => KINDS.findIndex(x => x.kind === k)
+    return result.sort((a, b) => rank(a.kind) - rank(b.kind))
+  }, [query, tasks, spaces, projects, noteHits, driveHits, allLinks])
 
   const execute = useCallback(() => {
     items[selectedIdx]?.onSelect()
@@ -172,18 +264,17 @@ export function CommandPalette() {
 
   if (!isCommandPaletteOpen) return null
 
-  // Group items for section headers
+  // 묶음은 KINDS 순서대로. startIdx는 ↑↓가 세는 순서라 이 순서와 같아야 하고,
+  // ordered가 곧 그 순서입니다 — items 자체를 여기서 다시 세워 어긋날 자리를
+  // 없앱니다.
   const groups: { label: string; startIdx: number; items: Item[] }[] = []
-  const actions = items.filter(i => i.kind === 'action')
-  const taskItems = items.filter(i => i.kind === 'task')
-  const spaceItems = items.filter(i => i.kind === 'space')
-  const projectItems = items.filter(i => i.kind === 'project')
-
   let cursor = 0
-  if (actions.length) { groups.push({ label: '빠른 실행', startIdx: cursor, items: actions }); cursor += actions.length }
-  if (taskItems.length) { groups.push({ label: '업무', startIdx: cursor, items: taskItems }); cursor += taskItems.length }
-  if (spaceItems.length) { groups.push({ label: '스페이스', startIdx: cursor, items: spaceItems }); cursor += spaceItems.length }
-  if (projectItems.length) { groups.push({ label: '프로젝트', startIdx: cursor, items: projectItems }); cursor += projectItems.length }
+  KINDS.forEach(({ kind, label }) => {
+    const group = items.filter(i => i.kind === kind)
+    if (!group.length) return
+    groups.push({ label, startIdx: cursor, items: group })
+    cursor += group.length
+  })
 
   return (
     <>
@@ -206,7 +297,7 @@ export function CommandPalette() {
             ref={inputRef}
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="업무, 스페이스, 프로젝트 검색..."
+            placeholder="업무 · 프로젝트 · 자료 · 노트 검색..."
             style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, background: 'transparent', color: 'var(--t1)', fontFamily: 'var(--font)' }}
           />
           {query ? (

@@ -11,6 +11,7 @@ import { useUserProfileStore } from '../../store/userProfileStore'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import { Icon, type IconName } from '../shared/Icon'
+import { CMD } from '../shared/Tip'
 import { SettingsModal } from '../modals/SettingsModal'
 import { useNoticeInbox, NoticeList } from './Notices'
 import { useOrgStore, pendingJoinCount } from '../../store/orgStore'
@@ -70,7 +71,7 @@ function saveCollapsedGroups(next: Set<string>) {
 }
 
 export function Sidebar() {
-  const { filters, setFilters, projectId, setProject, myTasksOnly, setMyTasksOnly, personalOnly, setPersonalOnly, sidebarOpen, setSidebarOpen, screen, setScreen, openCalendar } = useUiStore()
+  const { projectId, setProject, myTasksOnly, setMyTasksOnly, personalOnly, setPersonalOnly, sidebarOpen, setSidebarOpen, screen, setScreen, openCalendar, openCommandPalette } = useUiStore()
   const isMobile = useMobile()
   const tasks = useTaskStore(s => s.tasks)
   const { projects, addProject, updateProject, deleteProject, addMember, removeMember } = useProjectStore()
@@ -541,23 +542,26 @@ export function Sidebar() {
           )}
         </div>
 
-        {/* 홈 · 받은 알림 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 10px 2px' }}>
+        {/* 홈 · 받은 알림 · 검색 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 10px' }}>
           <PaneTab icon="home" label="홈" active={pane === 'home'} onClick={() => setPane('home')} />
           <PaneTab icon="inbox" label="받은 알림" active={pane === 'inbox'} count={unread + external} onClick={() => { setPane('inbox'); haptic('tap') }} />
-        </div>
+          {/*
+            여기 있던 검색 상자를 돋보기로 바꿨습니다.
 
-        {/* Search — the home pane's, since it searches tasks. */}
-        {pane === 'home' && (
-          <div style={{ padding: '6px 10px 8px' }}>
-            <input
-              style={{ width: '100%', background: 'var(--sb-field)', border: '1px solid var(--sb-bd2)', borderRadius: 'var(--r2)', padding: '5px 9px', fontSize: 12, color: 'var(--sb-t2)', outline: 'none' }}
-              placeholder="검색..."
-              value={filters.search}
-              onChange={e => setFilters({ search: e.target.value })}
-            />
-          </div>
-        )}
+            그 상자는 `filters.search`만 건드렸습니다 — 업무 목록에만 걸리는
+            값입니다. 그런데 앱을 켜면 서 있는 곳은 '오늘'이라, 대부분의 사람은
+            거기서 타이핑하고 아무 일도 안 일어나는 걸 봤습니다. 걸러 줄 목록이
+            화면에 없는데 목록 거르개를 놓아 둔 셈입니다.
+
+            ⌘K는 서 있는 곳과 무관하게 업무·프로젝트·데일리 노트 본문까지
+            찾습니다. 상자보다 넓고, 무엇보다 어디서 눌러도 답이 나옵니다.
+          */}
+          <IconAction
+            label={`검색 · ${CMD}K`}
+            onClick={() => { openCommandPalette(); haptic('tap') }}
+          />
+        </div>
 
         {pane === 'inbox' && <NoticeList onClose={closeSidebar} />}
 
@@ -1599,6 +1603,37 @@ function MemberManageModal({ project, currentEmail, suggestable, onAddMember, on
  * 색으로 갈립니다: 파란 것은 내가 할 일의 양이고, 빨간 것은 나를 부르는
  * 신호입니다.
  */
+/**
+ * 홈·받은 알림 옆에 서지만 '열'이 아니라 '동작'입니다.
+ *
+ * 그래서 켜진 상태가 없습니다 — 눌러도 이 자리가 바뀌지 않고 창이 하나 뜹니다.
+ * 안 켜진 PaneTab과 같은 크기·모양이라 줄은 고르게 보이고, 오른쪽 끝에 혼자
+ * 떨어져 있어서 왼쪽 둘과 성격이 다르다는 게 자리로 읽힙니다.
+ */
+function IconAction({ label, onClick }: { label: string; onClick: () => void }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      style={{
+        marginLeft: 'auto',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: 30, height: 30, padding: 0,
+        borderRadius: 'var(--r2)', border: 'none', cursor: 'pointer',
+        color: hovered ? 'var(--sb-t1)' : 'var(--sb-t2)',
+        background: hovered ? 'var(--sb-hover)' : 'transparent',
+        transition: 'background .1s, color .1s', flexShrink: 0,
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <Icon name="search" size={16} />
+    </button>
+  )
+}
+
 function PaneTab({ icon, label, active, count = 0, onClick }: {
   icon: IconName; label: string; active: boolean; count?: number; onClick: () => void
 }) {
