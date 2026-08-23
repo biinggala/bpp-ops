@@ -445,7 +445,7 @@ export function GanttView() {
     const pid = projectFor(m)
     // With no project in scope there is nothing to file it under, and guessing
     // one is worse than asking.
-    if (!pid) { openTaskModal(undefined, undefined, m?.id, undefined); return }
+    if (!pid) { openTaskModal({ milestoneId: m?.id }); return }
     haptic('tap')
     const created = addTask({
       type: '상위', name: '', cat: '', assignee: '', priority: '중간', status: '대기',
@@ -708,7 +708,7 @@ export function GanttView() {
                 onHover={setHoveredTaskId}
                 onOpen={() => openTaskDetail(row.task.id)}
                 onToggle={() => toggle(row.task.id)}
-                onAddSubtask={() => openTaskModal(undefined, row.task.id)}
+                onAddSubtask={() => openTaskModal({ parentId: row.task.id })}
                 onLaneMouseDown={e => laneMouseDown(e, { taskId: row.task.id, task: row.task })}
                 onBarMouseDown={(e, mode) => barMouseDown(e, row.task, mode)}
                 onOpenGuard={() => { const ok = !movedRef.current; movedRef.current = false; return ok }}

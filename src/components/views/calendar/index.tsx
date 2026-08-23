@@ -3,7 +3,6 @@ import { useUiStore } from '../../../store/uiStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
-import { DayPlanner } from './DayPlanner'
 import { haptic } from '../../../lib/haptics'
 import { useProjectStore } from '../../../store/projectStore'
 import { useGCalStore, warmCalendarAuth } from '../../../store/gcalStore'
@@ -234,14 +233,13 @@ function GoogleDot() {
 // ── Mobile calendar ───────────────────────────────────────────────────────────
 
 function MobileCalendar() {
-  const { openTaskModal, openTaskDetail } = useUiStore()
+  const { openTaskModal, openTaskDetail, projectId } = useUiStore()
   const tasks = useFilteredTasks()
   const { token, events: gcalEvents, ensureEvents } = useGCalStore()
   const todayDate = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
   const todayStr  = useMemo(() => fmt(todayDate), [todayDate])
   const [selectedDate, setSelectedDate] = useState(todayStr)
   /** Placing work on one day, from that day's section header. */
-  const [planning, setPlanning] = useState<{ date: string; anchor: HTMLElement } | null>(null)
 
   // Fetch GCal events for a 3-month window around today. Re-runs when the set of
   // shown calendars changes, otherwise ticking one on would do nothing visible.
@@ -415,13 +413,13 @@ function MobileCalendar() {
               {/* Tapping the day's heading opens the planner for it — the same
                   place the desktop grid puts it, and the only element here that
                   means "this day" rather than "this task". */}
-              <div onClick={e => { haptic('tap'); setPlanning({ date: dateStr, anchor: e.currentTarget }) }} style={{ cursor: 'pointer' }}>
+              <div onClick={() => { haptic('tap'); openTaskModal({ due: dateStr, projectId: projectId ?? undefined }) }} style={{ cursor: 'pointer' }}>
                 <SectionHeader label={fmtSection(dateStr)} count={total} color={dateStr === todayStr ? 'var(--ac)' : 'var(--t2)'} />
               </div>
               {dayGCal.map(ev => <MobGCalRow key={ev.id} event={ev} />)}
               {dayTasks.length === 0 && dayGCal.length === 0 ? (
                 <div
-                  onClick={e => { haptic('tap'); setPlanning({ date: dateStr, anchor: e.currentTarget }) }}
+                  onClick={() => { haptic('tap'); openTaskModal({ due: dateStr, projectId: projectId ?? undefined }) }}
                   style={{ padding: '10px 16px', fontSize: 13, color: 'var(--t3)', cursor: 'pointer' }}
                 >
                   업무 없음 · 눌러서 추가
@@ -440,13 +438,6 @@ function MobileCalendar() {
           </button>
         </div>
       </div>
-      {planning && (
-        <DayPlanner
-          date={planning.date}
-          anchor={planning.anchor}
-          onClose={() => setPlanning(null)}
-        />
-      )}
     </div>
   )
 }
@@ -910,10 +901,8 @@ function RangeSwitch({ value, onChange }: { value: CalRange; onChange: (r: CalRa
 }
 
 function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYear: number; calMonth: number }) {
-  // Clicking a day opens the planner there; see DayPlanner for why both
-  // "make a new one" and "place an existing one" live in the same popover.
-  const [planning, setPlanning] = useState<{ date: string; anchor: HTMLElement } | null>(null)
-  const { openTaskDetail, projectId } = useUiStore()
+  // 날짜를 누르면 그 날짜로 채워진 새 업무 창이 열립니다 — onPlanDay 참고.
+  const { openTaskDetail, projectId, openTaskModal } = useUiStore()
   const tasks = useFilteredTasks()
   const { updateTask, tasks: allTasks } = useTaskStore()
   const allMilestones = useMilestoneStore(s => s.milestones)
@@ -1017,7 +1006,18 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
 
   const onDragOverDay   = useCallback((day: string) => setDragOver(day), [])
   const onDragLeaveDay  = useCallback(() => setDragOver(null), [])
-  const onPlanDay       = useCallback((day: string, anchor: HTMLElement) => setPlanning({ date: day, anchor }), [])
+  /**
+   * 날짜를 누르면 **새 업무 창**이 그 날짜로 채워진 채 열립니다.
+   *
+   * 예전에는 날짜 옆에 뜨는 별도 팝오버(DayPlanner)였습니다. 업무를 만드는
+   * 창이 두 개가 되고, 두 개는 언젠가 어긋납니다 — 한쪽에만 담당자가 있고
+   * 다른 쪽에만 우선순위가 있는 식으로요. 팝오버가 하던 나머지 절반(날짜
+   * 없는 업무를 이 날로 옮기기)은 그 창 안으로 들어갔습니다.
+   *
+   * 두 번째 인자(anchor)는 이제 안 씁니다 — 창이 화면 가운데 뜨므로 어디를
+   * 눌렀는지가 필요 없습니다.
+   */
+  const onPlanDay       = useCallback((day: string) => openTaskModal({ due: day, projectId: projectId ?? undefined }), [openTaskModal, projectId])
   const onTaskDragStart = useCallback((taskId: string) => setDraggingId(taskId), [])
   const onTaskDragEnd   = useCallback(() => { setDraggingId(null); setDragOver(null) }, [])
 
@@ -1074,13 +1074,6 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
           })}
         </div>
       </div>
-      {planning && (
-        <DayPlanner
-          date={planning.date}
-          anchor={planning.anchor}
-          onClose={() => setPlanning(null)}
-        />
-      )}
     </div>
   )
 }
@@ -1111,7 +1104,7 @@ const MonthCell = React.memo(function MonthCell({
   onDragOverDay: (day: string) => void
   onDragLeaveDay: () => void
   onDropDay: (e: React.DragEvent, day: string) => void
-  onPlanDay: (day: string, anchor: HTMLElement) => void
+  onPlanDay: (day: string) => void
   onOpenTask: (id: string) => void
   onTaskDragStart: (taskId: string) => void
   onTaskDragEnd: () => void
@@ -1130,7 +1123,7 @@ const MonthCell = React.memo(function MonthCell({
       onDragOver={e => { e.preventDefault(); onDragOverDay(day) }}
       onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) onDragLeaveDay() }}
       onDrop={e => onDropDay(e, day)}
-      onClick={e => onPlanDay(day, e.currentTarget)}
+      onClick={() => onPlanDay(day)}
       style={{
         cursor: 'pointer',
         borderRight: column === 6 ? 'none' : '1px solid var(--bd)',

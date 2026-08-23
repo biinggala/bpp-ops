@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useGCalStore, awaitingMe, myAttendance } from '../../../store/gcalStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
-import { DayPlanner } from '../calendar/DayPlanner'
 import { useTaskStore } from '../../../store/taskStore'
 import { useProjectStore } from '../../../store/projectStore'
 import { useAuthStore } from '../../../store/authStore'
@@ -106,6 +105,8 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
   const tasks = useFilteredTasks()
   const updateTask = useTaskStore(s => s.updateTask)
   const openTaskDetail = useUiStore(s => s.openTaskDetail)
+  const openTaskModal = useUiStore(s => s.openTaskModal)
+  const projectId = useUiStore(s => s.projectId)
   const projects = useProjectStore(s => s.projects)
   const myEmail = useAuthStore(s => s.email)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
@@ -165,7 +166,6 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
   }, [])
   const [selected, setSelected] = useState<string | null>(null)
   /** Placing a task on a whole day, opened from that day's header. */
-  const [planning, setPlanning] = useState<{ date: string; anchor: HTMLElement } | null>(null)
   // A floating card, like Google Calendar's quick-create. Day columns are far
   // too narrow to hold a guest list, and the grid clips anything wider.
   const [cardAt, setCardAt] = useState<{ x: number; y: number } | null>(null)
@@ -459,7 +459,7 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
             // calendar event, which is a different thing.
             <div
               key={d}
-              onClick={e => setPlanning({ date: d, anchor: e.currentTarget })}
+              onClick={() => openTaskModal({ due: d, projectId: projectId ?? undefined })}
               title="이 날에 업무 배치"
               style={{ flex: 1, minWidth: 0, padding: '7px 8px 8px', textAlign: 'center', borderLeft: '1px solid var(--bd)', cursor: 'pointer' }}
               onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
@@ -715,13 +715,6 @@ export function TimelineGrid({ days, lead = 0 }: { days: string[]; lead?: number
           </Track>
         </div>
       </div>
-      {planning && (
-        <DayPlanner
-          date={planning.date}
-          anchor={planning.anchor}
-          onClose={() => setPlanning(null)}
-        />
-      )}
     </div>
   )
 }
