@@ -13,7 +13,7 @@ import { useOrgStore } from '../store/orgStore'
 import { usePrefsStore } from '../store/prefsStore'
 import { Welcome } from '../components/modals/Welcome'
 import { parseInviteToken, PENDING_TASK_KEY } from '../lib/paths'
-import { syncRoster } from '../lib/roster'
+import { claimInvitedOrgs, stampProjects, syncRoster } from '../lib/roster'
 import { useMobile } from '../hooks/useMobile'
 import type { Project } from '../types'
 import { Sidebar } from '../components/layout/Sidebar'
@@ -147,6 +147,46 @@ export function AppPage() {
       peers: peerKey ? peerKey.split(' ') : [],
     })
   }, [uid, email, orgId, orgDomain, ready, peerKey])
+
+  /**
+   * ── 프로젝트에 소속 도장 ───────────────────────────────────────────────────
+   *
+   * 2단계. 사람 다음은 프로젝트입니다. 소속이 안 적힌 것만 골라 적으므로
+   * 두 번째부터는 읽기 한 번으로 끝납니다.
+   *
+   * 아직 아무것도 안 막습니다 — 규칙도 화면도 이 값을 안 봅니다.
+   */
+  const unstamped = useMemo(
+    () => projects.filter(p => !p.orgId).map(p => p.id).sort().join(' '),
+    [projects],
+  )
+  useEffect(() => {
+    if (!orgId || !orgDomain || !ready || !unstamped) return
+    void stampProjects({
+      orgId,
+      domain: orgDomain,
+      projects: projects.map(p => ({ id: p.id, orgId: p.orgId, creatorEmail: p.creatorEmail })),
+    })
+  }, [orgId, orgDomain, ready, unstamped])
+
+  /**
+   * ── 초대장에 실려 온 회사 ──────────────────────────────────────────────────
+   *
+   * 외부 협업자가 자기 회사를 알아내는 유일한 길입니다. 도메인으로 찾는 길은
+   * 도메인이 안 맞아 막혀 있고, 명단을 읽으려면 회사 id를 알아야 하는데 그게
+   * 바로 묻고 있는 질문입니다.
+   *
+   * 도메인으로 이미 찾은 사람에게도 돌립니다 — 두 회사에 걸친 사람이 있을 수
+   * 있고, 그 경우 도메인은 한쪽만 답합니다.
+   */
+  const invitedOrgs = useMemo(
+    () => [...new Set(Object.values(invites).map(i => i.orgId).filter((o): o is string => !!o))].sort().join(' '),
+    [invites],
+  )
+  useEffect(() => {
+    if (!uid || !invitedOrgs) return
+    void claimInvitedOrgs(uid, invitedOrgs.split(' '))
+  }, [uid, invitedOrgs])
 
   useEffect(() => {
     if (!uid) return

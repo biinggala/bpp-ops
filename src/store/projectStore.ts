@@ -19,6 +19,14 @@ import type { Project } from '../types'
 export interface InviteEntry {
   code: string
   name: string
+  /**
+   * 이 프로젝트가 어느 회사 것인가.
+   *
+   * 받는 사람은 아직 프로젝트를 못 읽습니다 — 초대장이 그 사람이 볼 수 있는
+   * 유일한 것이고, 그래서 이름 사본이 여기 있는 것과 같은 이유로 조직도 여기
+   * 실립니다. 외부 협업자가 자기 회사를 알아내는 유일한 길입니다.
+   */
+  orgId?: string
 }
 
 interface ProjectState {
@@ -70,10 +78,24 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       // The rules only accept a brand new project if the creator is already in
       // its members list, so the whole subtree goes in one write.
       const { id, ...meta } = project
+      // 소속을 만들 때 같이 적습니다. 나중에 배경에서 채우는 길도 있지만
+      // (roster.stampProjects), 만드는 순간이 소속이 확실한 유일한 순간입니다.
+      const orgId = useOrgStore.getState().orgId
       fbUpdate(ref(db), {
-        [P.project(id)]: { meta: { id, ...meta, teamId: null }, members: { [uid]: inviteCode } },
+        [P.project(id)]: {
+          meta: { id, ...meta, teamId: null, ...(orgId ? { orgId } : {}) },
+          members: { [uid]: inviteCode },
+        },
         [P.userProject(uid, id)]: true,
-      }).catch(e => console.warn('[project create]', e))
+      })
+        .then(() => {
+          // 조직 쪽 목록은 **프로젝트가 만들어진 뒤에** 씁니다. 규칙이 '이
+          // 프로젝트의 멤버인가'를 보는데, 같은 쓰기 안에서는 그 멤버가 아직
+          // 없습니다. 실패해도 배경에서 다시 채워집니다(roster.stampProjects).
+          if (!orgId) return
+          return fbUpdate(ref(db, P.orgOwns(orgId)), { [id]: true })
+        })
+        .catch(e => console.warn('[project create]', e))
     }
     return project
   },
@@ -111,7 +133,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     // read the project yet — this is the only thing they can see before joining.
     fbUpdate(ref(db), {
       [`${P.projectMeta(projectId)}/pendingEmails`]: pendingEmails,
-      [P.inviteEntry(normalized, projectId)]: { code: project.inviteCode ?? '', name: project.name },
+      [P.inviteEntry(normalized, projectId)]: {
+        code: project.inviteCode ?? '',
+        name: project.name,
+        ...(project.orgId ? { orgId: project.orgId } : {}),
+      },
     }).catch(e => console.warn('[invite]', e))
   },
 

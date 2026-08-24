@@ -137,6 +137,27 @@ export const P = {
    */
   orgProjects:      (oid: string) => `orgs/${oid}/projects`,
   orgProject:       (oid: string, pid: string) => `orgs/${oid}/projects/${pid}`,
+  /**
+   * ── 이 회사의 프로젝트 전부 ───────────────────────────────────────────────
+   *
+   * 바로 위 `orgProjects`와 헷갈리기 쉬운데, 다른 것입니다. 저건 **공개하기로
+   * 한** 프로젝트의 이름표고 라벨입니다. 이건 **소속**입니다 — 공개했든 안
+   * 했든, 이 회사의 것이면 여기 있습니다. 값은 true 하나뿐이라 이름도 안
+   * 새 나갑니다.
+   *
+   * 왜 필요하냐면, 지금은 "이 회사의 프로젝트"를 물을 곳이 없어서 **전부 읽고
+   * 걸러야** 하기 때문입니다. MCP 서버가 정확히 그렇게 하고 있습니다
+   * (`readProjectNodes`) — 관리자 SDK라 규칙을 안 지나가므로, 회사가 둘이
+   * 되는 순간 그건 '남의 회사 데이터를 메모리로 가져온 뒤 거르는 것'이 됩니다.
+   * 거르는 코드가 한 번만 틀리면 그대로 샙니다.
+   *
+   * 소속은 프로젝트 쪽에도 `meta.orgId`로 한 벌 적힙니다. 규칙이 검사할 때
+   * 프로젝트에서 시작해 조직을 묻는 길과, 조직에서 시작해 프로젝트를 세는
+   * 길이 둘 다 필요해서입니다. 사본이라 늙을 수 있고, 그래서 **둘 다 한 번만
+   * 쓰입니다** — 한 번 정해진 프로젝트의 소속은 안 바뀝니다.
+   */
+  orgOwns:          (oid: string) => `orgs/${oid}/owns`,
+  orgOwn:           (oid: string, pid: string) => `orgs/${oid}/owns/${pid}`,
   /** 참여 요청. 프로젝트별로 모아 두고, 승인은 그 프로젝트 멤버가 합니다. */
   orgJoinRequests:  (oid: string) => `orgs/${oid}/joinRequests`,
   orgJoinRequest:   (oid: string, pid: string, email: string) => `orgs/${oid}/joinRequests/${pid}/${emailKey(email)}`,

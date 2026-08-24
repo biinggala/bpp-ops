@@ -327,6 +327,7 @@ in:inbox is:unread to:me -from:me
 orgs/{조직id}/
   meta: { name, domain, createdBy, createdAt }
   members/{이메일키}: { role: member|guest|removed, at, by? }
+  owns/{pid}: true            ← 이 회사의 프로젝트 전부 (공개 여부와 무관)
   rooms/{방id}: { name, note?, order, active }
   bookings/{날짜}/{예약id}: { roomId, from, to, by, byName?, title?, eventId?, at }
 orgByDomain/{도메인키}: 조직id
@@ -384,7 +385,15 @@ auth.token.email.toLowerCase().replace('.', ',')
 없습니다 — 어느 조직인지 몰라서 묻는 질문이니까요. 목록인 이유는 한 사람이
 두 회사에 걸칠 수 있어서입니다.
 
-**아직 벽이 아닙니다.** 화면도 규칙도 이 명단으로 아무것도 막지 않습니다.
+프로젝트에도 소속을 적습니다 — `projects/{pid}/meta/orgId`와
+`orgs/{조직id}/owns/{pid}`. 규칙은 프로젝트에서 시작해 회사를 묻고 MCP는 회사에서
+시작해 프로젝트를 세므로, 방향이 달라 둘 다 필요합니다. 사본이 둘이면 늙으므로
+**둘 다 한 번만 쓰입니다** — 프로젝트의 소속은 한 번 정해지면 안 바뀝니다.
+
+초대장(`invitesByEmail`)도 회사 id를 같이 싣습니다. 받는 사람은 아직 프로젝트를
+못 읽으므로, 이름 사본이 거기 있는 것과 같은 이유입니다.
+
+**아직 벽이 아닙니다.** 화면도 규칙도 이 값들로 아무것도 막지 않습니다.
 지금은 채우는 중이고, 잘못되면 지우면 그만입니다. 전체 설계와 남은 단계는
 `docs/tenants.md`에 있습니다.
 

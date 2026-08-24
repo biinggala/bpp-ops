@@ -19,6 +19,9 @@
           }
         },
         "meta": {
+          "orgId": {
+            ".validate": "newData.isString() && newData.val().length <= 64 && (!data.exists() || data.val() === newData.val())"
+          },
           "inviteCode": {
             ".validate": "newData.isString() && newData.val().length >= 6"
           }
@@ -82,6 +85,13 @@
           "$pid": {
             ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ',')) && root.child('projects/' + $pid + '/members/' + auth.uid).exists()",
             ".validate": "newData.hasChildren(['name']) && newData.child('name').isString() && newData.child('name').val().length <= 80"
+          }
+        },
+        "owns": {
+          ".read": "auth != null && auth.token.email != null && auth.token.email_verified == true && root.child('orgs/' + $org + '/members/' + auth.token.email.toLowerCase().replace('.', ',') + '/role').val() === 'member'",
+          "$pid": {
+            ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && root.child('orgs/' + $org + '/members/' + auth.token.email.toLowerCase().replace('.', ',') + '/role').val() === 'member' && root.child('projects/' + $pid + '/members/' + auth.uid).exists() && !data.exists()",
+            ".validate": "newData.isBoolean() && newData.val() === true"
           }
         },
         "joinRequests": {

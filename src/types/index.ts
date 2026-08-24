@@ -25,6 +25,13 @@ export interface Project {
   memberEmails?: string[]  // fully joined members — only these emails can see the project
   pendingEmails?: string[] // invited but not yet accepted
   creatorEmail?: string    // email of the user who created this project
+  /**
+   * 어느 회사의 프로젝트인가. **한 번 정해지면 안 바뀝니다**(규칙).
+   *
+   * 아직 아무것도 안 막습니다 — 접근은 계속 프로젝트 멤버십이 정합니다.
+   * docs/tenants.md 참고.
+   */
+  orgId?: string
   archived?: boolean       // completed/retired — hidden from active lists and aggregates
   driveFolderUrl?: string  // the project's folder, opened straight from the sidebar
   /**

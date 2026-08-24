@@ -1,4 +1,4 @@
-// 조직 명단 — 소속을 계산하지 않고 적어 두는 곳.
+// 소속을 적어 두는 곳 — 사람도, 프로젝트도.
 //
 // docs/tenants.md의 **1단계**입니다. 화면은 아직 이 명단을 한 글자도 읽지
 // 않습니다. 여기서 하는 일은 채우는 것뿐이고, 잘못되면 지우면 그만입니다.
@@ -129,4 +129,100 @@ export async function syncRoster(input: {
         .catch(e => console.warn('[roster] 명단에 못 적었습니다', key, e)),
     ),
   )
+}
+
+
+/**
+ * ── 프로젝트의 소속 ─────────────────────────────────────────────────────────
+ *
+ * docs/tenants.md의 **2단계**. 사람 다음은 프로젝트입니다.
+ *
+ * 두 군데에 적습니다. `projects/{pid}/meta/orgId`는 프로젝트에서 시작해
+ * "이건 어느 회사 것인가"를 묻는 길이고, `orgs/{oid}/owns/{pid}`는 회사에서
+ * 시작해 "우리 프로젝트가 무엇무엇인가"를 묻는 길입니다. 규칙과 MCP가 각각
+ * 다른 쪽에서 물어보기 때문에 둘 다 필요합니다.
+ *
+ * 사본이 둘이면 늙습니다. 그래서 **둘 다 한 번만 쓰입니다** — 규칙이 이미
+ * 있는 값을 덮는 것을 거절합니다. 프로젝트의 소속은 한 번 정해지면 안
+ * 바뀝니다. 회사를 옮겨야 하는 프로젝트가 생기면 그건 사람이 결정해서
+ * 하는 일이지, 앱이 배경에서 조용히 할 일이 아닙니다.
+ *
+ * **아직 아무것도 안 막습니다.** 규칙은 이 값을 검사하지 않고, 화면도 안
+ * 읽습니다. 3단계에서 읽는 쪽을 옮길 때 비로소 벽이 됩니다.
+ */
+export interface StampableProject {
+  id: string
+  orgId?: string
+  creatorEmail?: string
+}
+
+/**
+ * 도장을 찍어도 되는 프로젝트를 고릅니다.
+ *
+ * 이미 소속이 적힌 것은 건드리지 않습니다. 그리고 **만든 사람이 우리 도메인이
+ * 아니면 건너뜁니다** — 내가 남의 회사 프로젝트에 게스트로 들어가 있을 수
+ * 있고, 그 프로젝트를 내 회사 것으로 도장 찍으면 그 순간 소속이 틀립니다.
+ * 한 번 쓰면 못 고치는 값이라 틀리면 되돌릴 방법도 없습니다.
+ *
+ * 만든 사람이 안 적힌 옛 프로젝트는 찍습니다. 이 앱을 쓰는 회사가 아직
+ * 하나뿐이던 시절의 것이라 달리 볼 여지가 없습니다.
+ */
+export function projectsToStamp(projects: StampableProject[], domain: string): string[] {
+  return projects
+    .filter(p => !p.orgId)
+    .filter(p => !p.creatorEmail || roleForDomain(p.creatorEmail, domain) === 'member')
+    .map(p => p.id)
+}
+
+/**
+ * 소속을 적습니다. 빠진 것만, 있는 것은 안 건드립니다.
+ *
+ * 명단과 같은 방식입니다 — 스크립트 한 번이 아니라 앱이 지나가면서 맞춥니다.
+ * 프로젝트는 계속 생기므로 한 번 찍어 두는 것으로는 곧 다시 빠집니다.
+ */
+export async function stampProjects(input: {
+  orgId: string
+  domain: string
+  projects: StampableProject[]
+}): Promise<void> {
+  const { orgId, domain, projects } = input
+  const wanted = projectsToStamp(projects, domain)
+  if (wanted.length === 0) return
+
+  let owned: Record<string, boolean> | null = null
+  try {
+    owned = (await fbGet(ref(db, P.orgOwns(orgId)))).val()
+  } catch {
+    // 명단에 아직 없는 사람입니다. 도장은 못 찍지만 곧 찍힙니다.
+    return
+  }
+
+  await Promise.all(
+    wanted.flatMap(pid => [
+      update(ref(db, P.projectMeta(pid)), { orgId })
+        .catch(e => console.warn('[tenant] 프로젝트에 소속을 못 적었습니다', pid, e)),
+      owned?.[pid]
+        ? Promise.resolve()
+        : update(ref(db, P.orgOwns(orgId)), { [pid]: true })
+            .catch(e => console.warn('[tenant] 조직 목록에 못 넣었습니다', pid, e)),
+    ]),
+  )
+}
+
+/**
+ * 초대장에 실려 온 조직을 내 색인에 적습니다.
+ *
+ * 게스트가 자기 회사를 알아내는 **유일한 길**입니다. 도메인으로 찾는 길은
+ * 도메인이 안 맞으니 막혀 있고, 명단을 읽으려면 조직 id를 알아야 하는데 그게
+ * 바로 묻고 있는 질문이라 순환입니다. 초대장은 그 사람이 합류하기 전에 볼 수
+ * 있는 유일한 것이고, 그래서 여기에 조직을 실어 보냅니다.
+ *
+ * 1단계에서 열어 둔 구멍이 여기서 닫힙니다.
+ */
+export async function claimInvitedOrgs(uid: string, orgIds: string[]): Promise<void> {
+  const unique = [...new Set(orgIds.filter(Boolean))]
+  if (unique.length === 0) return
+  const at = Date.now()
+  await update(ref(db, P.userOrgs(uid)), Object.fromEntries(unique.map(oid => [oid, at])))
+    .catch(e => console.warn('[tenant] 초대받은 조직을 못 적었습니다', e))
 }
