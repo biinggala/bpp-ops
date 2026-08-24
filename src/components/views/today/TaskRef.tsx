@@ -135,7 +135,9 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
   const done = task.status === '완료'
   const project = task.projectId ? projects.find(p => p.id === task.projectId) : undefined
   const parent = allTasks.find(t => t.id === task.parentId)
-  const milestone = milestones.find(m => m.id === task.milestoneId)
+  // 하위 업무에 마일스톤이 안 적혀 있으면 부모의 것을 씁니다. 마일스톤은
+  // 가족 단위로 붙는 것이고, 부모가 그 안에 있으면 자식도 그 안입니다.
+  const milestone = milestones.find(m => m.id === (task.milestoneId || parent?.milestoneId))
   const diff = task.due ? daysFrom(task.due, new Date()) : null
   const late = diff !== null && diff < 0 && !done
 
@@ -167,17 +169,28 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
    * 그래서 **모든 줄이 한 줄, 같은 모양**입니다:
    * `[상태] 제목 · [소속] · [D-day] · [×]`
    *
-   * 다른 건 소속 칸이 무엇을 말하는가 하나뿐이고, 표시는 늘 하나입니다 —
-   * 하위면 ↳, 마일스톤이면 ◇, 그 외에는 ●. 색은 셋 다 프로젝트 색이라
-   * 이름이 무엇으로 바뀌든 '어느 프로젝트'는 색이 계속 말해 줍니다.
+   * **소속은 사슬입니다.** 처음엔 하나만 골라 보여 줬는데(하위면 부모, 아니면
+   * 마일스톤), 그러면 하위 업무가 어느 마일스톤 밑인지가 사라지고 무엇보다
+   * **한 칸짜리라 깊이가 안 보입니다** — '◇ 브랜딩'과 '↳ 로고 시안'이 같은
+   * 자리에 같은 크기로 앉아 있으니 둘이 같은 층으로 읽힙니다.
+   *
+   *   상위 업무   `◇ 브랜딩`
+   *   하위 업무   `◇ 브랜딩 › ↳ 로고 시안`
+   *
+   * 칸이 둘이면 두 단계 아래라는 게 세는 것 없이 보입니다. 앞 칸은 늘 '가장
+   * 넓은 담는 곳'(마일스톤, 없으면 프로젝트)이고 뒤 칸은 부모입니다.
+   *
+   * 좁아지면 **앞 칸이 먼저** 줄어듭니다(shrink 3 대 1). 답에 더 가까운 건
+   * 부모 쪽이고, 앞 칸은 색만 남아도 어느 프로젝트인지 말해 줍니다.
+   *
+   * 표시는 한 칸에 하나 — 마일스톤 ◇, 프로젝트 ●, 부모 ↳. 색은 셋 다
+   * 프로젝트 색이라 이름이 무엇으로 바뀌든 '어느 프로젝트'는 색이 계속
+   * 말해 줍니다.
    */
-  const belong = parent
-    ? { mark: '↳', name: parent.name || '이름 없음', go: () => openTaskDetail(parent.id) }
-    : milestone
-    ? { mark: '◇', name: milestone.name, go: undefined }
-    : project
-    ? { mark: '●', name: project.name, go: undefined }
-    : null
+  const chain: { mark: string; name: string; go?: () => void; weak: boolean }[] = []
+  if (milestone) chain.push({ mark: '◇', name: milestone.name, weak: true })
+  else if (project) chain.push({ mark: '●', name: project.name, weak: true })
+  if (parent) chain.push({ mark: '↳', name: parent.name || '이름 없음', go: () => openTaskDetail(parent.id), weak: false })
 
   return (
     <NodeViewWrapper as="div" contentEditable={false} style={ROW} data-drag-handle>
@@ -195,26 +208,38 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
         }}
       >{task.name || '(이름 없음)'}</span>
 
-      {belong && (
-        <span
-          onClick={belong.go}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 4,
-            // 좁아지면 **이쪽이** 줄어듭니다. 제목은 마지막까지 지킵니다.
-            flex: '0 1 auto', minWidth: 0, maxWidth: 200,
-            fontSize: 11, color: 'var(--t3)',
-            cursor: belong.go ? 'pointer' : 'default',
-          }}
-        >
-          <span style={{
-            flexShrink: 0, color: project?.color ?? 'var(--t3)',
-            fontSize: belong.mark === '●' ? 8 : 11, lineHeight: 1,
-          }}>
-            {belong.mark}
-          </span>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {belong.name}
-          </span>
+      {chain.length > 0 && (
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          // 좁아지면 **이쪽이** 줄어듭니다. 제목은 마지막까지 지킵니다.
+          flex: '0 1 auto', minWidth: 0, maxWidth: 320,
+          fontSize: 11, color: 'var(--t3)',
+        }}>
+          {/* 칸과 구분자를 같은 층에 둡니다 — shrink 무게는 형제끼리만
+              겨루므로, 칸을 한 겹 감싸면 무게가 서로 안 보입니다. */}
+          {chain.map((seg, i) => [
+            i > 0 && <span key={`s${i}`} style={{ flexShrink: 0, opacity: 0.5 }}>›</span>,
+            <span
+              key={i}
+              onClick={seg.go}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                // 앞 칸(마일스톤·프로젝트)이 뒤 칸(부모)보다 세 배 빨리 줄어듭니다.
+                flexGrow: 0, flexShrink: seg.weak ? 3 : 1, flexBasis: 'auto', minWidth: 0,
+                cursor: seg.go ? 'pointer' : 'default',
+              }}
+            >
+              <span style={{
+                flexShrink: 0, color: project?.color ?? 'var(--t3)',
+                fontSize: seg.mark === '●' ? 8 : 11, lineHeight: 1,
+              }}>
+                {seg.mark}
+              </span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {seg.name}
+              </span>
+            </span>,
+          ])}
         </span>
       )}
 

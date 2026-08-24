@@ -130,11 +130,20 @@ OAuth 클라이언트·인가 코드·토큰은 **최상위 `mcpAuth/`** 에 저
    | Cloud Run 서비스 | **`crng-task-manager`** |
    | 리전 | `asia-northeast3` |
    | GCP 프로젝트 | `crng-task-manager` |
-   | 커넥터 주소 | `https://crng-task-manager-1050546278891.asia-northeast3.run.app/mcp` |
+   | 커넥터 주소 | `https://crng-task-manager-2bbjjrjoya-du.a.run.app/mcp` |
 
    서비스 이름이 앱 이름이 아니라 **프로젝트 이름과 같다는 점**이 함정입니다.
    `bpp-ops-mcp`로 배포하면 새 서비스가 하나 더 생기고, 커넥터가 보고 있는
    주소는 그대로 옛 코드를 서빙합니다.
+
+   **Cloud Run은 한 서비스에 주소를 두 가지로 줍니다** — 예전 형식
+   (`…-2bbjjrjoya-du.a.run.app`)과 새 형식
+   (`…-1050546278891.asia-northeast3.run.app`). 둘 다 같은 서버에 닿지만
+   커넥터에 넣을 수 있는 것은 **`PUBLIC_URL`과 글자까지 같은 쪽 하나**입니다.
+   이 서버가 내놓는 OAuth 메타데이터의 issuer와 구글에 보내는 리디렉션
+   주소가 모두 `PUBLIC_URL`에서 만들어지므로, 다른 형식으로 넣으면 주소는
+   열리는데 로그인이 issuer 불일치나 `redirect_uri_mismatch`로 막힙니다.
+   지금 무엇으로 돌고 있는지는 `/healthz`가 `issuer`로 알려 줍니다.
 
    **이미 올라가 있는 서버를 새 코드로 갱신할 때** — 환경변수는 서비스에 남아
    있으므로 다시 지정하지 않습니다. `--set-env-vars`를 붙이면 기존 값 전체가
@@ -220,7 +229,7 @@ GitHub → Settings → Secrets and variables → Actions → New repository sec
 | 이름 | 값 |
 |---|---|
 | `GCP_SA_KEY` | 위에서 받은 JSON **원문 전체** |
-| `MCP_PUBLIC_URL` | 배포된 주소 (`https://crng-task-manager-1050546278891.asia-northeast3.run.app`, 끝에 `/` 없이) |
+| `MCP_PUBLIC_URL` | 배포된 주소 (`https://crng-task-manager-2bbjjrjoya-du.a.run.app`, 끝에 `/` 없이) |
 | `GOOGLE_OAUTH_CLIENT_ID` | OAuth **웹** 클라이언트 ID |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | 같은 클라이언트의 시크릿 |
 
