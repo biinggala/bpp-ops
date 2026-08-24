@@ -6,6 +6,7 @@ import { P } from '../lib/paths'
 import { PROJECT_PALETTE } from '../types'
 import { useAuthStore } from './authStore'
 import { useOrgStore } from './orgStore'
+import { roleForDomain } from '../lib/roster'
 import { useUserProfileStore } from './userProfileStore'
 import type { Project } from '../types'
 
@@ -44,6 +45,11 @@ interface ProjectState {
 }
 
 const lower = (e: string) => e.toLowerCase().trim()
+
+/** 우리 도메인 사람인가. 게스트로 올릴지 말지를 여기서 가릅니다. */
+function isOrgDomain(email: string, domain: string): boolean {
+  return roleForDomain(email, domain) === 'member'
+}
 
 function uidForEmail(email: string): string | null {
   const target = lower(email)
@@ -139,6 +145,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         ...(project.orgId ? { orgId: project.orgId } : {}),
       },
     }).catch(e => console.warn('[invite]', e))
+
+    // 도메인 밖 사람을 부르는 것이면 조직 명단에 게스트로 같이 올립니다.
+    // 초대할 수 있는 사람과 게스트를 들일 수 있는 사람은 같은 사람이어야
+    // 하고, 규칙도 그렇게 되어 있습니다. 이걸 안 하면 초대받은 사람이
+    // 들어와서 프로젝트를 못 읽습니다 — 명단에 없으니까요.
+    const orgId = project.orgId
+    if (orgId && !isOrgDomain(normalized, useOrgStore.getState().domain)) {
+      fbUpdate(ref(db, P.orgMember(orgId, normalized)), {
+        role: 'guest',
+        at: Date.now(),
+        by: lower(useAuthStore.getState().email ?? ''),
+      }).catch(() => {})  // 이미 명단에 있으면 규칙이 거절합니다. 맞는 동작입니다.
+    }
   },
 
   removeMember: (projectId, email) => {

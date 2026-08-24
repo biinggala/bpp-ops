@@ -10,8 +10,8 @@
     },
     "projects": {
       "$pid": {
-        ".read": "auth != null && data.child('members').hasChild(auth.uid)",
-        ".write": "auth != null && ((!data.exists() && newData.child('members').hasChild(auth.uid) && newData.child('meta').child('inviteCode').isString()) || data.child('members').hasChild(auth.uid))",
+        ".read": "auth != null && auth.token.email != null && auth.token.email_verified == true && data.child('members').hasChild(auth.uid) && (!root.child('projects/' + $pid + '/meta/orgId').exists() || root.child('orgs/' + root.child('projects/' + $pid + '/meta/orgId').val() + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).child('role').val() !== 'removed')",
+        ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && ((!data.exists() && newData.child('members').hasChild(auth.uid) && newData.child('meta').child('inviteCode').isString()) || (data.child('members').hasChild(auth.uid) && (!root.child('projects/' + $pid + '/meta/orgId').exists() || root.child('orgs/' + root.child('projects/' + $pid + '/meta/orgId').val() + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).child('role').val() !== 'removed')))",
         "members": {
           "$uid": {
             ".write": "auth != null && auth.uid === $uid && !data.exists() && newData.val() === root.child('projects').child($pid).child('meta').child('inviteCode').val()",
@@ -38,7 +38,7 @@
       "$emailKey": {
         ".read": "auth != null && auth.token.email != null && $emailKey === auth.token.email.replace('.', ',')",
         "$pid": {
-          ".write": "auth != null && (root.child('projects').child($pid).child('members').hasChild(auth.uid) || (auth.token.email != null && $emailKey === auth.token.email.replace('.', ',')))"
+          ".write": "auth != null && ((root.child('projects').child($pid).child('members').hasChild(auth.uid) && auth != null && auth.token.email != null && auth.token.email_verified == true && (!root.child('projects/' + $pid + '/meta/orgId').exists() || root.child('orgs/' + root.child('projects/' + $pid + '/meta/orgId').val() + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).child('role').val() === 'member' || (!root.child('orgs/' + root.child('projects/' + $pid + '/meta/orgId').val() + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).exists() && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + root.child('projects/' + $pid + '/meta/orgId').val() + '/meta/domain').val().replace('.', ','))))) || (auth.token.email != null && $emailKey === auth.token.email.replace('.', ',')))"
         }
       }
     },
@@ -59,7 +59,7 @@
           ".read": "auth != null && auth.token.email != null && auth.token.email_verified == true && root.child('orgs/' + $org + '/members/' + auth.token.email.toLowerCase().replace('.', ',') + '/role').val() === 'member'",
           "$mail": {
             ".read": "auth != null && auth.token.email != null && auth.token.email_verified == true && $mail === auth.token.email.toLowerCase().replace('.', ',')",
-            ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && (($mail === auth.token.email.toLowerCase().replace('.', ',') && !data.exists() && newData.child('role').val() === 'member' && $mail.endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ','))) || (!data.exists() && newData.child('role').val() === 'guest' && root.child('orgs/' + $org + '/members/' + auth.token.email.toLowerCase().replace('.', ',') + '/role').val() === 'member') || (root.child('orgs/' + $org + '/admins/' + auth.token.email.toLowerCase().replace('.', ',')).val() === true))",
+            ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && (($mail === auth.token.email.toLowerCase().replace('.', ',') && !data.exists() && newData.child('role').val() === 'member' && $mail.endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ','))) || (!data.exists() && newData.child('role').val() === 'guest' && root.child('orgs/' + $org + '/members/' + auth.token.email.toLowerCase().replace('.', ',') + '/role').val() === 'member') || ($mail === auth.token.email.toLowerCase().replace('.', ',') && !data.exists() && newData.child('role').val() === 'guest') || (root.child('orgs/' + $org + '/admins/' + auth.token.email.toLowerCase().replace('.', ',')).val() === true))",
             ".validate": "newData.hasChildren(['role', 'at']) && newData.child('at').isNumber() && (newData.child('role').val() === 'member' || newData.child('role').val() === 'guest' || newData.child('role').val() === 'removed') && (!newData.hasChild('by') || (newData.child('by').isString() && newData.child('by').val().length <= 120))"
           }
         },

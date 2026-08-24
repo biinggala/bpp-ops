@@ -226,3 +226,41 @@ export async function claimInvitedOrgs(uid: string, orgIds: string[]): Promise<v
   await update(ref(db, P.userOrgs(uid)), Object.fromEntries(unique.map(oid => [oid, at])))
     .catch(e => console.warn('[tenant] 초대받은 조직을 못 적었습니다', e))
 }
+
+/**
+ * ── 게스트 자리에 스스로 앉습니다 ───────────────────────────────────────────
+ *
+ * 3단계에서 벽이 서면, 명단에 없는 사람은 그 회사 프로젝트를 못 읽습니다.
+ * 그런데 방금 초대 링크로 들어온 외부 협업자는 아직 명단에 없습니다 —
+ * 옆에서 누군가 앱을 켜서 `syncRoster`가 돌아 줘야 적히는데, 그게 5분 뒤일지
+ * 사흘 뒤일지 알 수가 없습니다. 그 사이 그 사람은 **방금 초대받은 프로젝트가
+ * 안 보입니다.** 그건 못 쓰는 앱입니다.
+ *
+ * 그래서 자기 자리는 자기가 앉습니다. 규칙도 허용합니다 — 단, **행이 아예
+ * 없을 때만**입니다.
+ *
+ * 이게 벽을 뚫는 것은 아닙니다. 게스트 자리에 앉아도 프로젝트 멤버가 아니면
+ * 아무것도 안 열립니다. 이 명단이 실제로 하는 일은 두 가지고, 둘 다 그대로
+ * 입니다 —
+ *
+ * 1. **내보내기.** `removed`가 적힌 사람은 도메인이 맞아도, 스스로 앉으려
+ *    해도 막힙니다. 행이 있으니까요.
+ * 2. **명단이 사실이 되는 것.** 누가 이 회사 것을 보고 있는지 한 곳에서
+ *    읽힙니다.
+ *
+ * 나중에 초대가 유일한 문이 되면 이 자가 등록을 끄고 진짜 허가 목록으로
+ * 조일 수 있습니다. 지금은 아직 초대 링크라는 문이 하나 더 있습니다.
+ */
+export async function claimGuestSeats(uid: string, email: string, orgIds: string[]): Promise<void> {
+  const unique = [...new Set(orgIds.filter(Boolean))]
+  if (unique.length === 0) return
+  const at = Date.now()
+  await Promise.all(
+    unique.map(oid =>
+      update(ref(db, P.orgMember(oid, email)), { role: 'guest', at })
+        // 이미 있으면 규칙이 거절합니다. 그게 맞는 동작이라 조용히 넘깁니다.
+        .catch(() => {}),
+    ),
+  )
+  await claimInvitedOrgs(uid, unique)
+}

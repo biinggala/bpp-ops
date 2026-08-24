@@ -13,7 +13,7 @@ import { useOrgStore } from '../store/orgStore'
 import { usePrefsStore } from '../store/prefsStore'
 import { Welcome } from '../components/modals/Welcome'
 import { parseInviteToken, PENDING_TASK_KEY } from '../lib/paths'
-import { claimInvitedOrgs, stampProjects, syncRoster } from '../lib/roster'
+import { claimGuestSeats, claimInvitedOrgs, stampProjects, syncRoster } from '../lib/roster'
 import { useMobile } from '../hooks/useMobile'
 import type { Project } from '../types'
 import { Sidebar } from '../components/layout/Sidebar'
@@ -168,6 +168,26 @@ export function AppPage() {
       projects: projects.map(p => ({ id: p.id, orgId: p.orgId, creatorEmail: p.creatorEmail })),
     })
   }, [orgId, orgDomain, ready, unstamped])
+
+  /**
+   * ── 남의 회사에서는 게스트 자리에 스스로 앉습니다 ─────────────────────────
+   *
+   * 내 프로젝트 중에 **내 도메인 회사가 아닌 곳** 소속이 있으면, 나는 거기서
+   * 외부 협업자입니다. 명단에 없으면 3단계 규칙이 그 프로젝트를 닫아 버리므로,
+   * 방금 초대 링크로 들어온 사람이 자기 프로젝트를 못 보게 됩니다.
+   *
+   * 내 도메인 회사는 **제외합니다.** 거기서는 `syncRoster`가 나를 `member`로
+   * 적습니다. 둘 다 '행이 없을 때만' 쓰기 때문에, 안 걸러 내면 어느 쪽이
+   * 먼저 닿느냐에 따라 우리 직원이 게스트로 적힐 수 있습니다.
+   */
+  const guestOrgs = useMemo(
+    () => [...new Set(projects.map(p => p.orgId).filter((o): o is string => !!o && o !== orgId))].sort().join(' '),
+    [projects, orgId],
+  )
+  useEffect(() => {
+    if (!uid || !email || !ready || !guestOrgs) return
+    void claimGuestSeats(uid, email, guestOrgs.split(' '))
+  }, [uid, email, ready, guestOrgs])
 
   /**
    * ── 초대장에 실려 온 회사 ──────────────────────────────────────────────────
