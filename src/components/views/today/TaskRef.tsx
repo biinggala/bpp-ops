@@ -267,18 +267,6 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
         </span>
       )}
 
-      {/* 시간이 정해졌으면 그것부터. D-day는 '언제까지'고 이건 '언제' —
-          오늘 화면에서 먼저 궁금한 쪽은 뒤엣것입니다. */}
-      {blockAt && (
-        <span style={{
-          flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 6px',
-          borderRadius: 'var(--r1)', background: 'var(--ac-l)', color: 'var(--ac)',
-          fontVariantNumeric: 'tabular-nums',
-        }}>
-          {blockAt}
-        </span>
-      )}
-
       {diff !== null && !done && (
         <span style={{
           flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--r1)',
@@ -286,6 +274,31 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
           color: late ? 'var(--danger)' : 'var(--t3)',
         }}>
           {late ? `D+${Math.abs(diff)}` : diff === 0 ? 'D-Day' : `D-${diff}`}
+        </span>
+      )}
+
+      {/*
+        ── 시간은 맨 오른쪽입니다 ──────────────────────────────────────────
+        전에는 D-day 앞에 뒀습니다. '언제 하는가'가 '언제까지'보다 먼저
+        궁금하니 왼쪽이 맞다고 봤는데, **읽는 방식을 잘못 봤습니다.**
+        이 줄들을 왼쪽부터 한 줄씩 읽는 사람은 없습니다 — 노트를 훑으며
+        오늘의 모양을 보려고 세로로 내려갑니다.
+
+        세로로 훑으려면 x가 같아야 하는데, 소속 칩도 D-day도 폭이 제각각이라
+        앞에 두면 줄마다 다른 자리에 섭니다. ×만 폭이 고정이므로 그 바로
+        왼쪽이 **오른쪽 끝이 맞춰지는 유일한 자리**입니다.
+
+        칠도 걷어냈습니다. --ac-l은 어두운 화면에서 22% 파랑이라 10px 굵은
+        글씨를 얹으면 통짜 블록이 되어, 정작 제목보다 크게 보였습니다.
+        색만으로 충분합니다 — 이 줄에서 파란 것은 이것 하나입니다.
+      */}
+      {blockAt && (
+        <span style={{
+          flexShrink: 0, fontSize: 11, fontWeight: 600,
+          color: 'var(--ac)', fontVariantNumeric: 'tabular-nums',
+          opacity: done ? .5 : 1,
+        }}>
+          {blockAt}
         </span>
       )}
 
