@@ -147,96 +147,73 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
     updateTask(task.id, { status: next, ...(next === '완료' ? { progress: 100 } : {}) })
   }
 
-  return (
-    /**
-     * ── 어디에 있나, 그 다음 무엇인가 ────────────────────────────────────────
-     *
-     * 처음엔 들여쓰고 ↳를 붙였습니다. 그게 **바로 위 줄이 부모**라고 말하고
-     * 있었습니다 — 노트의 줄 순서는 사람이 정하므로 위에 있는 것은 대개
-     * 남남입니다. 없는 관계를 그린 셈입니다.
-     *
-     * 그 다음엔 오른쪽 이름표에 '상위 ○○'를 넣었습니다. 틀리지는 않지만
-     * 한 줄에 상태·제목·상위·프로젝트·D-Day·×가 다 서게 되고, 넘칠 때
-     * 잘리는 건 **제목**입니다. 절대 잘려선 안 되는 그것이요.
-     *
-     * 그래서 제목 위에 작은 빵가루 한 줄을 둡니다. 읽는 순서가 질문의 순서와
-     * 같아지고('어디에' 다음 '무엇을'), 프로젝트와 상위를 한 번에 담으므로
-     * 아래 줄은 오히려 짧아집니다.
-     *
-     * **부모 없는 줄에는 이 줄이 없습니다.** 한 줄이 더 붙는 건 더 할 말이
-     * 있는 줄뿐입니다.
-     */
-    <NodeViewWrapper as="div" contentEditable={false} data-drag-handle>
-      {parent && (
-        <div style={{
-          // 상태 표시(20) + 사이(8). 제목의 첫 글자와 줄이 맞습니다.
-          paddingLeft: 28, marginTop: 2,
-          display: 'flex', alignItems: 'center', gap: 5,
-          fontSize: 11, color: 'var(--t3)', lineHeight: 1.4,
-        }}>
-          {project && (
-            <>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: project.color, flexShrink: 0 }} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
-                {project.name}
-              </span>
-              <span style={{ flexShrink: 0, opacity: .6 }}>›</span>
-            </>
-          )}
-          {milestone && (
-            <>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
-                {milestone.name}
-              </span>
-              <span style={{ flexShrink: 0, opacity: .6 }}>›</span>
-            </>
-          )}
-          <span
-            onClick={() => openTaskDetail(parent.id)}
-            style={{
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              cursor: 'pointer', color: 'var(--t2)', minWidth: 0,
-            }}
-          >
-            {parent.name || '이름 없음'}
-          </span>
-        </div>
-      )}
+  /**
+   * ── 소속은 한 조각, 표시는 하나 ────────────────────────────────────────────
+   *
+   * 세 번 틀리고 네 번째입니다. 앞의 셋이 각각 어디서 틀렸는지 적어 둡니다.
+   *
+   * **들여쓰기 + ↳** — 줄 왼쪽에 붙으니 '바로 위 줄이 부모'라고 말했습니다.
+   * 노트의 줄 순서는 사람이 정하므로 위에 있는 것은 대개 남남입니다.
+   *
+   * **제목 위 빵가루 한 줄** — 두 줄 사이에 놓여서 어느 줄 것인지 알 수
+   * 없었고, 부모가 마침 위 줄이면 같은 글자가 두 번 나왔습니다. 그리고 어떤
+   * 줄은 한 줄, 어떤 줄은 두 줄이 되어 목록의 결이 깨졌습니다.
+   *
+   * 빵가루로 옮긴 이유였던 '제목이 잘린다'는 **폭 문제였고 자리 문제가
+   * 아니었습니다.** 제목만 줄어들 수 있게(minWidth: 0) 두고 뒤쪽 칩은
+   * 안 줄어들게(flexShrink: 0) 두었으니 손실을 제목이 다 먹은 것입니다.
+   * 줄어드는 쪽을 바꾸면 그 자리에서 해결됩니다.
+   *
+   * 그래서 **모든 줄이 한 줄, 같은 모양**입니다:
+   * `[상태] 제목 · [소속] · [D-day] · [×]`
+   *
+   * 다른 건 소속 칸이 무엇을 말하는가 하나뿐이고, 표시는 늘 하나입니다 —
+   * 하위면 ↳, 마일스톤이면 ◇, 그 외에는 ●. 색은 셋 다 프로젝트 색이라
+   * 이름이 무엇으로 바뀌든 '어느 프로젝트'는 색이 계속 말해 줍니다.
+   */
+  const belong = parent
+    ? { mark: '↳', name: parent.name || '이름 없음', go: () => openTaskDetail(parent.id) }
+    : milestone
+    ? { mark: '◇', name: milestone.name, go: undefined }
+    : project
+    ? { mark: '●', name: project.name, go: undefined }
+    : null
 
-    <div style={ROW}>
+  return (
+    <NodeViewWrapper as="div" contentEditable={false} style={ROW} data-drag-handle>
       <StatusPick status={task.status} onPick={setStatus} />
 
       <span
         onClick={() => openTaskDetail(task.id)}
         style={{
-          fontSize: 14, lineHeight: 1.7, cursor: 'pointer', minWidth: 0,
+          fontSize: 14, lineHeight: 1.7, cursor: 'pointer',
+          // 제목이 먼저 자리를 갖고, 남는 만큼을 소속이 씁니다.
+          flex: '1 1 auto', minWidth: 60,
           color: done ? 'var(--t3)' : 'var(--t1)',
           textDecoration: done ? 'line-through' : 'none',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}
       >{task.name || '(이름 없음)'}</span>
 
-      {/*
-        어디 소속인지 한 조각.
-
-        부모가 있으면 **부모 이름**입니다 — 프로젝트는 부모가 이미 말하고
-        있고, 이 줄이 답해야 하는 건 '무엇의 일부인가'입니다. 부모가 없고
-        마일스톤이 있으면 마일스톤, 둘 다 없으면 프로젝트.
-
-        점 색깔은 어느 쪽이든 프로젝트 것입니다. 이름이 무엇으로 바뀌든
-        '어느 프로젝트'는 색이 계속 말해 줍니다.
-      */}
-      {/* 부모가 있으면 위의 빵가루가 이미 다 말했으니 여기는 비워 둡니다.
-          같은 사실을 한 줄에 두 번 적으면 둘 다 흘려보게 됩니다. */}
-      {!parent && (milestone || project) && (
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
-          fontSize: 11, color: 'var(--t3)', maxWidth: 180,
-        }}>
-          {project && <span style={{ width: 6, height: 6, borderRadius: '50%', background: project.color, flexShrink: 0 }} />}
-          {milestone && <span style={{ flexShrink: 0 }}>◇</span>}
+      {belong && (
+        <span
+          onClick={belong.go}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            // 좁아지면 **이쪽이** 줄어듭니다. 제목은 마지막까지 지킵니다.
+            flex: '0 1 auto', minWidth: 0, maxWidth: 200,
+            fontSize: 11, color: 'var(--t3)',
+            cursor: belong.go ? 'pointer' : 'default',
+          }}
+        >
+          <span style={{
+            flexShrink: 0, color: project?.color ?? 'var(--t3)',
+            fontSize: belong.mark === '●' ? 8 : 11, lineHeight: 1,
+          }}>
+            {belong.mark}
+          </span>
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {milestone ? milestone.name : project?.name}
+            {belong.name}
           </span>
         </span>
       )}
@@ -253,7 +230,6 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
 
       {/* 노트에서 빼는 것과 업무를 지우는 건 다른 일입니다. 이건 앞의 것. */}
       <button onClick={() => deleteNode()} title="오늘 목록에서 빼기" style={REMOVE}>×</button>
-    </div>
     </NodeViewWrapper>
   )
 }
