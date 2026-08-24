@@ -3,7 +3,8 @@ import { ref, set as fbSet, onValue, onDisconnect } from 'firebase/database'
 import { db } from '../lib/firebase'
 
 export interface PresenceEntry {
-  memberKey: string   // MemberKey ('YL'|'SJ'|'HC') or uid for guests
+  /** 이 사람의 uid. 예전에는 두 글자 별칭이 섞여 들어왔습니다. */
+  who: string
   name: string        // Google display name
   online: boolean
   lastSeen: number
@@ -13,7 +14,7 @@ export interface PresenceEntry {
 interface PresenceState {
   presences: Record<string, PresenceEntry>  // uid → entry
   myUid: string | null
-  subscribe: (uid: string, memberKey: string, name: string) => () => void
+  subscribe: (uid: string, who: string, name: string) => () => void
   setCurrentTask: (uid: string, taskId: string | null) => void
 }
 
@@ -21,7 +22,7 @@ export const usePresenceStore = create<PresenceState>((set) => ({
   presences: {},
   myUid: null,
 
-  subscribe: (uid, memberKey, name) => {
+  subscribe: (uid, who, name) => {
     set({ myUid: uid })
     const presRef = ref(db, `/presence/${uid}`)
     const connRef = ref(db, '.info/connected')
@@ -29,7 +30,7 @@ export const usePresenceStore = create<PresenceState>((set) => ({
     const unsubConn = onValue(connRef, async (snap) => {
       if (!snap.val()) return
       await onDisconnect(presRef).update({ online: false, lastSeen: Date.now() })
-      await fbSet(presRef, { memberKey, name, online: true, lastSeen: Date.now(), currentTask: null })
+      await fbSet(presRef, { who, name, online: true, lastSeen: Date.now(), currentTask: null })
     })
 
     const allRef = ref(db, '/presence')
@@ -40,7 +41,7 @@ export const usePresenceStore = create<PresenceState>((set) => ({
     return () => {
       unsubConn()
       unsubAll()
-      void fbSet(presRef, { memberKey, name, online: false, lastSeen: Date.now() })
+      void fbSet(presRef, { who, name, online: false, lastSeen: Date.now() })
     }
   },
 

@@ -4,11 +4,8 @@ import { ref, set as fbSet } from 'firebase/database'
 import { auth, db } from '../lib/firebase'
 import { isDesktopShell, signInWithSystemBrowser } from '../lib/desktopAuth'
 import { P } from '../lib/paths'
-import { ALLOWED_EMAILS } from '../types'
-import type { MemberKey } from '../types'
 
 interface AuthState {
-  memberKey: MemberKey | null
   uid: string | null
   email: string | null
   displayName: string | null
@@ -49,18 +46,17 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   signOutUser: async () => {
     await signOut(auth)
-    set({ memberKey: null, uid: null, email: null, displayName: null, photoURL: null })
+    set({ uid: null, email: null, displayName: null, photoURL: null })
   },
 
   subscribe: () => {
     const unsub = onAuthStateChanged(auth, (user) => {
       if (!user) {
-        set({ memberKey: null, uid: null, email: null, displayName: null, photoURL: null, loading: false })
+        set({ uid: null, email: null, displayName: null, photoURL: null, loading: false })
         return
       }
       const email = user.email || ''
-      const memberKey = ALLOWED_EMAILS[email] ?? null
-      set({ memberKey, uid: user.uid, email, displayName: user.displayName, photoURL: user.photoURL, loading: false, error: null })
+      set({ uid: user.uid, email, displayName: user.displayName, photoURL: user.photoURL, loading: false, error: null })
       // Write profile so other users can resolve this person's name
       fbSet(ref(db, P.userProfile(user.uid)), {
         email,

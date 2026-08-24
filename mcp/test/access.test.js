@@ -57,20 +57,20 @@ test('a task with no project can only be assigned to its owner', () => {
   // server, where the Admin SDK is past the database rules.
   assert.equal(readableAssignee(undefined, `${ME}, ${OTHER}`, ME), ME)
   assert.equal(readableAssignee(undefined, OTHER, ME), '')
-  assert.equal(readableAssignee(undefined, 'HC', 'biinggala@crngfriends.com'), 'HC')
 
   // A project task is left alone — that boundary is project membership.
   assert.equal(readableAssignee('p1', `${ME}, ${OTHER}`, ME), `${ME}, ${OTHER}`)
 })
 
-test('legacy member keys resolve to the same person as their email', () => {
-  const HC = 'biinggala@crngfriends.com'
-  assert.deepEqual(assigneeAliases(HC).sort(), ['HC', HC].sort())
+test('an address matches itself whatever its case', () => {
+  const HC = 'someone@bpp.co.kr'
+  assert.deepEqual(assigneeAliases(HC), [HC])
+  assert.deepEqual(assigneeAliases('Someone@BPP.co.kr').sort(), ['Someone@BPP.co.kr', HC].sort())
 
-  // Assigned by legacy key, queried by email — must still match.
-  assert.equal(isAssignedTo({ id: 't6', assignee: 'HC', name: 'z' }, HC), true)
+  // 대소문자만 다른 같은 주소는 같은 사람입니다.
   assert.equal(isAssignedTo({ id: 't7', assignee: HC, name: 'z' }, HC), true)
-  assert.equal(isAssignedTo({ id: 't8', assignee: 'YL', name: 'z' }, HC), false)
+  assert.equal(isAssignedTo({ id: 't7b', assignee: 'Someone@BPP.co.kr', name: 'z' }, HC), true)
+  assert.equal(isAssignedTo({ id: 't8', assignee: 'other@bpp.co.kr', name: 'z' }, HC), false)
 })
 
 test('multi-assignee fields match on any member', () => {

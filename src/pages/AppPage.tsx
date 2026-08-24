@@ -79,7 +79,7 @@ export function AppPage() {
   const openCommandPalette = useUiStore(s => s.openCommandPalette)
   const isTaskModalOpen = useUiStore(s => s.isTaskModalOpen)
   const undo = useTaskStore(s => s.undo)
-  const { uid, memberKey, displayName, email } = useAuthStore(useShallow(s => ({ uid: s.uid, memberKey: s.memberKey, displayName: s.displayName, email: s.email })))
+  const { uid, displayName, email } = useAuthStore(useShallow(s => ({ uid: s.uid, displayName: s.displayName, email: s.email })))
   const detailTaskId = useUiStore(s => s.detailTaskId)
   const subscribePresence = usePresenceStore(s => s.subscribe)
 
@@ -106,9 +106,8 @@ export function AppPage() {
 
   useEffect(() => {
     if (!uid) return
-    const presenceKey = memberKey ?? uid
     const name = displayName ?? email?.split('@')[0] ?? uid
-    const unsub = subscribePresence(uid, presenceKey, name)
+    const unsub = subscribePresence(uid, uid, name)
     return unsub
   }, [uid])
 

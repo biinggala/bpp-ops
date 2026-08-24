@@ -180,8 +180,8 @@ function bucketTasks(
     for (const t of tasks) {
       const people = parseAssignees(t.assignee)
       if (!people.length) { bucket('as:__none__', '담당자 없음').tasks.push(t); continue }
-      // Legacy MemberKey and canonical email are the same person; keying by the
-      // resolved email keeps them in one bucket instead of two.
+      // 대소문자만 다른 같은 주소가 두 칸으로 갈라지지 않게, 정규화한 값으로
+      // 묶습니다.
       for (const person of people) {
         const em = assigneeKeyToEmail(person)
         bucket(`as:${em}`, nameOf(em)).tasks.push(t)

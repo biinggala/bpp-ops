@@ -526,7 +526,6 @@ function PromotePicker({ editor, item, date, x, y, onClose }: {
   const addTask = useTaskStore(s => s.addTask)
   const tasks = useTaskStore(s => s.tasks)
   const email = useAuthStore(s => s.email)
-  const memberKey = useAuthStore(s => s.memberKey)
   const projects = useProjectStore(s => s.projects)
   const uiProjectId = useUiStore(s => s.projectId)
 
@@ -555,10 +554,10 @@ function PromotePicker({ editor, item, date, x, y, onClose }: {
   const parents = useMemo(() => {
     const q = query.trim().toLowerCase()
     return tasks
-      .filter(t => !t.parentId && t.status !== '완료' && isAssignedTo(t.assignee, memberKey, email))
+      .filter(t => !t.parentId && t.status !== '완료' && isAssignedTo(t.assignee, email))
       .filter(t => !q || t.name.toLowerCase().includes(q))
       .slice(0, 8)
-  }, [tasks, query, memberKey, email])
+  }, [tasks, query, email])
 
   /**
    * 만들고, 그 줄을 업무 참조로 갈아 끼웁니다.

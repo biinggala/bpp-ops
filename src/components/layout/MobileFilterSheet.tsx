@@ -7,8 +7,8 @@ import { useAuthStore } from '../../store/authStore'
 import { useScopedTasks } from '../../hooks/useScopedTasks'
 import { authorizedEmails, isAuthorizedAssignee, assigneeKeyToEmail, parseAssignees } from '../../lib/utils'
 import { haptic } from '../../lib/haptics'
-import { MEMBERS, STATUS_LIST, STATUS_COLORS } from '../../types'
-import type { MemberKey, Status } from '../../types'
+import { STATUS_LIST, STATUS_COLORS } from '../../types'
+import type { Status } from '../../types'
 import { useShallow } from 'zustand/react/shallow'
 
 /**
@@ -70,12 +70,8 @@ export function MobileFilterSheet({ onClose }: { onClose: () => void }) {
       if (isAuthorizedAssignee(k, authorized)) emails.add(assigneeKeyToEmail(k))
     }))
     if (projectId) activeProjects.find(p => p.id === projectId)?.memberEmails?.forEach(e => emails.add(e.toLowerCase()))
-    const byEmail = new Map<string, MemberKey>()
-    ;(Object.keys(MEMBERS) as MemberKey[]).forEach(k => byEmail.set(MEMBERS[k].email.toLowerCase(), k))
-    return Array.from(emails).sort().map(em => {
-      const mk = byEmail.get(em)
-      return { value: em, label: mk ? MEMBERS[mk].n : getNameByEmail(em) }
-    })
+    // 이름은 그 사람이 로그인할 때 스스로 써 둔 프로필에서 옵니다.
+    return Array.from(emails).sort().map(em => ({ value: em, label: getNameByEmail(em) }))
   }, [scoped, activeProjects, projectId, email, getNameByEmail])
 
   // The same rules the desktop bar follows: a filter that cannot narrow

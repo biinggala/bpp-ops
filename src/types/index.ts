@@ -1,7 +1,6 @@
 export type TaskType = '상위' | '세부'
 export type Status = '진행중' | '대기' | '검토중' | '완료'
 export type Priority = '높음' | '중간' | '낮음'
-export type MemberKey = 'YL' | 'SJ' | 'HC'
 export type ViewType = 't' | 'b' | 'c' | 'g' | 's' | 'f'
 
 // Category는 이제 동적 — Space의 name 값
@@ -120,25 +119,6 @@ export interface TaskLink {
    * what they actually meant.
    */
   note?: string
-}
-
-export interface Member {
-  key: MemberKey
-  n: string
-  email: string
-  grad: string
-}
-
-export const MEMBERS: Record<MemberKey, Member> = {
-  YL: { key: 'YL', n: '이연주', email: 'yeonju@crngfriends.com', grad: 'linear-gradient(135deg,#f093fb,#f5576c)' },
-  SJ: { key: 'SJ', n: '정세운', email: 'cotta@crngfriends.com',  grad: 'linear-gradient(135deg,#4facfe,#00f2fe)' },
-  HC: { key: 'HC', n: '최희건', email: 'biinggala@crngfriends.com', grad: 'linear-gradient(135deg,#43e97b,#38f9d7)' },
-}
-
-export const ALLOWED_EMAILS: Record<string, MemberKey> = {
-  'yeonju@crngfriends.com': 'YL',
-  'cotta@crngfriends.com': 'SJ',
-  'biinggala@crngfriends.com': 'HC',
 }
 
 /**

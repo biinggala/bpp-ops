@@ -378,15 +378,15 @@ export function TodayView() {
 /** 오늘 아침에 눈에 들어와야 하는 순서: 지난 것, 가까운 것, 날짜 없는 것. */
 function useMine(): Task[] {
   const tasks = useTaskStore(s => s.tasks)
-  const { memberKey, email } = useAuthStore(useShallow(s => ({ memberKey: s.memberKey, email: s.email })))
+  const email = useAuthStore(s => s.email)
   return useMemo(() => {
-    const mine = tasks.filter(t => t.status !== '완료' && isAssignedTo(t.assignee, memberKey, email))
+    const mine = tasks.filter(t => t.status !== '완료' && isAssignedTo(t.assignee, email))
     return mine.sort((a, b) => {
       if (!a.due !== !b.due) return a.due ? -1 : 1
       if (a.due && b.due && a.due !== b.due) return a.due.localeCompare(b.due)
       return a.name.localeCompare(b.name)
     })
-  }, [tasks, memberKey, email])
+  }, [tasks, email])
 }
 
 /**

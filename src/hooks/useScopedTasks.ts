@@ -21,14 +21,13 @@ import { useShallow } from 'zustand/react/shallow'
 export function useScopedTasks() {
   const accessible = useAccessibleTasks()
   const { space, projectId, myTasksOnly } = useUiStore(useShallow(s => ({ space: s.space, projectId: s.projectId, myTasksOnly: s.myTasksOnly })))
-  const memberKey = useAuthStore(s => s.memberKey)
   const email = useAuthStore(s => s.email)
 
   return useMemo(() => {
     let result = accessible
     if (space) result = result.filter(t => t.cat === space)
     if (projectId) result = result.filter(t => t.projectId === projectId)
-    if (myTasksOnly) result = result.filter(t => isAssignedTo(t.assignee, memberKey, email))
+    if (myTasksOnly) result = result.filter(t => isAssignedTo(t.assignee, email))
     return result
-  }, [accessible, space, projectId, myTasksOnly, memberKey, email])
+  }, [accessible, space, projectId, myTasksOnly, email])
 }

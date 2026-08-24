@@ -9,7 +9,7 @@
 // Every tool therefore resolves data through this module, scoped to the calling
 // operator's email, matching the membership the rules apply to the app.
 
-import { LEGACY_MEMBERS, type Project, type Task } from './types.js'
+import { type Project, type Task } from './types.js'
 
 export function canAccessProject(p: Project, email: string): boolean {
   const e = email.toLowerCase()
@@ -19,23 +19,24 @@ export function canAccessProject(p: Project, email: string): boolean {
   return false
 }
 
-/** Resolves an assignee token (email or legacy key like 'HC') to a lowercased email. */
+/**
+ * 담당자 토큰을 정규화합니다. 소문자로 내리는 것이 전부입니다.
+ *
+ * 두 글자 별칭('HC')을 이메일로 바꾸는 표가 여기 있었습니다. 회사가 도메인을
+ * 옮긴 뒤로 그 주소를 쓰는 사람이 없어서 표는 아무와도 안 맞았고, 앱 쪽과
+ * 같이 지웠습니다.
+ */
 export function assigneeKeyToEmail(key: string): string {
-  return (LEGACY_MEMBERS[key] ?? key).toLowerCase()
+  return key.toLowerCase().trim()
 }
 
 export function parseAssignees(assignee: string | undefined): string[] {
   return assignee ? assignee.split(',').map(s => s.trim()).filter(Boolean) : []
 }
 
-/** Every token that refers to the same person — email plus any legacy key. */
+/** 같은 사람을 가리키는 모든 토큰. 지금은 원래 글자와 소문자 둘뿐입니다. */
 export function assigneeAliases(email: string): string[] {
-  const target = email.toLowerCase()
-  const out = new Set<string>([target])
-  for (const [key, mail] of Object.entries(LEGACY_MEMBERS)) {
-    if (mail.toLowerCase() === target) out.add(key)
-  }
-  return [...out]
+  return [...new Set([email, email.toLowerCase().trim()])]
 }
 
 export function isAssignedTo(task: Task, email: string): boolean {

@@ -1,6 +1,4 @@
 import { useUserProfileStore } from '../../store/userProfileStore'
-import { MEMBERS } from '../../types'
-import type { MemberKey } from '../../types'
 import { parseAssignees } from '../../lib/utils'
 
 const GRAD_PALETTE = [
@@ -14,17 +12,25 @@ const GRAD_PALETTE = [
   'linear-gradient(135deg,#96fbc4,#f9f586)',
 ]
 
-function gradForKey(key: string) {
+/** 주소에서 계산한 색. 아무도 고르지 않았지만 같은 사람은 늘 같은 색입니다. */
+export function gradForKey(key: string) {
   let h = 0
   for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) & 0xffff
   return GRAD_PALETTE[h % GRAD_PALETTE.length]
 }
 
-// Resolve a single assignee key (MemberKey or email) → { initial, grad, name }
+/**
+ * 담당자 한 명을 그리는 데 필요한 것 → { initial, grad, name, photoURL }.
+ *
+ * 이름과 사진은 그 사람이 로그인할 때 스스로 써 둔 프로필에서 옵니다. 색은
+ * 주소에서 계산합니다 — 아무도 고르지 않았지만 같은 사람은 늘 같은 색입니다.
+ *
+ * 예전에는 여기 직원 세 명의 이름과 색이 표로 박혀 있었습니다. 회사가
+ * 도메인을 옮긴 뒤로 아무와도 안 맞았고, 화면에는 이미 프로필 쪽 답이
+ * 나오고 있었습니다.
+ */
 export function useAssigneeDisplay(key: string) {
   const getProfileByEmail = useUserProfileStore(s => s.getProfileByEmail)
-  const legacy = MEMBERS[key as MemberKey]
-  if (legacy) return { initial: legacy.key[0], grad: legacy.grad, name: legacy.n, photoURL: null }
   const profile = getProfileByEmail(key)
   const name = profile?.name ?? (key.includes('@') ? key.split('@')[0] : key)
   return { initial: name[0]?.toUpperCase() ?? '?', grad: gradForKey(key), name, photoURL: profile?.photoURL ?? null }
@@ -62,7 +68,3 @@ export function AssigneeGroup({ assignee, size = 22 }: { assignee: string; size?
   )
 }
 
-// Legacy named export kept for backward compat
-export function Avatar({ memberKey, size = 22 }: { memberKey: MemberKey; size?: number }) {
-  return <AssigneeAvatar assigneeKey={memberKey} size={size} />
-}

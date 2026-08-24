@@ -69,12 +69,12 @@ export function setFileWatchEnabled(on: boolean): void {
 
 /** 지켜볼 파일: 내가 담당인 안 끝난 업무에 붙은 드라이브 파일. */
 function watched(): Map<string, Task> {
-  const { memberKey, email } = useAuthStore.getState()
+  const { email } = useAuthStore.getState()
   const out = new Map<string, Task>()
   for (const task of useTaskStore.getState().tasks) {
     if (task.status === '완료') continue
     if (!task.links?.length) continue
-    if (!isAssignedTo(task.assignee ?? '', memberKey, email)) continue
+    if (!isAssignedTo(task.assignee ?? '', email)) continue
     for (const link of task.links) {
       // 같은 파일이 두 업무에 붙어 있으면 먼저 만난 쪽으로 갑니다. 줄을
       // 두 개 남기는 것보다 낫습니다 — 바뀐 건 한 번이니까요.

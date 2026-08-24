@@ -11,6 +11,7 @@ import { useUserProfileStore } from '../../store/userProfileStore'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import { Icon, type IconName } from '../shared/Icon'
+import { gradForKey } from '../shared/Avatar'
 import { GetDesktopApp } from '../shared/GetDesktopApp'
 import { Tip, CMD } from '../shared/Tip'
 import { WidthHandle } from '../shared/WidthHandle'
@@ -19,9 +20,8 @@ import { useNoticeInbox, NoticeList } from './Notices'
 import { useOrgStore, pendingJoinCount } from '../../store/orgStore'
 import { useTodayCount } from '../views/today/count'
 import { useNoticeToast } from './NoticeToast'
-import { MEMBERS } from '../../types'
 import { buildInviteToken } from '../../lib/paths'
-import type { MemberKey, Project } from '../../types'
+import type { Project } from '../../types'
 import { useShallow } from 'zustand/react/shallow'
 
 /** The topbar's row height. The two headers' bottom rules are one line. */
@@ -83,7 +83,7 @@ export function Sidebar() {
   const tasks = useTaskStore(s => s.tasks)
   const { projects, addProject, updateProject, deleteProject, addMember, removeMember } = useProjectStore(useShallow(s => ({ projects: s.projects, addProject: s.addProject, updateProject: s.updateProject, deleteProject: s.deleteProject, addMember: s.addMember, removeMember: s.removeMember })))
   const deleteMilestonesForProject = useMilestoneStore(s => s.deleteMilestonesForProject)
-  const { memberKey, displayName, email, photoURL, signOutUser } = useAuthStore(useShallow(s => ({ memberKey: s.memberKey, displayName: s.displayName, email: s.email, photoURL: s.photoURL, signOutUser: s.signOutUser })))
+  const { displayName, email, photoURL, signOutUser } = useAuthStore(useShallow(s => ({ displayName: s.displayName, email: s.email, photoURL: s.photoURL, signOutUser: s.signOutUser })))
 
   // Project state
   const [addingProject, setAddingProject] = useState(false)
@@ -190,8 +190,8 @@ export function Sidebar() {
   // the ones already finished. A count of everything ever assigned answers no
   // question anyone asks of a sidebar.
   const myOpenCount = useMemo(
-    () => activeTasks.filter(t => t.status !== '완료' && isAssignedTo(t.assignee, memberKey, email)).length,
-    [activeTasks, memberKey, email],
+    () => activeTasks.filter(t => t.status !== '완료' && isAssignedTo(t.assignee, email)).length,
+    [activeTasks, email],
   )
 
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
@@ -308,8 +308,7 @@ export function Sidebar() {
     return { days: Math.abs(diff), overdue: diff < 0 }
   }
 
-  const member = memberKey ? MEMBERS[memberKey as MemberKey] : null
-  const userName = member?.n ?? displayName ?? null
+  const userName = displayName ?? null
   const presences = usePresenceStore(s => s.presences)
 
   const accessibleProjects = projects
@@ -449,7 +448,7 @@ export function Sidebar() {
           <div
             onClick={() => setProfileOpen(o => !o)}
             title="계정 정보"
-            style={{ width: 26, height: 26, borderRadius: 6, background: member?.grad ?? 'var(--ac)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0, cursor: 'pointer', overflow: 'hidden', outline: profileOpen ? '2px solid var(--ac)' : 'none', outlineOffset: 1 }}
+            style={{ width: 26, height: 26, borderRadius: 6, background: 'var(--ac)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0, cursor: 'pointer', overflow: 'hidden', outline: profileOpen ? '2px solid var(--ac)' : 'none', outlineOffset: 1 }}
           >
             {photoURL
               ? <img src={photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -517,7 +516,7 @@ export function Sidebar() {
             }}>
               {/* Avatar + name */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 8, background: member?.grad ?? 'var(--ac)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: '#fff', flexShrink: 0, overflow: 'hidden' }}>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--ac)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: '#fff', flexShrink: 0, overflow: 'hidden' }}>
                   {photoURL
                     ? <img src={photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     : (userName?.[0]?.toUpperCase() ?? 'W')
@@ -826,11 +825,10 @@ export function Sidebar() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {onlineUsers.map(p => {
-                const m = MEMBERS[p.memberKey as MemberKey]
-                const avatarGrad = m?.grad ?? 'linear-gradient(135deg,#667eea,#764ba2)'
+                const avatarGrad = gradForKey(p.who)
                 const name = p.name
                 return (
-                  <div key={p.memberKey} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div key={p.who} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <div style={{ position: 'relative', flexShrink: 0 }}>
                       <div style={{ width: 22, height: 22, borderRadius: '50%', background: avatarGrad, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff' }}>
                         {name[0]?.toUpperCase() ?? '?'}

@@ -1070,7 +1070,7 @@ export function TaskDetailModal() {
               <div style={{ display: 'flex' }}>
                 {viewers.map((v, i) => (
                   <div key={i} title={`${v.name}님이 보고 있어요`} style={{ marginLeft: i === 0 ? 0 : -6 }}>
-                    <AssigneeAvatar assigneeKey={v.memberKey} size={26} />
+                    <AssigneeAvatar assigneeKey={v.who} size={26} />
                   </div>
                 ))}
               </div>

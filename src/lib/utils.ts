@@ -1,6 +1,4 @@
 import type { Project } from '../types'
-import { MEMBERS } from '../types'
-import type { MemberKey } from '../types'
 
 // Central project access-check used everywhere.
 // Access is granted ONLY if the user's email is explicitly listed as a member
@@ -14,11 +12,19 @@ export function canAccessProject(p: Project, userEmail: string | null | undefine
   return false
 }
 
-// Resolve an assignee token (a raw email, or a legacy MemberKey like 'HC') to
-// its canonical lowercased email, so authorization checks are alias-agnostic.
+/**
+ * 담당자 토큰을 정규화합니다. 지금은 소문자로 내리는 것이 전부입니다.
+ *
+ * 예전에는 'HC' 같은 두 글자 별칭을 이메일로 바꾸는 표가 여기 있었습니다.
+ * 회사가 도메인을 옮기면서 그 표의 주소를 쓰는 사람이 아무도 안 남았고,
+ * 그때부터 이 함수는 소문자 변환만 하고 있었습니다. 표는 지웠습니다 —
+ * 남은 건 직원 세 명의 실명과 옛 주소가 담긴 화면 코드였습니다.
+ *
+ * 함수는 남깁니다. 담당자 값은 어디서 왔든 여기를 지나야 하고, 언젠가 다시
+ * 정규화할 것이 생기면 들어올 자리가 이미 있는 편이 낫습니다.
+ */
 export function assigneeKeyToEmail(key: string): string {
-  const legacy = MEMBERS[key as MemberKey]
-  return (legacy?.email ?? key).toLowerCase()
+  return key.toLowerCase().trim()
 }
 
 // The set of emails (lowercased) whose data may be surfaced to the current user:
@@ -41,16 +47,15 @@ export function isAuthorizedAssignee(key: string, authorized: Set<string>): bool
   return authorized.has(assigneeKeyToEmail(key))
 }
 
-// All tokens that refer to the same person as `key` — the canonical email plus
-// any legacy MemberKey mapping to it. Used so a single selected assignee filter
-// matches tasks whether they were assigned by email or by legacy key.
+/**
+ * 같은 사람을 가리키는 모든 토큰. 지금은 원래 글자와 소문자 둘뿐입니다.
+ *
+ * 별칭 표가 있던 시절의 흔적입니다. 부르는 곳들이 '한 사람 = 여러 토큰'을
+ * 전제하고 있어서 모양은 남겨 둡니다 — 대문자로 저장된 옛 주소가 아직
+ * 있을 수 있고, 그건 이 함수가 계속 맞춰 줍니다.
+ */
 export function assigneeAliases(key: string): string[] {
-  const email = assigneeKeyToEmail(key)
-  const out = new Set<string>([key, email])
-  for (const m of Object.values(MEMBERS)) {
-    if (m.email.toLowerCase() === email) { out.add(m.key); out.add(m.email.toLowerCase()) }
-  }
-  return Array.from(out)
+  return Array.from(new Set([key, assigneeKeyToEmail(key)]))
 }
 
 /**
@@ -211,9 +216,9 @@ export function parseAssignees(assignee: string): string[] {
  *
  * One definition, used by both the 내 할 일 view and the sidebar's count of it.
  * They used to disagree: the sidebar compared the whole assignee string for
- * equality, so any task with two assignees ("a,b") never matched, and anyone
- * without a legacy MemberKey counted zero — while the view matched on substring
- * and by email. The badge and the list were answering different questions.
+ * equality, so any task with two assignees ("a,b") never matched — while the
+ * view matched on substring and by email. The badge and the list were
+ * answering different questions.
  */
 /** 오늘로부터 며칠. 음수는 지났다는 뜻입니다. */
 export function daysFrom(dateStr: string, base: Date = new Date()): number {
@@ -223,13 +228,10 @@ export function daysFrom(dateStr: string, base: Date = new Date()): number {
 
 export function isAssignedTo(
   assignee: string,
-  memberKey: string | null | undefined,
   email: string | null | undefined,
 ): boolean {
-  if (!assignee) return false
-  if (memberKey && assignee.includes(memberKey)) return true
-  if (email && assignee.toLowerCase().includes(email.toLowerCase())) return true
-  return false
+  if (!assignee || !email) return false
+  return assignee.toLowerCase().includes(email.toLowerCase())
 }
 
 const STORAGE_KEY = 'cringe_v9'

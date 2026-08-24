@@ -6,8 +6,8 @@ import { useProjectStore } from '../../../store/projectStore'
 import { useAuthStore } from '../../../store/authStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useMobile } from '../../../hooks/useMobile'
-import { MEMBERS, getCatColor } from '../../../types'
-import type { MemberKey, Task } from '../../../types'
+import { getCatColor } from '../../../types'
+import type { Task } from '../../../types'
 
 const GRAD_PALETTE = [
   'linear-gradient(135deg,#f093fb,#f5576c)',
@@ -81,23 +81,13 @@ export function StatsView() {
       .sort((a, b) => b.count - a.count)
   }, [tasks])
 
-  const memberByEmail = useMemo(() => {
-    const m = new Map<string, (typeof MEMBERS)[MemberKey]>()
-    Object.values(MEMBERS).forEach(mem => m.set(mem.email.toLowerCase(), mem))
-    return m
-  }, [])
-
   const projectById = useMemo(() => {
     const m = new Map<string, typeof projects[number]>()
     projects.forEach(p => m.set(p.id, p))
     return m
   }, [projects])
 
-  const nameOf = (key: string): string => {
-    const legacy = MEMBERS[key as MemberKey]
-    if (legacy) return legacy.n
-    return getNameByEmail(assigneeKeyToEmail(key))
-  }
+  const nameOf = (key: string): string => getNameByEmail(assigneeKeyToEmail(key))
 
   // Participants — STRICTLY per-project: a person appears only if assigned to a
   // task in a project they belong to. Members of other projects never leak in;
@@ -117,20 +107,15 @@ export function StatsView() {
       })
     })
     return Array.from(emails).map(em => {
-      const aliases = [em]
-      const mem = memberByEmail.get(em)
-      if (mem) aliases.push(mem.key)
-      const myTasks = tasks.filter(t => {
-        const toks = parseAssignees(t.assignee)
-        return aliases.some(a => toks.includes(a))
-      })
+      const myTasks = tasks.filter(t =>
+        parseAssignees(t.assignee).some(tok => assigneeKeyToEmail(tok) === em))
       const prog = myTasks.length
         ? Math.round(myTasks.reduce((s, t) => s + t.progress, 0) / myTasks.length)
         : 0
       return {
         email: em,
-        grad: mem?.grad ?? gradForKey(em),
-        name: mem?.n ?? getNameByEmail(em),
+        grad: gradForKey(em),
+        name: getNameByEmail(em),
         count: myTasks.length,
         progress: prog,
         inProgress: myTasks.filter(t => t.status === '진행중').length,
@@ -138,7 +123,7 @@ export function StatsView() {
         overdue: myTasks.filter(t => t.due && t.status !== '완료' && new Date(t.due) < today).length,
       }
     }).sort((a, b) => b.count - a.count)
-  }, [tasks, projectById, selfEmail, memberByEmail, getNameByEmail, today])
+  }, [tasks, projectById, selfEmail, getNameByEmail, today])
 
   const goToAssignee = (em: string) => { setFilters({ assignees: [em] }); setView('t') }
 

@@ -8,8 +8,8 @@ import { useScopedTasks } from '../../hooks/useScopedTasks'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import { NavIcon } from './NavIcons'
-import { MEMBERS, STATUS_COLORS } from '../../types'
-import type { ViewType, Status, MemberKey } from '../../types'
+import { STATUS_COLORS } from '../../types'
+import type { ViewType, Status } from '../../types'
 import { STATUS_LIST } from '../../types'
 import { Icon } from '../shared/Icon'
 import { useShallow } from 'zustand/react/shallow'
@@ -97,9 +97,8 @@ export function ViewBar({ filtersOnly = false }: { filtersOnly?: boolean }) {
     return Array.from(s).sort()
   }, [scopedTasks])
 
-  // Assignee options — restricted to participants with project access. Keyed by
-  // canonical email so each person appears once even when some tasks use their
-  // legacy MemberKey.
+  // Assignee options — restricted to participants with project access, keyed by
+  // canonical email so each person appears once.
   const allAssigneeOptions = React.useMemo(() => {
     const authorized = authorizedEmails(accessibleProjects, email)
     const emails = new Set<string>()
@@ -113,12 +112,8 @@ export function ViewBar({ filtersOnly = false }: { filtersOnly?: boolean }) {
     if (projectId) {
       projects.find(p => p.id === projectId)?.memberEmails?.forEach(e => emails.add(e.toLowerCase()))
     }
-    const byEmail = new Map<string, MemberKey>()
-    ;(Object.keys(MEMBERS) as MemberKey[]).forEach(k => byEmail.set(MEMBERS[k].email.toLowerCase(), k))
-    return Array.from(emails).sort().map(em => {
-      const mk = byEmail.get(em)
-      return { value: em, label: mk ? MEMBERS[mk].n : getNameByEmail(em) }
-    })
+    // 이름은 그 사람이 로그인할 때 스스로 써 둔 프로필에서 옵니다.
+    return Array.from(emails).sort().map(em => ({ value: em, label: getNameByEmail(em) }))
   }, [scopedTasks, accessibleProjects, projects, projectId, email, getNameByEmail])
 
   const allProjectOptions = React.useMemo(() =>

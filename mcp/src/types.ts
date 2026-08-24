@@ -70,10 +70,3 @@ export interface Milestone {
 
 export const STATUSES: Status[] = ['진행중', '대기', '검토중', '완료']
 export const PRIORITIES: Priority[] = ['높음', '중간', '낮음']
-
-/** Legacy short keys still present in older tasks' `assignee` field. */
-export const LEGACY_MEMBERS: Record<string, string> = {
-  YL: 'yeonju@crngfriends.com',
-  SJ: 'cotta@crngfriends.com',
-  HC: 'biinggala@crngfriends.com',
-}
