@@ -6,7 +6,7 @@ import { P } from '../lib/paths'
 import { PROJECT_PALETTE } from '../types'
 import { useAuthStore } from './authStore'
 import { useOrgStore } from './orgStore'
-import { roleForDomain } from '../lib/roster'
+import { claimGuestSeats, roleForDomain } from '../lib/roster'
 import { useUserProfileStore } from './userProfileStore'
 import type { Project } from '../types'
 
@@ -39,7 +39,7 @@ interface ProjectState {
   deleteProject: (id: string) => void
   addMember: (projectId: string, email: string) => void
   removeMember: (projectId: string, email: string) => void
-  joinProject: (projectId: string, inviteCode: string) => Promise<boolean>
+  joinProject: (projectId: string, inviteCode: string, orgId?: string) => Promise<boolean>
   applyRemote: (projects: Project[]) => void
   applyInvites: (invites: Record<string, InviteEntry>) => void
 }
@@ -180,17 +180,24 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     fbUpdate(ref(db), payload).catch(e => console.warn('[member remove]', e))
   },
 
-  joinProject: async (projectId, inviteCode) => {
+  joinProject: async (projectId, inviteCode, orgId) => {
     const { uid, email } = useAuthStore.getState()
     if (!uid) return false
     try {
       // Membership first: until this lands the caller cannot touch anything else
       // under the project, so it cannot be folded into one atomic update.
       await fbSet(ref(db, P.projectMember(projectId, uid)), inviteCode)
-      await fbSet(ref(db, P.userProject(uid, projectId)), true)
+      // 링크가 회사를 말해 줬으면 그걸 적습니다 — 예비 열쇠(syncStore 참고).
+      // 안 말해 줬으면 예전처럼 true고, 프로젝트를 읽는 순간 채워집니다.
+      await fbSet(ref(db, P.userProject(uid, projectId)), orgId ?? true)
     } catch {
       return false   // wrong code, or the project is gone
     }
+
+    // 조직 명단에 내 자리를 앉힙니다. **프로젝트를 읽기 전에** 해야 합니다 —
+    // 명단에 없으면 그 프로젝트가 안 열리고, 안 열리면 소속도 못 읽습니다.
+    // 이미 명단에 있으면 규칙이 거절하고, 그게 맞는 동작입니다.
+    if (orgId && email) await claimGuestSeats(uid, lower(email), [orgId])
 
     if (email) {
       const normalized = lower(email)

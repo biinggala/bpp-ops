@@ -11,7 +11,7 @@
 // components see exactly the shapes they saw before.
 
 import { create } from 'zustand'
-import { ref, onValue, off, type Unsubscribe } from 'firebase/database'
+import { ref, onValue, off, set as fbSet, type Unsubscribe } from 'firebase/database'
 import { db } from '../lib/firebase'
 import { P } from '../lib/paths'
 import { useProjectStore } from './projectStore'
@@ -32,6 +32,22 @@ interface SyncState {
   /** uid → invite code, per project. Needed to remove a member by address. */
   membersByProject: Record<string, Record<string, string>>
   /**
+   * ── 예비 열쇠 ──────────────────────────────────────────────────────────────
+   *
+   * 프로젝트 id → 그 프로젝트가 속한 회사. **내 색인에서 읽습니다**, 프로젝트
+   * 자체가 아니라.
+   *
+   * 소속은 원래 `projects/{pid}/meta/orgId`에 적혀 있는데, 조직 명단에 없는
+   * 사람에게는 그 프로젝트가 닫힙니다. 그러면 자기가 어느 회사 것을 보려다
+   * 막혔는지도 못 읽고, 못 읽으니 명단에 자기 자리를 앉힐 수도 없습니다 —
+   * 교착입니다.
+   *
+   * 그래서 읽을 수 있는 동안 미리 한 벌을 **내 색인**(`userIndex`)에 적어
+   * 둡니다. 그 자리는 나만 읽고 나만 쓰므로 어떤 벽에도 안 막힙니다. 문이
+   * 잠기기 전에 열쇠를 손에 쥐여 두는 셈입니다.
+   */
+  orgByProject: Record<string, string>
+  /**
    * 첫 그림이 다 도착했는가.
    *
    * 예전엔 프로젝트 **목록**이 오는 순간 참이 됐습니다. 목록은 이름표 몇 개라
@@ -50,8 +66,9 @@ interface SyncState {
 const values = <T,>(record: Record<string, T> | undefined): T[] =>
   record ? Object.values(record).filter(Boolean) : []
 
-export const useSyncStore = create<SyncState>((set) => ({
+export const useSyncStore = create<SyncState>((set, get) => ({
   membersByProject: {},
+  orgByProject: {},
   ready: false,
 
   subscribe: (uid, email) => {
@@ -137,6 +154,12 @@ export const useSyncStore = create<SyncState>((set) => ({
 
       for (const [pid, node] of nodes) {
         if (!node.meta) continue          // still loading, or the project is gone
+        // 예비 열쇠. 지금은 읽히니까 지금 적어 둡니다 — 못 읽게 된 뒤에는
+        // 적을 방법이 없습니다. 이미 같은 값이면 아무 일도 안 합니다.
+        const orgId = (node.meta as { orgId?: string }).orgId
+        if (orgId && get().orgByProject[pid] !== orgId) {
+          fbSet(ref(db, P.userProject(uid, pid)), orgId).catch(() => {})
+        }
 
         let cut = shaped.get(pid)
         if (!cut || cut.node !== node) {
@@ -212,7 +235,14 @@ export const useSyncStore = create<SyncState>((set) => ({
 
     const indexRef = ref(db, P.userProjects(uid))
     const indexHandler = onValue(indexRef, snap => {
-      const wanted = new Set(Object.keys(snap.val() ?? {}))
+      const raw = (snap.val() ?? {}) as Record<string, unknown>
+      // 값은 오랫동안 true였습니다. 이제 아는 프로젝트는 회사 id를 담습니다.
+      const orgByProject: Record<string, string> = {}
+      for (const [pid, value] of Object.entries(raw)) {
+        if (typeof value === 'string' && value) orgByProject[pid] = value
+      }
+      set({ orgByProject })
+      const wanted = new Set(Object.keys(raw))
       for (const pid of wanted) watchProject(pid)
       for (const [pid, stop] of projectListeners) {
         if (wanted.has(pid)) continue

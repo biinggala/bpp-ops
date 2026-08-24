@@ -194,14 +194,31 @@ export const P = {
  * project list at all, so the link has to say which project it is for; the code
  * is still what the rules check before letting someone in.
  */
-export function buildInviteToken(projectId: string, inviteCode: string): string {
-  return `${projectId}-${inviteCode}`
+export function buildInviteToken(projectId: string, inviteCode: string, orgId?: string): string {
+  const base = `${projectId}-${inviteCode}`
+  return orgId ? `${base}~${orgId}` : base
 }
 
-export function parseInviteToken(token: string): { projectId: string; inviteCode: string } | null {
-  const at = token.lastIndexOf('-')
-  if (at <= 0 || at === token.length - 1) return null
-  return { projectId: token.slice(0, at), inviteCode: token.slice(at + 1) }
+/**
+ * 회사 id는 **물결표 뒤에** 붙습니다.
+ *
+ * 붙임표를 또 쓸 수는 없습니다 — 프로젝트 id를 찾는 방법이 '마지막 붙임표'라,
+ * 하나 더 붙이면 이미 돌아다니는 링크의 코드 자리가 밀립니다. 물결표는 지금
+ * 어느 자리에도 안 쓰이므로, **없으면 옛 링크**이고 그때는 회사를 모른 채
+ * 예전처럼 동작합니다.
+ *
+ * 회사를 싣는 이유는 받는 사람이 **프로젝트를 읽기 전에** 자기 자리를 조직
+ * 명단에 앉힐 수 있어야 하기 때문입니다. 소속은 프로젝트 안에 적혀 있는데,
+ * 명단에 없으면 그 프로젝트가 안 열립니다 — 링크가 회사를 안 말해 주면
+ * 그 사람은 영영 못 들어옵니다. docs/tenants.md의 3.5단계.
+ */
+export function parseInviteToken(token: string): { projectId: string; inviteCode: string; orgId?: string } | null {
+  const tilde = token.indexOf('~')
+  const orgId = tilde >= 0 ? token.slice(tilde + 1) : undefined
+  const head = tilde >= 0 ? token.slice(0, tilde) : token
+  const at = head.lastIndexOf('-')
+  if (at <= 0 || at === head.length - 1) return null
+  return { projectId: head.slice(0, at), inviteCode: head.slice(at + 1), ...(orgId ? { orgId } : {}) }
 }
 
 /**

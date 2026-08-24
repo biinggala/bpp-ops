@@ -1246,7 +1246,11 @@ function ProjectItem({
     if (!inviteCode) return
     // The token names the project as well as the code — whoever opens the link
     // is not a member yet and cannot look the project up by code alone.
-    const link = `${window.location.origin}${window.location.pathname}?invite=${buildInviteToken(projectId, inviteCode)}`
+    // 회사도 같이 싣습니다. 받는 사람은 아직 프로젝트를 못 읽는데, 소속이
+    // 그 안에 적혀 있어서 — 링크가 말해 주지 않으면 조직 명단에 자기 자리를
+    // 앉힐 수가 없습니다. docs/tenants.md 3.5단계.
+    const orgId = useProjectStore.getState().projects.find(p => p.id === projectId)?.orgId
+    const link = `${window.location.origin}${window.location.pathname}?invite=${buildInviteToken(projectId, inviteCode, orgId)}`
     setCopied(await copyText(link) ? 'yes' : 'no')
     setTimeout(() => setCopied(null), 1800)
   }

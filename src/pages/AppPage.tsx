@@ -64,6 +64,7 @@ export function AppPage() {
   const tasks = useTaskStore(s => s.tasks)
   const subscribeWorkspace = useSyncStore(s => s.subscribe)
   const ready = useSyncStore(s => s.ready)
+  const orgByProject = useSyncStore(s => s.orgByProject)
   const sidebarHidden = useUiStore(s => s.sidebarHidden)
   const joinProject = useProjectStore(s => s.joinProject)
   const invites = useProjectStore(s => s.invites)
@@ -180,9 +181,12 @@ export function AppPage() {
    * 적습니다. 둘 다 '행이 없을 때만' 쓰기 때문에, 안 걸러 내면 어느 쪽이
    * 먼저 닿느냐에 따라 우리 직원이 게스트로 적힐 수 있습니다.
    */
+  // 프로젝트가 아니라 **내 색인**에서 읽습니다. 명단에 없어서 프로젝트가
+  // 닫힌 사람도 자기 색인은 읽을 수 있고, 그래서 스스로 자리를 앉힐 수
+  // 있습니다 — 교착이 여기서 풀립니다(syncStore의 '예비 열쇠').
   const guestOrgs = useMemo(
-    () => [...new Set(projects.map(p => p.orgId).filter((o): o is string => !!o && o !== orgId))].sort().join(' '),
-    [projects, orgId],
+    () => [...new Set(Object.values(orgByProject).filter(o => o && o !== orgId))].sort().join(' '),
+    [orgByProject, orgId],
   )
   useEffect(() => {
     if (!uid || !email || !ready || !guestOrgs) return
@@ -225,7 +229,7 @@ export function AppPage() {
     const parsed = parseInviteToken(token)
     if (!parsed) return
     let cancelled = false
-    joinProject(parsed.projectId, parsed.inviteCode).then(joined => {
+    joinProject(parsed.projectId, parsed.inviteCode, parsed.orgId).then(joined => {
       if (joined && !cancelled) setProject(parsed.projectId)
     })
     return () => { cancelled = true }
