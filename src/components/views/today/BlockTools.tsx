@@ -42,9 +42,37 @@ interface Slot { pos: number; top: number; left: number; height: number; item: n
  * 안쪽 것을 품고 있어서, 바깥부터 찾으면 늘 부모가 걸립니다.
  */
 function taskItemAt(editor: Editor, x: number, y: number): number | null {
-  const found = editor.view.posAtCoords({ left: x, top: y })
-  if (!found) return null
-  const $p = editor.state.doc.resolve(found.pos)
+  /**
+   * **상자로 먼저 찾습니다.**
+   *
+   * 전에는 posAtCoords에게만 물었습니다. 그런데 그건 글이 있는 자리만
+   * 답합니다 — 손잡이가 사는 왼쪽 여백이나 체크박스 동그라미 위에서는
+   * 답이 없거나, 더 나쁘게는 **가장 가까운 글자**를 답합니다. 그 글자가
+   * 윗줄 끝인 경우가 흔해서, 둘째 줄에 마우스를 올렸는데 손잡이가 첫째
+   * 줄에 서는 일이 생겼습니다(신고된 그것).
+   *
+   * 세로 위치는 거짓말을 안 합니다. y를 품는 상자를 찾고, 그중 **가장 작은**
+   * 것을 고릅니다 — 중첩 목록에서 바깥 항목은 안쪽 것을 품고 있으므로 큰
+   * 쪽은 언제나 부모입니다. blockAt이 같은 이유로 쓰는 방법입니다.
+   */
+  let best: { pos: number; height: number } | null = null
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name !== 'taskItem') return true
+    const dom = editor.view.nodeDOM(pos)
+    if (!(dom instanceof HTMLElement)) return true
+    const box = dom.getBoundingClientRect()
+    if (y < box.top || y > box.bottom) return true
+    const hit = best as { pos: number; height: number } | null
+    if (!hit || box.height < hit.height) best = { pos, height: box.height }
+    return true
+  })
+  const found = best as { pos: number; height: number } | null
+  if (found) return found.pos
+
+  // 상자 밖(줄 사이의 미세한 틈)이면 프로즈미러에게 물어봅니다.
+  const at = editor.view.posAtCoords({ left: x, top: y })
+  if (!at) return null
+  const $p = editor.state.doc.resolve(at.pos)
   for (let d = $p.depth; d > 0; d--) {
     if ($p.node(d).type.name === 'taskItem') return $p.before(d)
   }
