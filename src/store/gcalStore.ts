@@ -4,7 +4,7 @@ import { auth } from '../lib/firebase'
 import { requestGoogleToken, prepareGoogleAuthz, AuthzError, GIS_CONFIGURED } from '../lib/googleAuthz'
 import { isDesktopShell, forgetStoredGrant } from '../lib/desktopAuth'
 import { askConfirm } from '../components/shared/Confirm'
-import { fetchCalendarList, fetchEventsAcross, fetchEventsForTask, searchEvents, setEventTaskLink, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, respondToEvent, type Rsvp, writableCalendars, TASK_LINK_KEY, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent, type EventAttendee } from '../lib/googleCalendar'
+import { fetchCalendarList, fetchEventsAcross, fetchEventsForTask, searchEvents, setEventTaskLink, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, respondToEvent, type Rsvp, writableCalendars, TASK_LINK_KEY, TIMEBLOCK_KEY, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent, type EventAttendee } from '../lib/googleCalendar'
 
 export interface GCalEvent {
   id: string
@@ -29,6 +29,8 @@ export interface GCalEvent {
   attendees?: EventAttendee[]
   /** The task this event belongs to, as recorded on the event in Google. */
   taskId?: string
+  /** 노트에서 끌어다 놓아 만든 시간. 회의와 다르게 그립니다. */
+  isBlock?: boolean
 }
 
 /**
@@ -132,7 +134,7 @@ interface GCalState {
   setTargetCalendar: (id: string) => void
   /** Creates an event, asking for write permission the first time. */
   /** 만들어진 일정의 id(캘린더id:일정id). 실패하면 null. */
-  createEvent: (input: { summary: string; location?: string; description?: string; startDateTime: string; endDateTime: string; attendees?: string[]; taskId?: string; transparency?: 'opaque' | 'transparent' }) => Promise<string | null>
+  createEvent: (input: { summary: string; location?: string; description?: string; startDateTime: string; endDateTime: string; attendees?: string[]; taskId?: string; transparency?: 'opaque' | 'transparent'; timeblock?: boolean }) => Promise<string | null>
   /** The events linked to a task, as this person's calendars have them. */
   eventsForTask: (taskId: string) => Promise<GCalEvent[]>
   /** Events to choose from when attaching one that already exists. */
@@ -197,6 +199,7 @@ function toGCalEvent(item: RawCalendarEvent): GCalEvent | null {
     description: item.description,
     attendees: item.attendees,
     taskId: item.extendedProperties?.private?.[TASK_LINK_KEY],
+    isBlock: item.extendedProperties?.private?.[TIMEBLOCK_KEY] === '1',
   }
 }
 
@@ -473,7 +476,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
    * a consent screen is warranted — and it needs the click that triggered it, so
    * this must be called straight from the interaction.
    */
-  createEvent: async ({ summary, location, description, startDateTime, endDateTime, attendees, taskId, transparency }) => {
+  createEvent: async ({ summary, location, description, startDateTime, endDateTime, attendees, taskId, transparency, timeblock }) => {
     const { calendars, targetCalendarId } = get()
     const target = targetCalendarId
       ?? calendars.find(c => c.primary)?.id
@@ -487,7 +490,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     if (!token) return null
 
     try {
-      const created = await createCalendarEvent(token, { calendarId: target, summary, location, description, startDateTime, endDateTime, attendees, taskId, transparency })
+      const created = await createCalendarEvent(token, { calendarId: target, summary, location, description, startDateTime, endDateTime, attendees, taskId, transparency, timeblock })
       const colour = calendars.find(c => c.id === target)?.backgroundColor ?? '#4285f4'
       const ev = toGCalEvent({ ...created, calendarId: target, calendarColor: colour })
       // Show it straight away; the next fetch will confirm it.

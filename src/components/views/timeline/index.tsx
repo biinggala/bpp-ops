@@ -36,6 +36,9 @@ import { useShallow } from 'zustand/react/shallow'
 // text stays dark enough to read at 11px.
 // (Reference values confirmed from Notion light mode: blue text #487CA5,
 // blue background #E7F3F8, green #DBEDDB, brown #EEE0DA.)
+/** 앱의 강조색. index.css의 --ac와 같은 값 — 캔버스 계산에는 실제 색이 필요합니다. */
+const ACCENT = '#2383e2'
+
 export function tint(hex: string, alpha: number): string {
   const clean = hex.replace('#', '')
   if (clean.length !== 6) return `rgba(55,53,47,${alpha})`
@@ -313,6 +316,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
        * 사람이 내 블록 때문에 막히면, 다들 블록을 안 쓰게 됩니다.
        */
       transparency: 'transparent',
+      timeblock: true,
     })
   }
 
@@ -956,7 +960,19 @@ function EventBlock({ placed, ghost, selected, onSelect, onMove }: {
   const from = ghost?.from ?? placed.from
   const to = ghost?.to ?? placed.to
   const width = 100 / lanes
-  const colour = event.calendarColor || '#337EA9'
+  /**
+   * ── 회의와 내가 잡아 둔 시간은 다르게 보입니다 ────────────────────────────
+   *
+   * 노트에서 끌어다 놓은 블록이 구글 회의와 똑같이 생겼습니다. 그러면 하루를
+   * 훑을 때 '남이 잡은 것'과 '내가 정한 것'이 구분되지 않습니다 — 앞엣것은
+   * 못 옮기고 뒤엣것은 내 마음이라, 하루를 다시 짤 때 제일 먼저 알아야 하는
+   * 구분입니다.
+   *
+   * 블록은 앱의 강조색을 쓰고 면을 옅게 칠합니다. 회의보다 뒤로 물러나
+   * 보이는 게 맞습니다 — 회의는 약속이고 블록은 계획이라, 부딪히면 움직이는
+   * 쪽은 블록입니다.
+   */
+  const colour = event.isBlock ? ACCENT : (event.calendarColor || '#337EA9')
   // 아직 수락 안 한 초대는 면을 안 칠합니다 — 확정된 것만 칠해져 있어야
   // 오늘이 실제로 얼마나 찼는지 보입니다. awaitingMe 참고.
   const pending = awaitingMe(event)
@@ -976,12 +992,16 @@ function EventBlock({ placed, ghost, selected, onSelect, onMove }: {
         height,
         left: `calc(${lane * width}% + 3px)`,
         width: `calc(${width}% - 6px)`,
-        background: pending ? 'transparent' : tint(colour, ghost ? .28 : .13),
+        background: pending ? 'transparent' : tint(colour, ghost ? .28 : (event.isBlock ? .08 : .13)),
         // 왼쪽 굵은 선은 '이 캘린더의 확정된 일정'이라는 표시입니다. 점선
         // 테두리가 그 자리를 대신하므로 둘을 같이 쓰지 않습니다.
         ...(pending
           ? { border: `1.5px dashed ${colour}`, boxSizing: 'border-box' as const }
-          : { borderLeft: `3px solid ${colour}` }),
+          // 블록은 테두리를 두르고 왼쪽 선을 안 세웁니다. 굵은 왼쪽 선은
+          // '이 캘린더의 확정된 일정'이라는 뜻이고, 블록은 그게 아닙니다.
+          : event.isBlock
+            ? { border: `1px solid ${tint(colour, .45)}`, boxSizing: 'border-box' as const }
+            : { borderLeft: `3px solid ${colour}` }),
         borderRadius: 5,
         boxShadow: selected ? `0 0 0 2px ${colour}` : 'none',
         color: 'var(--t1)',
@@ -1006,6 +1026,9 @@ function EventBlock({ placed, ghost, selected, onSelect, onMove }: {
         WebkitBoxOrient: roomy ? 'vertical' : undefined,
         minWidth: 0,
       }}>
+        {/* 색만으로 구분하면 색을 못 보는 사람에게는 구분이 없습니다.
+            네모 하나가 그 몫을 합니다 — 할 일의 표시입니다. */}
+        {event.isBlock && <span aria-hidden style={{ opacity: .6, marginRight: 4 }}>▢</span>}
         {event.summary}
       </span>
       <div

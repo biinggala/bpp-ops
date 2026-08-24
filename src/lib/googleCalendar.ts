@@ -50,6 +50,13 @@ export interface RawCalendarEvent {
  * link is findable at all without storing anything on our side.
  */
 export const TASK_LINK_KEY = 'bppTaskId'
+/**
+ * 이 일정이 '회의'가 아니라 '내가 잡아 둔 시간'이라는 표시.
+ *
+ * 업무 id로는 구별이 안 됩니다 — 업무에서 잡은 진짜 회의에도 그게 붙으니까요.
+ * 시간 축에서 둘을 다르게 그리려면 별개의 표시가 필요합니다.
+ */
+export const TIMEBLOCK_KEY = 'bppTimeblock'
 
 /** Signals that the token is no longer good, so callers can stop and reconnect. */
 export const TOKEN_EXPIRED = 'GOOGLE_TOKEN_EXPIRED'
@@ -158,6 +165,8 @@ export interface NewEvent {
    * 않습니다.
    */
   transparency?: 'opaque' | 'transparent'
+  /** 노트에서 끌어다 놓아 만든 시간. 회의와 다르게 그립니다. */
+  timeblock?: boolean
 }
 
 /**
@@ -191,7 +200,16 @@ export async function createCalendarEvent(token: string, event: NewEvent): Promi
         start: { dateTime: event.startDateTime, timeZone },
         end: { dateTime: event.endDateTime, timeZone },
         ...(event.attendees?.length ? { attendees: event.attendees.map(email => ({ email })) } : {}),
-        ...(event.taskId ? { extendedProperties: { private: { [TASK_LINK_KEY]: event.taskId } } } : {}),
+        ...(event.taskId || event.timeblock
+          ? {
+              extendedProperties: {
+                private: {
+                  ...(event.taskId ? { [TASK_LINK_KEY]: event.taskId } : {}),
+                  ...(event.timeblock ? { [TIMEBLOCK_KEY]: '1' } : {}),
+                },
+              },
+            }
+          : {}),
         ...(event.transparency ? { transparency: event.transparency } : {}),
       }),
     }

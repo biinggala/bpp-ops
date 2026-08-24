@@ -43,6 +43,15 @@ import { STATUS_LIST, statusAccent, type Status } from '../../../types'
  * 결정이 사는 곳입니다.
  */
 
+/**
+ * 시각 하나. '9:30am'이 아니라 '09:30'입니다 — 옆에 끝 시각이 붙어 범위가
+ * 되는데, 12시간제 두 개를 이어 놓으면 오전인지 오후인지 두 번 읽어야 합니다.
+ */
+function clock(iso: string): string {
+  const d = new Date(iso)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 /** 왼쪽 목록에서 노트로 끌어올 때 실려 오는 것. 업무 id 하나면 충분합니다. */
 export const TASK_DND = 'application/x-bpp-task'
 
@@ -102,8 +111,11 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
    * 수 있습니다. 없으면 아직 시간을 안 정한 것이고, 그건 흠이 아니라 대부분의
    * 줄이라 아무 표시도 하지 않습니다.
    */
-  const blockAt = useGCalStore(s =>
-    s.events.find(e => e.taskId === taskId && !e.allDay)?.startTime)
+  const blockAt = useGCalStore(s => {
+    const hit = s.events.find(e => e.taskId === taskId && !e.allDay)
+    if (!hit?.startIso || !hit.endIso) return null
+    return `${clock(hit.startIso)}–${clock(hit.endIso)}`
+  })
   const updateTask = useTaskStore(s => s.updateTask)
   const openTaskDetail = useUiStore(s => s.openTaskDetail)
   const projects = useProjectStore(s => s.projects)
