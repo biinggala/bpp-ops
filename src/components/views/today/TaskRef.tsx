@@ -9,9 +9,8 @@ import { useSyncStore } from '../../../store/syncStore'
 import { useGCalStore } from '../../../store/gcalStore'
 import { haptic } from '../../../lib/haptics'
 import { daysFrom } from '../../../lib/utils'
-import { StatusMark } from '../../shared/StatusMark'
-import { useMenu, Menu, MenuList, MenuItem } from '../../shared/Menu'
-import { STATUS_LIST, statusAccent, type Status } from '../../../types'
+import { StatusPick } from '../../shared/StatusPick'
+import type { Status } from '../../../types'
 
 /**
  * ── 노트 안의 업무 ───────────────────────────────────────────────────────────
@@ -293,47 +292,6 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
       {/* 노트에서 빼는 것과 업무를 지우는 건 다른 일입니다. 이건 앞의 것. */}
       <button onClick={() => deleteNode()} title="오늘 목록에서 빼기" style={REMOVE}>×</button>
     </NodeViewWrapper>
-  )
-}
-
-/**
- * 상태를 보여 주고, 누르면 바꾸는 것.
- *
- * 표시는 목록·보드와 같은 StatusMark입니다. 오늘 화면에서만 다른 모양을 쓰면
- * 같은 값을 두 가지로 배우게 됩니다.
- */
-function StatusPick({ status, onPick }: { status: Status; onPick: (s: Status) => void }) {
-  const m = useMenu()
-  return (
-    <span ref={m.rootRef} style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
-      <button
-        onClick={e => m.toggleAt(e.currentTarget, 148, 200)}
-        aria-label={`상태: ${status}`}
-        title={status}
-        style={{
-          width: 20, height: 20, borderRadius: '50%', border: 'none', padding: 0, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: m.open ? 'var(--bg3)' : 'transparent',
-          color: statusAccent(status), fontFamily: 'var(--font)',
-        }}
-        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
-        onMouseLeave={e => (e.currentTarget.style.background = m.open ? 'var(--bg3)' : 'transparent')}
-      >
-        <StatusMark status={status} size={14} />
-      </button>
-      {m.open && (
-        <Menu pos={m.pos} panelRef={m.panelRef} width={148}>
-          <MenuList>
-            {STATUS_LIST.map(s => (
-              <MenuItem key={s} selected={s === status} onSelect={() => { onPick(s); m.setOpen(false) }}>
-                <span style={{ color: statusAccent(s), display: 'flex' }}><StatusMark status={s} size={12} /></span>
-                {s}
-              </MenuItem>
-            ))}
-          </MenuList>
-        </Menu>
-      )}
-    </span>
   )
 }
 

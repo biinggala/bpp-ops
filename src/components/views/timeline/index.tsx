@@ -8,7 +8,9 @@ import { useAuthStore } from '../../../store/authStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
 import { authorizedEmails } from '../../../lib/utils'
 import { hasTimeblock, readTimeblock, BLOCK_MINUTES, type TimeblockDrag } from '../../../lib/timeblock'
-import type { Task } from '../../../types'
+import type { Task, Status } from '../../../types'
+import { StatusPick } from '../../shared/StatusPick'
+import { haptic } from '../../../lib/haptics'
 import type { Rsvp } from '../../../lib/googleCalendar'
 import { Icon } from '../../shared/Icon'
 import { RsvpPicker } from '../../shared/RsvpPicker'
@@ -123,7 +125,20 @@ interface Draft {
 export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[]; lead?: number; bare?: boolean }) {
   const { token, events, calendars, createEvent, updateEvent, removeEvent, ensureEvents, respond } = useGCalStore(useShallow(s => ({ token: s.token, events: s.events, calendars: s.calendars, createEvent: s.createEvent, updateEvent: s.updateEvent, removeEvent: s.removeEvent, ensureEvents: s.ensureEvents, respond: s.respond })))
   const tasks = useFilteredTasks()
+  /**
+   * 블록이 가리키는 업무를 찾는 데는 **거르지 않은** 목록을 씁니다. 내가 시간을
+   * 잡아 둔 일이 마침 지금 걸린 필터 밖이면, 그 블록만 표시가 사라집니다 —
+   * 필터는 목록을 좁히라는 말이지 내 하루를 좁히라는 말이 아닙니다.
+   */
+  const allTasks = useTaskStore(s => s.tasks)
   const updateTask = useTaskStore(s => s.updateTask)
+
+  const setTaskStatus = (task: Task, next: Status) => {
+    if (next === task.status) return
+    haptic('toggle')
+    // 노트의 업무 줄과 같은 규칙입니다 — 완료로 갈 때만 진행률을 채웁니다.
+    updateTask(task.id, { status: next, ...(next === '완료' ? { progress: 100 } : {}) })
+  }
   const openTaskDetail = useUiStore(s => s.openTaskDetail)
   const openTaskModal = useUiStore(s => s.openTaskModal)
   const projectId = useUiStore(s => s.projectId)
@@ -686,7 +701,31 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
         />
       )}
 
-      {selectedInfo && cardAt && (
+      {/*
+        블록에는 블록의 카드를 엽니다. 회의 카드에는 참석자·회의실·아젠다가
+        있는데, 혼자 쓰는 시간에 그 셋은 물어보지도 않은 것들입니다.
+      */}
+      {selectedInfo && cardAt && selectedInfo.event.isBlock && (
+        <BlockCard
+          at={cardAt}
+          heading={`${hhmm(selectedInfo.from)} – ${hhmm(selectedInfo.to)}`}
+          event={selectedInfo.event}
+          task={selectedInfo.event.taskId ? allTasks.find(t => t.id === selectedInfo.event.taskId) : undefined}
+          onStatus={setTaskStatus}
+          onOpenTask={openTaskDetail}
+          onDelete={async () => {
+            setSelected(null)
+            setCardAt(null)
+            // 지우는 건 잡아 둔 시간뿐입니다. 업무는 그대로 있고, 노트의 그
+            // 줄도 그대로 있습니다 — 시간을 무르는 것과 일을 지우는 것은
+            // 다른 일입니다.
+            await removeEvent(selectedInfo.event.id)
+          }}
+          onClose={() => { setSelected(null); setCardAt(null) }}
+        />
+      )}
+
+      {selectedInfo && cardAt && !selectedInfo.event.isBlock && (
         <EventCard
           at={cardAt}
           heading={`${hhmm(selectedInfo.from)} – ${hhmm(selectedInfo.to)}`}
@@ -871,6 +910,8 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
                   placed={p}
                   ghost={ghost?.id === p.event.id ? ghost : null}
                   selected={selected === p.event.id}
+                  task={p.event.taskId ? allTasks.find(t => t.id === p.event.taskId) : undefined}
+                  onStatus={setTaskStatus}
                   onSelect={e => {
                     setCardAt({ x: e.clientX, y: e.clientY })
                     setGuests((p.event.attendees ?? []).map(a => a.email).filter(email => email !== myEmail?.toLowerCase()))
@@ -980,10 +1021,13 @@ export function place(events: GCalEvent[]): Placed[] {
   return out
 }
 
-function EventBlock({ placed, ghost, selected, onSelect, onMove }: {
+function EventBlock({ placed, ghost, selected, task, onStatus, onSelect, onMove }: {
   placed: Placed
   ghost: { from: number; to: number } | null
   selected: boolean
+  /** 이 블록이 가리키는 업무. 회의와 '간단한 할 일' 블록에는 없습니다. */
+  task?: Task
+  onStatus: (task: Task, next: Status) => void
   onSelect: (e: React.MouseEvent) => void
   onMove: (e: React.MouseEvent, mode: 'move' | 'resize') => void
 }) {
@@ -1042,6 +1086,9 @@ function EventBlock({ placed, ghost, selected, onSelect, onMove }: {
         borderRadius: 5,
         boxShadow: selected ? `0 0 0 2px ${colour}` : 'none',
         color: 'var(--t1)',
+        // 끝난 일은 시간 축에서도 끝나 보입니다. 자리는 그대로 둡니다 —
+        // 사라지면 오후에 아침이 없던 일이 됩니다.
+        textDecoration: task?.status === '완료' ? 'line-through' : 'none',
         padding: roomy ? '3px 6px' : '2px 6px',
         fontSize: 11, lineHeight: 1.35,
         overflow: 'hidden', zIndex: selected ? 5 : 2, cursor: 'grab',
@@ -1063,9 +1110,21 @@ function EventBlock({ placed, ghost, selected, onSelect, onMove }: {
         WebkitBoxOrient: roomy ? 'vertical' : undefined,
         minWidth: 0,
       }}>
-        {/* 색만으로 구분하면 색을 못 보는 사람에게는 구분이 없습니다.
-            네모 하나가 그 몫을 합니다 — 할 일의 표시입니다. */}
-        {event.isBlock && <span aria-hidden style={{ opacity: .6, marginRight: 4 }}>▢</span>}
+        {/*
+          구글에서는 일정이지만 여기서는 할 일입니다. 그래서 노트의 업무 줄과
+          **같은 표시**를 씁니다 — 누르면 같은 네 상태가 나옵니다. 같은 값을
+          두 화면에서 다른 모양으로 배우게 하지 않습니다.
+
+          업무가 없는 블록(체크박스 한 줄에서 온 것)에는 바꿀 상태가
+          없습니다. 네모 하나만 둡니다 — 색을 못 보는 사람에게도 이것이
+          회의가 아니라는 말은 남아야 하니까요.
+        */}
+        {event.isBlock && (task
+          ? <span style={{ display: 'inline-flex', verticalAlign: 'middle', marginRight: 2 }}>
+              <StatusPick status={task.status} size={16} stop onPick={next => onStatus(task, next)} />
+            </span>
+          : <span aria-hidden style={{ opacity: .6, marginRight: 4 }}>▢</span>
+        )}
         {event.summary}
       </span>
       <div
@@ -1449,6 +1508,125 @@ const linkBtn: React.CSSProperties = {
  * columns are only tens of pixels wide, and the scrolling grid clips anything
  * that overflows one.
  */
+
+/**
+ * ── 블록의 카드 ──────────────────────────────────────────────────────────────
+ *
+ * 구글에서는 일정이지만 여기서는 **할 일**입니다. 그래서 회의 카드(참석자 ·
+ * 회의실 · 아젠다)를 그대로 쓰면 물어보지도 않은 것만 잔뜩 놓입니다 — 혼자
+ * 쓰는 시간에 참석자 칸이 왜 있는지 설명할 방법이 없습니다.
+ *
+ * **카드는 하나입니다.** '간단한 할 일'용을 따로 만들지 않았습니다. 두 종류가
+ * 되면 배울 것도 둘이 되는데, 실제로 다른 건 무엇이 **있느냐**뿐입니다 —
+ * 업무가 없으면 상태도 자료도 열 곳도 없고, 남는 건 이름과 시간과 지우기
+ * 셋입니다. 단순한 화면이 다른 화면이라서가 아니라 없는 것이 안 그려져서
+ * 단순해집니다.
+ */
+function BlockCard({ at, heading, event, task, onStatus, onOpenTask, onDelete, onClose }: {
+  at: { x: number; y: number }
+  heading: string
+  event: GCalEvent
+  task?: Task
+  onStatus: (task: Task, next: Status) => void
+  onOpenTask: (id: string) => void
+  onDelete: () => void
+  onClose: () => void
+}) {
+  const WIDTH = 280
+  const MARGIN = 8
+  const place = useMemo(() => {
+    const left = Math.min(Math.max(MARGIN, at.x - WIDTH / 2), window.innerWidth - WIDTH - MARGIN)
+    const below = window.innerHeight - at.y - 8 - MARGIN
+    if (below >= 200) return { left, top: at.y + 8, maxHeight: below }
+    const above = at.y - 8 - MARGIN
+    if (above > below) return { left, bottom: window.innerHeight - at.y + 8, maxHeight: above }
+    return { left, top: at.y + 8, maxHeight: Math.max(below, 160) }
+  }, [at.x, at.y])
+
+  const links = task?.links ?? []
+
+  return (
+    <>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 9600 }} onMouseDown={onClose} />
+      <div
+        onMouseDown={e => e.stopPropagation()}
+        onContextMenu={e => e.preventDefault()}
+        style={{
+          position: 'fixed', ...place, width: WIDTH, zIndex: 9601,
+          background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
+          boxShadow: 'var(--sh-lg)', padding: 12,
+          overflowY: 'auto', boxSizing: 'border-box',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+          <span style={{ fontSize: 11, color: 'var(--t3)', fontVariantNumeric: 'tabular-nums' }}>{heading}</span>
+          {/* 되돌릴 수 없는 것은 메뉴 안에 둡니다. 아래에 버튼으로 놓으면
+              자주 하는 일과 같은 크기로 같은 줄에 앉습니다. */}
+          <div style={{ marginLeft: 'auto' }}>
+            <MoreMenu items={[{ label: '이 시간 지우기', icon: 'trash', danger: true, onSelect: onDelete }]} />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+          {task && <StatusPick status={task.status} onPick={next => onStatus(task, next)} />}
+          <span style={{
+            flex: 1, minWidth: 0, fontSize: 14, lineHeight: 1.5, color: 'var(--t1)',
+            textDecoration: task?.status === '완료' ? 'line-through' : 'none',
+          }}>
+            {event.summary}
+          </span>
+        </div>
+
+        {/*
+          자료. 회의 카드의 참석자 자리에 오는 것이 이것입니다 — 이 시간에
+          실제로 필요한 건 누가 오느냐가 아니라 무엇을 열어야 하느냐입니다.
+          없으면 그 말을 굳이 하지 않습니다. 없는 것을 적느라 두 줄을 쓰면
+          있는 것이 뒤로 밀립니다.
+        */}
+        {links.length > 0 && (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--bd)' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--t3)', letterSpacing: '.06em', marginBottom: 5 }}>
+              자료
+            </div>
+            {links.map(link => (
+              <button
+                key={link.id}
+                onClick={() => void openExternal(link.url)}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '5px 6px', borderRadius: 'var(--r1)', border: 'none',
+                  background: 'transparent', cursor: 'pointer', textAlign: 'left',
+                  fontFamily: 'var(--font)', fontSize: 12, color: 'var(--t2)',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg2)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+              >
+                <Icon name="file" size={13} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {link.title || link.url}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {task && (
+          <button
+            onClick={() => { onOpenTask(task.id); onClose() }}
+            style={{
+              width: '100%', marginTop: 10, height: 30, borderRadius: 'var(--r2)',
+              border: '1px solid var(--bd)', background: 'transparent',
+              fontSize: 12, color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)',
+            }}
+          >
+            업무 열기
+          </button>
+        )}
+      </div>
+    </>
+  )
+}
+
 function EventCard({
   at, heading, title, onTitle, saving, teammates, guests, nameOf, onToggleGuest,
   onSave, onDelete, onClose, openLink, slot, booking, onRoom, responses, myResponse, onRespond, dirty = true,
