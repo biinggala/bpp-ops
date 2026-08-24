@@ -18,6 +18,7 @@ import { TaskRef, TASK_DND } from './TaskRef'
 import { FileRef } from './FileRef'
 import { MarkdownTasks } from './markdown'
 import { DayTimeline } from './DayTimeline'
+import { CarryOver, noteHasContent } from './CarryOver'
 import { BlockTools } from './BlockTools'
 import { LoadingChips } from '../../shared/Loading'
 import type { Task } from '../../../types'
@@ -341,6 +342,11 @@ export function TodayView() {
           {/* 손잡이가 설 자리를 왼쪽에 비워 둡니다. 폰에는 여백도 손도 없어서
               손잡이가 없고, 그래서 자리도 안 비웁니다. */}
           <div style={{ maxWidth: 720, marginLeft: isMobile ? 0 : GUTTER }}>
+            {/*
+              빈 노트일 때만 뜹니다. 한 글자라도 적으면 사라지고, 그래서 빈
+              도화지가 안 깨집니다 — 가져올지 말지는 사람이 정합니다.
+            */}
+            {isToday && html !== null && !noteHasContent(html) && <CarryOver editor={editor} />}
             <EditorContent editor={editor} />
           </div>
 
