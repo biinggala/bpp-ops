@@ -1,4 +1,4 @@
-import { push, ref, set as fbSet } from 'firebase/database'
+import { push, ref, set as fbSet, update as fbUpdate } from 'firebase/database'
 import { db } from './firebase'
 import { P } from './paths'
 import { useAuthStore } from '../store/authStore'
@@ -125,12 +125,55 @@ function describe(field: keyof Task, before: unknown, after: unknown): ActivityC
   return { label, detail: `${shown(before)} → ${shown(after)}` }
 }
 
+/**
+ * ── 같은 말을 두 번 적지 않습니다 ───────────────────────────────────────────
+ *
+ * 메모는 700ms마다 저장됩니다. 한 문단을 쓰는 동안 열 번쯤 저장되고, 그때마다
+ * '메모 수정'이 한 줄씩 쌓였습니다. 오후에 메모를 손본 업무를 열면 활동 창이
+ * 똑같은 문장으로 가득 찹니다 — 기록이 많은 게 아니라 **읽을 수 없는 것**이
+ * 됩니다.
+ *
+ * 그래서 방금 쓴 것과 **글자 하나까지 같은** 기록이 잠깐 사이에 또 오면, 새
+ * 줄을 만들지 않고 그 줄의 시각만 갱신합니다.
+ *
+ * **똑같을 때만** 뭉칩니다. '대기 → 진행중' 다음에 '진행중 → 검토중'이 오면
+ * 두 줄로 남습니다 — 뭉치면 중간에 무슨 일이 있었는지가 사라지니까요.
+ * 잃는 정보가 하나도 없을 때만 합칩니다.
+ *
+ * 기억은 이 브라우저 안에만 있습니다. 새로고침하면 다시 한 줄이 생기고,
+ * 남이 고친 것과 섞이지도 않습니다.
+ */
+const MERGE_WINDOW = 10 * 60_000
+const lastWrite = new Map<string, { key: string; sig: string; at: number }>()
+
 function write(task: Task, entry: Omit<Activity, 'id' | 'by' | 'at'>) {
   if (!task.projectId) return
   const me = useAuthStore.getState().uid
   if (!me) return
-  const node = push(ref(db, P.activity(task.projectId, task.id)))
-  fbSet(node, { ...entry, by: myName(), at: Date.now() })
+
+  const at = Date.now()
+  const path = P.activity(task.projectId, task.id)
+  const slot = `${task.projectId}/${task.id}`
+
+  if (entry.kind === 'changed') {
+    const sig = JSON.stringify(entry.changes ?? [])
+    const prev = lastWrite.get(slot)
+    if (prev && prev.sig === sig && at - prev.at < MERGE_WINDOW) {
+      prev.at = at
+      fbUpdate(ref(db, `${path}/${prev.key}`), { at })
+        .catch(e => console.warn('[activity]', e))
+      return
+    }
+    const node = push(ref(db, path))
+    if (node.key) lastWrite.set(slot, { key: node.key, sig, at })
+    fbSet(node, { ...entry, by: myName(), at }).catch(e => console.warn('[activity]', e))
+    return
+  }
+
+  // 만들기·지우기는 한 번뿐이라 뭉칠 일이 없습니다. 다음 변경이 그것과
+  // 합쳐지지 않도록 기억만 지웁니다.
+  lastWrite.delete(slot)
+  fbSet(push(ref(db, path)), { ...entry, by: myName(), at })
     .catch(e => console.warn('[activity]', e))
 }
 

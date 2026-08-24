@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useActivity } from '../../hooks/useActivity'
 import type { Activity } from '../../lib/activity'
 
@@ -40,6 +41,20 @@ export function ActivityList({ taskId, projectId, compact = false }: {
   compact?: boolean
 }) {
   const entries = useActivity(taskId, projectId)
+  /**
+   * 처음에는 최근 것만 보여 줍니다.
+   *
+   * 활동은 **최근 것이 거의 전부**입니다 — 지금 이 업무에 무슨 일이 있었나를
+   * 묻는 자리고, 석 달 전 마감일이 언제였는지를 묻는 자리가 아닙니다. 그런데
+   * 전부 펼쳐 두면 그 최근 것이 스무 줄 아래로 밀려납니다.
+   *
+   * 접었다는 사실은 **숨기지 않습니다.** 몇 개가 더 있는지 버튼에 적습니다 —
+   * 안 보이는 것이 있는데 말 안 하면 그건 없는 것과 같아 보입니다.
+   */
+  const [expanded, setExpanded] = useState(false)
+  const LIMIT = compact ? 4 : 8
+  const shown = expanded ? entries : entries.slice(0, LIMIT)
+  const hidden = entries.length - shown.length
 
   if (!projectId) {
     return (
@@ -59,7 +74,7 @@ export function ActivityList({ taskId, projectId, compact = false }: {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 10 : 14 }}>
-      {entries.map(entry => (
+      {shown.map(entry => (
         <div key={entry.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
           <span style={{
             width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
@@ -91,6 +106,20 @@ export function ActivityList({ taskId, projectId, compact = false }: {
           </div>
         </div>
       ))}
+      {hidden > 0 && (
+        <button
+          onClick={() => setExpanded(true)}
+          style={{
+            alignSelf: 'flex-start', marginLeft: 16, padding: '4px 0',
+            border: 'none', background: 'transparent', cursor: 'pointer',
+            fontSize: compact ? 11 : 12, color: 'var(--t3)', fontFamily: 'var(--font)',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.color = 'var(--t1)' }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'var(--t3)' }}
+        >
+          이전 기록 {hidden}개 더 보기
+        </button>
+      )}
     </div>
   )
 }

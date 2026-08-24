@@ -839,7 +839,7 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
 
           {tab === 'activity' && (
             <div style={{ padding: '20px' }}>
-              <ActivityList taskId={task.id} projectId={task.projectId} />
+              <ActivityList key={task.id} taskId={task.id} projectId={task.projectId} />
             </div>
           )}
         </div>
@@ -1217,7 +1217,7 @@ export function TaskDetailModal() {
               fontSize: 11, fontWeight: 600, color: 'var(--t3)',
               textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12,
             }}>활동</div>
-            <ActivityList taskId={task.id} projectId={task.projectId} compact />
+            <ActivityList key={task.id} taskId={task.id} projectId={task.projectId} compact />
           </div>
         </div>
       </div>
