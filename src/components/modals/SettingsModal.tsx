@@ -11,6 +11,7 @@ import { useMailStore } from '../../store/mailStore'
 import { useOrgStore, pendingJoinCount } from '../../store/orgStore'
 import { useProjectStore } from '../../store/projectStore'
 import { GetDesktopApp } from '../shared/GetDesktopApp'
+import { MCP_CONNECTOR_URL } from '../../lib/server'
 import { usePrefsStore } from '../../store/prefsStore'
 import { LATEST } from '../../lib/whatsNew'
 import { askConfirm } from '../shared/Confirm'
@@ -167,6 +168,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             {page === 'link' && (
               <Section title="연동" note="받은 알림에 밖에서 온 소식을 들이는 통로입니다. 이 기기가 아니라 계정에 붙습니다.">
                 <MailLinkRow />
+                <ConnectorRow />
               </Section>
             )}
 
@@ -448,6 +450,56 @@ function PushRow() {
       </span>
       {test}
       <MiniSwitch on={on} busy={busy} onClick={() => void toggle()} />
+    </div>
+  )
+}
+
+/**
+ * ── Claude 커넥터 주소 ───────────────────────────────────────────────────────
+ *
+ * 앱 어디에도 안 적혀 있었습니다. 그래서 붙이려는 사람은 슬랙에 흘러다니는
+ * 메시지나 저장소의 README에서 복사했고, 그중 하나가 **틀린 주소**였습니다 —
+ * Cloud Run이 한 서비스에 주소를 두 형식으로 주는데 둘 중 로그인이 되는 건
+ * 하나뿐입니다. 붙는 것 같다가 `redirect_uri_mismatch`로 막혔고, 화면의 어떤
+ * 글자도 그게 주소 문제라고 말해 주지 않았습니다.
+ *
+ * 이제 앱 안에 있습니다. 복사하는 곳이 하나면 틀린 사본이 돌아다니지 않고,
+ * 주소가 바뀌면 여기 한 줄만 고치면 모두가 새것을 복사합니다(lib/server.ts).
+ */
+function ConnectorRow() {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div style={ROW}>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'block', fontSize: 13, color: 'var(--t1)' }}>Claude 커넥터</span>
+        <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2, lineHeight: 1.6 }}>
+          Claude 설정 › 커넥터에서 이 주소를 넣으면 대화 중에 업무를 읽고 만들 수 있습니다.
+        </span>
+        {/* 주소 자체를 보여 줍니다. 복사 버튼만 두면 무엇이 복사됐는지
+            확인할 방법이 없고, 안 되는 날 물어볼 것도 없습니다. */}
+        <span style={{
+          display: 'block', marginTop: 6, padding: '5px 7px',
+          borderRadius: 'var(--r1)', background: 'var(--bg2)',
+          border: '1px solid var(--bd)', fontSize: 11, color: 'var(--t2)',
+          wordBreak: 'break-all', userSelect: 'text',
+        }}>
+          {MCP_CONNECTOR_URL}
+        </span>
+      </span>
+      <button
+        onClick={() => {
+          void navigator.clipboard?.writeText(MCP_CONNECTOR_URL)
+            .then(() => setCopied(true))
+            .catch(() => {})
+        }}
+        style={{
+          flexShrink: 0, height: 26, padding: '0 10px', borderRadius: 'var(--r1)',
+          border: '1px solid var(--bd)', background: 'transparent',
+          fontSize: 12, color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)',
+        }}
+      >
+        {copied ? '복사했습니다' : '복사'}
+      </button>
     </div>
   )
 }

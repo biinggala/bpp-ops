@@ -2,6 +2,7 @@ import { ref, remove, set as fbSet } from 'firebase/database'
 import { auth, db } from './firebase'
 import { P } from './paths'
 import { isDesktopShell } from './desktopAuth'
+import { SERVER_ORIGIN } from './server'
 
 /**
  * ── 푸시 알림 ────────────────────────────────────────────────────────────────
@@ -28,7 +29,7 @@ const VAPID_PUBLIC = 'BI_RGaYUrlhgdXk1iRGJ6tWUN74BSKOuLfGvnsdDNSjLFcYohGiDGG69xs
 const OFF_KEY = 'bpp_push_off'
 
 /** Where the sender lives — the same Cloud Run service as the MCP endpoint. */
-export const PUSH_API = 'https://crng-task-manager-1050546278891.asia-northeast3.run.app'
+export const PUSH_API = SERVER_ORIGIN
 
 export type PushSupport =
   | { ok: true }
