@@ -14,7 +14,7 @@
 
 export type IconName =
   | 'pencil' | 'users' | 'layers' | 'archive' | 'unarchive' | 'trash'
-  | 'exit' | 'settings' | 'plus' | 'external' | 'unlink' | 'sun' | 'moon' | 'monitor'
+  | 'exit' | 'settings' | 'plus' | 'external' | 'link' | 'unlink' | 'sun' | 'moon' | 'monitor'
   | 'inbox' | 'home' | 'today' | 'calendar' | 'file' | 'panel' | 'panelRight' | 'mail' | 'search'
 
 /** The ones a single path can say. */
@@ -23,6 +23,9 @@ const PATHS: Partial<Record<IconName, string>> = {
   layers: 'M12 3.6 3.6 8.1 12 12.6l8.4-4.5zM3.6 12.8 12 17.3l8.4-4.5M3.6 16.9 12 21.4l8.4-4.5',
   plus: 'M12 5.4v13.2M5.4 12h13.2',
   external: 'M14.2 4.8h5v5M19.2 4.8 11 13M16.6 13.6v4.4a1.6 1.6 0 0 1-1.6 1.6H6a1.6 1.6 0 0 1-1.6-1.6V9a1.6 1.6 0 0 1 1.6-1.6h4.4',
+  // 'link' — 같은 사슬에서 X만 뺀 모양입니다. 끊긴 것과 이어진 것이 한
+  // 가족으로 보여야 옆에 놓였을 때 짝으로 읽힙니다.
+  link: 'm9.2 14.8-2.4 2.4a3.4 3.4 0 0 1-4.8-4.8l2.4-2.4M14.8 9.2l2.4-2.4a3.4 3.4 0 0 1 4.8 4.8l-2.4 2.4M8.6 15.4l6.8-6.8',
   unlink: 'm9.2 14.8-2.4 2.4a3.4 3.4 0 0 1-4.8-4.8l2.4-2.4M14.8 9.2l2.4-2.4a3.4 3.4 0 0 1 4.8 4.8l-2.4 2.4M4.4 4.4l15.2 15.2',
   exit: 'M9.6 19.2H6a1.8 1.8 0 0 1-1.8-1.8V6.6A1.8 1.8 0 0 1 6 4.8h3.6M14.6 15.8 18.4 12l-3.8-3.8M18.4 12H9.2',
   moon: 'M20 13.4A8 8 0 0 1 10.6 4a8.2 8.2 0 1 0 9.4 9.4z',

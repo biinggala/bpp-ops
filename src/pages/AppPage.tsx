@@ -11,7 +11,7 @@ import { useSyncStore } from '../store/syncStore'
 import { useOrgStore } from '../store/orgStore'
 import { usePrefsStore } from '../store/prefsStore'
 import { Welcome } from '../components/modals/Welcome'
-import { parseInviteToken } from '../lib/paths'
+import { parseInviteToken, PENDING_TASK_KEY } from '../lib/paths'
 import { useMobile } from '../hooks/useMobile'
 import type { Project } from '../types'
 import { Sidebar } from '../components/layout/Sidebar'
@@ -58,6 +58,7 @@ export function AppPage() {
   const isMobile = useMobile()
   const view = useUiStore(s => s.view)
   const screen = useUiStore(s => s.screen)
+  const openTaskDetail = useUiStore(s => s.openTaskDetail)
   const tasks = useTaskStore(s => s.tasks)
   const subscribeWorkspace = useSyncStore(s => s.subscribe)
   const ready = useSyncStore(s => s.ready)
@@ -125,6 +126,26 @@ export function AppPage() {
     })
     return () => { cancelled = true }
   }, [uid])
+
+  /**
+   * ── 공유받은 업무 링크 ─────────────────────────────────────────────────────
+   *
+   * 첫 그림이 다 온 뒤에(ready) 엽니다. 그 전에 물으면 아직 안 온 것을
+   * '없는 것'으로 읽게 되고, 멀쩡한 링크에 대고 "볼 수 없습니다"라고
+   * 말하게 됩니다 — 이 앱에서 여러 번 밟은 자리입니다.
+   *
+   * 못 찾으면 조용히 넘기지 않고 말해 줍니다. 링크를 눌렀는데 평소 화면이
+   * 뜨면, 링크가 잘못된 것인지 앱이 무시한 것인지 알 방법이 없습니다.
+   * 대개는 그 프로젝트의 멤버가 아니라서입니다 — 링크는 권한을 주지 않습니다.
+   */
+  useEffect(() => {
+    if (!uid || !ready) return
+    const wanted = sessionStorage.getItem(PENDING_TASK_KEY)
+    if (!wanted) return
+    sessionStorage.removeItem(PENDING_TASK_KEY)
+    if (tasks.some(t => t.id === wanted)) openTaskDetail(wanted)
+    else useToast.getState().show('그 업무를 볼 수 없습니다. 프로젝트 멤버에게 초대를 부탁하세요')
+  }, [uid, ready, tasks, openTaskDetail])
 
   // Invitations waiting in my inbox, for people invited by address rather than
   // by link. The project itself stays unreadable until the invite is accepted,

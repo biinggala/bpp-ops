@@ -8,6 +8,10 @@ import Highlight from '@tiptap/extension-highlight'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { MoreMenu } from '../shared/MoreMenu'
+import { Tip } from '../shared/Tip'
+import { Icon } from '../shared/Icon'
+import { useToast } from '../shared/Toast'
+import { taskLinkFor } from '../../lib/paths'
 import { askConfirm } from '../shared/Confirm'
 import { useAuthStore } from '../../store/authStore'
 import { usePresenceStore } from '../../store/presenceStore'
@@ -68,6 +72,51 @@ function openLinkFrom(e: React.MouseEvent): boolean {
  * The files a task is made of, attached from Drive rather than described by a
  * URL somebody typed. See DriveFiles.tsx for what "aligned" is taken to mean.
  */
+/**
+ * ── 이 업무로 가는 링크 ──────────────────────────────────────────────────────
+ *
+ * "그 업무 어디 있죠"에 답하려면 지금까지는 말로 길을 알려 줘야 했습니다 —
+ * 프로젝트를 고르고, 마일스톤을 펴고, 목록에서 이름을 찾으라고. 주소 하나면
+ * 끝날 일입니다. 슬랙에 붙여 넣으면 누른 사람 화면에 이 창이 열립니다.
+ *
+ * **권한은 이 링크가 주지 않습니다.** 초대 링크와 다릅니다 — 저건 코드를
+ * 들고 있어서 들여보내 주지만, 이건 가리키기만 합니다. 그래서 아무에게나
+ * 보내도 새는 것이 없고, 반대로 그 프로젝트 멤버가 아닌 사람은 눌러도 못
+ * 봅니다. 그 경우엔 앱이 왜 못 보는지 말해 줍니다(AppPage).
+ *
+ * 누른 뒤에 글자가 바뀝니다. 복사는 화면에 아무 흔적도 안 남기는 동작이라,
+ * 눌렸는지 아닌지를 말해 주지 않으면 두 번 세 번 누르게 됩니다.
+ */
+function ShareLink({ taskId }: { taskId: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <Tip label={copied ? '복사했습니다' : '링크 복사'}>
+      <button
+        onClick={() => {
+          void navigator.clipboard?.writeText(taskLinkFor(taskId))
+            .then(() => {
+              setCopied(true)
+              useToast.getState().show('링크를 복사했습니다')
+              setTimeout(() => setCopied(false), 2000)
+            })
+            .catch(() => useToast.getState().show('링크를 복사하지 못했습니다'))
+        }}
+        aria-label="업무 링크 복사"
+        style={{
+          width: 28, height: 28, borderRadius: 'var(--r1)', border: 'none',
+          background: 'transparent', cursor: 'pointer', color: copied ? 'var(--ac)' : 'var(--t3)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          transition: 'background .1s, color .1s',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)' }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+      >
+        <Icon name="link" size={15} />
+      </button>
+    </Tip>
+  )
+}
+
 /**
  * ── 하위 업무 ────────────────────────────────────────────────────────────────
  *
@@ -1041,6 +1090,8 @@ export function TaskDetailModal() {
             않습니다.** 하위 업무 세 개가 같이 사라지는 걸 모르고 누르는
             일이 그 방식에서는 막히지 않습니다.
           */}
+          {/* 3점 버튼 옆. 공유는 자주 하는 일이라 메뉴 안에 넣지 않습니다. */}
+          <ShareLink taskId={task.id} />
           <MoreMenu items={[{
             label: '업무 삭제',
             icon: 'trash',

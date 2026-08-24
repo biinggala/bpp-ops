@@ -3,6 +3,7 @@ import { useAuthStore } from './store/authStore'
 import { LoginPage } from './pages/LoginPage'
 import { AppPage } from './pages/AppPage'
 import { Crash } from './components/shared/Crash'
+import { PENDING_TASK_KEY } from './lib/paths'
 import { useShallow } from 'zustand/react/shallow'
 
 export default function App() {
@@ -14,6 +15,13 @@ export default function App() {
     const invite = params.get('invite')
     if (invite) {
       sessionStorage.setItem('pending_invite', invite)
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+    // 공유받은 업무 링크. 초대와 같은 이유로 여기서 챙깁니다 — 로그인 화면을
+    // 거치고 나면 주소는 이미 지워져 있습니다.
+    const task = params.get('task')
+    if (task) {
+      sessionStorage.setItem(PENDING_TASK_KEY, task)
       window.history.replaceState({}, '', window.location.pathname)
     }
     const unsub = subscribe()

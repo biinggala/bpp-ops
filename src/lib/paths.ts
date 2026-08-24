@@ -151,3 +151,26 @@ export function parseInviteToken(token: string): { projectId: string; inviteCode
   if (at <= 0 || at === token.length - 1) return null
   return { projectId: token.slice(0, at), inviteCode: token.slice(at + 1) }
 }
+
+/**
+ * ── 업무로 바로 가는 링크 ────────────────────────────────────────────────────
+ *
+ * "그 업무 어디 있죠"에 답하려면 지금은 말로 길을 알려 줘야 합니다 —
+ * 프로젝트를 고르고, 마일스톤을 펴고, 목록에서 이름을 찾으라고. 주소 하나면
+ * 끝날 일입니다.
+ *
+ * **주소는 이 배포의 것을 씁니다.** 상수로 박아 두면 미리보기 채널이나 다른
+ * 배포에서 만든 링크가 늘 운영 쪽을 가리켜서, 시험 중에 만든 링크가 진짜
+ * 화면을 엽니다. 지금 서 있는 곳이 답입니다.
+ *
+ * **권한은 링크가 주지 않습니다.** 초대 링크와 다른 점입니다 — 저건 코드를
+ * 들고 있어서 들여보내 주지만, 이건 가리키기만 합니다. 그 프로젝트의 멤버가
+ * 아니면 열어도 못 봅니다. 그래서 링크를 아무에게나 보내도 새는 것이 없고,
+ * 반대로 받은 사람이 못 볼 수도 있습니다.
+ */
+export function taskLinkFor(taskId: string): string {
+  return `${window.location.origin}/?task=${encodeURIComponent(taskId)}`
+}
+
+/** 주소에 실려 온 업무 id. 로그인 과정에서 주소가 날아가므로 한 번만 읽습니다. */
+export const PENDING_TASK_KEY = 'pending_task'
