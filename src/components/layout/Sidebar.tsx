@@ -11,6 +11,7 @@ import { useUserProfileStore } from '../../store/userProfileStore'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import { Icon, type IconName } from '../shared/Icon'
+import { GetDesktopApp } from '../shared/GetDesktopApp'
 import { Tip, CMD } from '../shared/Tip'
 import { WidthHandle } from '../shared/WidthHandle'
 import { SettingsModal } from '../modals/SettingsModal'
@@ -536,6 +537,9 @@ export function Sidebar() {
                 </div>
               </div>
               <div style={{ borderTop: '1px solid var(--bd)', paddingTop: 8 }}>
+                {/* 브라우저로 보고 있을 때만 나타납니다 — 앱 안에서는 이
+                    컴포넌트가 스스로 아무것도 그리지 않습니다. */}
+                <GetDesktopApp variant="menu" onPick={() => setProfileOpen(false)} />
                 <button
                   onClick={() => { setProfileOpen(false); signOutUser() }}
                   style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 'var(--r2)', border: 'none', background: 'transparent', fontSize: 12, color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)' }}

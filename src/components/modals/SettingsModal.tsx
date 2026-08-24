@@ -10,6 +10,7 @@ import { useDriveStore } from '../../store/driveStore'
 import { useMailStore } from '../../store/mailStore'
 import { useOrgStore, pendingJoinCount } from '../../store/orgStore'
 import { useProjectStore } from '../../store/projectStore'
+import { GetDesktopApp } from '../shared/GetDesktopApp'
 import { usePrefsStore } from '../../store/prefsStore'
 import { LATEST } from '../../lib/whatsNew'
 import { askConfirm } from '../shared/Confirm'
@@ -147,6 +148,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                 <Section title="안내" note="한 번 보고 닫으면 다시 안 뜹니다. 여기서 언제든 다시 열 수 있습니다.">
                   <ReplayRows onOpen={onClose} />
                 </Section>
+                {/* 이미 앱으로 보고 있는 사람과 폰에서는 스스로 사라집니다. */}
+                <GetDesktopApp />
                 <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 6, paddingTop: 12, borderTop: '1px solid var(--bd)', userSelect: 'text' }}>
                   빌드 {__BUILD_ID__}
                 </div>

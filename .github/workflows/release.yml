@@ -147,8 +147,17 @@ jobs:
           test -f "$TARBALL"     || { echo "::error::no updater bundle — is TAURI_SIGNING_PRIVATE_KEY set?"; exit 1; }
           test -f "$TARBALL.sig" || { echo "::error::the updater bundle is unsigned"; exit 1; }
 
-          mkdir -p public/updates
+          mkdir -p public/updates public/downloads
           cp "$TARBALL" public/updates/bpp-ops.app.tar.gz
+
+          # The same reasoning, for the people who have no app yet: the .dmg on
+          # the release is behind the repository's login, and most of the team
+          # has no GitHub account. The web deployment is the one place everybody
+          # can already reach, so the installer is published there too, under a
+          # fixed name so the download button never has to learn a version.
+          DMG=$(ls src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -1)
+          test -f "$DMG" || { echo "::error::no .dmg was built"; exit 1; }
+          cp "$DMG" public/downloads/bpp-ops.dmg
 
           python3 - <<'PY'
           import json, os, datetime, pathlib
@@ -177,10 +186,10 @@ jobs:
 
           git config user.name "Claude"
           git config user.email "noreply@anthropic.com"
-          git add public/updates
+          git add public/updates public/downloads
           # A re-run rebuilds the same bundle; nothing to commit is a fine
           # outcome, and `set -e` would otherwise read it as a failed release.
-          git commit -m "chore(release): publish the $VERSION updater bundle" || echo "nothing new to commit"
+          git commit -m "chore(release): publish the $VERSION updater bundle and installer" || echo "nothing new to commit"
           # Main may have moved while the mac build ran. autostash for the same
           # reason as the Windows job: the build leaves the tree dirty.
           git -c rebase.autoStash=true pull --rebase origin main
@@ -336,8 +345,17 @@ jobs:
             *.zip) NAME=bpp-ops-setup.nsis.zip ;;
             *)     NAME=bpp-ops-setup.exe ;;
           esac
-          mkdir -p public/updates
+          mkdir -p public/updates public/downloads
           cp "$ARTIFACT" "public/updates/$NAME"
+
+          # The installer for people who have no app yet, under a name the
+          # download button can hard-code. Only the .exe is worth offering as a
+          # download; the v1 .zip is an updater payload, not something to hand
+          # somebody. The button reads the manifest and hides itself if this is
+          # missing, so skipping it here is a quiet no-op rather than a 404.
+          case "$ARTIFACT" in
+            *-setup.exe) cp "$ARTIFACT" public/downloads/bpp-ops-setup.exe ;;
+          esac
 
           SIG=$(cat "$ARTIFACT.sig") NAME="$NAME" python - <<'PY'
           import json, os, pathlib
@@ -353,7 +371,7 @@ jobs:
 
           git config user.name "Claude"
           git config user.email "noreply@anthropic.com"
-          git add public/updates
+          git add public/updates public/downloads
           # Re-running a release rebuilds identical bytes; nothing to commit is
           # a fine outcome and not a failure.
           git commit -m "chore(release): publish the $VERSION Windows updater bundle" || echo "nothing new to commit"

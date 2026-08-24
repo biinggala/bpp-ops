@@ -26,6 +26,8 @@ export interface DesktopRelease {
   version: string
   /** Where to get the build. */
   url: string
+  /** Installers published beside this deployment. Absent before the next release. */
+  downloads?: { mac?: string; windows?: string }
 }
 
 const MANIFEST = '/desktop-version.json'
@@ -59,10 +61,34 @@ export async function latestRelease(): Promise<DesktopRelease | null> {
     const res = await fetch(`${MANIFEST}?t=${Date.now()}`, { cache: 'no-store' })
     if (!res.ok) return null
     const body = (await res.json()) as Partial<DesktopRelease>
-    return body.version && body.url ? { version: body.version, url: body.url } : null
+    return body.version && body.url
+      ? { version: body.version, url: body.url, downloads: body.downloads }
+      : null
   } catch {
     return null
   }
+}
+
+/**
+ * ── 이 컴퓨터에 맞는 설치 파일 ───────────────────────────────────────────────
+ *
+ * 웹으로 들어온 사람에게 앱을 권할 때, 어느 파일을 줄지는 물어볼 일이
+ * 아닙니다. 맥에 .exe를 내미는 순간 그 버튼은 안 눌러 본 것만 못합니다.
+ *
+ * 브라우저가 말하는 것으로만 정합니다 — 애플 실리콘 맥도 사파리·크롬 모두
+ * userAgent에 'Mac'이 들어 있고, 우리가 내는 건 유니버설 빌드 하나라
+ * 칩까지 알 필요가 없습니다. 아이패드·아이폰은 맥이 아니므로 뺍니다:
+ * 거기서는 설치할 수 있는 것이 없고, 이 앱은 이미 브라우저에서 돕니다.
+ */
+export type DesktopPlatform = 'mac' | 'windows' | null
+
+export function thisPlatform(): DesktopPlatform {
+  if (typeof navigator === 'undefined') return null
+  const ua = navigator.userAgent
+  if (/iPhone|iPad|iPod|Android/.test(ua)) return null
+  if (/Mac/.test(ua)) return 'mac'
+  if (/Win/.test(ua)) return 'windows'
+  return null
 }
 
 /**
