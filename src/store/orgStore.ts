@@ -276,8 +276,13 @@ export const useOrgStore = create<OrgState>((set, get) => ({
      * 머뭅니다. 실제로 그렇게 됐고, 이건 그 자리입니다.
      */
     let domainSeen = false
-    let orgsSeen = !uid            // 계정이 없으면 볼 색인도 없습니다
+    let orgsSeen = false
     const settle = () => { if (domainSeen && orgsSeen && !get().ready) set({ ready: true }) }
+
+    /** 내 색인에 적힌 것들. 도메인으로 찾은 곳과 합쳐야 목록이 됩니다. */
+    let indexIds: string[] = []
+    /** 늦게 온 답이 먼저 온 답을 덮지 않도록. */
+    let gen = 0
 
     /**
      * 내 색인에 적힌 조직 중 내가 **멤버인** 첫 곳.
@@ -376,7 +381,10 @@ export const useOrgStore = create<OrgState>((set, get) => ({
        */
       const ids = get().myOrgs.map(o => o.id)
       const pick = [preferred, fromDomain, fromIndex].find(o => o && ids.includes(o))
-      const next = pick ?? null
+      // 목록이 비었는데 도메인으로 찾은 곳이 있으면 거기 붙습니다. 규칙도
+      // 도메인을 예비 근거로 인정하므로 읽을 수 있고, 무엇보다 **목록이 못
+      // 만들어졌다는 이유로 자기 회사에서 쫓겨나면 안 됩니다.**
+      const next = pick ?? (ids.length === 0 ? fromDomain : null)
       if (next !== current) {
         current = next
         dropInner()
@@ -391,29 +399,47 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       settle()
     }
 
-    const indexRef = ref(db, P.orgByDomain(email))
-    const indexHandler = onValue(indexRef, snap => {
-      fromDomain = (snap.val() as string | null) ?? null
-      domainSeen = true
-      apply()
-    }, () => {
-      // 색인을 못 읽었습니다. 없는 것과 구별할 수 없으니 '없음'으로 둡니다.
-      fromDomain = null
-      domainSeen = true
-      apply()
-    })
-
-    const myOrgsRef = uid ? ref(db, P.userOrgs(uid)) : null
-    const myOrgsHandler = myOrgsRef ? onValue(myOrgsRef, snap => {
-      const ids = Object.keys((snap.val() ?? {}) as Record<string, number>)
+    /**
+     * 목록을 다시 만듭니다. **두 길 중 어느 쪽이 바뀌어도** 부릅니다.
+     *
+     * 예전엔 내 색인이 바뀔 때만 만들었습니다. 그런데 도메인으로 찾은 곳이
+     * 그보다 늦게 오면 목록에 안 들어가고, 목록에 없으면 안 붙습니다 —
+     * 자기 회사에 로그인했는데 '워크스페이스 만들기' 화면이 뜹니다. 실제로
+     * 그렇게 됐고, 이건 그 자리입니다.
+     */
+    const recompute = () => {
+      const ids = [...indexIds]
       if (fromDomain) ids.push(fromDomain)
+      const mine = ++gen
       void myOrgsFrom(ids).then(list => {
+        if (mine !== gen) return
         set({ myOrgs: list })
         fromIndex = list[0]?.id ?? null
         orgsSeen = true
         apply()
       })
-    }, () => { set({ myOrgs: [] }); fromIndex = null; orgsSeen = true; apply() }) : null
+    }
+
+    const indexRef = ref(db, P.orgByDomain(email))
+    const indexHandler = onValue(indexRef, snap => {
+      fromDomain = (snap.val() as string | null) ?? null
+      domainSeen = true
+      recompute()
+      apply()
+    }, () => {
+      // 색인을 못 읽었습니다. 없는 것과 구별할 수 없으니 '없음'으로 둡니다.
+      fromDomain = null
+      domainSeen = true
+      recompute()
+      apply()
+    })
+
+    const myOrgsRef = uid ? ref(db, P.userOrgs(uid)) : null
+    const myOrgsHandler = myOrgsRef ? onValue(myOrgsRef, snap => {
+      indexIds = Object.keys((snap.val() ?? {}) as Record<string, number>)
+      recompute()
+    }, () => { indexIds = []; recompute() }) : null
+    if (!myOrgsRef) recompute()
 
     // 다른 워크스페이스를 고르면 여기로 옵니다. 스토어 둘을 직접 잇지 않고
     // 설정을 통해 잇는 이유는, 그래야 폰에서 고른 것이 노트북에도 오기
