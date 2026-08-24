@@ -4,6 +4,7 @@ import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
+import { installTimeblockDrag, TIMEBLOCK_ATTR } from '../../../lib/timeblock'
 import { useTaskStore } from '../../../store/taskStore'
 import { useAuthStore } from '../../../store/authStore'
 import { useProjectStore } from '../../../store/projectStore'
@@ -117,7 +118,19 @@ export function TodayView() {
       // 지금 차례인 것을 읽어 주기만 합니다.
       Placeholder.configure({ placeholder: () => HINTS(mobileRef.current)[hintRef.current] }),
       TaskList,
-      TaskItem.configure({ nested: true }),
+      /**
+       * 체크박스 줄도 끌 수 있게 합니다.
+       *
+       * 시간 축으로 끌어다 놓으려면 dragstart가 나야 하고, 프로즈미러는
+       * 노드 스펙이 draggable일 때만 그 줄을 끌 수 있는 것으로 칩니다.
+       * 덤으로 노트 안에서 줄 순서도 끌어서 바꿀 수 있게 됩니다.
+       */
+      TaskItem.extend({ draggable: true }).configure({
+        nested: true,
+        // 이 줄도 시간 축이 받는다는 표시. 무엇을 실을지는 document의
+        // 처리기가 이 표시를 보고 정합니다 — lib/timeblock.
+        HTMLAttributes: { [TIMEBLOCK_ATTR]: '' },
+      }),
       TaskRef,
       FileRef,
       MarkdownTasks,
@@ -183,6 +196,10 @@ export function TodayView() {
   }, [date])
 
   useEffect(() => { setNoteIds(new Set()) }, [date])
+
+  // 끌어다 놓기용 짐은 프로즈미러가 dataTransfer를 지운 **뒤에** 실어야
+  // 합니다. 그래서 document에 답니다 — lib/timeblock에 이유를 적어 뒀습니다.
+  useEffect(() => installTimeblockDrag(), [])
 
   /**
    * ── 죽은 편집기에게 묻지 않습니다 ──────────────────────────────────────────

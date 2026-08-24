@@ -7,7 +7,7 @@ import { useProjectStore } from '../../../store/projectStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useSyncStore } from '../../../store/syncStore'
 import { useGCalStore } from '../../../store/gcalStore'
-import { writeTimeblock } from '../../../lib/timeblock'
+import { TIMEBLOCK_ATTR } from '../../../lib/timeblock'
 import { haptic } from '../../../lib/haptics'
 import { daysFrom } from '../../../lib/utils'
 import { StatusMark } from '../../shared/StatusMark'
@@ -208,17 +208,11 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
       style={ROW}
       data-drag-handle
       /**
-       * 노트 밖으로도 끌 수 있게 한 줄 더 싣습니다.
-       *
-       * 프로즈미러는 자기 형식으로 이미 싣고 있고(노트 안에서 줄 순서를
-       * 바꾸는 그것), dataTransfer는 형식을 여러 개 담을 수 있으므로 둘은
-       * 서로를 지우지 않습니다. 시간 축은 우리 것만 보고, 노트는 자기 것만
-       * 봅니다 — 같은 드래그 하나로 둘 다 됩니다.
+       * 시간 축으로 끌 수 있는 줄이라는 표시. 무엇을 싣는지는 document의
+       * 처리기가 여기 적힌 것을 읽어서 정합니다 — lib/timeblock에 왜 거기
+       * 있어야 하는지 적어 뒀습니다(프로즈미러가 dataTransfer를 지웁니다).
        */
-      onDragStart={(e: React.DragEvent) => {
-        if (!task) return
-        writeTimeblock(e.dataTransfer, { taskId: task.id, name: task.name || '이름 없음' })
-      }}
+      {...{ [TIMEBLOCK_ATTR]: '', 'data-timeblock-task': task.id, 'data-timeblock-name': task.name || '이름 없음' }}
     >
       <StatusPick status={task.status} onPick={setStatus} />
 

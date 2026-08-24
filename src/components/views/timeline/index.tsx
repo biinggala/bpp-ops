@@ -288,7 +288,11 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
   const dropTimeblock = async (payload: TimeblockDrag, date: string, at: number) => {
     const from = clampDay(at)
     const to = clampDay(Math.max(from + MIN_DURATION, from + BLOCK_MINUTES))
-    const existing = events.find(e => e.taskId === payload.taskId && !e.allDay)
+    // id가 있을 때만 찾습니다. 없는 것끼리 비교하면 **아무 일정이나** 걸려서,
+    // 체크박스 한 줄을 끌었을 뿐인데 남의 일정이 옮겨집니다.
+    const existing = payload.taskId
+      ? events.find(e => e.taskId === payload.taskId && !e.allDay)
+      : undefined
     if (existing) {
       await updateEvent(existing.id, {
         startDateTime: localIso(date, from),
