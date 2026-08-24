@@ -27,11 +27,12 @@ import { SchedulePanel } from './SchedulePanel'
 import { StatusPill, PriorityLabel } from '../shared/StatusPill'
 import { useMenu, Menu, MenuList, MenuItem, CellTrigger, Dot } from '../shared/Menu'
 import { PropCell, OptionPicker, STATUS_STYLE, PRIORITY_STYLE } from '../shared/PropRow'
-import { STATUS_LIST, PRIORITY_LIST, NOTION } from '../../types'
+import { STATUS_LIST, PRIORITY_LIST, NOTION, statusAccent } from '../../types'
 import { ActivityList } from '../shared/ActivityList'
 import { openExternal } from '../../lib/desktopLinks'
 import type { Task, Status, Priority, TaskLink } from '../../types'
-import { isComposing } from '../../lib/utils'
+import { isComposing, daysFrom } from '../../lib/utils'
+import { StatusMark } from '../shared/StatusMark'
 import { useShallow } from 'zustand/react/shallow'
 
 
@@ -62,6 +63,192 @@ function openLinkFrom(e: React.MouseEvent): boolean {
  * The files a task is made of, attached from Drive rather than described by a
  * URL somebody typed. See DriveFiles.tsx for what "aligned" is taken to mean.
  */
+/**
+ * ── 하위 업무 ────────────────────────────────────────────────────────────────
+ *
+ * 하위 업무는 만들 수는 있는데 **부모를 열면 안 보였습니다.** 목록에서 접힌
+ * 채로 부모 아래 붙어 있고, 노트에서는 한 줄로 서 있고, 정작 "이 일이 어디까지
+ * 왔나"를 물으러 여는 창에는 없었습니다.
+ *
+ * 여기서 하는 일은 셋뿐입니다 — 보기, 상태 바꾸기, 하나 더 만들기. 이름을
+ * 고치거나 마감을 잡는 건 그 업무를 열어서 합니다. 한 창에서 두 업무를 다
+ * 편집할 수 있게 하면 지금 무엇을 고치고 있는지가 흐려집니다.
+ *
+ * 새로 만드는 것은 부모의 프로젝트와 마일스톤을 물려받습니다. 하위 업무가
+ * 부모와 다른 프로젝트에 있는 일은 없고, 있다면 그건 하위 업무가 아닙니다.
+ */
+function SubtaskPanel({ task }: { task: Task }) {
+  const allTasks = useTaskStore(s => s.tasks)
+  const addTask = useTaskStore(s => s.addTask)
+  const updateTask = useTaskStore(s => s.updateTask)
+  const openTaskDetail = useUiStore(s => s.openTaskDetail)
+  const email = useAuthStore(s => s.email)
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState('')
+
+  const parent = allTasks.find(t => t.id === task.parentId)
+  const children = useMemo(
+    () => allTasks.filter(t => t.parentId === task.id),
+    [allTasks, task.id],
+  )
+  const done = children.filter(t => t.status === '완료').length
+
+  const create = () => {
+    const name = draft.trim()
+    if (!name) { setAdding(false); setDraft(''); return }
+    addTask({
+      type: '세부', name, cat: task.cat ?? '',
+      assignee: email ?? '', start: '', due: '',
+      priority: '중간', status: '대기', progress: 0, memo: '',
+      parentId: task.id,
+      ...(task.projectId ? { projectId: task.projectId } : {}),
+      ...(task.milestoneId ? { milestoneId: task.milestoneId } : {}),
+      ...(email ? { createdBy: email } : {}),
+    })
+    setDraft('')   // 연달아 넣는 사람이 대부분입니다. 칸은 열어 둡니다.
+  }
+
+  // 부모도 하위도 없으면 이 칸 자체가 없습니다. 빈 상자는 자리만 씁니다 —
+  // 다만 '하위 업무 추가'는 어디선가는 눌러야 하므로 접힌 줄로 남겨 둡니다.
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: children.length ? 10 : 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+          하위 업무
+        </span>
+        {children.length > 0 && (
+          <span style={{ fontSize: 11, color: 'var(--t3)', fontVariantNumeric: 'tabular-nums' }}>
+            {done}/{children.length}
+          </span>
+        )}
+      </div>
+
+      {/* 내가 누군가의 하위라면 그것부터 말합니다 — '이 일이 어디에 속하나'는
+          '이 일 밑에 뭐가 있나'보다 먼저 궁금한 질문입니다. */}
+      {parent && (
+        <button
+          onClick={() => openTaskDetail(parent.id)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10,
+            padding: '4px 8px', borderRadius: 'var(--r1)',
+            border: '1px solid var(--bd)', background: 'transparent',
+            color: 'var(--t2)', fontSize: 12, cursor: 'pointer',
+            fontFamily: 'var(--font)', maxWidth: '100%',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+        >
+          <span style={{ color: 'var(--t3)' }}>상위</span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {parent.name || '이름 없음'}
+          </span>
+        </button>
+      )}
+
+      {children.map(child => (
+        <SubtaskRow
+          key={child.id}
+          task={child}
+          onOpen={() => openTaskDetail(child.id)}
+          onToggle={() => updateTask(child.id, child.status === '완료'
+            ? { status: '진행중', progress: 50 }
+            : { status: '완료', progress: 100 })}
+        />
+      ))}
+
+      {adding ? (
+        <input
+          autoFocus
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={() => { create(); setAdding(false) }}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); create() }
+            if (e.key === 'Escape') { setDraft(''); setAdding(false) }
+          }}
+          placeholder="하위 업무 이름"
+          style={{
+            width: '100%', boxSizing: 'border-box', marginTop: 4,
+            padding: '6px 8px', borderRadius: 'var(--r1)',
+            border: '1px solid var(--ac)', background: 'var(--bg)',
+            color: 'var(--t1)', fontSize: 13, fontFamily: 'var(--font)', outline: 'none',
+          }}
+        />
+      ) : (
+        <button
+          onClick={() => setAdding(true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6, marginTop: 4,
+            padding: '4px 6px', borderRadius: 'var(--r1)',
+            border: 'none', background: 'transparent',
+            color: 'var(--t3)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'var(--font)',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; e.currentTarget.style.color = 'var(--t2)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
+        >
+          + 하위 업무 추가
+        </button>
+      )}
+    </div>
+  )
+}
+
+function SubtaskRow({ task, onOpen, onToggle }: {
+  task: Task; onOpen: () => void; onToggle: () => void
+}) {
+  const [hovered, setHovered] = useState(false)
+  const done = task.status === '완료'
+  const diff = task.due ? daysFrom(task.due, new Date()) : null
+  const late = diff !== null && diff < 0 && !done
+
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '4px 6px', margin: '1px -6px', borderRadius: 'var(--r1)',
+        background: hovered ? 'var(--bg3)' : 'transparent',
+      }}
+    >
+      <button
+        onClick={onToggle}
+        aria-label={done ? '완료 해제' : '완료로'}
+        style={{
+          width: 20, height: 20, flexShrink: 0, borderRadius: '50%', border: 'none',
+          background: 'transparent', cursor: 'pointer', padding: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: statusAccent(task.status),
+        }}
+      >
+        <StatusMark status={task.status} size={14} />
+      </button>
+
+      <span
+        onClick={onOpen}
+        style={{
+          flex: 1, minWidth: 0, fontSize: 13.5, cursor: 'pointer',
+          color: done ? 'var(--t3)' : 'var(--t1)',
+          textDecoration: done ? 'line-through' : 'none',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}
+      >
+        {task.name || '(이름 없음)'}
+      </span>
+
+      {diff !== null && !done && (
+        <span style={{
+          flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--r1)',
+          background: late ? 'var(--danger-l)' : 'var(--bg3)',
+          color: late ? 'var(--danger)' : 'var(--t3)',
+        }}>
+          {late ? `D+${Math.abs(diff)}` : diff === 0 ? 'D-Day' : `D-${diff}`}
+        </span>
+      )}
+    </div>
+  )
+}
+
 function AssetsPanel({ links, projectId, onChange }: {
   links: TaskLink[]
   projectId?: string
@@ -528,6 +715,10 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
               </div>
 
               {/* Assets, then the events they are for */}
+              <div style={{ padding: '16px 20px 24px', borderTop: '1px solid var(--bd)' }}>
+                <SubtaskPanel task={task} />
+              </div>
+
               <div style={{ padding: '0 20px 24px', borderTop: '1px solid var(--bd)' }}>
                 <AssetsPanel links={task.links ?? []} projectId={task.projectId} onChange={links => upd({ links })} />
                 <SchedulePanel task={task} memberEmails={currentProject?.memberEmails ?? []} />
@@ -876,6 +1067,10 @@ export function TaskDetailModal() {
           {/* Both panels draw their own heading, so they get the rule and the
               padding and nothing else — a second title above theirs would be
               the same word twice. */}
+          <div style={{ borderTop: '1px solid var(--bd)', padding: '18px 28px' }}>
+            <SubtaskPanel task={task} />
+          </div>
+
           <div style={{ borderTop: '1px solid var(--bd)', padding: '18px 28px' }}>
             <AssetsPanel links={task.links ?? []} projectId={task.projectId} onChange={links => upd({ links })} />
           </div>
