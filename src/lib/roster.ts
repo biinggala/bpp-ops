@@ -273,11 +273,23 @@ export async function claimGuestSeats(uid: string, email: string, orgIds: string
   if (unique.length === 0) return
   const at = Date.now()
   await Promise.all(
-    unique.map(oid =>
-      update(ref(db, P.orgMember(oid, email)), { role: 'guest', at })
-        // 이미 있으면 규칙이 거절합니다. 그게 맞는 동작이라 조용히 넘깁니다.
-        .catch(() => {}),
-    ),
+    unique.map(async oid => {
+      /**
+       * **이미 명단에 있으면 손대지 않습니다.**
+       *
+       * 규칙에도 '행이 없을 때만'이 있지만, 그것만 믿으면 안 됩니다 —
+       * 관리자에게는 명단을 고칠 권한이 따로 있어서 그 조항으로 통과합니다.
+       * 실제로 그렇게 됐습니다: 어느 워크스페이스에 붙었는지 못 정한 동안
+       * 이 함수가 자기 회사를 '남의 것'으로 보고 불렸고, 관리자였던 사람이
+       * **자기 자신을 게스트로 강등**시켰습니다. 그 순간 회의실도 워크스페이스
+       * 이름도 전부 닫혔습니다.
+       *
+       * 규칙이 막아 주기를 기대하지 말고, 부르는 쪽이 먼저 안 하는 게 맞습니다.
+       */
+      const mine = await fbGet(ref(db, P.orgMember(oid, email))).catch(() => null)
+      if (mine?.exists()) return
+      await update(ref(db, P.orgMember(oid, email)), { role: 'guest', at }).catch(() => {})
+    }),
   )
   await claimInvitedOrgs(uid, unique)
 }

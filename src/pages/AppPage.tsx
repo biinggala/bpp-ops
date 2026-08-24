@@ -125,6 +125,7 @@ export function AppPage() {
   const profiles = useUserProfileStore(s => s.profiles)
   const orgId = useOrgStore(s => s.orgId)
   const orgDomain = useOrgStore(s => s.domain)
+  const orgReady = useOrgStore(s => s.ready)
   // 주소를 정렬해 한 줄로 만듭니다. 목록 자체를 의존성에 넣으면 내용이 같아도
   // 참조가 바뀔 때마다 다시 돌아서, 쓸 것이 없는데도 매번 읽으러 갑니다.
   const peerKey = useMemo(() => {
@@ -190,9 +191,11 @@ export function AppPage() {
     [orgByProject, orgId],
   )
   useEffect(() => {
-    if (!uid || !email || !ready || !guestOrgs) return
+    // orgReady를 기다립니다. 어느 워크스페이스에 붙을지 아직 못 정한 동안에는
+    // orgId가 null이고, 그러면 위 목록이 **내 회사까지 '남의 것'으로 셉니다.**
+    if (!uid || !email || !ready || !orgReady || !guestOrgs) return
     void claimGuestSeats(uid, email, guestOrgs.split(' '))
-  }, [uid, email, ready, guestOrgs])
+  }, [uid, email, ready, orgReady, guestOrgs])
 
   /**
    * ── 초대장에 실려 온 회사 ──────────────────────────────────────────────────
