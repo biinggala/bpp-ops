@@ -104,7 +104,9 @@ export function GetDesktopApp({ variant = 'card', onPick }: {
         onClick={onPick}
         style={{
           display: 'flex', alignItems: 'center', gap: 8,
-          margin: '0 6px 6px', padding: '0 8px', minHeight: 28,
+          // 위쪽 auto — 목록이 짧은 날에도 맨 아래에 섭니다. '홈' 열은 flex:1로
+          // 이미 채우지만 '받은 알림' 열은 안 채워서, 그 줄이 목록에 붙었습니다.
+          margin: 'auto 6px 6px', padding: '0 8px', minHeight: 28,
           borderRadius: 'var(--r2)', boxSizing: 'border-box',
           fontSize: 13, fontWeight: 500, color: 'var(--sb-t3)',
           textDecoration: 'none', fontFamily: 'var(--font)', flexShrink: 0,
