@@ -79,7 +79,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     { id: 'general', label: '일반' },
     { id: 'notify', label: '알림' },
     { id: 'link', label: '연동' },
-    { id: 'org', label: '조직' },
+    { id: 'org', label: '워크스페이스' },
     ...(orgId ? [
       { id: 'rooms' as Page, label: '회의실' },
       { id: 'projects' as Page, label: '프로젝트', badge: pending },
@@ -628,11 +628,11 @@ function OrgSection() {
   if (!orgId) {
     /*
       만드는 방법이 둘입니다. 그리고 **나중에 못 바꿉니다** — 도메인은 한 번
-      정해지면 그 조직의 벽이라, 뒤늦게 붙이거나 떼면 이미 들어와 있는 사람의
+      정해지면 그 워크스페이스의 벽이라, 뒤늦게 붙이거나 떼면 이미 들어와 있는 사람의
       소속이 통째로 흔들립니다. 그래서 고르는 자리에서 차이를 다 말해 줍니다.
 
       회사 주소가 아닌 사람에게 도메인 쪽을 눌러 보게 두지 않습니다. 지메일로
-      조직을 만들면 이 앱을 쓰는 **모든 지메일 사용자**가 한 조직이 되는데,
+      워크스페이스를 만들면 이 앱을 쓰는 **모든 지메일 사용자**가 한 워크스페이스가 되는데,
       그건 눌러 보고 알 일이 아닙니다.
     */
     const publicDomain = PUBLIC_DOMAINS.has(myDomain.toLowerCase())
@@ -644,8 +644,8 @@ function OrgSection() {
     const make = async (fn: () => Promise<boolean>) => { setBusy(true); await fn(); setBusy(false) }
 
     return (
-      <Section title="조직" note="회의실과 회사에 공개된 프로젝트 목록을 함께 두는 단위입니다. 만든 사람이 첫 관리자가 됩니다. 만드는 방법은 나중에 바꿀 수 없습니다.">
-        <input value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="조직 이름 (예: 블랙페이퍼)" style={{ ...INPUT, marginBottom: 8 }} />
+      <Section title="워크스페이스" note="회의실과, 모두에게 공개한 프로젝트 목록을 함께 두는 단위입니다. 만든 사람이 첫 관리자가 됩니다. 만드는 방법은 나중에 바꿀 수 없습니다.">
+        <input value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="워크스페이스 이름 (예: 블랙페이퍼)" style={{ ...INPUT, marginBottom: 8 }} />
         <div style={{ display: 'flex', gap: 6 }}>
           <button
             onClick={() => make(() => createOrg(orgName, email))}
@@ -680,9 +680,9 @@ function OrgSection() {
 
   return (
     <>
-      <Section title="조직" note={domain
-        ? '같은 도메인으로 로그인한 사람이 곧 조직원입니다. 초대도 승인도 없습니다.'
-        : '초대로만 들어오는 조직입니다. 프로젝트에 부르면 조직원이 됩니다.'}>
+      <Section title="워크스페이스" note={domain
+        ? '같은 도메인으로 로그인한 사람이 곧 멤버입니다. 초대도 승인도 없습니다.'
+        : '초대로만 들어오는 워크스페이스입니다. 프로젝트에 부르면 멤버가 됩니다.'}>
         <div style={ROW}>
           <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
             {name || myDomain}
@@ -700,7 +700,7 @@ function OrgSection() {
       <Section
         title="관리자"
         note={isAdmin
-          ? `${domain ? `${domain} 주소만` : '조직원만'} 관리자가 될 수 있습니다. 회의실 목록에만 미치고, 업무나 프로젝트를 더 볼 수 있게 되지는 않습니다.`
+          ? `${domain ? `${domain} 주소만` : '멤버만'} 관리자가 될 수 있습니다. 회의실 목록에만 미치고, 업무나 프로젝트를 더 볼 수 있게 되지는 않습니다.`
           : '회의실을 바꿔야 하면 이분들에게 말하면 됩니다.'}
       >
         {admins.map(mail => (
@@ -852,12 +852,12 @@ function OrgProjects() {
 
   return (
     <Section
-      title="조직 프로젝트"
+      title="워크스페이스 프로젝트"
       note="이름만 공개됩니다. 업무 내용은 참여한 뒤에 보입니다 — 목록에 오르는 것과 들어가는 것은 다른 일입니다."
     >
       {orgProjects.length === 0 && (
         <div style={{ fontSize: 11, color: 'var(--t3)', padding: '2px 0 4px', lineHeight: 1.6 }}>
-          공개된 프로젝트가 없습니다. 사이드바에서 프로젝트를 우클릭 → '조직에 공개'.
+          공개된 프로젝트가 없습니다. 사이드바에서 프로젝트를 우클릭 → '워크스페이스에 공개'.
         </div>
       )}
 

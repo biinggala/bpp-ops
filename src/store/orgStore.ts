@@ -4,6 +4,7 @@ import { db } from '../lib/firebase'
 import { P, domainKey, emailKey } from '../lib/paths'
 import { gid } from '../lib/utils'
 import { useAuthStore } from './authStore'
+import { usePrefsStore } from './prefsStore'
 
 /**
  * ── 조직과 회의실 ────────────────────────────────────────────────────────────
@@ -101,6 +102,14 @@ interface OrgState {
   joinRequests: JoinRequest[]
   /** 날짜별 예약. 화면이 보는 날짜만 들어 있습니다. */
   bookings: Record<string, Booking[]>
+  /**
+   * 내가 **멤버로** 속한 워크스페이스 전부.
+   *
+   * 한 사람이 두 곳에 걸칠 수 있습니다 — 회사에 다니면서 친구들과 팀을
+   * 하거나, 외주로 두 곳에 들어가 있거나. 게스트로만 들어가 있는 곳은
+   * 여기 안 들어옵니다: 골라 봐야 회의실도 공개 목록도 못 읽습니다.
+   */
+  myOrgs: { id: string; name: string }[]
   /** 조직을 찾는 첫 조회가 끝났는가. 그 전에는 '없다'고 말하지 않습니다. */
   ready: boolean
   error: string | null
@@ -215,6 +224,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
   name: '',
   domain: '',
   rooms: [],
+  myOrgs: [],
   admins: [],
   orgProjects: [],
   joinRequests: [],
@@ -254,6 +264,8 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     let fromDomain: string | null = null
     let fromIndex: string | null = null
     let current: string | null = null
+    /** 이 사람이 마지막으로 고른 곳. 개인 설정이라 userPrefs에 삽니다. */
+    let preferred: string | null = usePrefsStore.getState().activeOrg
 
     /**
      * 내 색인에 적힌 조직 중 내가 **멤버인** 첫 곳.
@@ -262,14 +274,20 @@ export const useOrgStore = create<OrgState>((set, get) => ({
      * 목록도 못 읽어서 화면이 오류로 채워집니다 — 게스트에게 그 자리는 아예
      * 없는 편이 맞습니다.
      */
-    const firstMemberOrg = async (ids: string[]): Promise<string | null> => {
-      for (const oid of [...ids].sort()) {
+    const myOrgsFrom = async (ids: string[]): Promise<{ id: string; name: string }[]> => {
+      const out: { id: string; name: string }[] = []
+      for (const oid of [...new Set(ids)].sort()) {
         try {
-          const snap = await fbGet(ref(db, P.orgMember(oid, email)))
-          if ((snap.val() as { role?: string } | null)?.role === 'member') return oid
+          const roleSnap = await fbGet(ref(db, P.orgMember(oid, email)))
+          const role = (roleSnap.val() as { role?: string } | null)?.role
+          // 도메인으로 찾은 곳은 명단에 아직 없어도 내 곳입니다 — 규칙도
+          // 도메인을 예비 근거로 인정합니다. 첫 로그인이 그 자리입니다.
+          if (role !== 'member' && oid !== fromDomain) continue
+          const nameSnap = await fbGet(ref(db, `${P.orgMeta(oid)}/name`))
+          out.push({ id: oid, name: (nameSnap.val() as string | null) || '이름 없는 워크스페이스' })
         } catch { /* 못 읽으면 내 자리가 아닙니다 */ }
       }
-      return null
+      return out
     }
 
     const attach = (orgId: string) => {
@@ -333,7 +351,10 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     }
 
     const apply = () => {
-      const next = fromDomain ?? fromIndex
+      // 고른 곳이 아직 목록에 있으면 그게 우선입니다. 없으면(빠졌거나 아직
+      // 안 왔거나) 도메인으로 찾은 곳, 그다음이 색인의 첫 곳.
+      const ids = get().myOrgs.map(o => o.id)
+      const next = (preferred && ids.includes(preferred)) ? preferred : (fromDomain ?? fromIndex)
       if (next === current) return
       current = next
       dropInner()
@@ -357,17 +378,32 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     const myOrgsRef = uid ? ref(db, P.userOrgs(uid)) : null
     const myOrgsHandler = myOrgsRef ? onValue(myOrgsRef, snap => {
       const ids = Object.keys((snap.val() ?? {}) as Record<string, number>)
-      void firstMemberOrg(ids).then(oid => { fromIndex = oid; apply() })
-    }, () => { fromIndex = null; apply() }) : null
+      if (fromDomain) ids.push(fromDomain)
+      void myOrgsFrom(ids).then(list => {
+        set({ myOrgs: list })
+        fromIndex = list[0]?.id ?? null
+        apply()
+      })
+    }, () => { set({ myOrgs: [] }); fromIndex = null; apply() }) : null
+
+    // 다른 워크스페이스를 고르면 여기로 옵니다. 스토어 둘을 직접 잇지 않고
+    // 설정을 통해 잇는 이유는, 그래야 폰에서 고른 것이 노트북에도 오기
+    // 때문입니다 — 취향은 계정에 붙습니다.
+    const unsubPrefs = usePrefsStore.subscribe(state => {
+      if (state.activeOrg === preferred) return
+      preferred = state.activeOrg
+      apply()
+    })
 
     return () => {
       off(indexRef, 'value', indexHandler)
       if (myOrgsRef && myOrgsHandler) off(myOrgsRef, 'value', myOrgsHandler)
+      unsubPrefs()
       dropInner()
       for (const fn of Object.values(dateWatchers)) fn()
       for (const key of Object.keys(dateWatchers)) delete dateWatchers[key]
       for (const key of Object.keys(wanted)) delete wanted[key]
-      set({ orgId: null, name: '', domain: '', rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {}, ready: false })
+      set({ orgId: null, name: '', domain: '', myOrgs: [], rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {}, ready: false })
     }
   },
 

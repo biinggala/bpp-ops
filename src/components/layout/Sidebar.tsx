@@ -18,6 +18,7 @@ import { WidthHandle } from '../shared/WidthHandle'
 import { SettingsModal } from '../modals/SettingsModal'
 import { useNoticeInbox, NoticeList } from './Notices'
 import { useOrgStore, pendingJoinCount } from '../../store/orgStore'
+import { usePrefsStore } from '../../store/prefsStore'
 import { useTodayCount } from '../views/today/count'
 import { useNoticeToast } from './NoticeToast'
 import { buildInviteToken } from '../../lib/paths'
@@ -84,6 +85,8 @@ export function Sidebar() {
   const { projects, addProject, updateProject, deleteProject, addMember, removeMember } = useProjectStore(useShallow(s => ({ projects: s.projects, addProject: s.addProject, updateProject: s.updateProject, deleteProject: s.deleteProject, addMember: s.addMember, removeMember: s.removeMember })))
   const deleteMilestonesForProject = useMilestoneStore(s => s.deleteMilestonesForProject)
   const { displayName, email, photoURL, signOutUser } = useAuthStore(useShallow(s => ({ displayName: s.displayName, email: s.email, photoURL: s.photoURL, signOutUser: s.signOutUser })))
+  const { orgName, myOrgs } = useOrgStore(useShallow(s => ({ orgName: s.name, myOrgs: s.myOrgs })))
+  const setActiveOrg = usePrefsStore(s => s.setActiveOrg)
 
   // Project state
   const [addingProject, setAddingProject] = useState(false)
@@ -233,7 +236,7 @@ export function Sidebar() {
           setContextMenu(null)
         }}
       >
-        {shared ? '조직 목록에서 내리기' : '조직에 공개'}
+        {shared ? '워크스페이스 목록에서 내리기' : '워크스페이스에 공개'}
       </ContextMenuItem>
     )
   }
@@ -456,8 +459,13 @@ export function Sidebar() {
             }
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
+            {/*
+              지금 보고 있는 워크스페이스 이름. 여기 'bpp-ops'가 박혀 있었는데,
+              두 곳에 걸친 사람에게는 그게 어디를 보고 있는지 아무 말도 안
+              해 줍니다. 아직 워크스페이스가 없는 사람에게는 예전 이름 그대로.
+            */}
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--sb-t1)', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              bpp-ops
+              {orgName || 'bpp-ops'}
             </div>
             {userName && (
               <div style={{ fontSize: 12, color: 'var(--sb-t3)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{userName}</div>
@@ -535,6 +543,29 @@ export function Sidebar() {
                   )}
                 </div>
               </div>
+              {/*
+                ── 워크스페이스 전환 ────────────────────────────────────────
+                한 곳뿐이면 **아무것도 안 그립니다.** 고를 것이 없는 목록은
+                고르는 법을 가르치지 않고 자리만 차지합니다. 두 곳 이상인
+                사람에게만 나타납니다.
+              */}
+              {myOrgs.length > 1 && (
+                <div style={{ borderTop: '1px solid var(--bd)', paddingTop: 8, marginBottom: 8 }}>
+                  <div style={{ fontSize: 10, color: 'var(--t3)', padding: '0 8px 4px', letterSpacing: .3 }}>워크스페이스</div>
+                  {myOrgs.map(o => (
+                    <button
+                      key={o.id}
+                      onClick={() => { if (email && o.id !== orgId) setActiveOrg(email, o.id); setProfileOpen(false) }}
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 'var(--r2)', border: 'none', background: 'transparent', fontSize: 12, color: o.id === orgId ? 'var(--t1)' : 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg2)' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                    >
+                      <span style={{ width: 12, flexShrink: 0, color: 'var(--ac)' }}>{o.id === orgId ? '✓' : ''}</span>
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: o.id === orgId ? 600 : 400 }}>{o.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <div style={{ borderTop: '1px solid var(--bd)', paddingTop: 8 }}>
                 {/* 브라우저로 보고 있을 때만 나타납니다 — 앱 안에서는 이
                     컴포넌트가 스스로 아무것도 그리지 않습니다. */}

@@ -32,6 +32,16 @@ interface PrefsState {
    */
   timeblockAt: number | null
   /**
+   * 지금 보고 있는 워크스페이스.
+   *
+   * **개인 설정입니다.** 한 사람이 두 곳에 걸쳐 있을 때 어느 쪽을 보고 있는지는
+   * 취향이지 공유된 사실이 아닙니다 — 남이 전환했다고 내 화면이 따라 바뀌면
+   * 아무도 자기 화면을 신뢰할 수 없습니다.
+   *
+   * 계정에 붙으므로 노트북에서 고른 곳이 폰에서도 그대로입니다.
+   */
+  activeOrg: string | null
+  /**
    * 첫 조회가 끝났는가.
    *
    * 이게 없으면 앱을 켤 때마다 소개가 한 번 번쩍합니다 — 아직 안 읽은
@@ -43,6 +53,7 @@ interface PrefsState {
   markOnboarded: (email: string) => void
   markSeenVersion: (email: string, id: string) => void
   markTimeblock: (email: string) => void
+  setActiveOrg: (email: string, orgId: string) => void
   /** 설정에서 '다시 보기'를 눌렀을 때. 저장된 값은 그대로 두고 이번만 엽니다. */
   replay: 'intro' | 'whatsNew' | null
   setReplay: (v: 'intro' | 'whatsNew' | null) => void
@@ -52,23 +63,25 @@ export const usePrefsStore = create<PrefsState>((set) => ({
   onboardedAt: null,
   seenVersion: null,
   timeblockAt: null,
+  activeOrg: null,
   ready: false,
   replay: null,
 
   subscribe: (email) => {
     const node = ref(db, P.userPrefs(email))
     const handler = onValue(node, snap => {
-      const v = (snap.val() ?? {}) as { onboardedAt?: number; seenVersion?: string; timeblockAt?: number }
+      const v = (snap.val() ?? {}) as { onboardedAt?: number; seenVersion?: string; timeblockAt?: number; activeOrg?: string }
       set({
         onboardedAt: v.onboardedAt ?? null,
         seenVersion: v.seenVersion ?? null,
         timeblockAt: v.timeblockAt ?? null,
+        activeOrg: v.activeOrg ?? null,
         ready: true,
       })
     }, () => set({ ready: true }))
     return () => {
       off(node, 'value', handler)
-      set({ onboardedAt: null, seenVersion: null, timeblockAt: null, ready: false, replay: null })
+      set({ onboardedAt: null, seenVersion: null, timeblockAt: null, activeOrg: null, ready: false, replay: null })
     }
   },
 
@@ -88,6 +101,11 @@ export const usePrefsStore = create<PrefsState>((set) => ({
     const at = Date.now()
     set({ timeblockAt: at })
     void fbUpdate(ref(db, P.userPrefs(email)), { timeblockAt: at }).catch(() => {})
+  },
+
+  setActiveOrg: (email, orgId) => {
+    set({ activeOrg: orgId })
+    void fbUpdate(ref(db, P.userPrefs(email)), { activeOrg: orgId }).catch(() => {})
   },
 
   setReplay: (replay) => set({ replay }),
