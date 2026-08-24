@@ -121,7 +121,7 @@ export function BlockTools({ editor, boundary, date }: {
     const host = boundary.current
     if (!host || !editor) return
     const move = (e: MouseEvent) => {
-      if (frozen.current) return
+      if (frozen.current || editor.isDestroyed) return
       // 손잡이 위에 있는 동안은 아무것도 다시 재지 않습니다. 잡으러 온 손이
       // 자기가 잡으려던 것을 지우게 두면 그건 잡을 수 없는 손잡이입니다.
       if (e.target instanceof Node && handleRef.current?.contains(e.target)) return
@@ -182,6 +182,7 @@ export function BlockTools({ editor, boundary, date }: {
     const host = boundary.current
     if (!host || !editor) return
     const onContext = (e: MouseEvent) => {
+      if (editor.isDestroyed) return
       const pos = blockAt(editor, e.clientX, e.clientY)
       if (pos === null) return
       if (editor.state.doc.nodeAt(pos)?.type.name === 'taskRef') return
@@ -202,6 +203,7 @@ export function BlockTools({ editor, boundary, date }: {
   useEffect(() => {
     if (!editor) return
     const check = () => {
+      if (editor.isDestroyed) return
       const { state } = editor
       const { $from, empty } = state.selection
       if (!empty) { setSlash(null); return }
@@ -215,7 +217,9 @@ export function BlockTools({ editor, boundary, date }: {
     return () => { editor.off('transaction', check) }
   }, [editor])
 
-  if (!editor) return null
+  // 파괴된 편집기 위에는 손잡이도 메뉴도 그리지 않습니다. 그 안의 위치는
+  // 이미 없는 문서의 것입니다.
+  if (!editor || editor.isDestroyed) return null
 
   return (
     <>

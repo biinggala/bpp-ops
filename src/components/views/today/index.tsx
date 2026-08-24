@@ -175,21 +175,39 @@ export function TodayView() {
         return true
       },
     },
-    onUpdate: ({ editor }) => { save(editor.getHTML()); setNoteIds(refIds(editor)) },
+    onUpdate: ({ editor }) => {
+      // 파괴 중에도 트랜잭션이 한 번 더 올 수 있습니다. 같은 이유로 여기도.
+      if (editor.isDestroyed) return
+      save(editor.getHTML()); setNoteIds(refIds(editor))
+    },
   }, [date])
 
   useEffect(() => { setNoteIds(new Set()) }, [date])
 
-  // 서버에서 온 내용. 내가 방금 친 것이 되돌아오는 경우는 훅이 걸러 냅니다.
+  /**
+   * ── 죽은 편집기에게 묻지 않습니다 ──────────────────────────────────────────
+   *
+   * 서버에서 온 내용을 넣는 효과입니다. 내가 방금 친 것이 되돌아오는 경우는
+   * 훅이 걸러 냅니다.
+   *
+   * **isDestroyed를 먼저 봅니다.** 날짜를 넘기면 이 편집기는 버려지고 새것이
+   * 만들어지는데, 그 사이에 새 날짜의 내용이 도착하면 이 효과가 **이미 버려진
+   * 편집기**에게 getHTML()을 묻습니다. 파괴된 편집기의 schema는 null이고,
+   * 프로즈미러는 그걸로 직렬화기를 만들려다 던집니다 —
+   * `null is not an object (evaluating 't.cached')`. 화면이 통째로 멈춥니다.
+   *
+   * 놓치는 건 없습니다: 새 편집기가 오면 editor가 바뀌므로 이 효과가 다시
+   * 돌고, 그때는 내용이 이미 와 있습니다.
+   */
   useEffect(() => {
-    if (!editor || html === null) return
+    if (!editor || editor.isDestroyed || html === null) return
     if (editor.getHTML() === html) return
     editor.commands.setContent(html || '', { emitUpdate: false })
     setNoteIds(refIds(editor))
   }, [editor, html])
 
   const add = (task: Task) => {
-    if (!editor || noteIds.has(task.id)) return
+    if (!editor || editor.isDestroyed || noteIds.has(task.id)) return
     haptic('tap')
     editor.chain().focus('end').insertTaskRef(task.id).run()
   }
@@ -210,6 +228,7 @@ export function TodayView() {
    */
   useEffect(() => {
     if (!editor) return
+    if (editor.isDestroyed) return
     const dom = editor.view.dom
     // 죽은 편집기부터 걸러냅니다. isEmpty는 문서를 읽으므로, 파괴된 편집기에
     // 물으면 그 자리에서 던집니다 — 순서가 바뀌어 있었습니다.
@@ -287,7 +306,7 @@ export function TodayView() {
         */}
         <div
           onClick={e => {
-            if (!editor || e.target !== e.currentTarget) return
+            if (!editor || editor.isDestroyed || e.target !== e.currentTarget) return
             const last = editor.state.doc.lastChild
             if (last?.type.name === 'taskRef') editor.chain().focus('end').createParagraphNear().run()
             else editor.commands.focus('end')

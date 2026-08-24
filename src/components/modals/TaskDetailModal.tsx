@@ -892,7 +892,9 @@ export function TaskDetailModal() {
       Highlight,
     ],
     content: editorContent,
-    onUpdate: ({ editor }) => debouncedSave(editor.getHTML()),
+    // 파괴된 편집기의 schema는 null이라 getHTML()이 그 자리에서 던집니다.
+    // 다른 업무를 골라 편집기가 새로 만들어지는 순간이 그 자리입니다.
+    onUpdate: ({ editor }) => { if (!editor.isDestroyed) debouncedSave(editor.getHTML()) },
   }, [detailTaskId])
 
   if (!detailTaskId || !task) return null
