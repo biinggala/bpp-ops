@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useUiStore } from '../store/uiStore'
 import { useTaskStore } from '../store/taskStore'
 import { useGCalStore } from '../store/gcalStore'
@@ -13,6 +13,7 @@ import { useOrgStore } from '../store/orgStore'
 import { usePrefsStore } from '../store/prefsStore'
 import { Welcome } from '../components/modals/Welcome'
 import { parseInviteToken, PENDING_TASK_KEY } from '../lib/paths'
+import { syncRoster } from '../lib/roster'
 import { useMobile } from '../hooks/useMobile'
 import type { Project } from '../types'
 import { Sidebar } from '../components/layout/Sidebar'
@@ -103,6 +104,49 @@ export function AppPage() {
     if (!email) return
     return subscribeOrg(email)
   }, [email, subscribeOrg])
+
+  /**
+   * ── 조직 명단 채우기 ───────────────────────────────────────────────────────
+   *
+   * docs/tenants.md의 1단계. 화면은 이 명단을 아직 안 읽습니다 — 여기서는
+   * 채우기만 합니다.
+   *
+   * 스크립트로 한 번 돌리지 않고 앱이 합니다. 사람이 들어오고 나가는 건
+   * 계속 일어나는 일이라, 한 번 맞춰 놓는 것으로는 곧 다시 틀려집니다.
+   * 빠진 것만 적으므로 두 번째부터는 읽기 한 번으로 끝납니다.
+   *
+   * `ready`를 기다립니다. 프로젝트가 다 오기 전에는 같이 일하는 사람 목록이
+   * 실제보다 짧고, 그 짧은 목록으로는 아무도 잘못 적히지 않지만 아무도 안
+   * 적히기도 합니다 — 기다렸다 한 번에 하는 편이 낫습니다.
+   */
+  const membersByProject = useSyncStore(s => s.membersByProject)
+  const profiles = useUserProfileStore(s => s.profiles)
+  const orgId = useOrgStore(s => s.orgId)
+  const orgDomain = useOrgStore(s => s.domain)
+  // 주소를 정렬해 한 줄로 만듭니다. 목록 자체를 의존성에 넣으면 내용이 같아도
+  // 참조가 바뀔 때마다 다시 돌아서, 쓸 것이 없는데도 매번 읽으러 갑니다.
+  const peerKey = useMemo(() => {
+    const uids = new Set<string>()
+    for (const members of Object.values(membersByProject)) {
+      for (const member of Object.keys(members)) uids.add(member)
+    }
+    return [...uids]
+      .map(u => profiles[u]?.email?.toLowerCase().trim())
+      .filter((e): e is string => !!e)
+      .sort()
+      .join(' ')
+  }, [membersByProject, profiles])
+
+  useEffect(() => {
+    if (!uid || !email || !orgId || !orgDomain || !ready) return
+    void syncRoster({
+      orgId,
+      domain: orgDomain,
+      uid,
+      email,
+      peers: peerKey ? peerKey.split(' ') : [],
+    })
+  }, [uid, email, orgId, orgDomain, ready, peerKey])
 
   useEffect(() => {
     if (!uid) return

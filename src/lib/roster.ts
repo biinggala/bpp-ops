@@ -1,0 +1,132 @@
+// 조직 명단 — 소속을 계산하지 않고 적어 두는 곳.
+//
+// docs/tenants.md의 **1단계**입니다. 화면은 아직 이 명단을 한 글자도 읽지
+// 않습니다. 여기서 하는 일은 채우는 것뿐이고, 잘못되면 지우면 그만입니다.
+//
+// 왜 채우냐면, 소속이 "이메일 도메인이 맞나"라는 **계산**인 동안에는 도메인이
+// 다른 사람을 담을 자리가 없기 때문입니다. 지금 프로젝트 멤버 열여섯 중
+// 다섯이 개인 지메일입니다 — 외부 협업자고, 앞으로도 들어옵니다. 벽을
+// 도메인으로 세우면 그 다섯이 튕기고, "단, 프로젝트 멤버는 통과"라고 예외를
+// 두면 벽이 세워진 그 자리에서 뚫립니다.
+//
+// 명단이면 게스트는 예외가 아니라 **이름이 적힌 사람**입니다. 벽은 계속 한
+// 줄이고("명단에 있나"), 게스트와 멤버의 차이는 접근 권한이 아니라 회사
+// 전체가 공유하는 자리가 보이느냐입니다.
+
+import { get as fbGet, ref, update } from 'firebase/database'
+import { db } from './firebase'
+import { emailKey, P } from './paths'
+
+export type OrgRole = 'member' | 'guest' | 'removed'
+
+export interface OrgMemberRow {
+  role: OrgRole
+  /** 명단에 들어온 시각. */
+  at: number
+  /** 게스트를 들인 사람. 자동 가입한 멤버에게는 없습니다. */
+  by?: string
+}
+
+/**
+ * 도메인만 보고 정하는 자리.
+ *
+ * 도메인이 맞으면 멤버, 아니면 게스트입니다. 도메인이 **없는 조직**(초대만으로
+ * 굴러가는 팀)은 이 함수가 답할 문제가 아닙니다 — 거기서는 초대하는 사람이
+ * 고릅니다. 여기서 게스트로 답하는 건 "도메인으로는 멤버라 할 근거가 없다"는
+ * 뜻이지 그 사람의 최종 자리가 아닙니다.
+ */
+export function roleForDomain(email: string, domain: string | null | undefined): 'member' | 'guest' {
+  const d = (domain ?? '').toLowerCase().trim()
+  if (!d) return 'guest'
+  return email.toLowerCase().trim().endsWith('@' + d) ? 'member' : 'guest'
+}
+
+/**
+ * 명단에 아직 없어서 새로 적어야 할 사람들을 고릅니다.
+ *
+ * 남을 적을 수 있는 건 **게스트로만**입니다. 규칙도 그렇게 되어 있습니다.
+ * 우리 도메인 사람인데 명단에 없다면 아직 한 번도 안 들어온 것이고, 그 사람은
+ * 다음 로그인에 **스스로** 적힙니다 — 남이 대신 적어 주면 "들어온 적 없는
+ * 사람"과 "들어왔던 사람"이 명단에서 같아 보입니다.
+ *
+ * 이미 있는 행은 건드리지 않습니다. `removed`도 마찬가지입니다 — 뺀 사람이
+ * 남의 손으로 조용히 돌아오면 뺀 일이 없던 일이 됩니다.
+ */
+export function guestsToAdd(
+  peers: string[],
+  domain: string,
+  roster: Record<string, OrgMemberRow | null> | null,
+): string[] {
+  const have = new Set(Object.keys(roster ?? {}))
+  const out = new Set<string>()
+  for (const raw of peers) {
+    const mail = raw.toLowerCase().trim()
+    if (!mail || !mail.includes('@')) continue
+    if (have.has(emailKey(mail))) continue
+    if (roleForDomain(mail, domain) !== 'guest') continue
+    out.add(mail)
+  }
+  return [...out].sort()
+}
+
+/**
+ * 명단과 색인을 한 번 맞춥니다. 빠진 것만 적고, 있는 것은 안 건드립니다.
+ *
+ * 스크립트가 아니라 앱이 합니다. 서비스 계정 키를 어딘가에 두지 않아도 되고,
+ * 사람이 들어올 때마다 저절로 맞습니다. 쓸 것이 없으면 아무 일도 안 하므로
+ * 두 번째 사람부터는 읽기 한 번으로 끝납니다.
+ *
+ * 게스트 자신은 아직 자기 `userOrgs`를 못 채웁니다 — 자기가 어느 조직에
+ * 속하는지 알아내려면 조직을 알아야 하는데, 그게 바로 이 색인이 답하는
+ * 질문이니까요. 초대장에 조직을 실어 보내는 2단계에서 풀립니다.
+ */
+export async function syncRoster(input: {
+  orgId: string
+  domain: string
+  uid: string
+  email: string
+  /** 내 프로젝트에서 같이 일하는 사람들의 주소. */
+  peers: string[]
+}): Promise<void> {
+  const { orgId, domain, uid, email, peers } = input
+  const me = roleForDomain(email, domain)
+  const at = Date.now()
+
+  // 내가 어느 조직인지부터. 이건 나만 쓰는 자리라 언제나 됩니다.
+  try {
+    await update(ref(db, P.userOrgs(uid)), { [orgId]: at })
+  } catch (e) {
+    console.warn('[roster] 조직 색인을 못 적었습니다', e)
+  }
+
+  // 도메인이 안 맞으면 여기서 끝입니다. 명단을 읽지도 못하고, 남을 적을
+  // 자격도 없습니다.
+  if (me !== 'member') return
+
+  let roster: Record<string, OrgMemberRow | null> | null = null
+  try {
+    roster = (await fbGet(ref(db, P.orgMembers(orgId)))).val()
+  } catch (e) {
+    console.warn('[roster] 명단을 못 읽었습니다', e)
+    return
+  }
+
+  const writes: Record<string, OrgMemberRow> = {}
+  if (!roster?.[emailKey(email)]) {
+    writes[emailKey(email)] = { role: 'member', at }
+  }
+  for (const guest of guestsToAdd(peers, domain, roster)) {
+    writes[emailKey(guest)] = { role: 'guest', at, by: email.toLowerCase() }
+  }
+  if (Object.keys(writes).length === 0) return
+
+  // 한 줄이 거절당하면 전체가 거절당합니다. 그래서 한 번에 몰지 않고 각자
+  // 씁니다 — 게스트 한 명이 막힌다고 나머지가 같이 안 적히면, 다음에 누가
+  // 들어와도 같은 자리에서 또 막힙니다.
+  await Promise.all(
+    Object.entries(writes).map(([key, row]) =>
+      update(ref(db, `${P.orgMembers(orgId)}/${key}`), row as unknown as Record<string, unknown>)
+        .catch(e => console.warn('[roster] 명단에 못 적었습니다', key, e)),
+    ),
+  )
+}
