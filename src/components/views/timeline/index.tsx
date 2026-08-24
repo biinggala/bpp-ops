@@ -1563,7 +1563,7 @@ function BlockCard({ at, heading, event, task, onStatus, onOpenTask, onDelete, o
           {/* 되돌릴 수 없는 것은 메뉴 안에 둡니다. 아래에 버튼으로 놓으면
               자주 하는 일과 같은 크기로 같은 줄에 앉습니다. */}
           <div style={{ marginLeft: 'auto' }}>
-            <MoreMenu items={[{ label: '이 시간 지우기', icon: 'trash', danger: true, onSelect: onDelete }]} />
+            <MoreMenu items={[{ label: '타임블록 지우기', icon: 'trash', danger: true, onSelect: onDelete }]} />
           </div>
         </div>
 
