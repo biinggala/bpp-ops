@@ -229,14 +229,17 @@ function loadStored(): { token: string | null; expiry: number | null; wasConnect
  * 우리 DB에 다시 쓰고 이쪽은 구글에 다시 물어봅니다. 대신 쌓인 시각을 같이
  * 적어 두고, ⌘Z가 **둘 중 더 최근 것**을 고릅니다(AppPage).
  */
-export interface CalUndo {
-  at: number
+export type CalUndo =
   /** 옮기기·길이 조절을 되돌립니다. 값은 그 전의 시각. */
-  kind: 'time'
-  eventId: string
-  startDateTime: string
-  endDateTime: string
-}
+  | { at: number; kind: 'time'; eventId: string; startDateTime: string; endDateTime: string }
+  /**
+   * 방금 만든 타임블록을 되돌립니다 — 지웁니다.
+   *
+   * 타임블록만입니다. 회의는 사람을 부르는 일이라 초대 메일이 이미 나가 있고,
+   * ⌘Z 한 번에 조용히 사라지면 받은 사람은 취소 메일만 보게 됩니다. 그건
+   * 되돌리기가 아니라 통보라, 지우는 버튼으로 분명히 해야 하는 일입니다.
+   */
+  | { at: number; kind: 'create'; eventId: string }
 
 /** 구글이 준 ISO를 이 컴퓨터의 벽시계 문자열로. 쓰기 API가 받는 모양입니다. */
 function wallClock(iso: string): string {
@@ -532,7 +535,15 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       const colour = calendars.find(c => c.id === target)?.backgroundColor ?? '#4285f4'
       const ev = toGCalEvent({ ...created, calendarId: target, calendarColor: colour })
       // Show it straight away; the next fetch will confirm it.
-      if (ev) set({ events: [...get().events, ev] })
+      if (ev) {
+        set({ events: [...get().events, ev] })
+        // 끌어다 놓은 것은 손이 미끄러지기 쉬운 동작이라 되돌릴 수 있어야
+        // 합니다. 회의는 안 쌓습니다 — 위 CalUndo의 'create' 참고.
+        if (timeblock && !undoing) {
+          const stack = [...get().history, { at: Date.now(), kind: 'create' as const, eventId: ev.id }]
+          set({ history: stack.slice(-MAX_CAL_HISTORY) })
+        }
+      }
       return ev?.id ?? null
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '일정 생성 실패'
@@ -591,7 +602,8 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     set({ history: stack.slice(0, -1) })
     undoing = true
     try {
-      await get().updateEvent(op.eventId, {
+      if (op.kind === 'create') await get().removeEvent(op.eventId)
+      else await get().updateEvent(op.eventId, {
         startDateTime: op.startDateTime,
         endDateTime: op.endDateTime,
       })

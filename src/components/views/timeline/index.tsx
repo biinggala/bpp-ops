@@ -277,6 +277,23 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
   /** 아직 없는 일정을 있는 것처럼 그리기 위한 껍데기. 화면에만 삽니다. */
   const pendingEvent = useMemo((): GCalEvent | null => {
     if (!pending) return null
+    /**
+     * ── 진짜가 들어오면 껍데기는 그 프레임에 사라집니다 ────────────────────
+     *
+     * 껍데기를 내리는 건 구글이 답한 **다음 미세작업**입니다(await 하나 건너).
+     * 그 사이 한 프레임 동안 둘이 같이 존재했고, place()는 같은 시간에 놓인
+     * 둘을 겹친 일정으로 보고 **자리를 반씩 나눠** 줬습니다. 블록이 한순간
+     * 반쪽으로 보이던 게 그것입니다.
+     *
+     * 순서를 맞추려 애쓰는 대신 그리는 쪽에서 봅니다 — 같은 자리에 진짜가
+     * 이미 있으면 껍데기는 안 그립니다. 어느 쪽이 먼저 도착하든 결과가
+     * 같아지고, 실패했을 때는(진짜가 안 옴) 껍데기가 그대로 남아 있다가
+     * 물러납니다.
+     */
+    const at = new Date(localIso(pending.date, pending.from)).getTime()
+    const landed = events.some(e =>
+      e.isBlock && e.summary === pending.name && e.startIso && new Date(e.startIso).getTime() === at)
+    if (landed) return null
     return {
       id: PENDING_ID,
       summary: pending.name,
@@ -290,7 +307,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
       isBlock: true,
       ...(pending.taskId ? { taskId: pending.taskId } : {}),
     }
-  }, [pending])
+  }, [pending, events])
   const [title, setTitle] = useState('')
   /**
    * 아젠다와 회의록 링크.
