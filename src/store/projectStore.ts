@@ -151,13 +151,26 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     // 하고, 규칙도 그렇게 되어 있습니다. 이걸 안 하면 초대받은 사람이
     // 들어와서 프로젝트를 못 읽습니다 — 명단에 없으니까요.
     const orgId = project.orgId
-    const orgDomain = useOrgStore.getState().domain
-    // 도메인이 있는 조직: 도메인 밖 사람만, 게스트로. 도메인 안 사람은
-    // 로그인하면서 스스로 멤버로 앉으므로 손댈 것이 없습니다.
-    // 도메인이 없는 조직(초대형): 들어오는 길이 초대뿐이라 **멤버로** 부릅니다.
-    const role = orgDomain
-      ? (isOrgDomain(normalized, orgDomain) ? null : 'guest')
-      : 'member'
+    const org = useOrgStore.getState()
+    /**
+     * 게스트로 부를지 멤버로 부를지.
+     *
+     * **빈 도메인을 '도메인이 없다'로 읽으면 안 됩니다.** 워크스페이스 정보가
+     * 아직 안 왔을 때도 도메인은 빈 문자열입니다 — 그걸 초대형으로 읽으면
+     * 페이지를 켠 직후에 초대한 사람이 **멤버로** 올라가고, 도메인 밖 사람이
+     * 회의실과 공개 목록까지 열게 됩니다. 안 온 것을 없는 것으로 읽지
+     * 않습니다.
+     *
+     * 그래서 지금 붙어 있는 워크스페이스가 **이 프로젝트의 그곳이고, 정보가
+     * 다 왔을 때만** 도메인을 근거로 씁니다. 모르겠으면 게스트입니다 —
+     * 덜 주는 쪽이 되돌리기 쉽습니다.
+     */
+    const known = !!orgId && org.ready && org.orgId === orgId
+    const role = !known
+      ? 'guest'
+      : org.domain
+        ? (isOrgDomain(normalized, org.domain) ? null : 'guest')
+        : 'member'
     if (orgId && role) {
       fbUpdate(ref(db, P.orgMember(orgId, normalized)), {
         role,

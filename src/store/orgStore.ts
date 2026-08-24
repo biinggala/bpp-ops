@@ -351,15 +351,27 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     }
 
     const apply = () => {
-      // 고른 곳이 아직 목록에 있으면 그게 우선입니다. 없으면(빠졌거나 아직
-      // 안 왔거나) 도메인으로 찾은 곳, 그다음이 색인의 첫 곳.
+      /**
+       * **내가 멤버인 곳에만 붙습니다.**
+       *
+       * 예전에는 색인에 적혀 있으면 붙었습니다. 그런데 게스트로 들어가 있는
+       * 곳도 색인에는 적히므로, 게스트가 남의 워크스페이스에 붙었다가 회의실을
+       * 못 읽고 붉은 오류를 보게 됐습니다 — 자기 것도 아닌 곳의 권한 오류를요.
+       *
+       * 고른 곳이 우선, 없으면 도메인으로 찾은 곳, 그다음이 목록의 첫 곳.
+       * 셋 다 목록에 있어야 합니다. 목록이 아직 안 왔으면 아무 데도 안 붙고,
+       * 오는 대로 다시 판단합니다.
+       */
       const ids = get().myOrgs.map(o => o.id)
-      const next = (preferred && ids.includes(preferred)) ? preferred : (fromDomain ?? fromIndex)
+      const pick = [preferred, fromDomain, fromIndex].find(o => o && ids.includes(o))
+      const next = pick ?? null
       if (next === current) return
       current = next
       dropInner()
       if (!next) {
-        set({ ready: true, orgId: null, name: '', domain: '', rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {} })
+        // 오류도 같이 지웁니다. 붙어 있지도 않은 곳의 권한 오류가 화면에
+        // 남아 있으면, 읽을 수 없는 것이 무엇인지 아무 말도 안 해 줍니다.
+        set({ ready: true, orgId: null, name: '', domain: '', rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {}, error: null })
         return
       }
       attach(next)
