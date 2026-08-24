@@ -266,6 +266,18 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     let current: string | null = null
     /** 이 사람이 마지막으로 고른 곳. 개인 설정이라 userPrefs에 삽니다. */
     let preferred: string | null = usePrefsStore.getState().activeOrg
+    /**
+     * 두 길이 **각자 한 번씩 대답한 뒤에야** '다 찾아봤다'가 됩니다.
+     *
+     * 예전엔 도메인 쪽이 대답하는 순간 참이 됐습니다. 그런데 붙을 곳을
+     * 목록에서 고르게 바꾸면서, 도메인이 답해도 목록이 아직 안 온 순간이
+     * 생겼습니다 — 그 틈에 참이 되면 워크스페이스가 있는 사람에게 '만들기'
+     * 화면이 한 번 번쩍합니다. 반대로 아무도 안 세우면 영영 '불러오는 중'에
+     * 머뭅니다. 실제로 그렇게 됐고, 이건 그 자리입니다.
+     */
+    let domainSeen = false
+    let orgsSeen = !uid            // 계정이 없으면 볼 색인도 없습니다
+    const settle = () => { if (domainSeen && orgsSeen && !get().ready) set({ ready: true }) }
 
     /**
      * 내 색인에 적힌 조직 중 내가 **멤버인** 첫 곳.
@@ -365,25 +377,29 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       const ids = get().myOrgs.map(o => o.id)
       const pick = [preferred, fromDomain, fromIndex].find(o => o && ids.includes(o))
       const next = pick ?? null
-      if (next === current) return
-      current = next
-      dropInner()
-      if (!next) {
-        // 오류도 같이 지웁니다. 붙어 있지도 않은 곳의 권한 오류가 화면에
-        // 남아 있으면, 읽을 수 없는 것이 무엇인지 아무 말도 안 해 줍니다.
-        set({ ready: true, orgId: null, name: '', domain: '', rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {}, error: null })
-        return
+      if (next !== current) {
+        current = next
+        dropInner()
+        if (next) {
+          attach(next)
+        } else {
+          // 오류도 같이 지웁니다. 붙어 있지도 않은 곳의 권한 오류가 화면에
+          // 남아 있으면, 읽을 수 없는 것이 무엇인지 아무 말도 안 해 줍니다.
+          set({ orgId: null, name: '', domain: '', rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {}, error: null })
+        }
       }
-      attach(next)
+      settle()
     }
 
     const indexRef = ref(db, P.orgByDomain(email))
     const indexHandler = onValue(indexRef, snap => {
       fromDomain = (snap.val() as string | null) ?? null
+      domainSeen = true
       apply()
     }, () => {
       // 색인을 못 읽었습니다. 없는 것과 구별할 수 없으니 '없음'으로 둡니다.
       fromDomain = null
+      domainSeen = true
       apply()
     })
 
@@ -394,9 +410,10 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       void myOrgsFrom(ids).then(list => {
         set({ myOrgs: list })
         fromIndex = list[0]?.id ?? null
+        orgsSeen = true
         apply()
       })
-    }, () => { set({ myOrgs: [] }); fromIndex = null; apply() }) : null
+    }, () => { set({ myOrgs: [] }); fromIndex = null; orgsSeen = true; apply() }) : null
 
     // 다른 워크스페이스를 고르면 여기로 옵니다. 스토어 둘을 직접 잇지 않고
     // 설정을 통해 잇는 이유는, 그래야 폰에서 고른 것이 노트북에도 오기
