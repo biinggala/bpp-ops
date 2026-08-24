@@ -4,6 +4,7 @@ import type { NodeViewProps } from '@tiptap/react'
 import { useTaskStore } from '../../../store/taskStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useProjectStore } from '../../../store/projectStore'
+import { useMilestoneStore } from '../../../store/milestoneStore'
 import { haptic } from '../../../lib/haptics'
 import { daysFrom } from '../../../lib/utils'
 import { StatusMark } from '../../shared/StatusMark'
@@ -91,6 +92,8 @@ export const TaskRef = Node.create({
 function TaskRefView({ node, deleteNode }: NodeViewProps) {
   const taskId = node.attrs.taskId as string | null
   const task = useTaskStore(s => s.tasks.find(t => t.id === taskId))
+  const allTasks = useTaskStore(s => s.tasks)
+  const milestones = useMilestoneStore(s => s.milestones)
   const updateTask = useTaskStore(s => s.updateTask)
   const openTaskDetail = useUiStore(s => s.openTaskDetail)
   const projects = useProjectStore(s => s.projects)
@@ -110,6 +113,8 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
 
   const done = task.status === '완료'
   const project = task.projectId ? projects.find(p => p.id === task.projectId) : undefined
+  const parent = allTasks.find(t => t.id === task.parentId)
+  const milestone = milestones.find(m => m.id === task.milestoneId)
   const diff = task.due ? daysFrom(task.due, new Date()) : null
   const late = diff !== null && diff < 0 && !done
 
@@ -122,7 +127,24 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
   }
 
   return (
-    <NodeViewWrapper as="div" contentEditable={false} style={ROW} data-drag-handle>
+    /**
+     * ── 하위 업무는 한 칸 들어갑니다 ─────────────────────────────────────────
+     *
+     * 노트에 늘어놓으면 상위든 하위든 똑같이 생긴 한 줄이라, 그중 어떤 것이
+     * 다른 무엇의 일부인지가 화면에서 사라집니다. 승격으로 만든 줄은 특히
+     * 그렇습니다 — 만들 때는 부모를 골랐는데 만들고 나면 그 사실이 안 보입니다.
+     *
+     * 들여쓰기는 한눈에 보이게 하고, 이름은 정확하게 말합니다. 부모가 노트의
+     * 바로 위 줄이라는 보장이 없으므로 선으로 잇지는 않습니다 — 그건 없는
+     * 관계를 그리는 일입니다.
+     */
+    <NodeViewWrapper as="div" contentEditable={false} style={{ ...ROW, marginLeft: parent ? 16 : -6 }} data-drag-handle>
+      {parent && (
+        <span aria-hidden style={{
+          flexShrink: 0, width: 10, marginLeft: -4, marginRight: -2,
+          color: 'var(--t3)', fontSize: 11, lineHeight: 1,
+        }}>↳</span>
+      )}
       <StatusPick status={task.status} onPick={setStatus} />
 
       <span
@@ -135,10 +157,30 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
         }}
       >{task.name || '(이름 없음)'}</span>
 
-      {project && (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, fontSize: 11, color: 'var(--t3)' }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: project.color }} />
-          {project.name}
+      {/*
+        어디 소속인지 한 조각.
+
+        부모가 있으면 **부모 이름**입니다 — 프로젝트는 부모가 이미 말하고
+        있고, 이 줄이 답해야 하는 건 '무엇의 일부인가'입니다. 부모가 없고
+        마일스톤이 있으면 마일스톤, 둘 다 없으면 프로젝트.
+
+        점 색깔은 어느 쪽이든 프로젝트 것입니다. 이름이 무엇으로 바뀌든
+        '어느 프로젝트'는 색이 계속 말해 줍니다.
+      */}
+      {(parent || milestone || project) && (
+        <span
+          onClick={parent ? () => openTaskDetail(parent.id) : undefined}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
+            fontSize: 11, color: 'var(--t3)', maxWidth: 180,
+            cursor: parent ? 'pointer' : 'default',
+          }}
+        >
+          {project && <span style={{ width: 6, height: 6, borderRadius: '50%', background: project.color, flexShrink: 0 }} />}
+          {!parent && milestone && <span style={{ flexShrink: 0 }}>◇</span>}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {parent ? parent.name || '이름 없음' : milestone ? milestone.name : project?.name}
+          </span>
         </span>
       )}
 
