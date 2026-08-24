@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { NodeSelection, TextSelection } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
 import { Icon } from '../../shared/Icon'
@@ -6,6 +6,11 @@ import { haptic } from '../../../lib/haptics'
 import { DriveSearch } from '../../shared/DriveFiles'
 import type { DriveFile } from '../../../lib/googleDrive'
 import { driveUrl } from '../../../lib/googleDrive'
+import { useTaskStore } from '../../../store/taskStore'
+import { useAuthStore } from '../../../store/authStore'
+import { useProjectStore } from '../../../store/projectStore'
+import { useUiStore } from '../../../store/uiStore'
+import { isAssignedTo } from '../../../lib/utils'
 
 /**
  * ── 블록 손잡이와 슬래시 메뉴 ────────────────────────────────────────────────
@@ -24,7 +29,26 @@ import { driveUrl } from '../../../lib/googleDrive'
  * 그건 손잡이가 없는 동안에도 계속 치르는 값입니다.
  */
 
-interface Slot { pos: number; top: number; left: number; height: number }
+interface Slot { pos: number; top: number; left: number; height: number; item: number | null }
+
+/**
+ * 포인터가 가리키는 **체크박스 한 줄**의 위치.
+ *
+ * 손잡이가 잡는 것은 최상위 블록이라, 체크박스 목록에서는 목록 전체가 잡힙니다.
+ * 하지만 '업무로 만들기'는 목록이 아니라 **그중 한 줄**에 대한 일입니다.
+ *
+ * 겹쳐 있는 목록(중첩 체크박스)에서는 안쪽 것을 고릅니다 — 바깥 항목의 상자는
+ * 안쪽 것을 품고 있어서, 바깥부터 찾으면 늘 부모가 걸립니다.
+ */
+function taskItemAt(editor: Editor, x: number, y: number): number | null {
+  const found = editor.view.posAtCoords({ left: x, top: y })
+  if (!found) return null
+  const $p = editor.state.doc.resolve(found.pos)
+  for (let d = $p.depth; d > 0; d--) {
+    if ($p.node(d).type.name === 'taskItem') return $p.before(d)
+  }
+  return null
+}
 
 /**
  * 포인터가 가리키는 최상위 블록의 위치.
@@ -55,13 +79,15 @@ function blockAt(editor: Editor, x: number, y: number): number | null {
   return hit && hit.gap <= 12 ? hit.start : null
 }
 
-export function BlockTools({ editor, boundary }: {
+export function BlockTools({ editor, boundary, date }: {
   editor: Editor | null
   /** 손잡이의 좌표 기준이 되는 상자 — 노트가 스크롤해도 같이 움직입니다. */
   boundary: React.RefObject<HTMLElement | null>
+  /** 이 노트의 날짜. 승격한 업무의 마감이 됩니다 — 오늘 적은 건 오늘 할 일입니다. */
+  date: string
 }) {
   const [slot, setSlot] = useState<Slot | null>(null)
-  const [menu, setMenu] = useState<{ x: number; y: number; pos: number } | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; pos: number; item: number | null } | null>(null)
   const [slash, setSlash] = useState<{ x: number; y: number; from: number } | null>(null)
   /** `/자료`로 연 드라이브 찾기 창. 열려 있는 동안은 손잡이도 멈춥니다. */
   const [finder, setFinder] = useState<{ x: number; y: number } | null>(null)
@@ -89,13 +115,24 @@ export function BlockTools({ editor, boundary }: {
       if (pos === null) { setSlot(null); return }
       const dom = editor.view.nodeDOM(pos)
       if (!(dom instanceof HTMLElement)) { setSlot(null); return }
-      const box = dom.getBoundingClientRect()
+      /**
+       * 체크박스 줄 위에서는 **그 줄**에 손잡이를 붙입니다.
+       *
+       * 최상위 블록은 목록 전체라, 다섯 줄짜리 목록의 셋째 줄에 마우스를
+       * 올려도 손잡이는 목록 맨 위에 섰습니다. 그 손잡이가 여는 메뉴에는
+       * 이제 '이 줄'에 대한 항목이 있는데, 어느 줄인지 화면이 말해 주지
+       * 않으면 그 항목은 짐작으로 누르는 것이 됩니다.
+       */
+      const item = taskItemAt(editor, e.clientX, e.clientY)
+      const rowDom = item !== null ? editor.view.nodeDOM(item) : null
+      const box = (rowDom instanceof HTMLElement ? rowDom : dom).getBoundingClientRect()
       const base = host.getBoundingClientRect()
       setSlot({
         pos,
         top: box.top - base.top + host.scrollTop,
         left: box.left - base.left,
         height: box.height,
+        item,
       })
     }
     const leave = () => { if (!frozen.current) setSlot(null) }
@@ -135,7 +172,7 @@ export function BlockTools({ editor, boundary }: {
       if (pos === null) return
       if (editor.state.doc.nodeAt(pos)?.type.name === 'taskRef') return
       e.preventDefault()
-      setMenu({ x: e.clientX, y: e.clientY, pos })
+      setMenu({ x: e.clientX, y: e.clientY, pos, item: taskItemAt(editor, e.clientX, e.clientY) })
     }
     host.addEventListener('contextmenu', onContext)
     return () => host.removeEventListener('contextmenu', onContext)
@@ -198,13 +235,13 @@ export function BlockTools({ editor, boundary }: {
               onClick={e => {
                 if (editor.state.doc.nodeAt(slot.pos)?.type.name === 'taskRef') return
                 const box = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                setMenu({ x: box.right + 4, y: box.top, pos: slot.pos })
+                setMenu({ x: box.right + 4, y: box.top, pos: slot.pos, item: slot.item })
               }}
             >⠿</HandleBtn>
           </div>
       )}
 
-      {menu && <BlockMenu editor={editor} {...menu} onClose={() => setMenu(null)} />}
+      {menu && <BlockMenu editor={editor} date={date} {...menu} onClose={() => setMenu(null)} />}
       {slash && (
         <SlashMenu
           editor={editor} {...slash}
@@ -278,10 +315,14 @@ const TURNS: Turn[] = [
   { label: '인용',       run: e => e.chain().focus().toggleBlockquote().run() },
 ]
 
-function BlockMenu({ editor, x, y, pos, onClose }: {
-  editor: Editor; x: number; y: number; pos: number; onClose: () => void
+function BlockMenu({ editor, x, y, pos, item, date, onClose }: {
+  editor: Editor; x: number; y: number; pos: number
+  item: number | null
+  date: string
+  onClose: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
+  const [promoting, setPromoting] = useState(false)
   useEffect(() => {
     const close = (e: MouseEvent | KeyboardEvent) => {
       if (e instanceof KeyboardEvent) { if (e.key === 'Escape') onClose(); return }
@@ -319,10 +360,206 @@ function BlockMenu({ editor, x, y, pos, onClose }: {
       width: 180, zIndex: 600, background: 'var(--bg)', border: '1px solid var(--bd)',
       borderRadius: 'var(--r3)', boxShadow: 'var(--sh-md)', padding: 4, userSelect: 'none',
     }}>
+      {/*
+        ── 승격 ───────────────────────────────────────────────────────────────
+        체크박스 줄에만 뜹니다. 대부분의 체크박스는 오늘만 살다 사라지는
+        생각이고, 그중 어떤 것은 사실 진짜 일입니다. 이 줄은 그 순간을 위한
+        문 하나입니다 — '연결'이 아니라 승격인 이유는 PromotePicker 주석에.
+      */}
+      {item !== null && (
+        <>
+          <Label>이 줄</Label>
+          <Item onClick={() => setPromoting(true)}>업무로 만들기…</Item>
+          <div style={{ height: 1, background: 'var(--bd)', margin: '4px 6px' }} />
+        </>
+      )}
+
       <Label>전환</Label>
       {TURNS.map(t => (
         <Item key={t.label} onClick={() => act(() => t.run(editor))}>{t.label}</Item>
       ))}
+
+      {promoting && item !== null && (
+        <PromotePicker
+          editor={editor} item={item} date={date}
+          x={x} y={y}
+          onClose={() => { setPromoting(false); onClose() }}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * ── 체크박스를 업무로 ────────────────────────────────────────────────────────
+ *
+ * '연결'이 아니라 **승격**입니다.
+ *
+ * 연결로 두면 한 업무의 할 일이 두 군데가 됩니다 — 하위 업무 목록 하나,
+ * 노트에 흩어진 연결된 체크박스들 하나. 둘은 성격도 다릅니다. 하위 업무는
+ * 팀이 보고 마감이 있고 어디서나 세어지는데, 노트 체크박스는 나만 보고
+ * 그 날짜에만 삽니다. 그러면 "이 업무 안 끝난 게 몇 개냐"에 답이 둘이 됩니다.
+ *
+ * 그리고 '연결하고 싶다'는 마음은 대개 **'이건 사실 진짜 일이다'**라는 뜻이라,
+ * 진짜 일로 만들어 주는 편이 그 마음에 맞습니다.
+ *
+ * 베끼지 않고 **자리를 물려줍니다**: 그 줄은 업무 참조로 바뀝니다. 글자가
+ * 두 군데 남으면 둘은 언젠가 달라집니다.
+ */
+function PromotePicker({ editor, item, date, x, y, onClose }: {
+  editor: Editor
+  /** 승격할 체크박스 줄의 위치. */
+  item: number
+  date: string
+  x: number; y: number
+  onClose: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [query, setQuery] = useState('')
+  const addTask = useTaskStore(s => s.addTask)
+  const tasks = useTaskStore(s => s.tasks)
+  const email = useAuthStore(s => s.email)
+  const memberKey = useAuthStore(s => s.memberKey)
+  const projects = useProjectStore(s => s.projects)
+  const uiProjectId = useUiStore(s => s.projectId)
+
+  useEffect(() => {
+    // 바깥 클릭은 잡는 단계로 — 아래 메뉴가 자기 mousedown을 멈춰 세웁니다.
+    const away = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onClose() }
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }
+    const t = setTimeout(() => document.addEventListener('mousedown', away, true), 0)
+    document.addEventListener('keydown', key, true)
+    return () => {
+      clearTimeout(t)
+      document.removeEventListener('mousedown', away, true)
+      document.removeEventListener('keydown', key, true)
+    }
+  }, [onClose])
+
+  const node = editor.state.doc.nodeAt(item)
+  const text = (node?.textContent ?? '').trim()
+  const done = node?.attrs?.checked === true
+
+  /**
+   * 부모가 될 수 있는 것들 — 내가 맡은, 아직 안 끝난, 그리고 자기도 하위가
+   * 아닌 업무들. 하위의 하위까지 만들면 목록이 세 겹이 되고, 그 깊이를
+   * 화면에서 다시 펼 방법이 마땅치 않습니다.
+   */
+  const parents = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return tasks
+      .filter(t => !t.parentId && t.status !== '완료' && isAssignedTo(t.assignee, memberKey, email))
+      .filter(t => !q || t.name.toLowerCase().includes(q))
+      .slice(0, 8)
+  }, [tasks, query, memberKey, email])
+
+  /**
+   * 만들고, 그 줄을 업무 참조로 갈아 끼웁니다.
+   *
+   * 체크박스는 목록 안에 사는 노드라 그 자리에 업무 참조를 놓을 수 없습니다
+   * (스키마가 허락하지 않습니다). 그래서 줄은 지우고, 참조는 **그 목록 바로
+   * 뒤**에 놓습니다. 목록에 그 줄뿐이었으면 목록째 갈아 끼웁니다 — 빈 목록이
+   * 남으면 눌리지도 않는 체크박스 한 칸이 남습니다.
+   */
+  const promote = (parent: { id: string; projectId?: string; cat?: string } | null, projectId?: string) => {
+    if (!text) { onClose(); return }
+    const created = addTask({
+      type: parent ? '세부' : '상위',
+      name: text,
+      cat: parent?.cat ?? '',
+      // 오늘 적은 건 오늘 할 일입니다. 노트의 날짜를 그대로 씁니다.
+      assignee: email ?? '',
+      start: '',
+      due: date,
+      priority: '중간',
+      status: done ? '완료' : '대기',
+      progress: done ? 100 : 0,
+      memo: '',
+      ...(parent ? { parentId: parent.id } : {}),
+      ...(parent?.projectId ? { projectId: parent.projectId } : projectId ? { projectId } : {}),
+      ...(email ? { createdBy: email } : {}),
+    })
+
+    const { state } = editor
+    const $i = state.doc.resolve(item)
+    const node2 = state.doc.nodeAt(item)
+    if (!node2) { onClose(); return }
+    const ref2 = state.schema.nodes.taskRef.create({ taskId: created.id })
+
+    const listStart = $i.before(1)
+    const listNode = state.doc.nodeAt(listStart)
+    const tr = state.tr
+
+    // 이 줄뿐인 목록이면 목록째 바꿉니다.
+    if (listNode && listNode.childCount === 1 && $i.depth === 1) {
+      tr.replaceWith(listStart, listStart + listNode.nodeSize, ref2)
+    } else {
+      tr.delete(item, item + node2.nodeSize)
+      tr.insert(tr.mapping.map($i.after(1)), ref2)
+    }
+    editor.view.dispatch(tr)
+    haptic('tap')
+    onClose()
+  }
+
+  const fallbackProject = uiProjectId ?? undefined
+  const projectName = fallbackProject ? projects.find(p => p.id === fallbackProject)?.name : null
+
+  return (
+    <div ref={ref} style={{
+      position: 'fixed',
+      left: Math.min(x, window.innerWidth - 292),
+      top: Math.min(y, window.innerHeight - 320),
+      width: 284, zIndex: 700,
+      background: 'var(--bg)', border: '1px solid var(--bd)',
+      borderRadius: 'var(--r3)', boxShadow: 'var(--sh-lg)', padding: 8,
+    }}>
+      <div style={{
+        fontSize: 13, fontWeight: 600, color: 'var(--t1)', padding: '2px 4px 6px',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>
+        {text || '(빈 줄)'}
+      </div>
+
+      <input
+        autoFocus
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        placeholder="어느 업무 아래에 둘까요?"
+        style={{
+          width: '100%', boxSizing: 'border-box', padding: '6px 8px',
+          borderRadius: 'var(--r1)', border: '1px solid var(--bd)',
+          background: 'var(--bg2)', color: 'var(--t1)',
+          fontSize: 13, fontFamily: 'var(--font)', outline: 'none',
+        }}
+      />
+
+      <div style={{ maxHeight: 190, overflowY: 'auto', marginTop: 4 }}>
+        {parents.map(t => (
+          <Item key={t.id} onClick={() => promote(t)}>
+            <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {t.name}
+            </span>
+          </Item>
+        ))}
+        {!parents.length && (
+          <div style={{ padding: '8px 8px 4px', fontSize: 12, color: 'var(--t3)' }}>
+            맞는 업무가 없습니다
+          </div>
+        )}
+      </div>
+
+      <div style={{ height: 1, background: 'var(--bd)', margin: '5px 6px' }} />
+      {projectName && (
+        <Item onClick={() => promote(null, fallbackProject)}>{projectName}의 업무로</Item>
+      )}
+      <Item onClick={() => promote(null)}>개인 업무로</Item>
+
+      {/* 승격은 사적인 줄을 공개하는 일입니다. 그 사실을 여기서 말합니다 —
+          노트의 안내문은 '나만 볼 수 있다'고 말해 두었으니까요. */}
+      <div style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1.5, padding: '6px 6px 2px' }}>
+        업무가 되면 팀도 볼 수 있습니다. 마감은 {date.slice(5).replace('-', '월 ')}일.
+      </div>
     </div>
   )
 }

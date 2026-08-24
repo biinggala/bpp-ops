@@ -295,7 +295,7 @@ export function TodayView() {
           <div style={{ maxWidth: 720, marginLeft: isMobile ? 0 : GUTTER }}>
             <EditorContent editor={editor} />
           </div>
-          {!isMobile && <BlockTools editor={editor} boundary={noteRef} />}
+          {!isMobile && <BlockTools editor={editor} boundary={noteRef} date={date} />}
         </div>
       </div>
 
