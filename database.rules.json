@@ -36,6 +36,21 @@
         }
       }
     },
+    "trash": {
+      "$pid": {
+        ".read": "auth != null && auth.token.email != null && auth.token.email_verified == true && root.child('projects/' + $pid + '/members/' + auth.uid).exists() && (!root.child('projects/' + $pid + '/meta/orgId').exists() || root.child('orgs/' + root.child('projects/' + $pid + '/meta/orgId').val() + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).child('role').val() === 'member' || root.child('orgs/' + root.child('projects/' + $pid + '/meta/orgId').val() + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).child('role').val() === 'guest' || (!root.child('orgs/' + root.child('projects/' + $pid + '/meta/orgId').val() + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).exists() && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + root.child('projects/' + $pid + '/meta/orgId').val() + '/meta/domain').val().replace('.', ','))))",
+        ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && root.child('projects/' + $pid + '/members/' + auth.uid).exists() && (!root.child('projects/' + $pid + '/meta/orgId').exists() || root.child('orgs/' + root.child('projects/' + $pid + '/meta/orgId').val() + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).child('role').val() === 'member' || root.child('orgs/' + root.child('projects/' + $pid + '/meta/orgId').val() + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).child('role').val() === 'guest' || (!root.child('orgs/' + root.child('projects/' + $pid + '/meta/orgId').val() + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).exists() && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + root.child('projects/' + $pid + '/meta/orgId').val() + '/meta/domain').val().replace('.', ','))))",
+        "$tid": {
+          ".validate": "newData.hasChildren(['task', 'at']) && newData.child('at').isNumber() && (!newData.hasChild('by') || (newData.child('by').isString() && newData.child('by').val().length <= 120))"
+        }
+      }
+    },
+    "personalTrash": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
     "personalTasks": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",

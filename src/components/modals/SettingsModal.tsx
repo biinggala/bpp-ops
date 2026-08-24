@@ -9,6 +9,7 @@ import { fileWatchEnabled, setFileWatchEnabled } from '../../lib/driveWatch'
 import { useDriveStore } from '../../store/driveStore'
 import { useMailStore } from '../../store/mailStore'
 import { PUBLIC_DOMAINS, useOrgStore, pendingJoinCount } from '../../store/orgStore'
+import { useTrashStore } from '../../store/trashStore'
 import { useProjectStore } from '../../store/projectStore'
 import { GetDesktopApp } from '../shared/GetDesktopApp'
 import { MCP_CONNECTOR_URL } from '../../lib/server'
@@ -54,7 +55,7 @@ const THEMES: { value: ThemeChoice; label: string; icon: IconName }[] = [
  * 내주면 본문이 250px가 되고, 그건 설정 한 줄이 안 들어가는 폭입니다.
  */
 
-type Page = 'general' | 'notify' | 'link' | 'org' | 'rooms' | 'projects'
+type Page = 'general' | 'notify' | 'link' | 'trash' | 'org' | 'rooms' | 'projects'
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const isMobile = useMobile()
@@ -79,6 +80,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     { id: 'general', label: '일반' },
     { id: 'notify', label: '알림' },
     { id: 'link', label: '연동' },
+    { id: 'trash', label: '휴지통' },
     { id: 'org', label: '워크스페이스' },
     ...(orgId ? [
       { id: 'rooms' as Page, label: '회의실' },
@@ -172,6 +174,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               </Section>
             )}
 
+            {page === 'trash' && <TrashSection />}
             {page === 'org' && <OrgSection />}
             {page === 'rooms' && <RoomsSection />}
             {page === 'projects' && <OrgProjects />}
@@ -935,4 +938,80 @@ const navBtn: React.CSSProperties = {
   padding: '5px 12px', borderRadius: 'var(--r1)', border: '1px solid var(--bd)',
   background: 'transparent', color: 'var(--t2)', fontSize: 12,
   cursor: 'pointer', fontFamily: 'var(--font)', flexShrink: 0,
+}
+
+
+/**
+ * ── 휴지통 ───────────────────────────────────────────────────────────────────
+ *
+ * 지운 업무가 여기 머뭅니다. 이 화면을 열 때 한 번 읽습니다 — 늘 켜 두는
+ * 목록이 아니라 가끔 찾으러 오는 곳이라, 앱을 켤 때마다 내려받을 이유가
+ * 없습니다.
+ *
+ * 되살리기는 **원래 자리로** 돌아갑니다: 같은 id, 같은 프로젝트. 상위 업무가
+ * 이미 사라졌으면 최상위로 올라옵니다 — 없는 부모 밑에 접혀서 어느 목록에도
+ * 안 나타나는 것보다 낫습니다.
+ */
+function TrashSection() {
+  const { items, loading, error, load, restore, purge } = useTrashStore(useShallow(s => ({
+    items: s.items, loading: s.loading, error: s.error, load: s.load, restore: s.restore, purge: s.purge,
+  })))
+  const projects = useProjectStore(s => s.projects)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const ids = projects.map(p => p.id).sort().join(' ')
+
+  useEffect(() => { void load(ids ? ids.split(' ') : []) }, [ids])
+
+  const nameOfProject = (pid?: string) => projects.find(p => p.id === pid)?.name ?? '개인'
+
+  if (loading && !items.length) return <div style={{ fontSize: 12, color: 'var(--t3)' }}>불러오는 중…</div>
+
+  return (
+    <Section
+      title="휴지통"
+      note="지운 업무가 여기 남습니다. 되살리면 원래 프로젝트로, 원래 이름 그대로 돌아옵니다. '영영 지우기'는 되돌릴 수 없습니다."
+    >
+      {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginBottom: 8 }}>{error}</div>}
+      {!items.length && (
+        <div style={{ fontSize: 12, color: 'var(--t3)' }}>비어 있습니다.</div>
+      )}
+      {items.map(item => (
+        <div key={item.path} style={{ ...ROW, alignItems: 'flex-start', gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {item.task.name || '이름 없음'}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
+              {nameOfProject(item.projectId)}
+              {item.by ? ` · ${item.by}님이 지움` : ''}
+              {item.at ? ` · ${new Date(item.at).toLocaleDateString('ko-KR')}` : ''}
+            </div>
+          </div>
+          <button
+            onClick={async () => { setBusy(item.path); await restore(item); setBusy(null) }}
+            disabled={busy === item.path}
+            style={{ ...navBtn, flexShrink: 0, opacity: busy === item.path ? .5 : 1 }}
+          >되살리기</button>
+          {/*
+            영영 지우기는 한 번 더 묻습니다. 여기서 지운 것은 어디에도 안
+            남습니다 — 이 앱에서 되돌릴 수 없는 몇 안 되는 동작입니다.
+          */}
+          <button
+            onClick={async () => {
+              if (confirming !== item.path) { setConfirming(item.path); return }
+              await purge(item)
+              setConfirming(null)
+            }}
+            onBlur={() => setConfirming(c => (c === item.path ? null : c))}
+            style={{
+              ...navBtn, flexShrink: 0,
+              borderColor: confirming === item.path ? 'var(--danger)' : undefined,
+              color: 'var(--danger)',
+            }}
+          >{confirming === item.path ? '정말 지울까요?' : '영영 지우기'}</button>
+        </div>
+      ))}
+    </Section>
+  )
 }

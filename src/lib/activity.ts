@@ -35,7 +35,7 @@ export interface ActivityChange {
 
 export interface Activity {
   id: string
-  kind: 'created' | 'changed' | 'deleted'
+  kind: 'created' | 'changed' | 'deleted' | 'restored'
   /** The display name, resolved when written so it survives. */
   by: string
   at: number
@@ -183,6 +183,10 @@ export function logCreated(task: Task) {
 
 export function logDeleted(task: Task) {
   write(task, { kind: 'deleted' })
+}
+
+export function logRestored(task: Task) {
+  write(task, { kind: 'restored' })
 }
 
 /** One entry for the whole patch, or nothing when nothing actually moved. */

@@ -151,7 +151,10 @@ test('리허설: 옮긴 데이터를 새 규칙 위에 올리면 그대로 쓸 �
     await set(ref(ctx.database(), '/'), data)
   })
 
-  const as = who => testEnv.authenticatedContext(who.uid, { email: who.email }).database()
+  // 구글 로그인은 email_verified를 언제나 참으로 실어 보냅니다. 규칙 여러 곳이
+  // 그걸 검사하므로(확인 안 된 주소로 도메인을 주장할 수 있으면 검사가 아닙니다),
+  // 여기 토큰에도 실어야 실제와 같은 조건이 됩니다.
+  const as = who => testEnv.authenticatedContext(who.uid, { email: who.email, email_verified: true }).database()
 
   // 멤버는 자기 프로젝트와 업무를 정상적으로 본다.
   const alice = await assertSucceeds(get(ref(as(ALICE), 'projects/p1')))
@@ -183,7 +186,7 @@ test('리허설: 초대만 받은 사람은 로그인하면 초대장을 찾아 
   })
 
   const NEWBIE = { uid: 'uid-newbie', email: NEWBIE_EMAIL }
-  const db = testEnv.authenticatedContext(NEWBIE.uid, { email: NEWBIE.email }).database()
+  const db = testEnv.authenticatedContext(NEWBIE.uid, { email: NEWBIE.email, email_verified: true }).database()
 
   await assertFails(get(ref(db, 'projects/p1')))                       // 아직은 못 본다
   const inbox = await assertSucceeds(get(ref(db, `invitesByEmail/${emailKey(NEWBIE_EMAIL)}`)))

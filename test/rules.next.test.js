@@ -55,7 +55,10 @@ beforeEach(async () => {
   })
 })
 
-const authed = who => testEnv.authenticatedContext(who.uid, { email: who.email }).database()
+// 구글 로그인은 email_verified를 언제나 참으로 실어 보냅니다. 규칙 여러 곳이
+// 그걸 검사하므로(확인 안 된 주소로 도메인을 주장할 수 있으면 검사가 아닙니다),
+// 여기 토큰에도 실어야 실제와 같은 조건이 됩니다.
+const authed = who => testEnv.authenticatedContext(who.uid, { email: who.email, email_verified: true }).database()
 
 /* ── 핵심: 지금 뚫려 있는 두 가지가 막힌다 ─────────────────────────────── */
 
@@ -138,12 +141,26 @@ test('개인 업무는 생성자만 볼 수 있다', async () => {
   await assertFails(set(ref(authed(MALLORY), `personalTasks/${ALICE.uid}/x`), { name: '침입' }))
 })
 
-test('프로필은 uid를 알아야 읽히고, 전체 목록은 열 수 없다', async () => {
+test('프로필은 여기 속한 사람에게만, uid를 알아야 읽힌다', async () => {
   // 이름 표시를 위해 개별 조회는 허용하되, 계정 전수 조사는 막는다.
+  //
+  // 그리고 **아무 구글 계정에게나 열려 있지 않습니다.** 이 앱의 로그인은
+  // 누구나 통과하므로, '로그인했으면 됨'은 사실상 조건이 아닙니다. 프로젝트가
+  // 하나라도 있는 사람 — userIndex에 이름이 있는 사람만 지나갑니다.
+  await assertFails(get(ref(authed(BOB), `userProfiles/${ALICE.uid}`)))
+
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), `userIndex/${BOB.uid}/projects/${PID}`), true)
+  })
   await assertSucceeds(get(ref(authed(BOB), `userProfiles/${ALICE.uid}`)))
   await assertFails(get(ref(authed(BOB), 'userProfiles')))
   await assertFails(set(ref(authed(BOB), `userProfiles/${ALICE.uid}`), { name: '변조' }))
-  await assertSucceeds(set(ref(authed(BOB), `userProfiles/${BOB.uid}`), { email: BOB.email, name: 'Bob' }))
+
+  // 자기 것은 언제나 읽고 씁니다. 아직 아무 프로젝트에도 안 들어온 새 사람이
+  // 자기 프로필을 못 읽으면 그건 다른 문제가 됩니다.
+  await assertSucceeds(set(ref(authed(MALLORY), `userProfiles/${MALLORY.uid}`), { email: MALLORY.email, name: 'M' }))
+  await assertSucceeds(get(ref(authed(MALLORY), `userProfiles/${MALLORY.uid}`)))
+  await assertFails(get(ref(authed(MALLORY), `userProfiles/${ALICE.uid}`)))
 })
 
 test('비로그인 사용자는 아무것도 못 한다', async () => {
@@ -156,4 +173,38 @@ test('비로그인 사용자는 아무것도 못 한다', async () => {
 test('mcpAuth는 여전히 아무도 못 읽는다', async () => {
   await assertFails(get(ref(authed(ALICE), 'mcpAuth')))
   await assertFails(set(ref(authed(ALICE), 'mcpAuth/x'), 1))
+})
+
+test('휴지통은 그 프로젝트 멤버만 읽고 쓴다', async () => {
+  const item = { task: { name: '지운 업무', status: '대기' }, at: 1, by: 'Alice' }
+
+  // 멤버는 넣고 꺼낼 수 있습니다 — 지우는 사람과 되살리는 사람이 같은 사람들
+  // 입니다. 새 경계를 만들지 않았습니다.
+  await assertSucceeds(set(ref(authed(ALICE), `trash/${PID}/t1`), item))
+  await assertSucceeds(get(ref(authed(ALICE), `trash/${PID}`)))
+  await assertSucceeds(remove(ref(authed(ALICE), `trash/${PID}/t1`)))
+
+  // 남남은 아무것도 못 합니다. 지운 업무도 업무입니다.
+  await assertFails(get(ref(authed(MALLORY), `trash/${PID}`)))
+  await assertFails(set(ref(authed(MALLORY), `trash/${PID}/t2`), item))
+
+  // 초대만 받고 아직 안 들어온 사람도 마찬가지입니다.
+  await assertFails(get(ref(authed(BOB), `trash/${PID}`)))
+})
+
+test('휴지통에는 업무와 지운 시각이 있어야 한다', async () => {
+  // 되살리려면 그때 그 모습이 통째로 있어야 합니다. 시각이 없으면 언제 지운
+  // 것인지 못 말하고, 그러면 목록을 정렬할 수도 오래된 것을 걷어낼 수도
+  // 없습니다.
+  await assertFails(set(ref(authed(ALICE), `trash/${PID}/t3`), { task: { name: 'x' } }))
+  await assertFails(set(ref(authed(ALICE), `trash/${PID}/t4`), { at: 1 }))
+  await assertSucceeds(set(ref(authed(ALICE), `trash/${PID}/t5`), { task: { name: 'x' }, at: 1 }))
+})
+
+test('개인 업무의 휴지통은 본인만 연다', async () => {
+  const item = { task: { name: '개인 메모' }, at: 1 }
+  await assertSucceeds(set(ref(authed(ALICE), `personalTrash/${ALICE.uid}/pt1`), item))
+  await assertSucceeds(get(ref(authed(ALICE), `personalTrash/${ALICE.uid}`)))
+  await assertFails(get(ref(authed(BOB), `personalTrash/${ALICE.uid}`)))
+  await assertFails(set(ref(authed(BOB), `personalTrash/${ALICE.uid}/pt2`), item))
 })

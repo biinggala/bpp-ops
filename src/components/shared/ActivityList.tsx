@@ -21,6 +21,7 @@ const KIND_TEXT: Record<Activity['kind'], string> = {
   created: '업무를 만들었습니다',
   changed: '수정했습니다',
   deleted: '업무를 삭제했습니다',
+  restored: '휴지통에서 되살렸습니다',
 }
 
 function when(at: number): string {
@@ -80,7 +81,7 @@ export function ActivityList({ taskId, projectId, compact = false }: {
             width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
             marginTop: compact ? 6 : 7,
             background: entry.kind === 'deleted' ? 'var(--danger)'
-              : entry.kind === 'created' ? 'var(--ac)' : 'var(--bd2)',
+              : entry.kind === 'created' || entry.kind === 'restored' ? 'var(--ac)' : 'var(--bd2)',
           }} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: compact ? 12 : 13, color: 'var(--t2)', lineHeight: 1.5 }}>

@@ -32,6 +32,26 @@ export const P = {
   activity:         (pid: string, tid: string) => `projects/${pid}/activity/${tid}`,
   projectMilestone: (pid: string, mid: string) => `projects/${pid}/milestones/${mid}`,
 
+  /**
+   * ── 휴지통 ────────────────────────────────────────────────────────────────
+   *
+   * 지운 업무가 30일쯤 머무는 곳. 되살릴 수 있어야 하기 때문입니다 — 지금까지
+   * 삭제는 되돌릴 방법이 없었고, ⌘Z는 그 화면을 떠나면 사라집니다.
+   *
+   * **프로젝트 노드 안에 넣지 않습니다.** 활동 기록이 그렇게 되어 있는데,
+   * syncStore는 프로젝트를 통째로 구독하므로 그 안에 있는 것은 **모두가 늘
+   * 내려받습니다.** 지운 업무까지 그렇게 되면, 안 쓰는 데이터가 앱을 켤
+   * 때마다 오갑니다. 휴지통은 그 화면을 열 때만 읽습니다.
+   *
+   * 대신 규칙을 한 줄 더 씁니다. 경계는 새로 만들지 않았습니다 — 그 프로젝트
+   * 멤버가 곧 그 휴지통을 여는 사람입니다.
+   */
+  trash:            (pid: string) => `trash/${pid}`,
+  trashItem:        (pid: string, tid: string) => `trash/${pid}/${tid}`,
+  /** 프로젝트 없는 업무의 휴지통. 본인만. */
+  personalTrash:    (uid: string) => `personalTrash/${uid}`,
+  personalTrashItem:(uid: string, tid: string) => `personalTrash/${uid}/${tid}`,
+
   personalTasks:    (uid: string) => `personalTasks/${uid}`,
   personalTask:     (uid: string, tid: string) => `personalTasks/${uid}/${tid}`,
 

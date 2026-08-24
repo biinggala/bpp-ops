@@ -24,7 +24,10 @@ before(async () => {
 after(async () => { await testEnv?.cleanup() })
 beforeEach(async () => { await testEnv.clearDatabase() })
 
-const as = who => testEnv.authenticatedContext(who.uid, { email: who.email }).database()
+// 구글 로그인은 email_verified를 언제나 참으로 실어 보냅니다. 규칙 여러 곳이
+// 그걸 검사하므로(확인 안 된 주소로 도메인을 주장할 수 있으면 검사가 아닙니다),
+// 여기 토큰에도 실어야 실제와 같은 조건이 됩니다.
+const as = who => testEnv.authenticatedContext(who.uid, { email: who.email, email_verified: true }).database()
 
 test('projectStore.addProject: 프로젝트와 내 목록을 한 번에 쓴다', async () => {
   const db = as(ALICE)
@@ -143,6 +146,13 @@ test('authStore: 로그인할 때 자기 프로필을 쓴다', async () => {
 
 test('presenceStore와 spaceStore의 쓰기가 통과한다', async () => {
   const db = as(ALICE)
-  await assertSucceeds(set(ref(db, `presence/${ALICE.uid}`), { memberKey: ALICE.uid, name: '앨리스', online: true, lastSeen: 1, currentTask: null }))
+  await assertSucceeds(set(ref(db, `presence/${ALICE.uid}`), { who: ALICE.uid, name: '앨리스', online: true, lastSeen: 1, currentTask: null }))
+
+  // spaces는 50명이 함께 쓰는 목록이라 '여기 속한 사람'만 씁니다 — 프로젝트가
+  // 하나라도 있어야 합니다. 앱에서 이 쓰기를 하는 사람은 언제나 그렇습니다.
+  await assertFails(set(ref(db, 'spaces/s1'), { id: 's1', name: 'Production', color: '#ef4444' }))
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), `userIndex/${ALICE.uid}/projects/p0`), true)
+  })
   await assertSucceeds(set(ref(db, 'spaces/s1'), { id: 's1', name: 'Production', color: '#ef4444' }))
 })

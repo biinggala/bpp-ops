@@ -45,7 +45,7 @@ type UndoOp =
 const MAX_HISTORY = 50
 
 import { noticeAssigneeChange, noticeDueChange, noticeStatusChange, noticeSubtask } from '../lib/notify'
-import { logChanged, logCreated, logDeleted } from '../lib/activity'
+import { logChanged, logCreated, logDeleted, logRestored } from '../lib/activity'
 
 interface TaskState {
   tasks: Task[]
@@ -57,6 +57,15 @@ interface TaskState {
   addTask: (t: Omit<Task, 'id'>) => Task
   updateTask: (id: string, patch: Partial<Task>) => void
   deleteTask: (id: string) => void
+  /**
+   * 휴지통에서 되살립니다. **원래 id 그대로** 돌아옵니다.
+   *
+   * addTask를 쓰면 새 id가 붙습니다. 그러면 이 업무를 가리키던 것들이 전부
+   * 끊깁니다 — 하위 업무의 parentId, 활동 기록(업무 id로 묶여 있습니다),
+   * 공유해 둔 링크, 캘린더 일정에 실린 업무 id까지. 되살렸는데 껍데기만
+   * 돌아온 셈이 됩니다.
+   */
+  restoreTask: (task: Task) => void
   reorderTasks: (tasks: Task[]) => void
   undo: () => void
   applyRemote: (tasks: Task[]) => void
@@ -110,6 +119,30 @@ function removeTask(task: Pick<Task, 'id' | 'projectId'>) {
   fbRemove(ref(db, path)).catch(e => console.warn('[task remove]', e))
 }
 
+/** 휴지통에서 이 업무가 눕는 자리. 프로젝트 업무와 개인 업무가 따로입니다. */
+export function trashPathFor(task: Pick<Task, 'id' | 'projectId'>): string | null {
+  if (task.projectId) return P.trashItem(task.projectId, task.id)
+  const uid = myUid()
+  return uid ? P.personalTrashItem(uid, task.id) : null
+}
+
+/**
+ * ── 지우기 전에 한 벌 옮겨 둡니다 ───────────────────────────────────────────
+ *
+ * ⌘Z가 있지만 그건 이 화면을 떠나면 사라집니다. 어제 지운 것, 남이 지운 것,
+ * 새로고침한 뒤에 깨달은 것 — 전부 되돌릴 방법이 없었습니다.
+ *
+ * 옮겨 두는 것은 업무 **통째로**입니다. 무엇이 바뀌었는지가 아니라 그때 그
+ * 모습 그대로라, 되살릴 때 조립할 것이 없습니다.
+ */
+function toTrash(task: Task, by: string) {
+  const path = trashPathFor(task)
+  if (!path) return
+  const { projectId: _pid, ...rest } = task
+  fbSet(ref(db, path), { task: stripUndefined(rest), at: Date.now(), by })
+    .catch(e => console.warn('[trash]', e))
+}
+
 export const useTaskStore = create<TaskState>((set, get) => {
   const pushHistory = (op: UndoOp) => {
     const history = [...get().history, { ...op, at: Date.now() }]
@@ -125,6 +158,12 @@ export const useTaskStore = create<TaskState>((set, get) => {
       case 'delete':
         set({ tasks: [...get().tasks, op.task] })
         writeTask(op.task)
+        // 휴지통에 눕혀 둔 것도 걷습니다. 되돌아온 업무가 휴지통에도 있으면,
+        // 그 목록이 '지워진 것들'이라는 말이 더 이상 참이 아닙니다.
+        {
+          const trashed = trashPathFor(op.task)
+          if (trashed) fbRemove(ref(db, trashed)).catch(() => {})
+        }
         break
       case 'update': {
         const current = get().tasks.find(t => t.id === op.id)
@@ -225,11 +264,22 @@ export const useTaskStore = create<TaskState>((set, get) => {
       const task = get().tasks.find(t => t.id === id)
       if (!task) return
       set({ tasks: get().tasks.filter(t => t.id !== id), history: pushHistory({ kind: 'delete', task }) })
+      // 휴지통이 먼저입니다. 지우는 쪽이 먼저 들으면, 그 사이에 창이 닫히거나
+      // 연결이 끊겼을 때 업무가 어디에도 없게 됩니다.
+      const { email, displayName } = useAuthStore.getState()
+      toTrash(task, displayName || email?.split('@')[0] || '누군가')
       removeTask(task)
       // The task is gone; the record of it going is not. It sits beside the
       // project rather than inside the task, so removing one does not remove
       // the other.
       logDeleted(task)
+    },
+
+    restoreTask: (task) => {
+      if (get().tasks.some(t => t.id === task.id)) return
+      set({ tasks: [...get().tasks, task] })
+      writeTask(task)
+      logRestored(task)
     },
 
     reorderTasks: (tasks) => {
