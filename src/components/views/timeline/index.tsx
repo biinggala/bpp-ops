@@ -93,6 +93,8 @@ interface Draft {
   date: string
   fromMinutes: number
   toMinutes: number
+  /** 놓은 뒤 구글이 답할 때까지 그 자리를 지키는 미리보기의 이름. */
+  label?: string
 }
 
 /**
@@ -331,6 +333,16 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
    * 일이 사람에게 남습니다.
    */
   const dropTimeblock = async (payload: TimeblockDrag, date: string, at: number) => {
+    try {
+      await placeTimeblock(payload, date, at)
+    } finally {
+      // 진짜 블록이 들어왔거나 실패했거나. 어느 쪽이든 미리보기는 여기서
+      // 물러납니다 — 성공하면 그 자리에 진짜가 이미 서 있습니다.
+      setDropDraft(null)
+    }
+  }
+
+  const placeTimeblock = async (payload: TimeblockDrag, date: string, at: number) => {
     const from = clampDay(at)
     const to = clampDay(Math.max(from + MIN_DURATION, from + BLOCK_MINUTES))
     // id가 있을 때만 찾습니다. 없는 것끼리 비교하면 **아무 일정이나** 걸려서,
@@ -869,7 +881,19 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
                 e.preventDefault()
                 e.dataTransfer.dropEffect = 'copy'
                 const at = minutesAt(e.clientY, e.currentTarget)
-                setDropDraft({ date, fromMinutes: at, toMinutes: Math.min(24 * 60, at + BLOCK_MINUTES) })
+                /**
+                 * 눈금이 실제로 옮겨갔을 때만 상태를 바꿉니다.
+                 *
+                 * dragover는 마우스가 멈춰 있어도 계속 옵니다. 매번 새 객체를
+                 * 넣으면 그때마다 이 격자 전체가 다시 그려집니다 — 하루치
+                 * 일정을 다시 배치하고 블록을 전부 다시 만듭니다. 15분 눈금에
+                 * 붙는 값이라 대부분은 **같은 값을 다시 넣는 것**이었고,
+                 * 그 헛일이 끄는 동안의 미세한 덜컹거림이었습니다.
+                 */
+                setDropDraft(cur =>
+                  cur && cur.date === date && cur.fromMinutes === at
+                    ? cur
+                    : { date, fromMinutes: at, toMinutes: Math.min(24 * 60, at + BLOCK_MINUTES) })
               }}
               // 칸을 벗어나면 미리보기를 거둡니다. 안 그러면 놓지 않고 나가도
               // 파란 자국이 남아, 만들어진 것처럼 보입니다.
@@ -879,11 +903,23 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
               }}
               onDrop={e => {
                 const payload = readTimeblock(e.dataTransfer)
-                setDropDraft(null)
-                if (!payload) return
+                if (!payload) { setDropDraft(null); return }
                 e.preventDefault()
                 e.stopPropagation()
                 const at = minutesAt(e.clientY, e.currentTarget)
+                /**
+                 * 미리보기를 **안 지웁니다.** 구글에 일정을 만드는 데 한두 초가
+                 * 걸리는데, 놓자마자 지우면 그동안 아무것도 없는 자리가 됩니다 —
+                 * 놓은 사람은 실패한 줄 알고 한 번 더 놓습니다.
+                 *
+                 * 이름은 이제 압니다(끄는 동안에는 못 읽지만 놓을 때는 읽힙니다).
+                 * 그래서 기다리는 동안의 미리보기가 완성된 블록과 거의 같습니다.
+                 */
+                setDropDraft({
+                  date, fromMinutes: at,
+                  toMinutes: Math.min(24 * 60, at + BLOCK_MINUTES),
+                  label: payload.name,
+                })
                 void dropTimeblock(payload, date, at)
               }}
               style={{
@@ -2098,8 +2134,13 @@ function DraftBlock({ draft }: { draft: Draft }) {
         {hhmm(draft.fromMinutes)} – {hhmm(draft.toMinutes)}
       </span>
       {height >= 34 && (
-        <span style={{ fontSize: 10, color: 'var(--ac)', opacity: .75 }}>
-          {draft.toMinutes - draft.fromMinutes}분
+        // 이름이 있으면 길이 대신 이름입니다. '60분'은 위의 시각 두 개가 이미
+        // 하는 말이고, 놓은 직후에 확인하고 싶은 건 '그 업무가 맞나'입니다.
+        <span style={{
+          fontSize: 10, color: 'var(--ac)', opacity: draft.label ? .95 : .75,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {draft.label ?? `${draft.toMinutes - draft.fromMinutes}분`}
         </span>
       )}
     </div>
