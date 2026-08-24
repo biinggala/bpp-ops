@@ -166,6 +166,83 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
     ensureEvents(days[0], days[days.length - 1])
   }, [token, days[0], days[days.length - 1]])
 
+
+  /**
+   * ── 가장자리에 대면 따라 내려갑니다 ────────────────────────────────────────
+   *
+   * 시간 축은 하루 24시간이 다 들어 있어서 화면에 보이는 건 그중 몇 시간뿐
+   * 입니다. 아침 9시를 보고 있는데 저녁 7시에 블록을 놓으려면, 끄는 손을
+   * 놓고 스크롤한 다음 다시 잡아야 했습니다 — 끌던 것을 놓는 순간 엉뚱한
+   * 자리에 일정이 생기고요.
+   *
+   * 위아래 끝에 대고 있으면 그쪽으로 흘러갑니다. 깊이 넣을수록 빨라집니다 —
+   * 한 칸만 더 가고 싶을 때와 반나절을 건너뛰고 싶을 때가 다르니까요.
+   *
+   * **프레임마다 미리보기를 다시 잽니다.** 손이 멈춰 있어도 화면이 움직이면
+   * 손끝이 가리키는 시각은 계속 바뀝니다. 안 다시 재면 미리보기가 옛 시각에
+   * 붙어 있다가, 놓는 순간 거기로 만들어집니다.
+   */
+  const edge = useRef<{ v: number; y: number; column: HTMLElement | null; date: string; raf: number | null }>(
+    { v: 0, y: 0, column: null, date: '', raf: null },
+  )
+
+  const stopEdgeScroll = () => {
+    if (edge.current.raf !== null) cancelAnimationFrame(edge.current.raf)
+    edge.current = { v: 0, y: 0, column: null, date: '', raf: null }
+  }
+
+  const runEdgeScroll = () => {
+    const st = edge.current
+    const grid = gridRef.current
+    if (!grid || !st.v) { st.raf = null; return }
+    const limit = grid.scrollHeight - grid.clientHeight
+    const before = grid.scrollTop
+    grid.scrollTop = Math.max(0, Math.min(limit, before + st.v))
+    if (grid.scrollTop !== before && st.column) {
+      const at = minutesAt(st.y, st.column)
+      const date = st.date
+      setDropDraft(cur =>
+        cur && cur.date === date && cur.fromMinutes === at
+          ? cur
+          : { date, fromMinutes: at, toMinutes: Math.min(24 * 60, at + BLOCK_MINUTES), label: cur?.label })
+    }
+    st.raf = requestAnimationFrame(runEdgeScroll)
+  }
+
+  /** 끄는 손이 어디쯤인지 보고, 가장자리면 흐르게 합니다. */
+  const aimEdgeScroll = (clientY: number, column: HTMLElement, date: string) => {
+    const grid = gridRef.current
+    if (!grid) return
+    const box = grid.getBoundingClientRect()
+    const ZONE = 56          // 이 안쪽에 들어오면 흐릅니다
+    const MAX = 16           // 프레임당 최대 픽셀. 한 번에 반나절쯤 갑니다
+    const above = clientY - box.top
+    const below = box.bottom - clientY
+    let v = 0
+    if (above < ZONE) v = -MAX * (1 - Math.max(0, above) / ZONE)
+    else if (below < ZONE) v = MAX * (1 - Math.max(0, below) / ZONE)
+
+    const st = edge.current
+    st.v = v
+    st.y = clientY
+    st.column = column
+    st.date = date
+    if (v && st.raf === null) st.raf = requestAnimationFrame(runEdgeScroll)
+    if (!v && st.raf !== null) { cancelAnimationFrame(st.raf); st.raf = null }
+  }
+
+  // 끌기가 끝나면 어떤 식으로 끝났든 흐름을 멈춥니다. drop과 dragleave만으로는
+  // 부족합니다 — 창 밖에서 손을 놓으면 그 둘 다 안 옵니다.
+  useEffect(() => {
+    window.addEventListener('dragend', stopEdgeScroll)
+    window.addEventListener('drop', stopEdgeScroll)
+    return () => {
+      window.removeEventListener('dragend', stopEdgeScroll)
+      window.removeEventListener('drop', stopEdgeScroll)
+      stopEdgeScroll()
+    }
+  }, [])
+
   // ── Drag to create ────────────────────────────────────────────────────────
   const [draft, setDraft] = useState<Draft | null>(null)
   const [naming, setNaming] = useState<Draft | null>(null)
@@ -880,6 +957,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
                 if (!hasTimeblock(e.dataTransfer)) return
                 e.preventDefault()
                 e.dataTransfer.dropEffect = 'copy'
+                aimEdgeScroll(e.clientY, e.currentTarget, date)
                 const at = minutesAt(e.clientY, e.currentTarget)
                 /**
                  * 눈금이 실제로 옮겨갔을 때만 상태를 바꿉니다.
@@ -899,10 +977,12 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
               // 파란 자국이 남아, 만들어진 것처럼 보입니다.
               onDragLeave={e => {
                 if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+                stopEdgeScroll()
                 setDropDraft(null)
               }}
               onDrop={e => {
                 const payload = readTimeblock(e.dataTransfer)
+                stopEdgeScroll()
                 if (!payload) { setDropDraft(null); return }
                 e.preventDefault()
                 e.stopPropagation()
