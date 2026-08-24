@@ -111,7 +111,20 @@ async function main() {
   // not working; without the VAPID keys the two senders answer 503.
   registerPushRoutes(app)
 
-  app.get('/healthz', (_req, res) => void res.json({ ok: true, push: pushConfigured() }))
+  /**
+   * 상태 확인, 그리고 **구글에 등록해야 하는 주소**.
+   *
+   * `redirect_uri_mismatch`로 로그인이 막혔을 때 알아야 하는 건 딱 하나입니다:
+   * 이 서버가 구글에 보내는 리디렉션 주소가 무엇인가. 그 값은 PUBLIC_URL에서
+   * 만들어지는데, 코드를 읽지 않으면 알 수 없었습니다 — 그래서 여기 적어
+   * 둡니다. 비밀은 없습니다(공개 주소 하나).
+   */
+  app.get('/healthz', (_req, res) => void res.json({
+    ok: true,
+    push: pushConfigured(),
+    issuer: publicUrl,
+    googleRedirectUri: new URL(googleCallbackPath, publicUrl).toString(),
+  }))
 
   const port = Number(process.env.PORT ?? 8080)
   app.listen(port, () => {
