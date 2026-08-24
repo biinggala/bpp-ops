@@ -141,6 +141,9 @@ interface GCalState {
   findLinkableEvents: (query: string) => Promise<GCalEvent[]>
   /** Attaches or detaches an event. The event itself is never touched. */
   setEventTask: (eventId: string, taskId: string | null) => Promise<boolean>
+  /** 되돌릴 수 있는 시간 변경들. 가장 최근 것이 뒤에 있습니다. */
+  history: CalUndo[]
+  undoLast: () => Promise<void>
   updateEvent: (eventId: string, patch: { summary?: string; location?: string; description?: string; startDateTime?: string; endDateTime?: string; attendees?: string[] }) => Promise<boolean>
   /** 초대에 수락·미정·거절로 답합니다. */
   respond: (eventId: string, response: Rsvp) => Promise<boolean>
@@ -213,6 +216,40 @@ function loadStored(): { token: string | null; expiry: number | null; wasConnect
   } catch { /* ignore */ }
   return { token: null, expiry: null, wasConnected: false }
 }
+
+/**
+ * ── 캘린더 쪽 되돌리기 ───────────────────────────────────────────────────────
+ *
+ * 타임블록을 잘못 옮기는 일은 흔합니다 — 15분 눈금이라 손이 조금만 흔들려도
+ * 한 칸 밀리고, 그때 원래 몇 시였는지는 이미 화면에 없습니다. 업무 쪽에는
+ * ⌘Z가 있는데 여기만 없으면, 같은 화면에서 어떤 것은 되돌아가고 어떤 것은
+ * 안 되돌아갑니다.
+ *
+ * 스토어를 합치지는 않았습니다. 되돌리는 방법이 서로 다르니까요 — 저쪽은
+ * 우리 DB에 다시 쓰고 이쪽은 구글에 다시 물어봅니다. 대신 쌓인 시각을 같이
+ * 적어 두고, ⌘Z가 **둘 중 더 최근 것**을 고릅니다(AppPage).
+ */
+export interface CalUndo {
+  at: number
+  /** 옮기기·길이 조절을 되돌립니다. 값은 그 전의 시각. */
+  kind: 'time'
+  eventId: string
+  startDateTime: string
+  endDateTime: string
+}
+
+/** 구글이 준 ISO를 이 컴퓨터의 벽시계 문자열로. 쓰기 API가 받는 모양입니다. */
+function wallClock(iso: string): string {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}:00`
+}
+
+const MAX_CAL_HISTORY = 30
+
+/** 되돌리는 중. 그동안의 변경은 스택에 안 쌓습니다 — undoLast 참고. */
+let undoing = false
 
 const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly'
 const CALENDAR_WRITE_SCOPE = 'https://www.googleapis.com/auth/calendar.events'
@@ -347,6 +384,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
   ...loadStored(),
   autoRefreshing: false,
   events: [],
+  history: [],
   calendars: [],
   enabledCalendarIds: loadEnabled(),
   canWrite: loadWrite(),
@@ -538,6 +576,30 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     }
   },
 
+  /**
+   * 마지막 시간 변경을 되돌립니다.
+   *
+   * updateEvent를 그대로 씁니다 — 되돌리는 것도 결국 '그 시각으로 옮기기'라,
+   * 별도의 길을 내면 낙관적 표시와 실패 되감기를 두 벌 관리하게 됩니다.
+   * 다만 그 호출이 다시 스택에 쌓이면 ⌘Z가 두 시각 사이를 영원히 오갑니다.
+   * 그래서 되돌리는 동안에는 안 쌓습니다.
+   */
+  undoLast: async () => {
+    const stack = get().history
+    const op = stack[stack.length - 1]
+    if (!op) return
+    set({ history: stack.slice(0, -1) })
+    undoing = true
+    try {
+      await get().updateEvent(op.eventId, {
+        startDateTime: op.startDateTime,
+        endDateTime: op.endDateTime,
+      })
+    } finally {
+      undoing = false
+    }
+  },
+
   updateEvent: async (eventId, patch) => {
     const existing = get().events.find(e => e.id === eventId)
     if (!existing) return false
@@ -545,6 +607,21 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     if (!token) return false
 
     const before = get().events
+    /**
+     * 시간이 바뀌는 패치만 되돌릴 것으로 쌓습니다. 제목이나 아젠다를 고친
+     * 것까지 ⌘Z에 걸리면, 시간을 되돌리려고 누른 손이 방금 쓴 문장을
+     * 지웁니다 — 그건 편집기가 할 일이고 여기서 할 일이 아닙니다.
+     */
+    if (!undoing && (patch.startDateTime || patch.endDateTime) && existing.startIso && existing.endIso) {
+      const stack = [...get().history, {
+        at: Date.now(),
+        kind: 'time' as const,
+        eventId,
+        startDateTime: wallClock(existing.startIso),
+        endDateTime: wallClock(existing.endIso),
+      }]
+      set({ history: stack.slice(-MAX_CAL_HISTORY) })
+    }
     // Show the change immediately; a failure puts the old values back.
     set({
       events: before.map(e => e.id === eventId ? {

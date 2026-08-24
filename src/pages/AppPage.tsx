@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useUiStore } from '../store/uiStore'
 import { useTaskStore } from '../store/taskStore'
+import { useGCalStore } from '../store/gcalStore'
 import { useSpaceStore } from '../store/spaceStore'
 import { useProjectStore } from '../store/projectStore'
 import { useMilestoneStore } from '../store/milestoneStore'
@@ -186,9 +187,25 @@ export function AppPage() {
         else useUiStore.getState().toggleSidebarHidden()
       }
 
+      /**
+       * ── ⌘Z는 '방금 한 일'을 되돌립니다 ─────────────────────────────────
+       *
+       * 되돌릴 것이 두 곳에 쌓입니다 — 업무(taskStore)와 캘린더(gcalStore).
+       * 되돌리는 방법이 서로 달라서 스토어를 합치지는 않았습니다: 저쪽은 우리
+       * DB에 다시 쓰고 이쪽은 구글에 다시 물어봅니다.
+       *
+       * 대신 둘 다 쌓인 시각을 적어 두고, 여기서 **더 최근 것**을 고릅니다.
+       * 스토어 순서로 고르면 방금 옮긴 타임블록 대신 아까 고친 업무가
+       * 되돌아가고, 그러면 ⌘Z가 무엇을 되돌릴지 아무도 예측할 수 없습니다.
+       */
       if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !isEditing) {
         e.preventDefault()
-        undo()
+        const taskHistory = useTaskStore.getState().history
+        const calHistory = useGCalStore.getState().history
+        const taskAt = taskHistory[taskHistory.length - 1]?.at ?? -1
+        const calAt = calHistory[calHistory.length - 1]?.at ?? -1
+        if (calAt > taskAt) void useGCalStore.getState().undoLast()
+        else if (taskAt >= 0) undo()
       }
     }
     document.addEventListener('keydown', h)

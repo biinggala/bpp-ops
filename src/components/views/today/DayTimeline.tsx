@@ -116,7 +116,19 @@ export function DayTimeline({ date }: { date: string }) {
    * 한눈에 읽혀야 합니다.
    */
   const agenda = useMemo(() => {
-    const onDay = events.filter(e => e.start <= date && date <= e.end)
+    /**
+     * ── 타임블록은 이 목록에 안 섭니다 ──────────────────────────────────────
+     *
+     * 이 목록이 답하는 질문은 '오늘 무슨 약속이 있나'입니다 — 내가 못 옮기는
+     * 것들, 하루의 뼈대. 타임블록은 그 반대입니다. 내가 방금 정한 것이고,
+     * 바로 아래 시간 축에 이미 그려져 있고, 왼쪽 노트에도 그 줄이 있습니다.
+     * 여기까지 넣으면 **한 화면에 같은 것이 세 번** 놓입니다.
+     *
+     * 그리고 실제로 걸린 문제: 블록을 하나 놓을 때마다 이 목록이 한 줄
+     * 길어지면서 아래 시간 축이 그만큼 밀려 내려갔습니다. 방금 놓은 자리를
+     * 보고 있던 사람에게는 화면이 덜컹한 것으로 보입니다.
+     */
+    const onDay = events.filter(e => !e.isBlock && e.start <= date && date <= e.end)
     const at = (e: GCalEvent) =>
       e.allDay ? -1 : new Date(e.startIso!).getHours() * 60 + new Date(e.startIso!).getMinutes()
     return onDay.sort((a, b) => at(a) - at(b))

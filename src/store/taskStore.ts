@@ -49,7 +49,11 @@ import { logChanged, logCreated, logDeleted } from '../lib/activity'
 
 interface TaskState {
   tasks: Task[]
-  history: UndoOp[]
+  /**
+   * 되돌릴 것들. 언제 쌓였는지 같이 적습니다 — 캘린더 쪽에도 되돌릴 것이
+   * 있어서(gcalStore), ⌘Z가 **둘 중 더 최근 것**을 골라야 하기 때문입니다.
+   */
+  history: (UndoOp & { at: number })[]
   addTask: (t: Omit<Task, 'id'>) => Task
   updateTask: (id: string, patch: Partial<Task>) => void
   deleteTask: (id: string) => void
@@ -108,7 +112,7 @@ function removeTask(task: Pick<Task, 'id' | 'projectId'>) {
 
 export const useTaskStore = create<TaskState>((set, get) => {
   const pushHistory = (op: UndoOp) => {
-    const history = [...get().history, op]
+    const history = [...get().history, { ...op, at: Date.now() }]
     return history.length > MAX_HISTORY ? history.slice(history.length - MAX_HISTORY) : history
   }
 
