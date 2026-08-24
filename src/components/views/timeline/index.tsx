@@ -186,22 +186,36 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
    * 손끝이 가리키는 시각은 계속 바뀝니다. 안 다시 재면 미리보기가 옛 시각에
    * 붙어 있다가, 놓는 순간 거기로 만들어집니다.
    */
-  const edge = useRef<{ v: number; y: number; column: HTMLElement | null; date: string; raf: number | null }>(
-    { v: 0, y: 0, column: null, date: '', raf: null },
-  )
+  const edge = useRef<{
+    v: number; y: number; column: HTMLElement | null; date: string
+    raf: number | null; last: number
+  }>({ v: 0, y: 0, column: null, date: '', raf: null, last: 0 })
 
   const stopEdgeScroll = () => {
     if (edge.current.raf !== null) cancelAnimationFrame(edge.current.raf)
-    edge.current = { v: 0, y: 0, column: null, date: '', raf: null }
+    edge.current = { v: 0, y: 0, column: null, date: '', raf: null, last: 0 }
   }
 
-  const runEdgeScroll = () => {
+  const runEdgeScroll = (now: number) => {
     const st = edge.current
     const grid = gridRef.current
     if (!grid || !st.v) { st.raf = null; return }
+    /**
+     * ── 초당 몇 픽셀입니다, 프레임당이 아니라 ──────────────────────────────
+     *
+     * 프레임마다 같은 픽셀을 더하고 있었습니다. 그러면 **화면이 빠를수록
+     * 빨라집니다** — 120Hz 맥에서는 60Hz의 정확히 두 배로 흐릅니다. 같은
+     * 코드가 기기마다 다른 속도인 셈이라, '너무 빠르다'가 사람마다 다르게
+     * 느껴지는 게 당연했습니다.
+     *
+     * 흐른 시간을 재서 곱합니다. 탭을 잠깐 벗어났다 돌아오면 dt가 크게
+     * 튀므로 위를 막아 둡니다 — 안 그러면 돌아오는 순간 하루가 지나갑니다.
+     */
+    const dt = st.last ? Math.min(0.05, (now - st.last) / 1000) : 0
+    st.last = now
     const limit = grid.scrollHeight - grid.clientHeight
     const before = grid.scrollTop
-    grid.scrollTop = Math.max(0, Math.min(limit, before + st.v))
+    grid.scrollTop = Math.max(0, Math.min(limit, before + st.v * dt))
     if (grid.scrollTop !== before && st.column) {
       const at = minutesAt(st.y, st.column)
       const date = st.date
@@ -218,20 +232,42 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
     const grid = gridRef.current
     if (!grid) return
     const box = grid.getBoundingClientRect()
-    const ZONE = 56          // 이 안쪽에 들어오면 흐릅니다
-    const MAX = 16           // 프레임당 최대 픽셀. 한 번에 반나절쯤 갑니다
+    const ZONE = 64          // 이 안쪽에 들어오면 흐릅니다
+    const MAX = 460          // 초당 최대 픽셀. 하루 전체를 훑는 데 3초 남짓
     const above = clientY - box.top
     const below = box.bottom - clientY
-    let v = 0
-    if (above < ZONE) v = -MAX * (1 - Math.max(0, above) / ZONE)
-    else if (below < ZONE) v = MAX * (1 - Math.max(0, below) / ZONE)
+
+    /**
+     * ── 위가 더 빨랐던 이유 ────────────────────────────────────────────────
+     *
+     * 상자 **밖**에서도 흐르게 두었습니다. 위쪽 거리가 음수면 0으로 잘라서
+     * 곧바로 최고 속도가 됐는데, 시간 축 바로 위에는 '이 날의 일정' 목록이
+     * 있어서 조금만 올려도 그리로 넘어갑니다. 아래쪽은 그 아래가 창 끝이라
+     * 같은 일이 잘 안 일어나고요 — 그래서 위로 갈 때만 유독 빨랐습니다.
+     *
+     * 이제 **상자 안에서만** 흐릅니다. 가장자리를 지나 밖으로 나가면 멈추는
+     * 편이, 어디까지 가면 어떻게 되는지 예측할 수 있습니다.
+     *
+     * 그리고 램프를 제곱으로 바꿨습니다. 선형은 가장자리에 발을 들이는
+     * 순간부터 이미 절반쯤 속도라, 조금만 대려고 해도 훅 갑니다. 제곱이면
+     * 얕게 댈 때는 천천히, 깊이 밀어 넣을 때만 빨라집니다.
+     */
+    const ramp = (dist: number) => {
+      if (dist < 0 || dist >= ZONE) return 0
+      const t = 1 - dist / ZONE
+      return MAX * t * t
+    }
+    const v = above < below ? -ramp(above) : ramp(below)
 
     const st = edge.current
     st.v = v
     st.y = clientY
     st.column = column
     st.date = date
-    if (v && st.raf === null) st.raf = requestAnimationFrame(runEdgeScroll)
+    if (v && st.raf === null) {
+      st.last = 0   // 새로 시작하는 흐름의 첫 프레임은 시간이 0입니다.
+      st.raf = requestAnimationFrame(runEdgeScroll)
+    }
     if (!v && st.raf !== null) { cancelAnimationFrame(st.raf); st.raf = null }
   }
 
