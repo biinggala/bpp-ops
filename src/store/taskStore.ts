@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { ref, update as fbUpdate, remove as fbRemove, set as fbSet } from 'firebase/database'
 import { db } from '../lib/firebase'
-import { gid } from '../lib/utils'
+import { gid, parseAssignees, assigneeKeyToEmail } from '../lib/utils'
 import { P } from '../lib/paths'
 import { useAuthStore } from './authStore'
 import type { Task, Status } from '../types'
@@ -68,6 +68,29 @@ function pathFor(task: Pick<Task, 'id' | 'projectId'>): string | null {
   return uid ? P.personalTask(uid, task.id) : null
 }
 
+/**
+ * ── 프로젝트 없는 업무의 담당자는 나 하나 ────────────────────────────────────
+ *
+ * 위의 pathFor가 그 이유 전부입니다. 프로젝트가 없으면 그 업무는
+ * `personalTasks/$uid`에 살고, DB 규칙이 **본인만** 읽게 합니다. 남을 담당자로
+ * 적어 두면 그 사람은 그 업무를 영원히 못 봅니다 — '내 할 일'에도 안 뜨고,
+ * 열 수도 없고, 상태를 바꿀 수도 없습니다. 알림만 도착합니다(알림은 이메일로
+ * 배달돼서 프로젝트 권한과 무관합니다). 눌러도 아무것도 없는 알림이요.
+ *
+ * 화면에서도 막지만(lib/utils의 assigneeOptions) 값을 쓰는 곳은 여기라,
+ * 판정도 여기 둡니다. 목록에서 끌어다 놓든 업무를 개인으로 옮기든 같은 규칙을
+ * 지나갑니다.
+ *
+ * 프로젝트가 있으면 손대지 않습니다. 그쪽 경계는 프로젝트 멤버십이고, 그건
+ * 규칙이 이미 지키고 있습니다.
+ */
+function readableAssignee(projectId: string | null | undefined, assignee: string | undefined): string {
+  if (projectId) return assignee ?? ''
+  const me = useAuthStore.getState().email?.toLowerCase()
+  if (!me || !assignee) return ''
+  return parseAssignees(assignee).filter(a => assigneeKeyToEmail(a) === me).join(',')
+}
+
 function writeTask(task: Task) {
   const path = pathFor(task)
   if (!path) return
@@ -124,7 +147,11 @@ export const useTaskStore = create<TaskState>((set, get) => {
     history: [],
 
     addTask: (input) => {
-      const task: Task = { ...input, id: gid() } as Task
+      const task: Task = {
+        ...input,
+        assignee: readableAssignee(input.projectId, input.assignee),
+        id: gid(),
+      } as Task
       const parent = task.parentId ? get().tasks.find(t => t.id === task.parentId) : undefined
       set({ tasks: [...get().tasks, task], history: pushHistory({ kind: 'add', task }) })
       writeTask(task)
@@ -136,9 +163,22 @@ export const useTaskStore = create<TaskState>((set, get) => {
       return task
     },
 
-    updateTask: (id, patch) => {
+    updateTask: (id, rawPatch) => {
       const current = get().tasks.find(t => t.id === id)
       if (!current) return
+
+      /**
+       * 담당자가 그 업무를 읽을 수 있는지 먼저 봅니다. 담당자를 고칠 때만이
+       * 아니라 **프로젝트를 옮길 때도** 봐야 합니다 — 프로젝트 업무를 개인으로
+       * 내리면 그 자리에 남의 이름이 남고, 그때부터 그 사람은 자기 앞으로 온
+       * 업무를 볼 수 없습니다. 걸러진 값은 패치에 실어 보냅니다: 기록에도
+       * 남고, 알림도 '담당에서 제외'로 정확히 나갑니다.
+       */
+      const patch = { ...rawPatch }
+      const nextProject = 'projectId' in patch ? patch.projectId : current.projectId
+      const nextAssignee = 'assignee' in patch ? patch.assignee : current.assignee
+      const kept = readableAssignee(nextProject, nextAssignee)
+      if (kept !== (nextAssignee ?? '')) patch.assignee = kept
 
       const before: Partial<Task> = {}
       for (const key of Object.keys(patch) as (keyof Task)[]) {

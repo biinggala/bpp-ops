@@ -6,6 +6,7 @@ import {
   canAccessProject,
   isAssignedTo,
   isTaskVisible,
+  readableAssignee,
 } from '../dist/access.js'
 
 const ME = 'me@bpp.co.kr'
@@ -38,14 +39,28 @@ test("tasks in another member's project are invisible", () => {
   assert.equal(isTaskVisible(hidden, ME, ids), false)
 })
 
-test('a task with no project stays private to its creator and assignees', () => {
+test('a task with no project stays private to the account it is stored under', () => {
   const ids = accessibleProjectIds([mine], ME)
   const someoneElses = { id: 't3', assignee: OTHER, createdBy: OTHER, name: 'private' }
   // Having access to *some* project must not expose unrelated personal tasks.
   assert.equal(isTaskVisible(someoneElses, ME, ids), false)
 
   assert.equal(isTaskVisible({ id: 't4', createdBy: ME, assignee: '', name: 'x' }, ME, ids), true)
-  assert.equal(isTaskVisible({ id: 't5', createdBy: OTHER, assignee: ME, name: 'y' }, ME, ids), true)
+
+  // Being named as assignee is not a grant: personalTasks/$uid is readable by
+  // that account alone, so the app could never show this task either.
+  assert.equal(isTaskVisible({ id: 't5', createdBy: OTHER, assignee: ME, name: 'y' }, ME, ids), false)
+})
+
+test('a task with no project can only be assigned to its owner', () => {
+  // The picker in the app offers nobody else; this is the same rule on the
+  // server, where the Admin SDK is past the database rules.
+  assert.equal(readableAssignee(undefined, `${ME}, ${OTHER}`, ME), ME)
+  assert.equal(readableAssignee(undefined, OTHER, ME), '')
+  assert.equal(readableAssignee(undefined, 'HC', 'biinggala@crngfriends.com'), 'HC')
+
+  // A project task is left alone — that boundary is project membership.
+  assert.equal(readableAssignee('p1', `${ME}, ${OTHER}`, ME), `${ME}, ${OTHER}`)
 })
 
 test('legacy member keys resolve to the same person as their email', () => {

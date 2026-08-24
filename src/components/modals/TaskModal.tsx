@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { isComposing } from '../../lib/utils'
+import { isComposing, assigneeOptions, parseAssignees, assigneeKeyToEmail } from '../../lib/utils'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useProjectStore } from '../../store/projectStore'
@@ -62,18 +62,12 @@ export function TaskModal() {
 
   const parentTask = newTaskParentId ? tasks.find(t => t.id === newTaskParentId) : null
 
-  // Fallback: union of all accessible project members (never exposes global profiles)
-  const accessibleMemberEmails = useMemo(() => {
-    const s = new Set<string>()
-    projects.forEach(p => p.memberEmails?.forEach(e => s.add(e)))
-    return Array.from(s)
-  }, [projects])
-
-  const assigneeOptions = useMemo(() => {
-    const selected = projects.find(p => p.id === form.projectId)
-    const emails = selected?.memberEmails?.length ? selected.memberEmails : accessibleMemberEmails
-    return emails.map(e => ({ value: e, label: getNameByEmail(e) }))
-  }, [form.projectId, projects, accessibleMemberEmails, getNameByEmail])
+  // 고를 수 있는 사람은 그 업무를 읽을 수 있는 사람뿐입니다. 프로젝트가
+  // 없으면 그 업무는 personalTasks/$uid에 살고, 그건 나만 읽습니다.
+  const options = useMemo(
+    () => assigneeOptions(form.projectId, projects, email, getNameByEmail),
+    [form.projectId, projects, email, getNameByEmail],
+  )
 
   const projectMilestones = useMemo(
     () => milestones
@@ -190,7 +184,24 @@ export function TaskModal() {
                 value={form.projectId}
                 empty="없음"
                 options={projects.filter(p => !p.archived).map(p => ({ value: p.id, label: p.name, dot: p.color }))}
-                onChange={v => { upd('projectId', v); upd('milestoneId', undefined); setAlsoProjects([]) }}
+                onChange={v => {
+                  upd('projectId', v)
+                  upd('milestoneId', undefined)
+                  setAlsoProjects([])
+                  /**
+                   * 프로젝트를 옮기면 담당자도 같이 걸러집니다. 저쪽 멤버를
+                   * 골라 두고 프로젝트를 '없음'으로 바꾸면, 목록에서는 사라진
+                   * 사람이 값에는 남아 그대로 저장됩니다 — 못 보는 사람에게
+                   * 맡긴 업무가 그렇게 만들어졌습니다.
+                   */
+                  const allowed = new Set(assigneeOptions(v, projects, email, getNameByEmail).map(o => o.value))
+                  setForm(f => ({
+                    ...f,
+                    assignee: parseAssignees(f.assignee)
+                      .filter(a => allowed.has(assigneeKeyToEmail(a)))
+                      .join(','),
+                  }))
+                }}
               />
             </PropCell>
 
@@ -206,7 +217,7 @@ export function TaskModal() {
             )}
 
             <PropCell label="담당자">
-              <AssigneePicker assignee={form.assignee} options={assigneeOptions} onChange={v => upd('assignee', v)} />
+              <AssigneePicker assignee={form.assignee} options={options} onChange={v => upd('assignee', v)} />
             </PropCell>
 
             <PropCell label="마감일">

@@ -20,7 +20,7 @@ import { useMobile } from '../../../hooks/useMobile'
 import { TagBadge } from '../../shared/Badge'
 import { AssigneeAvatar } from '../../shared/Avatar'
 import { ActionMenu, ContextMenu } from '../../shared/ContextMenu'
-import { fmtDate, isOverdue, parseAssignees, assigneeKeyToEmail, stripHtml, isComposing, daysFrom } from '../../../lib/utils'
+import { fmtDate, isOverdue, parseAssignees, assigneeKeyToEmail, stripHtml, isComposing, daysFrom, assigneeOptions } from '../../../lib/utils'
 import { NOTION, STATUS_LIST, PRIORITY_LIST, getTagColor, statusAccent } from '../../../types'
 import {
   FileRow, DriveSearch, UrlAdd, AttachTabs,
@@ -654,12 +654,6 @@ export function TableView() {
     allProjects
   , [allProjects, userEmail])
   const taskEvents = useTaskEvents()
-  // Union of all accessible project members — used as fallback for assignee dropdowns
-  const accessibleMemberEmails = React.useMemo(() => {
-    const s = new Set<string>()
-    projects.forEach(p => p.memberEmails?.forEach(e => s.add(e)))
-    return Array.from(s)
-  }, [projects])
   const isMobile = useMobile()
 
   // A task added to a list of one's own work is one's own work. Elsewhere the
@@ -723,12 +717,11 @@ export function TableView() {
   }, [draggingCol])
 
   // ── Assignee options ────────────────────────────────────────────────────────
-  const getAssigneeOptions = useCallback((pjId: string | undefined) => {
-    const project = projects.find(p => p.id === pjId)
-    const emails = project?.memberEmails ?? []
-    if (emails.length > 0) return emails.map(e => ({ value: e, label: getNameByEmail(e) }))
-    return accessibleMemberEmails.map(e => ({ value: e, label: getNameByEmail(e) }))
-  }, [projects, accessibleMemberEmails, getNameByEmail])
+  // 고를 수 있는 사람은 그 업무를 읽을 수 있는 사람뿐입니다 — lib/utils.
+  const getAssigneeOptions = useCallback(
+    (pjId: string | undefined) => assigneeOptions(pjId, projects, userEmail, getNameByEmail),
+    [projects, userEmail, getNameByEmail],
+  )
 
   const allTags = React.useMemo(() => {
     const s = new Set<string>()

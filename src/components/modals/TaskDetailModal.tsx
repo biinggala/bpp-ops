@@ -32,7 +32,10 @@ import { STATUS_LIST, PRIORITY_LIST, NOTION, statusAccent } from '../../types'
 import { ActivityList } from '../shared/ActivityList'
 import { openExternal } from '../../lib/desktopLinks'
 import type { Task, Status, Priority, TaskLink } from '../../types'
-import { isComposing, daysFrom } from '../../lib/utils'
+import {
+  isComposing, daysFrom, parseAssignees, assigneeKeyToEmail,
+  assigneeOptions as assigneeOptions_,
+} from '../../lib/utils'
 import { StatusMark } from '../shared/StatusMark'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -827,7 +830,7 @@ export function TaskDetailModal() {
   const task = useTaskStore(s => s.tasks.find(t => t.id === detailTaskId))
   const { updateTask, deleteTask } = useTaskStore(useShallow(s => ({ updateTask: s.updateTask, deleteTask: s.deleteTask })))
   const allTasks = useTaskStore(st => st.tasks)
-  const { uid } = useAuthStore(useShallow(s => ({ uid: s.uid })))
+  const { uid, myEmail } = useAuthStore(useShallow(s => ({ uid: s.uid, myEmail: s.email })))
   const { presences, setCurrentTask } = usePresenceStore()
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const allProjects = useProjectStore(s => s.projects)
@@ -909,16 +912,12 @@ export function TaskDetailModal() {
   const currentProject = projects.find(p => p.id === task.projectId)
   const currentMilestone = milestones.find(m => m.id === task.milestoneId)
 
-  const assigneeOptions = useMemo(() => {
-    const memberEmails = currentProject?.memberEmails ?? []
-    if (memberEmails.length > 0) {
-      return memberEmails.map(e => ({ value: e, label: getNameByEmail(e) }))
-    }
-    // Fallback: union of all accessible project members
-    const s = new Set<string>()
-    projects.forEach(p => p.memberEmails?.forEach(e => s.add(e)))
-    return Array.from(s).map(e => ({ value: e, label: getNameByEmail(e) }))
-  }, [currentProject, projects, getNameByEmail])
+  // 고를 수 있는 사람은 그 업무를 읽을 수 있는 사람뿐입니다. 프로젝트가
+  // 없으면 그 업무는 personalTasks/$uid에 살고, 그건 나만 읽습니다.
+  const assigneeOptions = useMemo(
+    () => assigneeOptions_(task.projectId, projects, myEmail, getNameByEmail),
+    [task.projectId, projects, myEmail, getNameByEmail],
+  )
 
   const upd = (patch: Partial<Task>) => updateTask(task.id, patch)
 

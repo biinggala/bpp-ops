@@ -54,6 +54,50 @@ export function assigneeAliases(key: string): string[] {
 }
 
 /**
+ * ── 담당자로 고를 수 있는 사람 ────────────────────────────────────────────────
+ *
+ * 담당자는 라벨이 아니라 "이 사람이 한다"는 약속입니다. 그 업무를 **열 수 없는
+ * 사람**에게는 약속이 성립하지 않습니다 — 알림은 이메일로 배달되니 도착하지만
+ * (notices/$이메일키는 프로젝트 권한과 무관합니다) 눌러도 아무것도 없고,
+ * 그 사람의 '내 할 일'에도 안 뜨고, 상태를 바꿀 수도 없습니다.
+ *
+ * 그래서 고를 수 있는 사람은 **그 업무를 읽을 수 있는 사람**뿐입니다. 업무가
+ * 어디 사는지가 그걸 정합니다.
+ *
+ * **프로젝트 업무** — `projects/$pid/tasks/$tid`. 그 프로젝트의 멤버.
+ *
+ * **프로젝트 없는 업무** — `personalTasks/$uid/$tid`. DB 규칙이 **본인만**
+ * 읽게 합니다. 그러니 후보는 나 하나입니다. 여기가 새고 있었습니다: 목록이
+ * '내가 속한 모든 프로젝트의 멤버 전원'으로 떨어져서, 남을 담당자로 지정할 수
+ * 있었고 그 사람은 그 업무를 영원히 못 봤습니다.
+ *
+ * memberEmails가 빈 프로젝트(이 필드가 생기기 전에 만들어진 것)에는 예전
+ * 안전망을 남겨 둡니다 — 빈 목록을 주면 아무에게도 못 맡기게 됩니다. 그쪽은
+ * '못 보는 사람에게 맡김'이 아니라 '표시용 목록이 안 따라온 것'입니다.
+ */
+export function assigneeOptions(
+  projectId: string | null | undefined,
+  projects: Project[],
+  myEmail: string | null | undefined,
+  nameOf: (email: string) => string,
+): { value: string; label: string }[] {
+  const label = (e: string) => ({ value: e, label: nameOf(e) })
+
+  if (!projectId) {
+    const me = myEmail?.toLowerCase()
+    return me ? [label(me)] : []
+  }
+
+  const project = projects.find(p => p.id === projectId)
+  const members = project?.memberEmails ?? []
+  if (members.length > 0) return members.map(label)
+
+  const fallback = new Set<string>()
+  projects.forEach(p => p.memberEmails?.forEach(e => fallback.add(e)))
+  return Array.from(fallback).map(label)
+}
+
+/**
  * A link is only opened if it is plainly http(s).
  *
  * Any project member can set the folder address, and the app opens it in a new

@@ -1,6 +1,7 @@
 import { applicationDefault, cert, getApps, initializeApp, type ServiceAccount } from 'firebase-admin/app'
 import { getDatabase, type Database } from 'firebase-admin/database'
 import type { Milestone, Project, Task } from './types.js'
+import { readableAssignee } from './access.js'
 
 /**
  * Data access for the per-project layout described in docs/data-model.md.
@@ -149,7 +150,16 @@ export async function mutateTasks<T>(
   const locations = await readTaskLocations()
   const before = new Map(locations.map(l => [l.task.id, l]))
 
-  const { tasks: next, result } = mutate(locations.map(l => l.task))
+  const { tasks: mutated, result } = mutate(locations.map(l => l.task))
+
+  // Where a task is stored decides who can read it, so it also decides who can
+  // be its assignee. A tool call cannot name somebody who would never see the
+  // task — see readableAssignee. Checking it here covers every tool at once,
+  // including the bulk ones, and it is the same place the path is decided.
+  const next = mutated.map(t => {
+    const kept = readableAssignee(t.projectId, t.assignee, t.createdBy)
+    return kept === (t.assignee ?? '') ? t : { ...t, assignee: kept }
+  })
   const after = new Map(next.map(t => [t.id, t]))
 
   const updates: Record<string, unknown> = {}
