@@ -221,6 +221,17 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
   const beginMove = (
     e: React.MouseEvent, event: GCalEvent, date: string, from: number, to: number, mode: 'move' | 'resize',
   ) => {
+    /**
+     * ── 오른쪽 버튼으로는 안 잡습니다 ──────────────────────────────────────
+     *
+     * mousedown은 오른쪽 버튼에도 옵니다. 그래서 일정에 우클릭을 하면 여기서
+     * 끌기가 시작되는데, 그 위에 브라우저의 기본 메뉴가 뜨면서 mouseup을
+     * 삼켜 버립니다. 끌기를 끝낼 신호가 영영 안 와서, 메뉴를 닫은 뒤에도
+     * 일정이 커서를 따라다닙니다 — 그러다 아무 데나 누르면 시간이 바뀝니다.
+     *
+     * 왼쪽 버튼만 끌기를 시작합니다. 우클릭은 아래 onContextMenu가 받습니다.
+     */
+    if (e.button !== 0) return
     e.stopPropagation()
     e.preventDefault()
     const column = (e.currentTarget as HTMLElement).closest('[data-day-column]') as HTMLElement | null
@@ -241,9 +252,23 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
         setGhost({ id: held.id, from: held.from, to: clampDay(Math.max(held.from + MIN_DURATION, held.to + delta)) })
       }
     }
+    /**
+     * 창이 포커스를 잃거나(다른 앱으로 감) 메뉴가 뜨면 mouseup이 안 옵니다.
+     * 그때는 옮기던 것을 되돌립니다 — 붙잡힌 채로 남는 것보다 낫습니다.
+     */
+    const cancel = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      window.removeEventListener('blur', cancel)
+      window.removeEventListener('contextmenu', cancel)
+      moving.current = null
+      setGhost(null)
+    }
     const up = async () => {
       window.removeEventListener('mousemove', move)
       window.removeEventListener('mouseup', up)
+      window.removeEventListener('blur', cancel)
+      window.removeEventListener('contextmenu', cancel)
       const held = moving.current
       moving.current = null
       const settled = ghostRef.current
@@ -268,6 +293,8 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
     }
     window.addEventListener('mousemove', move)
     window.addEventListener('mouseup', up)
+    window.addEventListener('blur', cancel)
+    window.addEventListener('contextmenu', cancel)
   }
 
   const minutesAt = (clientY: number, column: HTMLElement): number => {
@@ -783,6 +810,10 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
               key={date}
               data-day-column
               onMouseDown={e => beginDrag(e, date)}
+              // 빈 칸의 우클릭도 브라우저 메뉴를 안 띄웁니다. 여기서 할 수
+              // 있는 일은 끌어서 만드는 것뿐이고, '새로고침'은 그 자리에
+              // 있어야 할 말이 아닙니다.
+              onContextMenu={e => e.preventDefault()}
               /**
                * ── 노트의 한 줄을 여기로 ──────────────────────────────────
                *
@@ -985,6 +1016,12 @@ function EventBlock({ placed, ghost, selected, onSelect, onMove }: {
     <div
       onMouseDown={e => onMove(e, 'move')}
       onClick={e => { e.stopPropagation(); onSelect(e) }}
+      /**
+       * 일정에 우클릭하면 브라우저의 기본 메뉴('새로고침')가 떴습니다. 이
+       * 화면에서 새로고침이 하고 싶은 사람은 없습니다 — 우클릭하는 손은 이
+       * 일정에 대해 뭔가 하려는 손입니다. 그래서 같은 카드를 엽니다.
+       */
+      onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onSelect(e) }}
       title={`${hhmm(from)}–${hhmm(to)}  ${event.summary}`}
       style={{
         position: 'absolute',
