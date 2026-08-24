@@ -87,6 +87,12 @@ export function TodayView() {
    * 뒤에 나가므로, html을 보면 방금 담은 업무가 잠시 동안 '아직 안 담김'으로
    * 보입니다 — 왼쪽 칩이 눌렀는데 1초쯤 아무 반응이 없는 셈입니다.
    */
+  /**
+   * 지금 노트 안에 있는 업무들.
+   *
+   * 날짜를 넘기면 비웁니다 — 어제 노트에 담긴 업무 id가 남아 있으면, 왼쪽
+   * '가져올 것'이 오늘은 안 담은 업무를 '이미 담김'으로 회색 처리합니다.
+   */
   const [noteIds, setNoteIds] = useState<Set<string>>(() => new Set())
   const hintRef = useRef(0)
   /**
@@ -172,6 +178,8 @@ export function TodayView() {
     onUpdate: ({ editor }) => { save(editor.getHTML()); setNoteIds(refIds(editor)) },
   }, [date])
 
+  useEffect(() => { setNoteIds(new Set()) }, [date])
+
   // 서버에서 온 내용. 내가 방금 친 것이 되돌아오는 경우는 훅이 걸러 냅니다.
   useEffect(() => {
     if (!editor || html === null) return
@@ -203,19 +211,26 @@ export function TodayView() {
   useEffect(() => {
     if (!editor) return
     const dom = editor.view.dom
+    // 죽은 편집기부터 걸러냅니다. isEmpty는 문서를 읽으므로, 파괴된 편집기에
+    // 물으면 그 자리에서 던집니다 — 순서가 바뀌어 있었습니다.
+    let swap: number | null = null
     const timer = setInterval(() => {
+      if (editor.isDestroyed) return
       // 뭔가 적기 시작하면 안내문은 이미 화면에 없습니다. 없는 글자를
       // 갈아 끼우느라 편집기를 건드릴 이유가 없습니다.
-      if (!editor.isEmpty || editor.isDestroyed) return
+      if (!editor.isEmpty) return
       dom.classList.add('hint-out')
-      window.setTimeout(() => {
+      swap = window.setTimeout(() => {
+        swap = null
         if (editor.isDestroyed) return
         hintRef.current = (hintRef.current + 1) % HINTS(mobileRef.current).length
         editor.view.dispatch(editor.state.tr.setMeta('addToHistory', false))
         dom.classList.remove('hint-out')
       }, 280)
     }, HINT_MS)
-    return () => clearInterval(timer)
+    // 안쪽 타이머도 같이 거둡니다. 날짜를 넘기는 순간이 이 280ms 안이면
+    // 이미 없는 편집기를 건드리게 됩니다.
+    return () => { clearInterval(timer); if (swap !== null) clearTimeout(swap) }
   }, [editor])
 
   const shift = (days: number) => setDate(d => fmtYMD(addDays(toDate(d), days)))

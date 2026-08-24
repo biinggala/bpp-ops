@@ -103,6 +103,20 @@ export function BlockTools({ editor, boundary, date }: {
   frozen.current = !!menu || !!slash || !!finder
   const handleRef = useRef<HTMLDivElement>(null)
 
+  /**
+   * 편집기가 바뀌면 들고 있던 자리는 전부 버립니다.
+   *
+   * 날짜를 넘기면 노트가 새로 만들어집니다. 그런데 slot·menu·slash는 **앞
+   * 문서의 위치**를 숫자로 들고 있었습니다. 어제 노트가 길고 오늘 노트가
+   * 짧으면 그 숫자는 새 문서에 없는 자리이고, 그걸로 무언가를 하려는 순간
+   * 프로즈미러가 '범위를 벗어났다'며 던집니다 — 화면이 통째로 멈춥니다.
+   *
+   * 위치는 문서에 붙은 값이라 문서를 넘어 살아 있으면 안 됩니다.
+   */
+  useEffect(() => {
+    setSlot(null); setMenu(null); setSlash(null); setFinder(null)
+  }, [editor])
+
   useEffect(() => {
     const host = boundary.current
     if (!host || !editor) return

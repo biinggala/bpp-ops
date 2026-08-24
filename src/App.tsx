@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useAuthStore } from './store/authStore'
 import { LoginPage } from './pages/LoginPage'
 import { AppPage } from './pages/AppPage'
+import { Crash } from './components/shared/Crash'
 import { useShallow } from 'zustand/react/shallow'
 
 export default function App() {
@@ -27,5 +28,8 @@ export default function App() {
     )
   }
 
-  return uid ? <AppPage /> : <LoginPage />
+  // 앱 전체를 감쌉니다. 렌더 중에 예외가 나면 하얀 화면이 되는데, 그건
+  // 사용자에게 '앱이 죽었다'와 '인터넷이 끊겼다'를 구별할 방법을 주지
+  // 않습니다. Crash 참고.
+  return <Crash>{uid ? <AppPage /> : <LoginPage />}</Crash>
 }
