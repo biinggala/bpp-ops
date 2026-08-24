@@ -149,6 +149,15 @@ export interface NewEvent {
   attendees?: string[]
   /** The task this event belongs to, written into the event itself. */
   taskId?: string
+  /**
+   * 'transparent'면 남의 '한가함/바쁨'에 안 잡힙니다.
+   *
+   * 회의는 바쁨입니다 — 그 시간에 다른 회의가 잡히면 안 되니까요. 타임블록은
+   * 그렇게까지 하지 않습니다: 내 하루를 짜 두는 것이지 남에게 오지 말라고
+   * 하는 것은 아니라서, 캘린더에는 보이되 남이 회의를 잡는 것은 막지
+   * 않습니다.
+   */
+  transparency?: 'opaque' | 'transparent'
 }
 
 /**
@@ -183,6 +192,7 @@ export async function createCalendarEvent(token: string, event: NewEvent): Promi
         end: { dateTime: event.endDateTime, timeZone },
         ...(event.attendees?.length ? { attendees: event.attendees.map(email => ({ email })) } : {}),
         ...(event.taskId ? { extendedProperties: { private: { [TASK_LINK_KEY]: event.taskId } } } : {}),
+        ...(event.transparency ? { transparency: event.transparency } : {}),
       }),
     }
   )

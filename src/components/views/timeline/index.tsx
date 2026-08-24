@@ -305,6 +305,14 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
       startDateTime: localIso(date, from),
       endDateTime: localIso(date, to),
       taskId: payload.taskId,
+      /**
+       * 타임블록은 '한가함'입니다.
+       *
+       * 캘린더에는 보이되 남의 '한가함/바쁨'에는 안 잡힙니다. 내 하루를 짜
+       * 두는 것이지 남에게 오지 말라고 하는 것은 아니니까요 — 회의를 잡으려는
+       * 사람이 내 블록 때문에 막히면, 다들 블록을 안 쓰게 됩니다.
+       */
+      transparency: 'transparent',
     })
   }
 

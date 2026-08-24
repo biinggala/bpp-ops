@@ -60,39 +60,13 @@ export function readTimeblock(dt: DataTransfer | null): TimeblockDrag | null {
 export const BLOCK_MINUTES = 60
 
 /**
- * ── 프로즈미러가 지운 뒤에 싣습니다 ──────────────────────────────────────────
+ * ── 어디서 싣는가 ────────────────────────────────────────────────────────────
  *
- * 처음엔 줄의 React `onDragStart`에서 실었습니다. 안 됐습니다 — 프로즈미러의
- * dragstart 처리기가 편집기 뿌리에 붙어 있어서 **내 것보다 나중에** 돌고,
- * 거기서 `dataTransfer.clearData()`를 부릅니다. 자기 형식(text/html + 슬라이스)
- * 만 남기려는 것인데, 그 한 줄이 내가 실어 둔 것도 같이 지웠습니다.
+ * 노트의 줄 자체가 아니라 **왼쪽 손잡이**에서 싣습니다(BlockTools.beginDrag).
+ * 줄에 실으려던 시도가 두 번 실패했고, 이유가 둘 다 같은 자리에 있습니다 —
+ * 그 줄들은 애초에 끌리지 않습니다. 프로즈미러는 내용이 있는 노드에
+ * draggable을 안 붙이고, 커스텀 노드뷰에는 tiptap도 붙이지 않습니다.
  *
- * 그래서 document에 답니다. 버블 단계의 마지막이라 프로즈미러 다음이고,
- * 지워진 뒤에 싣는 것이라 남습니다. 프로즈미러 것도 그대로 있어서 노트 안에서
- * 줄 순서를 바꾸는 일은 계속 됩니다 — 같은 드래그 하나로 둘 다입니다.
- *
- * 끌 수 있는 줄인지는 DOM이 말합니다(`data-timeblock`). 어느 줄이 끌렸는지를
- * 리액트 상태로 알아내려 하면, 정작 필요한 순간에 그 상태가 어느 줄의 것인지
- * 알 수 없습니다.
+ * 손잡이는 편집기 DOM 밖의 진짜 draggable 버튼이라 프로즈미러의 dragstart
+ * 처리기가 돌지 않고, 따라서 dataTransfer를 지우지도 않습니다.
  */
-export const TIMEBLOCK_ATTR = 'data-timeblock'
-
-export function installTimeblockDrag(): () => void {
-  const onDragStart = (event: DragEvent) => {
-    const dt = event.dataTransfer
-    if (!dt) return
-    const target = event.target as Element | null
-    const row = target?.closest?.(`[${TIMEBLOCK_ATTR}]`) as HTMLElement | null
-    if (!row) return
-
-    const taskId = row.getAttribute('data-timeblock-task') ?? undefined
-    // 이름은 적혀 있으면 그것, 아니면 그 줄에 보이는 글자. 체크박스 줄은
-    // 사람이 방금 친 글자가 곧 이름입니다.
-    const name = (row.getAttribute('data-timeblock-name') ?? row.textContent ?? '').trim()
-    if (!name) return
-    writeTimeblock(dt, { name, ...(taskId ? { taskId } : {}) })
-  }
-
-  document.addEventListener('dragstart', onDragStart)
-  return () => document.removeEventListener('dragstart', onDragStart)
-}

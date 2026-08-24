@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { writeTimeblock } from '../../../lib/timeblock'
 import { NodeSelection, TextSelection } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
 import { Icon } from '../../shared/Icon'
@@ -172,9 +173,43 @@ export function BlockTools({ editor, boundary, date }: {
     view.dispatch(view.state.tr.setSelection(sel))
     const dom = view.nodeDOM(slot.pos)
     if (dom instanceof HTMLElement) e.dataTransfer.setDragImage(dom, 8, 8)
-    e.dataTransfer.effectAllowed = 'move'
+    /**
+     * copyMove인 이유. 노트 안으로 놓으면 줄이 **옮겨지고**(move), 시간 축으로
+     * 놓으면 시간만 생기고 줄은 그대로 남습니다(copy). effectAllowed를 'move'로
+     * 두면 시간 축이 dropEffect를 'copy'로 정할 수 없어서, 놓을 수 있는 자리인데
+     * 브라우저가 거부합니다 — 커서가 끝까지 금지 표시로 남습니다.
+     */
+    e.dataTransfer.effectAllowed = 'copyMove'
     e.dataTransfer.setData('text/plain', '')
     view.dragging = { slice: sel.content(), move: true }
+
+    /**
+     * ── 그리고 같은 드래그가 시간 축으로도 갑니다 ──────────────────────────
+     *
+     * 짐을 여기서 싣는 이유. 줄 자체에 실으려던 시도가 두 번 실패했습니다.
+     *
+     * 하나. 줄의 React onDragStart는 아예 안 불립니다 — tiptap의
+     * NodeViewWrapper가 자기 onDragStart로 덮어씁니다.
+     *
+     * 둘. document에 달아도 소용없었습니다. 애초에 **dragstart가 안 났기**
+     * 때문입니다: 프로즈미러는 내용이 있는 노드(체크박스 줄)에는 draggable을
+     * 안 붙이고, 커스텀 노드뷰(업무 줄)에는 tiptap도 프로즈미러도 안 붙입니다.
+     * 끌리지 않는 것에 짐을 싣는 코드를 두 번 쓴 셈입니다.
+     *
+     * 이 손잡이는 편집기 DOM 밖에 있는 진짜 draggable 버튼입니다. 프로즈미러의
+     * dragstart 처리기가 안 도니 clearData도 없고, 짐이 그대로 남습니다.
+     */
+    const node = view.state.doc.nodeAt(slot.pos)
+    if (!node) return
+    if (node.type.name === 'taskRef') {
+      const id = node.attrs.taskId as string | null
+      const task = id ? useTaskStore.getState().tasks.find(t => t.id === id) : undefined
+      if (id) writeTimeblock(e.dataTransfer, { taskId: id, name: task?.name || '이름 없음' })
+      return
+    }
+    // 체크박스 줄. 사람이 방금 친 글자가 곧 일정 이름입니다.
+    const text = node.textContent.trim()
+    if (text) writeTimeblock(e.dataTransfer, { name: text })
   }
 
   /** 오른쪽 클릭도 같은 메뉴를 엽니다. 손잡이를 못 찾은 사람을 위해. */

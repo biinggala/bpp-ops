@@ -7,7 +7,6 @@ import { useProjectStore } from '../../../store/projectStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useSyncStore } from '../../../store/syncStore'
 import { useGCalStore } from '../../../store/gcalStore'
-import { TIMEBLOCK_ATTR } from '../../../lib/timeblock'
 import { haptic } from '../../../lib/haptics'
 import { daysFrom } from '../../../lib/utils'
 import { StatusMark } from '../../shared/StatusMark'
@@ -207,12 +206,6 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
       contentEditable={false}
       style={ROW}
       data-drag-handle
-      /**
-       * 시간 축으로 끌 수 있는 줄이라는 표시. 무엇을 싣는지는 document의
-       * 처리기가 여기 적힌 것을 읽어서 정합니다 — lib/timeblock에 왜 거기
-       * 있어야 하는지 적어 뒀습니다(프로즈미러가 dataTransfer를 지웁니다).
-       */
-      {...{ [TIMEBLOCK_ATTR]: '', 'data-timeblock-task': task.id, 'data-timeblock-name': task.name || '이름 없음' }}
     >
       <StatusPick status={task.status} onPick={setStatus} />
 
