@@ -771,7 +771,7 @@ export function TableView() {
 
   // ── Column header row ───────────────────────────────────────────────────────
   const colHeader = (
-    <div style={{ display: 'flex', minWidth: 'max-content', background: 'var(--bg2)', borderBottom: '2px solid var(--bd)', borderLeft: '3px solid transparent', userSelect: 'none' }}>
+    <div style={{ display: 'flex', minWidth: 'max-content', background: 'var(--bg2)', borderBottom: '2px solid var(--bd)', userSelect: 'none' }}>
       {visibleCols.map((col, idx) => {
         const isLast = idx === visibleCols.length - 1
         const isDragTarget = dropTarget === col.key && draggingCol !== col.key
@@ -1474,15 +1474,28 @@ function Row({
               boxShadow: '2px 0 4px rgba(0,0,0,.06)',
             }}
           >
-            {/* The milestone's colour, carried down from its header so the group
-                stays visibly one thing past the first row. It lives inside the
-                sticky name cell rather than on the row so it survives horizontal
-                scrolling — the row's own left border is already spoken for by
-                the drag target and child indicators. */}
-            {groupAccent && (
+            {/*
+              ── 이 줄이 어디에 속하는가 ───────────────────────────────────
+              머리줄에서 내려온 마일스톤 색. 목록이 길면 머리줄은 위로
+              사라지는데, 그때 이 줄이 어느 묶음의 것인지 말해 주는 건 이
+              색뿐입니다. 그래서 색이 필요합니다 — 예쁘라고 있는 게 아니라
+              스크롤이 지운 맥락을 되돌려 놓습니다.
+
+              **한 줄에 하나만.** 끌어 놓는 자리 · 손이 얹힌 줄 · 소속,
+              셋을 각각 다른 띠로 그리면 줄마다 두세 겹이 섭니다. 지금은
+              같은 3px 한 자리를 셋이 나눠 쓰고, 급한 것이 이깁니다 —
+              끌어 놓는 자리가 맨 위, 그다음이 손이 얹힌 줄, 평소엔 소속.
+
+              하위 업무의 회색 띠는 없앴습니다. 들여쓰기가 이미 하위라고
+              말하고 있고, 부모와 다른 색 띠가 붙으면 오히려 다른 묶음처럼
+              보였습니다. 하위 업무는 부모와 같은 색을 씁니다.
+            */}
+            {(isDragTarget || hovered || groupAccent) && (
               <span aria-hidden style={{
                 position: 'absolute', left: 0, top: 0, bottom: 0, width: 3,
-                background: groupAccent, opacity: isDone ? 0.25 : 0.45,
+                background: isDragTarget || hovered ? 'var(--ac)' : groupAccent,
+                opacity: isDragTarget || hovered ? 1 : (isDone ? 0.25 : 0.45),
+                transition: 'background .08s, opacity .08s',
               }} />
             )}
             {canDrag && (
@@ -1705,11 +1718,18 @@ function Row({
           ? 'var(--ac-l)'
           : hovered ? 'var(--bg3)' : (isChild ? 'var(--bg)' : 'transparent'),
         borderBottom: '1px solid var(--bd)',
-        borderLeft: isDragTarget
-          ? '3px solid var(--ac)'
-          : isChild
-            ? `3px solid ${hovered ? 'var(--ac)' : 'var(--bd2)'}`
-            : `3px solid ${hovered ? 'var(--ac)' : 'transparent'}`,
+        /**
+         * ── 왼쪽 띠는 하나입니다 ──────────────────────────────────────────
+         *
+         * 여기 3px 테두리가 하나 있고, 아래 이름 칸 안에 마일스톤 색 띠가 또
+         * 하나 있었습니다. 둘이 나란히 서니 **줄마다 두 겹**이었고, 안쪽
+         * 띠는 바깥 테두리 두께만큼 밀려서 머리줄의 띠와 3px 어긋났습니다 —
+         * 그 미세한 들여쓰기가 신고된 그것입니다.
+         *
+         * 이제 테두리는 자리를 차지하지 않고, 띠는 이름 칸 안의 하나뿐입니다.
+         * 그 칸은 가로 스크롤에도 붙어 있으므로(sticky) 오른쪽으로 밀어도
+         * 어느 마일스톤의 줄인지가 남습니다 — 바깥 테두리로는 못 하던 것입니다.
+         */
         transition: 'background .08s, opacity .08s',
       }}
     >
