@@ -847,6 +847,10 @@ export function Sidebar() {
           </div>
         )}
 
+      {/* 앱을 아직 안 받은 사람에게 설정은 들어가 볼 이유가 없는 곳이라,
+          늘 보이는 자리에 한 줄 둡니다. 브라우저로 볼 때만 나타납니다. */}
+      <GetDesktopApp variant="rail" onPick={closeSidebar} />
+
       {!isMobile && (
         <WidthHandle
           width={width} min={WIDTH_MIN} max={WIDTH_MAX} defaultWidth={WIDTH_DEFAULT}
