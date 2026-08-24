@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { usePrefsStore } from '../../../store/prefsStore'
 import { useGCalStore, awaitingMe, myAttendance } from '../../../store/gcalStore'
 import { useUiStore } from '../../../store/uiStore'
 import { openExternal } from '../../../lib/desktopLinks'
@@ -69,6 +70,8 @@ function clock(d: Date): string {
 export function DayTimeline({ date }: { date: string }) {
   const [width, setWidth] = useState(loadWidth)
   const events = useGCalStore(s => s.events)
+  const timeblockAt = usePrefsStore(s => s.timeblockAt)
+  const prefsReady = usePrefsStore(s => s.ready)
   const token = useGCalStore(s => s.token)
   const wasConnected = useGCalStore(s => s.wasConnected)
   // 한 번도 안 받아 왔거나 지금 받는 중이면, 빈 목록은 '없다'가 아니라
@@ -209,12 +212,31 @@ export function DayTimeline({ date }: { date: string }) {
       {token && (
         <>
           <TimelineGrid days={days} bare />
-          {/* 끌어서 만들 수 있다는 걸 아무도 안 알려주면 이 칸은 그냥 그림입니다. */}
+          {/*
+            ── 안내는 한 줄, 아직 안 배운 것부터 ──────────────────────────────
+            끌어서 만들 수 있다는 걸 아무도 안 알려주면 이 칸은 그냥 그림
+            입니다. 그런데 이제 여기서 하는 일이 둘입니다 — 빈 시간을 끌어
+            일정을 만드는 것과, 노트의 줄을 끌어와 시간을 잡는 것.
+
+            **두 줄로 늘리지 않았습니다.** 안내가 두 줄이 되면 둘 다 안
+            읽힙니다. 대신 아직 안 해 본 쪽을 보여 줍니다: 타임블록을 한
+            번도 안 만들어 봤으면 그것을, 해 봤으면 원래 것을.
+
+            노트에서 끌어오는 쪽을 먼저 두는 이유는 새 기능이라서가 아니라
+            **찾을 방법이 없어서**입니다. 빈 시간 끌기는 격자를 보면 해 볼
+            만한 동작이지만, 저쪽 창의 줄을 이쪽으로 끌 수 있다는 건 아무
+            데도 안 적혀 있으면 알 길이 없습니다.
+
+            한 번 해 보면 사라집니다. 기능을 설명하는 글은 그 기능을 쓰기
+            전까지만 쓸모가 있습니다(prefsStore.timeblockAt).
+          */}
           <div style={{
             flexShrink: 0, padding: '5px 12px 7px', borderTop: '1px solid var(--bd)',
             fontSize: 10, color: 'var(--t3)', textAlign: 'center',
           }}>
-            빈 시간을 끌면 일정이 만들어집니다
+            {prefsReady && !timeblockAt
+              ? '왼쪽 노트의 줄을 손잡이로 끌어오면 시간이 잡힙니다'
+              : '빈 시간을 끌면 일정이 만들어집니다'}
           </div>
         </>
       )}

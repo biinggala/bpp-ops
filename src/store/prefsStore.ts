@@ -24,6 +24,14 @@ interface PrefsState {
   /** 마지막으로 읽은 업데이트 노트의 id. */
   seenVersion: string | null
   /**
+   * 타임블록을 처음 만든 시각. 없으면 아직 한 번도 안 해 본 사람입니다.
+   *
+   * 안내를 **한 번 해 보면 사라지게** 하려고 둡니다. 기능을 설명하는 글은
+   * 그 기능을 쓰기 전까지만 쓸모가 있고, 그 뒤로는 화면을 차지하는 문장일
+   * 뿐입니다. 계정에 붙으므로 노트북에서 해 봤으면 폰에서도 안 뜹니다.
+   */
+  timeblockAt: number | null
+  /**
    * 첫 조회가 끝났는가.
    *
    * 이게 없으면 앱을 켤 때마다 소개가 한 번 번쩍합니다 — 아직 안 읽은
@@ -34,6 +42,7 @@ interface PrefsState {
   subscribe: (email: string) => () => void
   markOnboarded: (email: string) => void
   markSeenVersion: (email: string, id: string) => void
+  markTimeblock: (email: string) => void
   /** 설정에서 '다시 보기'를 눌렀을 때. 저장된 값은 그대로 두고 이번만 엽니다. */
   replay: 'intro' | 'whatsNew' | null
   setReplay: (v: 'intro' | 'whatsNew' | null) => void
@@ -42,18 +51,24 @@ interface PrefsState {
 export const usePrefsStore = create<PrefsState>((set) => ({
   onboardedAt: null,
   seenVersion: null,
+  timeblockAt: null,
   ready: false,
   replay: null,
 
   subscribe: (email) => {
     const node = ref(db, P.userPrefs(email))
     const handler = onValue(node, snap => {
-      const v = (snap.val() ?? {}) as { onboardedAt?: number; seenVersion?: string }
-      set({ onboardedAt: v.onboardedAt ?? null, seenVersion: v.seenVersion ?? null, ready: true })
+      const v = (snap.val() ?? {}) as { onboardedAt?: number; seenVersion?: string; timeblockAt?: number }
+      set({
+        onboardedAt: v.onboardedAt ?? null,
+        seenVersion: v.seenVersion ?? null,
+        timeblockAt: v.timeblockAt ?? null,
+        ready: true,
+      })
     }, () => set({ ready: true }))
     return () => {
       off(node, 'value', handler)
-      set({ onboardedAt: null, seenVersion: null, ready: false, replay: null })
+      set({ onboardedAt: null, seenVersion: null, timeblockAt: null, ready: false, replay: null })
     }
   },
 
@@ -67,6 +82,12 @@ export const usePrefsStore = create<PrefsState>((set) => ({
   markSeenVersion: (email, id) => {
     set({ seenVersion: id })
     void fbUpdate(ref(db, P.userPrefs(email)), { seenVersion: id }).catch(() => {})
+  },
+
+  markTimeblock: (email) => {
+    const at = Date.now()
+    set({ timeblockAt: at })
+    void fbUpdate(ref(db, P.userPrefs(email)), { timeblockAt: at }).catch(() => {})
   },
 
   setReplay: (replay) => set({ replay }),

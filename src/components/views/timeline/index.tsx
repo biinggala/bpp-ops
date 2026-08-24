@@ -6,6 +6,7 @@ import { useTaskStore } from '../../../store/taskStore'
 import { useProjectStore } from '../../../store/projectStore'
 import { useAuthStore } from '../../../store/authStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
+import { usePrefsStore } from '../../../store/prefsStore'
 import { authorizedEmails } from '../../../lib/utils'
 import { hasTimeblock, readTimeblock, BLOCK_MINUTES, type TimeblockDrag } from '../../../lib/timeblock'
 import type { Task, Status } from '../../../types'
@@ -507,6 +508,8 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
       })
       return
     }
+    // 한 번 해 본 사람에게는 안내를 그만 보여 줍니다 — prefsStore.
+    if (myEmail) usePrefsStore.getState().markTimeblock(myEmail)
     await createEvent({
       summary: payload.name || '이름 없음',
       startDateTime: localIso(date, from),
