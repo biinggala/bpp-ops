@@ -268,7 +268,7 @@ export async function createProject(
   const { id, ...rest } = meta
   await initDb().ref().update({
     [`projects/${id}`]: {
-      meta: stripUndefined({ id, ...rest, teamId: null }),
+      meta: stripUndefined({ id, ...rest }),
       members: { [uid]: meta.inviteCode },
     },
     [`userIndex/${uid}/projects/${id}`]: true,

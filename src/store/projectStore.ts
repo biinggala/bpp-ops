@@ -89,7 +89,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const orgId = useOrgStore.getState().orgId
       fbUpdate(ref(db), {
         [P.project(id)]: {
-          meta: { id, ...meta, teamId: null, ...(orgId ? { orgId } : {}) },
+          meta: { id, ...meta, ...(orgId ? { orgId } : {}) },
           members: { [uid]: inviteCode },
         },
         [P.userProject(uid, id)]: true,

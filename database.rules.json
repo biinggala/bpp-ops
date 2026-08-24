@@ -2,12 +2,6 @@
   "rules": {
     ".read": false,
     ".write": false,
-    "teams": {
-      "$tid": {
-        ".read": "auth != null && data.child('members').hasChild(auth.uid)",
-        ".write": "auth != null && ((!data.exists() && newData.child('members').hasChild(auth.uid)) || data.child('members').hasChild(auth.uid))"
-      }
-    },
     "projects": {
       "$pid": {
         ".read": "auth != null && auth.token.email != null && auth.token.email_verified == true && data.child('members').hasChild(auth.uid) && (!root.child('projects/' + $pid + '/meta/orgId').exists() || root.child('orgs/' + root.child('projects/' + $pid + '/meta/orgId').val() + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).child('role').val() === 'member' || root.child('orgs/' + root.child('projects/' + $pid + '/meta/orgId').val() + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).child('role').val() === 'guest' || (!root.child('orgs/' + root.child('projects/' + $pid + '/meta/orgId').val() + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).exists() && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + root.child('projects/' + $pid + '/meta/orgId').val() + '/meta/domain').val().replace('.', ','))))",
