@@ -199,7 +199,31 @@ export function BlockTools({ editor, boundary, date }: {
      * 이 손잡이는 편집기 DOM 밖에 있는 진짜 draggable 버튼입니다. 프로즈미러의
      * dragstart 처리기가 안 도니 clearData도 없고, 짐이 그대로 남습니다.
      */
-    const node = view.state.doc.nodeAt(slot.pos)
+    /**
+     * ── 시간을 붙일 수 있는 줄만 ─────────────────────────────────────────
+     *
+     * 업무 참조와 체크박스 줄, 둘뿐입니다. 그 둘은 '할 일'이라 언제 하는지가
+     * 성립하지만, 문단이나 제목은 그렇지 않습니다 — 회의 메모 한 문단을
+     * 시간 축에 놓으면 아무 뜻도 아닌 일정이 하나 생기고, 그건 지워야 하는
+     * 일이 됩니다.
+     *
+     * 안 실으면 시간 축은 이 드래그를 못 받습니다(hasTimeblock이 거짓).
+     * 그래서 격자 위에서 커서가 금지 표시로 바뀌어, 놓기 전에 안 된다는 걸
+     * 압니다. 노트 안에서 줄 순서를 바꾸는 것은 그대로 됩니다 — 그건 위의
+     * view.dragging이 하는 일이고 여기와 무관합니다.
+     */
+    /**
+     * 짐을 실을 때는 **줄**을 봅니다.
+     *
+     * slot.pos는 최상위 블록이라 체크박스 목록에서는 목록 전체를 가리킵니다.
+     * 그래서 여기서 slot.pos를 읽으면 이름이 '커피 주문슬랙 답장메일 확인'이
+     * 됩니다 — 목록의 모든 줄이 이어 붙은 글자요. slot.item이 그중 지금
+     * 가리키고 있는 한 줄입니다(taskItemAt).
+     *
+     * 업무 참조는 그 자체가 최상위 블록이라 item이 없고, 그때는 pos가 곧
+     * 그 줄입니다.
+     */
+    const node = view.state.doc.nodeAt(slot.item ?? slot.pos)
     if (!node) return
     if (node.type.name === 'taskRef') {
       const id = node.attrs.taskId as string | null
@@ -207,9 +231,11 @@ export function BlockTools({ editor, boundary, date }: {
       if (id) writeTimeblock(e.dataTransfer, { taskId: id, name: task?.name || '이름 없음' })
       return
     }
-    // 체크박스 줄. 사람이 방금 친 글자가 곧 일정 이름입니다.
-    const text = node.textContent.trim()
-    if (text) writeTimeblock(e.dataTransfer, { name: text })
+    if (node.type.name === 'taskItem') {
+      // 사람이 방금 친 글자가 곧 일정 이름입니다.
+      const text = node.textContent.trim()
+      if (text) writeTimeblock(e.dataTransfer, { name: text })
+    }
   }
 
   /** 오른쪽 클릭도 같은 메뉴를 엽니다. 손잡이를 못 찾은 사람을 위해. */
