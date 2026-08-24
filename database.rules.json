@@ -46,8 +46,8 @@
       }
     },
     "spaces": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+      ".read": "auth != null && auth.token.email != null && auth.token.email_verified == true && root.child('userIndex/' + auth.uid + '/projects').exists()",
+      ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && root.child('userIndex/' + auth.uid + '/projects').exists()"
     },
     "orgs": {
       "$org": {
@@ -104,7 +104,7 @@
     },
     "userProfiles": {
       "$uid": {
-        ".read": "auth != null",
+        ".read": "auth != null && auth.token.email != null && auth.token.email_verified == true && root.child('userIndex/' + auth.uid + '/projects').exists() || auth.uid === $uid",
         ".write": "auth != null && auth.uid === $uid"
       }
     },
@@ -155,7 +155,7 @@
     },
     "presence": {
       "$uid": {
-        ".read": "auth != null",
+        ".read": "auth != null && auth.token.email != null && auth.token.email_verified == true && root.child('userIndex/' + auth.uid + '/projects').exists() || auth.uid === $uid",
         ".write": "auth != null && auth.uid === $uid"
       }
     },
