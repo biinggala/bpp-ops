@@ -5,6 +5,7 @@ import { useTaskStore } from '../../../store/taskStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useProjectStore } from '../../../store/projectStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
+import { useSyncStore } from '../../../store/syncStore'
 import { haptic } from '../../../lib/haptics'
 import { daysFrom } from '../../../lib/utils'
 import { StatusMark } from '../../shared/StatusMark'
@@ -94,9 +95,29 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
   const task = useTaskStore(s => s.tasks.find(t => t.id === taskId))
   const allTasks = useTaskStore(s => s.tasks)
   const milestones = useMilestoneStore(s => s.milestones)
+  const ready = useSyncStore(s => s.ready)
   const updateTask = useTaskStore(s => s.updateTask)
   const openTaskDetail = useUiStore(s => s.openTaskDetail)
   const projects = useProjectStore(s => s.projects)
+
+  /**
+   * ── 아직 안 온 것과 지워진 것 ─────────────────────────────────────────────
+   *
+   * 둘 다 '못 찾음'으로 같아 보였습니다. 그래서 앱을 켜면 어제 담아 둔 업무
+   * 줄들이 몇 초 동안 **'삭제된 업무'라고 자신 있게** 적혀 있었습니다.
+   * 없는 것과 아직 안 온 것은 다른 말입니다.
+   *
+   * ready는 '첫 그림이 다 왔다'는 뜻입니다(syncStore). 그 전까지는 들어올
+   * 것의 모양만 놓아 둡니다.
+   */
+  if (!task && !ready) {
+    return (
+      <NodeViewWrapper as="div" contentEditable={false} style={ROW}>
+        <span className="bpp-skel" style={{ width: 16, height: 16, borderRadius: '50%', flexShrink: 0 }} />
+        <span className="bpp-skel" style={{ width: 160, height: 11 }} />
+      </NodeViewWrapper>
+    )
+  }
 
   // 지워진 업무. 줄을 조용히 없애 버리면 어제 세운 계획이 말없이 줄어듭니다.
   if (!task) {
@@ -128,23 +149,17 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
 
   return (
     /**
-     * ── 하위 업무는 한 칸 들어갑니다 ─────────────────────────────────────────
+     * ── 들여쓰지 않습니다 ────────────────────────────────────────────────────
      *
-     * 노트에 늘어놓으면 상위든 하위든 똑같이 생긴 한 줄이라, 그중 어떤 것이
-     * 다른 무엇의 일부인지가 화면에서 사라집니다. 승격으로 만든 줄은 특히
-     * 그렇습니다 — 만들 때는 부모를 골랐는데 만들고 나면 그 사실이 안 보입니다.
+     * 한 칸 들여쓰고 ↳를 붙여 봤는데, 그게 **바로 위 줄이 부모**라고 말하고
+     * 있었습니다. 노트에서 줄 순서는 사람이 정하므로 그 위에 있는 것은 대개
+     * 남남입니다 — 없는 관계를 그린 셈입니다.
      *
-     * 들여쓰기는 한눈에 보이게 하고, 이름은 정확하게 말합니다. 부모가 노트의
-     * 바로 위 줄이라는 보장이 없으므로 선으로 잇지는 않습니다 — 그건 없는
-     * 관계를 그리는 일입니다.
+     * 부모는 자리가 아니라 **이름으로** 말합니다. 오른쪽 이름표에 '상위'라고
+     * 적고 그 업무의 이름을 답니다. 자리로 넌지시 말하는 것보다 길지만,
+     * 틀리지 않습니다.
      */
-    <NodeViewWrapper as="div" contentEditable={false} style={{ ...ROW, marginLeft: parent ? 16 : -6 }} data-drag-handle>
-      {parent && (
-        <span aria-hidden style={{
-          flexShrink: 0, width: 10, marginLeft: -4, marginRight: -2,
-          color: 'var(--t3)', fontSize: 11, lineHeight: 1,
-        }}>↳</span>
-      )}
+    <NodeViewWrapper as="div" contentEditable={false} style={ROW} data-drag-handle>
       <StatusPick status={task.status} onPick={setStatus} />
 
       <span
@@ -177,6 +192,9 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
           }}
         >
           {project && <span style={{ width: 6, height: 6, borderRadius: '50%', background: project.color, flexShrink: 0 }} />}
+          {/* '상위'라고 적어 둡니다. 이름만 있으면 그게 부모인지 프로젝트인지
+              마일스톤인지 구별할 수가 없습니다. */}
+          {parent && <span style={{ flexShrink: 0, opacity: .75 }}>상위</span>}
           {!parent && milestone && <span style={{ flexShrink: 0 }}>◇</span>}
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {parent ? parent.name || '이름 없음' : milestone ? milestone.name : project?.name}

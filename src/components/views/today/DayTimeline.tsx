@@ -71,6 +71,9 @@ export function DayTimeline({ date }: { date: string }) {
   const events = useGCalStore(s => s.events)
   const token = useGCalStore(s => s.token)
   const wasConnected = useGCalStore(s => s.wasConnected)
+  // 한 번도 안 받아 왔거나 지금 받는 중이면, 빈 목록은 '없다'가 아니라
+  // '아직'입니다. 둘을 같은 말로 적으면 없는 하루가 됩니다.
+  const loading = useGCalStore(s => s.loading || !s.fetchedAt)
   const openCalendar = useUiStore(s => s.openCalendar)
 
   // 일정을 받아 오는 건 아래 격자가 합니다 — 한 번 부르면 앞뒤 45일이
@@ -160,6 +163,15 @@ export function DayTimeline({ date }: { date: string }) {
               {wasConnected ? '캘린더 다시 연결' : '캘린더 연결하기'}
             </button>
           </>
+        ) : agenda.length === 0 && loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 9, padding: '4px 6px' }}>
+            {['70%', '52%', '61%'].map((w, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="bpp-skel" style={{ width: 10, height: 10, borderRadius: 3, flexShrink: 0 }} />
+                <span className="bpp-skel" style={{ width: w, height: 11 }} />
+              </div>
+            ))}
+          </div>
         ) : agenda.length === 0 ? (
           <div style={{ padding: '2px 6px 4px', fontSize: 12, color: 'var(--t3)' }}>
             잡힌 일정이 없습니다

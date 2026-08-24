@@ -11,6 +11,7 @@ import { MoreMenu } from '../shared/MoreMenu'
 import { askConfirm } from '../shared/Confirm'
 import { useAuthStore } from '../../store/authStore'
 import { usePresenceStore } from '../../store/presenceStore'
+import { useSyncStore } from '../../store/syncStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
@@ -83,6 +84,7 @@ function SubtaskPanel({ task }: { task: Task }) {
   const updateTask = useTaskStore(s => s.updateTask)
   const openTaskDetail = useUiStore(s => s.openTaskDetail)
   const email = useAuthStore(s => s.email)
+  const ready = useSyncStore(s => s.ready)
   const [adding, setAdding] = useState(false)
   const [draft, setDraft] = useState('')
 
@@ -108,41 +110,89 @@ function SubtaskPanel({ task }: { task: Task }) {
     setDraft('')   // 연달아 넣는 사람이 대부분입니다. 칸은 열어 둡니다.
   }
 
-  // 부모도 하위도 없으면 이 칸 자체가 없습니다. 빈 상자는 자리만 씁니다 —
-  // 다만 '하위 업무 추가'는 어디선가는 눌러야 하므로 접힌 줄로 남겨 둡니다.
+  const pct = children.length ? Math.round((done / children.length) * 100) : 0
+
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: children.length ? 10 : 6 }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-          하위 업무
-        </span>
-        {children.length > 0 && (
-          <span style={{ fontSize: 11, color: 'var(--t3)', fontVariantNumeric: 'tabular-nums' }}>
-            {done}/{children.length}
-          </span>
-        )}
-      </div>
+      {/*
+        ── 위로 가는 문 ─────────────────────────────────────────────────────────
+        내가 누군가의 하위라면 그것부터 말합니다. '이 일이 어디에 속하나'는
+        '이 일 밑에 뭐가 있나'보다 먼저 궁금한 질문입니다.
 
-      {/* 내가 누군가의 하위라면 그것부터 말합니다 — '이 일이 어디에 속하나'는
-          '이 일 밑에 뭐가 있나'보다 먼저 궁금한 질문입니다. */}
+        테두리만 있는 버튼이었는데, 그러면 아래 목록과 같은 무게로 앉아서
+        둘 중 무엇이 이 창의 주인공인지 흐려졌습니다. 위로 가는 것은 **떠나는
+        문**이라 화살표를 오른쪽 끝에 두고 배경을 옅게 깔았습니다 — 이 창의
+        내용이 아니라 이 창의 바깥이라는 뜻입니다.
+      */}
       {parent && (
         <button
           onClick={() => openTaskDetail(parent.id)}
           style={{
-            display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10,
-            padding: '4px 8px', borderRadius: 'var(--r1)',
-            border: '1px solid var(--bd)', background: 'transparent',
-            color: 'var(--t2)', fontSize: 12, cursor: 'pointer',
-            fontFamily: 'var(--font)', maxWidth: '100%',
+            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+            padding: '9px 12px', marginBottom: 18, borderRadius: 'var(--r2)',
+            border: '1px solid var(--bd)', background: 'var(--bg2)',
+            cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left',
           }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--bd2)' }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--bd)' }}
         >
-          <span style={{ color: 'var(--t3)' }}>상위</span>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {parent.name || '이름 없음'}
+          <span style={{ color: statusAccent(parent.status), display: 'flex', flexShrink: 0 }}>
+            <StatusMark status={parent.status} size={14} />
           </span>
+          <span style={{ minWidth: 0, flex: 1 }}>
+            <span style={{ display: 'block', fontSize: 10, fontWeight: 700, color: 'var(--t3)', letterSpacing: '.06em' }}>
+              상위 업무
+            </span>
+            <span style={{
+              display: 'block', fontSize: 13.5, color: 'var(--t1)', marginTop: 1,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {parent.name || '이름 없음'}
+            </span>
+          </span>
+          <span style={{ flexShrink: 0, color: 'var(--t3)', fontSize: 13 }}>→</span>
         </button>
+      )}
+
+      {/*
+        머리줄에 진행이 같이 섭니다. '2/5'만으로는 눈이 계산을 해야 하고,
+        막대는 계산 없이 읽힙니다. 둘 다 두는 이유는 막대가 정확하지 않고
+        숫자가 한눈에 안 들어오기 때문입니다 — 서로의 약점을 메웁니다.
+      */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: children.length ? 8 : 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em', flexShrink: 0 }}>
+          하위 업무
+        </span>
+        {children.length > 0 && (
+          <>
+            <span style={{
+              flex: 1, maxWidth: 120, height: 4, borderRadius: 999,
+              background: 'var(--bg3)', overflow: 'hidden',
+            }}>
+              <span style={{
+                display: 'block', height: '100%', width: `${pct}%`,
+                background: done === children.length ? '#448361' : 'var(--ac)',
+                borderRadius: 999, transition: 'width .2s',
+              }} />
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--t3)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+              {done}/{children.length}
+            </span>
+          </>
+        )}
+      </div>
+
+      {/* 아직 안 온 것과 없는 것. 하위 업무가 셋인 업무를 열었는데 몇 초 동안
+          '+ 하위 업무 추가' 한 줄만 있으면, 그 사이에 사람은 없다고 믿습니다. */}
+      {!ready && !children.length && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 9, padding: '2px 0 4px' }}>
+          {['58%', '44%'].map((w, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="bpp-skel" style={{ width: 14, height: 14, borderRadius: '50%', flexShrink: 0 }} />
+              <span className="bpp-skel" style={{ width: w, height: 11 }} />
+            </div>
+          ))}
+        </div>
       )}
 
       {children.map(child => (
@@ -166,7 +216,7 @@ function SubtaskPanel({ task }: { task: Task }) {
             if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); create() }
             if (e.key === 'Escape') { setDraft(''); setAdding(false) }
           }}
-          placeholder="하위 업무 이름"
+          placeholder="하위 업무 이름 · Enter로 계속"
           style={{
             width: '100%', boxSizing: 'border-box', marginTop: 4,
             padding: '6px 8px', borderRadius: 'var(--r1)',
@@ -179,7 +229,7 @@ function SubtaskPanel({ task }: { task: Task }) {
           onClick={() => setAdding(true)}
           style={{
             display: 'flex', alignItems: 'center', gap: 6, marginTop: 4,
-            padding: '4px 6px', borderRadius: 'var(--r1)',
+            padding: '5px 6px', borderRadius: 'var(--r1)',
             border: 'none', background: 'transparent',
             color: 'var(--t3)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'var(--font)',
           }}

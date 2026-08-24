@@ -295,6 +295,25 @@ export function TodayView() {
           <div style={{ maxWidth: 720, marginLeft: isMobile ? 0 : GUTTER }}>
             <EditorContent editor={editor} />
           </div>
+
+          {/*
+            노트가 아직 안 왔습니다.
+            html이 null인 동안 편집기는 빈 문서라, 어제 잔뜩 적어 둔 사람에게도
+            '오늘 무엇부터 할까요?'가 먼저 뜹니다 — 빈 노트와 안 온 노트가
+            화면에서 같습니다. 편집기는 그대로 두고(도착하면 채워집니다) 그
+            위에 들어올 것의 모양만 덮습니다.
+          */}
+          {html === null && (
+            <div style={{
+              position: 'absolute', top: isMobile ? 4 : 4, left: isMobile ? 16 : 28 + GUTTER,
+              right: 28, display: 'flex', flexDirection: 'column', gap: 12,
+              pointerEvents: 'none', background: 'var(--bg)', paddingTop: 6,
+            }}>
+              {['64%', '48%', '72%', '38%'].map((w, i) => (
+                <div key={i} className="bpp-skel" style={{ width: w, height: 13 }} />
+              ))}
+            </div>
+          )}
           {!isMobile && <BlockTools editor={editor} boundary={noteRef} date={date} />}
         </div>
       </div>
