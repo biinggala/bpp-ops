@@ -6,6 +6,8 @@ import { useUiStore } from '../../../store/uiStore'
 import { useProjectStore } from '../../../store/projectStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useSyncStore } from '../../../store/syncStore'
+import { useGCalStore } from '../../../store/gcalStore'
+import { writeTimeblock } from '../../../lib/timeblock'
 import { haptic } from '../../../lib/haptics'
 import { daysFrom } from '../../../lib/utils'
 import { StatusMark } from '../../shared/StatusMark'
@@ -96,6 +98,13 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
   const allTasks = useTaskStore(s => s.tasks)
   const milestones = useMilestoneStore(s => s.milestones)
   const ready = useSyncStore(s => s.ready)
+  /**
+   * 이 업무에 붙은 시간. 일정 쪽에 업무 id가 실려 있어서(lib/timeblock) 찾을
+   * 수 있습니다. 없으면 아직 시간을 안 정한 것이고, 그건 흠이 아니라 대부분의
+   * 줄이라 아무 표시도 하지 않습니다.
+   */
+  const blockAt = useGCalStore(s =>
+    s.events.find(e => e.taskId === taskId && !e.allDay)?.startTime)
   const updateTask = useTaskStore(s => s.updateTask)
   const openTaskDetail = useUiStore(s => s.openTaskDetail)
   const projects = useProjectStore(s => s.projects)
@@ -193,7 +202,24 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
   if (parent) chain.push({ mark: '↳', name: parent.name || '이름 없음', go: () => openTaskDetail(parent.id), weak: false })
 
   return (
-    <NodeViewWrapper as="div" contentEditable={false} style={ROW} data-drag-handle>
+    <NodeViewWrapper
+      as="div"
+      contentEditable={false}
+      style={ROW}
+      data-drag-handle
+      /**
+       * 노트 밖으로도 끌 수 있게 한 줄 더 싣습니다.
+       *
+       * 프로즈미러는 자기 형식으로 이미 싣고 있고(노트 안에서 줄 순서를
+       * 바꾸는 그것), dataTransfer는 형식을 여러 개 담을 수 있으므로 둘은
+       * 서로를 지우지 않습니다. 시간 축은 우리 것만 보고, 노트는 자기 것만
+       * 봅니다 — 같은 드래그 하나로 둘 다 됩니다.
+       */
+      onDragStart={(e: React.DragEvent) => {
+        if (!task) return
+        writeTimeblock(e.dataTransfer, { taskId: task.id, name: task.name || '이름 없음' })
+      }}
+    >
       <StatusPick status={task.status} onPick={setStatus} />
 
       <span
@@ -240,6 +266,18 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
               </span>
             </span>,
           ])}
+        </span>
+      )}
+
+      {/* 시간이 정해졌으면 그것부터. D-day는 '언제까지'고 이건 '언제' —
+          오늘 화면에서 먼저 궁금한 쪽은 뒤엣것입니다. */}
+      {blockAt && (
+        <span style={{
+          flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 6px',
+          borderRadius: 'var(--r1)', background: 'var(--ac-l)', color: 'var(--ac)',
+          fontVariantNumeric: 'tabular-nums',
+        }}>
+          {blockAt}
         </span>
       )}
 

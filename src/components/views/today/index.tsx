@@ -283,7 +283,7 @@ export function TodayView() {
             {dayLabel(date)}
           </span>
           {!isToday && (
-            <button onClick={() => openNote(null)} style={GHOST}>오늘로</button>
+            <button onClick={() => openNote(null)} style={GHOST}>오늘로 가기</button>
           )}
           <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
             <span style={{ fontSize: 11, color: 'var(--t3)', marginRight: 6, minWidth: 34, textAlign: 'right' }}>

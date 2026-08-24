@@ -7,6 +7,7 @@ import { useProjectStore } from '../../../store/projectStore'
 import { useAuthStore } from '../../../store/authStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
 import { authorizedEmails } from '../../../lib/utils'
+import { hasTimeblock, readTimeblock, BLOCK_MINUTES, type TimeblockDrag } from '../../../lib/timeblock'
 import type { Task } from '../../../types'
 import type { Rsvp } from '../../../lib/googleCalendar'
 import { Icon } from '../../shared/Icon'
@@ -148,6 +149,14 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
   // ── Drag to create ────────────────────────────────────────────────────────
   const [draft, setDraft] = useState<Draft | null>(null)
   const [naming, setNaming] = useState<Draft | null>(null)
+  /**
+   * 노트에서 끌려온 업무가 놓일 자리.
+   *
+   * 마우스로 긋는 draft와 따로 둡니다. 같은 값을 쓰면 놓는 순간 이름 짓는
+   * 카드가 함께 열리는데, 여기서는 이름이 이미 정해져 있습니다 — 끌어온 그
+   * 업무의 이름입니다. 물어볼 것이 없으면 묻지 않습니다.
+   */
+  const [dropDraft, setDropDraft] = useState<Draft | null>(null)
   const [title, setTitle] = useState('')
   /**
    * 아젠다와 회의록 링크.
@@ -261,6 +270,38 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
   const minutesAt = (clientY: number, column: HTMLElement): number => {
     const rect = column.getBoundingClientRect()
     return clampDay(snap((clientY - rect.top) / PX_PER_MIN))
+  }
+
+  /**
+   * ── 놓은 자리에 시간을 만듭니다 ──────────────────────────────────────────
+   *
+   * 이름은 이미 정해져 있습니다 — 끌어온 그 업무의 이름입니다. 그래서 마우스로
+   * 긋는 쪽과 달리 카드를 띄우지 않습니다. 물어볼 것이 없으면 묻지 않습니다.
+   *
+   * 일정에 업무 id를 실어 보냅니다. 그래야 노트의 그 줄이 '몇 시'인지 알고,
+   * 여기 그려진 블록도 자기가 무엇인지 압니다.
+   *
+   * 이미 시간이 잡혀 있으면 새로 만들지 않고 **옮깁니다.** 한 업무를 두 번
+   * 끌면 대개 '아까 그거 말고 이 시간'이라는 뜻이고, 두 개가 생기면 지우는
+   * 일이 사람에게 남습니다.
+   */
+  const dropTimeblock = async (payload: TimeblockDrag, date: string, at: number) => {
+    const from = clampDay(at)
+    const to = clampDay(Math.max(from + MIN_DURATION, from + BLOCK_MINUTES))
+    const existing = events.find(e => e.taskId === payload.taskId && !e.allDay)
+    if (existing) {
+      await updateEvent(existing.id, {
+        startDateTime: localIso(date, from),
+        endDateTime: localIso(date, to),
+      })
+      return
+    }
+    await createEvent({
+      summary: payload.name || '이름 없음',
+      startDateTime: localIso(date, from),
+      endDateTime: localIso(date, to),
+      taskId: payload.taskId,
+    })
   }
 
   const beginDrag = (e: React.MouseEvent<HTMLDivElement>, date: string) => {
@@ -726,6 +767,39 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
               key={date}
               data-day-column
               onMouseDown={e => beginDrag(e, date)}
+              /**
+               * ── 노트의 한 줄을 여기로 ──────────────────────────────────
+               *
+               * dragover에서는 무엇이 끌려오는지 못 읽습니다(브라우저의 보호
+               * 모드). 받을 수 있는 것인지만 types로 보고, 무엇인지는 drop에서
+               * 읽습니다 — lib/timeblock.
+               *
+               * preventDefault를 해야 브라우저가 '놓을 수 있는 곳'으로 칩니다.
+               * 안 하면 커서가 끝까지 금지 표시라, 되는 기능이 안 되는 것처럼
+               * 보입니다.
+               */
+              onDragOver={e => {
+                if (!hasTimeblock(e.dataTransfer)) return
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'copy'
+                const at = minutesAt(e.clientY, e.currentTarget)
+                setDropDraft({ date, fromMinutes: at, toMinutes: Math.min(24 * 60, at + BLOCK_MINUTES) })
+              }}
+              // 칸을 벗어나면 미리보기를 거둡니다. 안 그러면 놓지 않고 나가도
+              // 파란 자국이 남아, 만들어진 것처럼 보입니다.
+              onDragLeave={e => {
+                if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+                setDropDraft(null)
+              }}
+              onDrop={e => {
+                const payload = readTimeblock(e.dataTransfer)
+                setDropDraft(null)
+                if (!payload) return
+                e.preventDefault()
+                e.stopPropagation()
+                const at = minutesAt(e.clientY, e.currentTarget)
+                void dropTimeblock(payload, date, at)
+              }}
               style={{
                 flex: 1, minWidth: 0, position: 'relative', cursor: 'crosshair',
                 borderLeft: '1px solid var(--bd)',
@@ -742,6 +816,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
 
               {draft?.date === date && <DraftBlock draft={draft} />}
               {naming?.date === date && <DraftBlock draft={naming} />}
+              {dropDraft?.date === date && <DraftBlock draft={dropDraft} />}
 
               {place(eventsByDate.get(date) ?? []).map(p => (
                 <EventBlock
