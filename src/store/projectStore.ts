@@ -151,9 +151,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     // 하고, 규칙도 그렇게 되어 있습니다. 이걸 안 하면 초대받은 사람이
     // 들어와서 프로젝트를 못 읽습니다 — 명단에 없으니까요.
     const orgId = project.orgId
-    if (orgId && !isOrgDomain(normalized, useOrgStore.getState().domain)) {
+    const orgDomain = useOrgStore.getState().domain
+    // 도메인이 있는 조직: 도메인 밖 사람만, 게스트로. 도메인 안 사람은
+    // 로그인하면서 스스로 멤버로 앉으므로 손댈 것이 없습니다.
+    // 도메인이 없는 조직(초대형): 들어오는 길이 초대뿐이라 **멤버로** 부릅니다.
+    const role = orgDomain
+      ? (isOrgDomain(normalized, orgDomain) ? null : 'guest')
+      : 'member'
+    if (orgId && role) {
       fbUpdate(ref(db, P.orgMember(orgId, normalized)), {
-        role: 'guest',
+        role,
         at: Date.now(),
         by: lower(useAuthStore.getState().email ?? ''),
       }).catch(() => {})  // 이미 명단에 있으면 규칙이 거절합니다. 맞는 동작입니다.

@@ -8,7 +8,7 @@ import { chimeEnabled, playChime, setChimeEnabled } from '../../lib/chime'
 import { fileWatchEnabled, setFileWatchEnabled } from '../../lib/driveWatch'
 import { useDriveStore } from '../../store/driveStore'
 import { useMailStore } from '../../store/mailStore'
-import { useOrgStore, pendingJoinCount } from '../../store/orgStore'
+import { PUBLIC_DOMAINS, useOrgStore, pendingJoinCount } from '../../store/orgStore'
 import { useProjectStore } from '../../store/projectStore'
 import { GetDesktopApp } from '../shared/GetDesktopApp'
 import { MCP_CONNECTOR_URL } from '../../lib/server'
@@ -616,7 +616,7 @@ function ChimeRow() {
  */
 function OrgSection() {
   const email = useAuthStore(s => s.email)
-  const { orgId, name, domain, admins, ready, createOrg, setAdmin, error } = useOrgStore(useShallow(s => ({ orgId: s.orgId, name: s.name, domain: s.domain, admins: s.admins, ready: s.ready, createOrg: s.createOrg, setAdmin: s.setAdmin, error: s.error })))
+  const { orgId, name, domain, admins, ready, createOrg, createInviteOrg, setAdmin, error } = useOrgStore(useShallow(s => ({ orgId: s.orgId, name: s.name, domain: s.domain, admins: s.admins, ready: s.ready, createOrg: s.createOrg, createInviteOrg: s.createInviteOrg, setAdmin: s.setAdmin, error: s.error })))
   const [orgName, setOrgName] = useState('')
   const [adminMail, setAdminMail] = useState('')
   const [busy, setBusy] = useState(false)
@@ -626,16 +626,51 @@ function OrgSection() {
   if (!ready) return <div style={{ fontSize: 12, color: 'var(--t3)' }}>불러오는 중…</div>
 
   if (!orgId) {
+    /*
+      만드는 방법이 둘입니다. 그리고 **나중에 못 바꿉니다** — 도메인은 한 번
+      정해지면 그 조직의 벽이라, 뒤늦게 붙이거나 떼면 이미 들어와 있는 사람의
+      소속이 통째로 흔들립니다. 그래서 고르는 자리에서 차이를 다 말해 줍니다.
+
+      회사 주소가 아닌 사람에게 도메인 쪽을 눌러 보게 두지 않습니다. 지메일로
+      조직을 만들면 이 앱을 쓰는 **모든 지메일 사용자**가 한 조직이 되는데,
+      그건 눌러 보고 알 일이 아닙니다.
+    */
+    const publicDomain = PUBLIC_DOMAINS.has(myDomain.toLowerCase())
+    const card: React.CSSProperties = {
+      flex: 1, minWidth: 0, textAlign: 'left', padding: '10px 12px',
+      border: '1px solid var(--bd)', borderRadius: 'var(--r2)', background: 'transparent',
+      cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 3,
+    }
+    const make = async (fn: () => Promise<boolean>) => { setBusy(true); await fn(); setBusy(false) }
+
     return (
-      <Section title="조직" note={`${myDomain} 로 로그인한 사람들이 함께 쓰는 회의실과 프로젝트 목록을 둘 수 있습니다. 만든 사람이 첫 관리자가 되고, 같은 도메인 전원은 초대 없이 들어옵니다.`}>
+      <Section title="조직" note="회의실과 회사에 공개된 프로젝트 목록을 함께 두는 단위입니다. 만든 사람이 첫 관리자가 됩니다. 만드는 방법은 나중에 바꿀 수 없습니다.">
+        <input value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="조직 이름 (예: 블랙페이퍼)" style={{ ...INPUT, marginBottom: 8 }} />
         <div style={{ display: 'flex', gap: 6 }}>
-          <input value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="조직 이름 (예: 블랙페이퍼)" style={INPUT} />
           <button
-            onClick={async () => { setBusy(true); await createOrg(orgName, email); setBusy(false) }}
-            disabled={busy}
-            style={{ ...navBtn, borderColor: 'var(--ac)', background: 'var(--ac)', color: '#fff', opacity: busy ? .6 : 1 }}
-          >{busy ? '만드는 중…' : '만들기'}</button>
+            onClick={() => make(() => createOrg(orgName, email))}
+            disabled={busy || !orgName.trim() || publicDomain}
+            style={{ ...card, opacity: busy || !orgName.trim() || publicDomain ? .45 : 1, cursor: publicDomain ? 'not-allowed' : 'pointer' }}
+          >
+            <span style={{ fontSize: 13, color: 'var(--t1)', fontWeight: 600 }}>회사 도메인으로</span>
+            <span style={{ fontSize: 11, color: 'var(--t3)', wordBreak: 'keep-all' }}>
+              {publicDomain
+                ? `@${myDomain} 같은 개인 주소는 같은 회사를 뜻하지 않아서 쓸 수 없습니다.`
+                : `@${myDomain} 로 로그인한 사람은 초대 없이 들어옵니다.`}
+            </span>
+          </button>
+          <button
+            onClick={() => make(() => createInviteOrg(orgName, email))}
+            disabled={busy || !orgName.trim()}
+            style={{ ...card, opacity: busy || !orgName.trim() ? .45 : 1 }}
+          >
+            <span style={{ fontSize: 13, color: 'var(--t1)', fontWeight: 600 }}>초대로만</span>
+            <span style={{ fontSize: 11, color: 'var(--t3)', wordBreak: 'keep-all' }}>
+              도메인을 안 씁니다. 부른 사람만 들어옵니다. 개인 주소를 쓰는 팀이라면 이쪽입니다.
+            </span>
+          </button>
         </div>
+        {busy && <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 6 }}>만드는 중…</div>}
         {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6 }}>{error}</div>}
       </Section>
     )
@@ -645,11 +680,15 @@ function OrgSection() {
 
   return (
     <>
-      <Section title="조직" note="같은 도메인으로 로그인한 사람이 곧 조직원입니다. 초대도 승인도 없습니다.">
+      <Section title="조직" note={domain
+        ? '같은 도메인으로 로그인한 사람이 곧 조직원입니다. 초대도 승인도 없습니다.'
+        : '초대로만 들어오는 조직입니다. 프로젝트에 부르면 조직원이 됩니다.'}>
         <div style={ROW}>
           <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
             {name || myDomain}
-            <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>@{domain}</span>
+            <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
+              {domain ? `@${domain}` : '초대로만'}
+            </span>
           </span>
         </div>
       </Section>
@@ -661,7 +700,7 @@ function OrgSection() {
       <Section
         title="관리자"
         note={isAdmin
-          ? `${domain} 주소만 관리자가 될 수 있습니다. 회의실 목록에만 미치고, 업무나 프로젝트를 더 볼 수 있게 되지는 않습니다.`
+          ? `${domain ? `${domain} 주소만` : '조직원만'} 관리자가 될 수 있습니다. 회의실 목록에만 미치고, 업무나 프로젝트를 더 볼 수 있게 되지는 않습니다.`
           : '회의실을 바꿔야 하면 이분들에게 말하면 됩니다.'}
       >
         {admins.map(mail => (

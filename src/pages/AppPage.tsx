@@ -99,12 +99,13 @@ export function AppPage() {
     return subscribePrefs(email)
   }, [email, subscribePrefs])
 
-  // 조직 — 회의실 목록이 사는 곳. 도메인으로 찾으므로 이메일만 있으면 됩니다.
+  // 조직 — 회의실 목록이 사는 곳. 도메인으로도, 내 색인으로도 찾습니다
+  // (도메인 없이 초대만으로 만든 조직은 색인이 유일한 길입니다).
   const subscribeOrg = useOrgStore(s => s.subscribe)
   useEffect(() => {
     if (!email) return
-    return subscribeOrg(email)
-  }, [email, subscribeOrg])
+    return subscribeOrg(email, uid)
+  }, [email, uid, subscribeOrg])
 
   /**
    * ── 조직 명단 채우기 ───────────────────────────────────────────────────────
@@ -139,7 +140,7 @@ export function AppPage() {
   }, [membersByProject, profiles])
 
   useEffect(() => {
-    if (!uid || !email || !orgId || !orgDomain || !ready) return
+    if (!uid || !email || !orgId || !ready) return
     void syncRoster({
       orgId,
       domain: orgDomain,
@@ -162,7 +163,7 @@ export function AppPage() {
     [projects],
   )
   useEffect(() => {
-    if (!orgId || !orgDomain || !ready || !unstamped) return
+    if (!orgId || !ready || !unstamped) return
     void stampProjects({
       orgId,
       domain: orgDomain,

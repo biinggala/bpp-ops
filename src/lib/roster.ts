@@ -89,7 +89,6 @@ export async function syncRoster(input: {
   peers: string[]
 }): Promise<void> {
   const { orgId, domain, uid, email, peers } = input
-  const me = roleForDomain(email, domain)
   const at = Date.now()
 
   // 내가 어느 조직인지부터. 이건 나만 쓰는 자리라 언제나 됩니다.
@@ -99,23 +98,29 @@ export async function syncRoster(input: {
     console.warn('[roster] 조직 색인을 못 적었습니다', e)
   }
 
-  // 도메인이 안 맞으면 여기서 끝입니다. 명단을 읽지도 못하고, 남을 적을
-  // 자격도 없습니다.
-  if (me !== 'member') return
-
   let roster: Record<string, OrgMemberRow | null> | null = null
   try {
     roster = (await fbGet(ref(db, P.orgMembers(orgId)))).val()
-  } catch (e) {
-    console.warn('[roster] 명단을 못 읽었습니다', e)
+  } catch {
+    // 명단을 못 읽는다는 건 이 회사의 멤버가 아니라는 뜻입니다. 게스트이거나,
+    // 아직 아무 관계도 없거나. 어느 쪽이든 여기서 할 일이 없습니다.
     return
   }
 
+  // 내가 멤버인가. **명단이 먼저 답합니다** — 도메인 없는 조직에서는
+  // 도메인이 아무 말도 못 하고, 거기서는 명단이 유일한 근거입니다.
+  const myRow = roster?.[emailKey(email)]
+  const iAmMember = myRow ? myRow.role === 'member' : roleForDomain(email, domain) === 'member'
+  if (!iAmMember) return
+
   const writes: Record<string, OrgMemberRow> = {}
-  if (!roster?.[emailKey(email)]) {
+  // 자기 자리를 자기가 앉는 건 **도메인이 맞을 때만**입니다. 규칙도 그렇습니다.
+  if (!myRow && roleForDomain(email, domain) === 'member') {
     writes[emailKey(email)] = { role: 'member', at }
   }
-  for (const guest of guestsToAdd(peers, domain, roster)) {
+  // 게스트 백필도 도메인이 있는 조직에서만. 도메인이 없으면 '도메인 밖'이라는
+  // 말 자체가 성립하지 않고, 거기서는 초대가 명단을 채웁니다.
+  for (const guest of domain ? guestsToAdd(peers, domain, roster) : []) {
     writes[emailKey(guest)] = { role: 'guest', at, by: email.toLowerCase() }
   }
   if (Object.keys(writes).length === 0) return
@@ -167,10 +172,16 @@ export interface StampableProject {
  * 만든 사람이 안 적힌 옛 프로젝트는 찍습니다. 이 앱을 쓰는 회사가 아직
  * 하나뿐이던 시절의 것이라 달리 볼 여지가 없습니다.
  */
-export function projectsToStamp(projects: StampableProject[], domain: string): string[] {
+export function projectsToStamp(
+  projects: StampableProject[],
+  domain: string,
+  roster: Record<string, OrgMemberRow | null> | null,
+): string[] {
+  const isOurs = (creator: string) =>
+    roster?.[emailKey(creator)]?.role === 'member' || roleForDomain(creator, domain) === 'member'
   return projects
     .filter(p => !p.orgId)
-    .filter(p => !p.creatorEmail || roleForDomain(p.creatorEmail, domain) === 'member')
+    .filter(p => !p.creatorEmail || isOurs(p.creatorEmail))
     .map(p => p.id)
 }
 
@@ -186,16 +197,22 @@ export async function stampProjects(input: {
   projects: StampableProject[]
 }): Promise<void> {
   const { orgId, domain, projects } = input
-  const wanted = projectsToStamp(projects, domain)
-  if (wanted.length === 0) return
+  if (projects.every(p => p.orgId)) return
 
   let owned: Record<string, boolean> | null = null
+  let roster: Record<string, OrgMemberRow | null> | null = null
   try {
     owned = (await fbGet(ref(db, P.orgOwns(orgId)))).val()
+    roster = (await fbGet(ref(db, P.orgMembers(orgId)))).val()
   } catch {
     // 명단에 아직 없는 사람입니다. 도장은 못 찍지만 곧 찍힙니다.
     return
   }
+
+  // 도메인이 없는 조직에서는 '우리 도메인 사람인가'가 답을 못 합니다.
+  // 그럴 때 소속을 말해 주는 건 명단뿐입니다.
+  const wanted = projectsToStamp(projects, domain, roster)
+  if (wanted.length === 0) return
 
   await Promise.all(
     wanted.flatMap(pid => [

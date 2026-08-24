@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { onValue, push, ref, remove, set as fbSet, update as fbUpdate, off } from 'firebase/database'
+import { get as fbGet, onValue, push, ref, remove, set as fbSet, update as fbUpdate, off } from 'firebase/database'
 import { db } from '../lib/firebase'
 import { P, domainKey, emailKey } from '../lib/paths'
 import { gid } from '../lib/utils'
@@ -105,7 +105,7 @@ interface OrgState {
   ready: boolean
   error: string | null
 
-  subscribe: (email: string) => () => void
+  subscribe: (email: string, uid: string | null) => () => void
   /**
    * 그 날짜들의 예약을 구독합니다.
    *
@@ -118,7 +118,20 @@ interface OrgState {
    */
   watchDates: (who: string, dates: string[]) => void
 
+  /** 회사 도메인으로. 같은 도메인 전원이 초대 없이 들어옵니다. */
   createOrg: (name: string, email: string) => Promise<boolean>
+  /**
+   * 도메인 없이, 초대만으로 굴러가는 조직.
+   *
+   * 지메일만 쓰는 팀·학생 팀·1인에게는 이쪽이 유일한 길입니다. 도메인이
+   * 경계 노릇을 못 하는 곳에서 '같은 도메인 = 같은 회사'는 참이 아니고,
+   * 그래서 공용 도메인은 막혀 있습니다.
+   *
+   * 만든 사람이 **owner로 못 박힙니다.** 도메인형의 '관리자가 없으면 누구나'
+   * 조항은 도메인이 벽 노릇을 해 줘서 성립하던 것인데, 여기엔 그 벽이
+   * 없습니다.
+   */
+  createInviteOrg: (name: string, email: string) => Promise<boolean>
   addRoom: (name: string, note?: string) => Promise<void>
   updateRoom: (id: string, patch: Partial<Omit<Room, 'id'>>) => Promise<void>
   /** 관리자를 더하거나 뺍니다. 우리 도메인 주소만 됩니다. */
@@ -174,7 +187,7 @@ const list = <T,>(node: Record<string, Omit<T, 'id'>> | null | undefined): (T & 
  * 있습니다. 여기 있는 건 사람에게 이유를 말하기 위한 사본이고, 실제로 막는
  * 것은 규칙입니다.
  */
-const PUBLIC_DOMAINS = new Set([
+export const PUBLIC_DOMAINS = new Set([
   'gmail.com', 'googlemail.com', 'naver.com', 'hanmail.net', 'daum.net', 'kakao.com',
   'nate.com', 'outlook.com', 'hotmail.com', 'live.com', 'yahoo.com', 'yahoo.co.kr',
   'icloud.com', 'me.com', 'protonmail.com', 'proton.me', 'aol.com',
@@ -224,19 +237,42 @@ export const useOrgStore = create<OrgState>((set, get) => ({
    * 순간이 있고, 그 순간은 내가 앱을 켜 둔 동안일 수 있습니다. 그러면
    * 옆자리 사람이 조직을 만들어도 내 화면에 바로 들어옵니다.
    */
-  subscribe: (email) => {
+  subscribe: (email, uid) => {
     let inner: (() => void)[] = []
     const dropInner = () => { inner.forEach(fn => fn()); inner = [] }
 
-    const indexRef = ref(db, P.orgByDomain(email))
-    const indexHandler = onValue(indexRef, snap => {
-      const orgId = (snap.val() as string | null) ?? null
-      dropInner()
-      if (!orgId) {
-        set({ ready: true, orgId: null, name: '', domain: '', rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {} })
-        return
-      }
+    /**
+     * 조직을 찾는 길이 둘입니다.
+     *
+     * **도메인**은 회사 계정으로 로그인한 사람에게 즉시 답합니다. 하지만
+     * 도메인 없이 초대만으로 만든 조직은 그 색인에 아예 안 올라갑니다 —
+     * 올릴 도메인이 없으니까요. 그런 조직은 **내 색인**(`userOrgs`)이
+     * 유일한 길입니다.
+     *
+     * 도메인 쪽이 우선입니다. 회사 계정으로 들어왔으면 그게 내 회사입니다.
+     */
+    let fromDomain: string | null = null
+    let fromIndex: string | null = null
+    let current: string | null = null
 
+    /**
+     * 내 색인에 적힌 조직 중 내가 **멤버인** 첫 곳.
+     *
+     * 게스트로 들어가 있는 남의 회사는 안 고릅니다. 골라 봐야 회의실도 공개
+     * 목록도 못 읽어서 화면이 오류로 채워집니다 — 게스트에게 그 자리는 아예
+     * 없는 편이 맞습니다.
+     */
+    const firstMemberOrg = async (ids: string[]): Promise<string | null> => {
+      for (const oid of [...ids].sort()) {
+        try {
+          const snap = await fbGet(ref(db, P.orgMember(oid, email)))
+          if ((snap.val() as { role?: string } | null)?.role === 'member') return oid
+        } catch { /* 못 읽으면 내 자리가 아닙니다 */ }
+      }
+      return null
+    }
+
+    const attach = (orgId: string) => {
       const metaRef = ref(db, P.orgMeta(orgId))
       const metaHandler = onValue(metaRef, s => {
         const meta = s.val() as { name?: string; domain?: string } | null
@@ -294,13 +330,39 @@ export const useOrgStore = create<OrgState>((set, get) => ({
         () => off(joinRef, 'value', joinHandler),
       ]
       set({ orgId, ready: true, error: null })
+    }
+
+    const apply = () => {
+      const next = fromDomain ?? fromIndex
+      if (next === current) return
+      current = next
+      dropInner()
+      if (!next) {
+        set({ ready: true, orgId: null, name: '', domain: '', rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {} })
+        return
+      }
+      attach(next)
+    }
+
+    const indexRef = ref(db, P.orgByDomain(email))
+    const indexHandler = onValue(indexRef, snap => {
+      fromDomain = (snap.val() as string | null) ?? null
+      apply()
     }, () => {
       // 색인을 못 읽었습니다. 없는 것과 구별할 수 없으니 '없음'으로 둡니다.
-      set({ ready: true, orgId: null })
+      fromDomain = null
+      apply()
     })
+
+    const myOrgsRef = uid ? ref(db, P.userOrgs(uid)) : null
+    const myOrgsHandler = myOrgsRef ? onValue(myOrgsRef, snap => {
+      const ids = Object.keys((snap.val() ?? {}) as Record<string, number>)
+      void firstMemberOrg(ids).then(oid => { fromIndex = oid; apply() })
+    }, () => { fromIndex = null; apply() }) : null
 
     return () => {
       off(indexRef, 'value', indexHandler)
+      if (myOrgsRef && myOrgsHandler) off(myOrgsRef, 'value', myOrgsHandler)
       dropInner()
       for (const fn of Object.values(dateWatchers)) fn()
       for (const key of Object.keys(dateWatchers)) delete dateWatchers[key]
@@ -335,6 +397,39 @@ export const useOrgStore = create<OrgState>((set, get) => ({
         delete next[date]
         return { bookings: next }
       })
+    }
+  },
+
+  /**
+   * 도메인 없는 조직. 들어오는 길은 초대뿐입니다.
+   *
+   * 도메인형과 순서가 다릅니다 — 색인(`orgByDomain`)을 안 씁니다. 이 조직을
+   * 찾는 길은 `userOrgs`뿐이고, 그래서 그것을 **반드시** 적어야 합니다.
+   * 안 적으면 방금 만든 조직을 자기도 못 찾습니다.
+   */
+  createInviteOrg: async (name, email) => {
+    const uid = useAuthStore.getState().uid
+    if (!uid || !name.trim()) return false
+    const orgId = gid()
+    const me = emailKey(email)
+    try {
+      // meta가 먼저입니다. 규칙이 owner를 meta에서 읽으므로, 이게 없으면
+      // 만든 사람조차 명단에 자기를 못 올립니다.
+      await fbSet(ref(db, P.orgMeta(orgId)), {
+        name: name.trim(),
+        owner: me,
+        createdBy: email.toLowerCase(),
+        createdAt: Date.now(),
+      })
+      await fbSet(ref(db, P.orgMember(orgId, email)), { role: 'member', at: Date.now() })
+      await fbSet(ref(db, P.orgAdmin(orgId, email)), true)
+      // 마지막에 내 색인. 이 쓰기가 구독을 깨웁니다.
+      await fbUpdate(ref(db, P.userOrgs(uid)), { [orgId]: Date.now() })
+      set({ error: null })
+      return true
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : '조직을 만들지 못했습니다' })
+      return false
     }
   },
 
