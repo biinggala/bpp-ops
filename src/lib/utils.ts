@@ -75,13 +75,20 @@ export function assigneeAliases(key: string): string[] {
  * 안전망을 남겨 둡니다 — 빈 목록을 주면 아무에게도 못 맡기게 됩니다. 그쪽은
  * '못 보는 사람에게 맡김'이 아니라 '표시용 목록이 안 따라온 것'입니다.
  */
+export interface AssigneeOption {
+  value: string
+  label: string
+  /** 초대장은 나갔고 아직 수락 전. 고를 수는 있되 그렇게 말해 줍니다. */
+  pending?: boolean
+}
+
 export function assigneeOptions(
   projectId: string | null | undefined,
   projects: Project[],
   myEmail: string | null | undefined,
   nameOf: (email: string) => string,
-): { value: string; label: string }[] {
-  const label = (e: string) => ({ value: e, label: nameOf(e) })
+): AssigneeOption[] {
+  const label = (e: string): AssigneeOption => ({ value: e, label: nameOf(e) })
 
   if (!projectId) {
     const me = myEmail?.toLowerCase()
@@ -90,11 +97,45 @@ export function assigneeOptions(
 
   const project = projects.find(p => p.id === projectId)
   const members = project?.memberEmails ?? []
-  if (members.length > 0) return members.map(label)
+  if (members.length === 0) {
+    const fallback = new Set<string>()
+    projects.forEach(p => p.memberEmails?.forEach(e => fallback.add(e)))
+    return Array.from(fallback).map(label)
+  }
 
-  const fallback = new Set<string>()
-  projects.forEach(p => p.memberEmails?.forEach(e => fallback.add(e)))
-  return Array.from(fallback).map(label)
+  // 초대해 둔 사람도 목록에 남습니다. 초대하면서 맡긴 그 사람이 다음에 이
+  // 칸을 열었을 때 목록에 없으면, 방금 한 일이 안 된 것처럼 보입니다.
+  const pending = (project?.pendingEmails ?? []).filter(
+    e => !members.some(m => m.toLowerCase() === e.toLowerCase()),
+  )
+  return [...members.map(label), ...pending.map(e => ({ ...label(e), pending: true }))]
+}
+
+/**
+ * 이 프로젝트 사람은 아니지만, 다른 데서 이미 같이 일하는 사람들.
+ *
+ * 담당자로 고르려면 먼저 초대해야 하는 사람들입니다. 후보를 여기까지만 두는
+ * 이유는 `authorizedEmails`와 같습니다 — 이 화면이 전체 주소록이 되어선
+ * 안 됩니다. 내가 이미 어딘가에서 함께 일하는 사람만 보입니다.
+ */
+export function invitableColleagues(
+  projectId: string | null | undefined,
+  projects: Project[],
+  myEmail: string | null | undefined,
+  nameOf: (email: string) => string,
+): { value: string; label: string }[] {
+  if (!projectId) return []
+  const project = projects.find(p => p.id === projectId)
+  if (!project) return []
+
+  const already = new Set(
+    [...(project.memberEmails ?? []), ...(project.pendingEmails ?? [])].map(e => e.toLowerCase()),
+  )
+  const me = myEmail?.toLowerCase()
+  return Array.from(authorizedEmails(projects, myEmail))
+    .filter(e => e !== me && !already.has(e))
+    .sort()
+    .map(e => ({ value: e, label: nameOf(e) }))
 }
 
 /**

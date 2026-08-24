@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { isComposing, assigneeOptions, parseAssignees, assigneeKeyToEmail } from '../../lib/utils'
+import { isComposing, assigneeOptions, invitableColleagues, parseAssignees, assigneeKeyToEmail } from '../../lib/utils'
+import { useInviteAssign } from '../../hooks/useInviteAssign'
 import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useProjectStore } from '../../store/projectStore'
@@ -68,6 +69,12 @@ export function TaskModal() {
     () => assigneeOptions(form.projectId, projects, email, getNameByEmail),
     [form.projectId, projects, email, getNameByEmail],
   )
+  // 목록에 없는 동료는 초대해서 맡깁니다 — hooks/useInviteAssign.
+  const invitable = useMemo(
+    () => invitableColleagues(form.projectId, projects, email, getNameByEmail),
+    [form.projectId, projects, email, getNameByEmail],
+  )
+  const inviteAssign = useInviteAssign()
 
   const projectMilestones = useMemo(
     () => milestones
@@ -217,7 +224,17 @@ export function TaskModal() {
             )}
 
             <PropCell label="담당자">
-              <AssigneePicker assignee={form.assignee} options={options} onChange={v => upd('assignee', v)} />
+              <AssigneePicker
+                assignee={form.assignee}
+                options={options}
+                onChange={v => upd('assignee', v)}
+                invitable={invitable}
+                onInvite={mail => {
+                  if (!form.projectId) return
+                  void inviteAssign(form.projectId, mail, who =>
+                    setForm(f => ({ ...f, assignee: [...parseAssignees(f.assignee), who].join(',') })))
+                }}
+              />
             </PropCell>
 
             <PropCell label="마감일">

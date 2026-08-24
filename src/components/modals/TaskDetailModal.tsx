@@ -34,8 +34,9 @@ import { openExternal } from '../../lib/desktopLinks'
 import type { Task, Status, Priority, TaskLink } from '../../types'
 import {
   isComposing, daysFrom, parseAssignees, assigneeKeyToEmail,
-  assigneeOptions as assigneeOptions_,
+  assigneeOptions as assigneeOptions_, invitableColleagues, type AssigneeOption,
 } from '../../lib/utils'
+import { useInviteAssign } from '../../hooks/useInviteAssign'
 import { StatusMark } from '../shared/StatusMark'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -581,10 +582,12 @@ type MobileProps = {
   upd: (patch: Partial<Task>) => void
   milestones: { id: string; projectId: string; name: string; dueDate: string }[]
   projects: { id: string; name: string; color: string; memberEmails?: string[] }[]
-  assigneeOptions: { value: string; label: string }[]
+  assigneeOptions: AssigneeOption[]
+  invitable: { value: string; label: string }[]
+  onInvite: (email: string) => void
 }
 
-function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, projects, assigneeOptions }: MobileProps) {
+function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, projects, assigneeOptions, invitable, onInvite }: MobileProps) {
   const [tab, setTab] = useState<'details' | 'activity'>('details')
   const [notesOpen, setNotesOpen] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
@@ -702,7 +705,13 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
 
               {/* Assignees — the multi-select, same as everywhere else. */}
               <MobilePropRow icon={<IcUser />} label="담당자">
-                <AssigneePicker assignee={task.assignee} options={assigneeOptions} onChange={v => upd({ assignee: v })} />
+                <AssigneePicker
+                  assignee={task.assignee}
+                  options={assigneeOptions}
+                  onChange={v => upd({ assignee: v })}
+                  invitable={invitable}
+                  onInvite={onInvite}
+                />
               </MobilePropRow>
 
               {/* Priority */}
@@ -918,6 +927,17 @@ export function TaskDetailModal() {
     () => assigneeOptions_(task.projectId, projects, myEmail, getNameByEmail),
     [task.projectId, projects, myEmail, getNameByEmail],
   )
+  // 목록에 없는 동료는 초대해서 맡깁니다 — hooks/useInviteAssign.
+  const invitable = useMemo(
+    () => invitableColleagues(task.projectId, projects, myEmail, getNameByEmail),
+    [task.projectId, projects, myEmail, getNameByEmail],
+  )
+  const inviteAssign = useInviteAssign()
+  const onInvite = useCallback((mail: string) => {
+    if (!task.projectId) return
+    void inviteAssign(task.projectId, mail, who =>
+      updateTask(task.id, { assignee: [...parseAssignees(task.assignee), who].join(',') }))
+  }, [task.projectId, task.id, task.assignee, inviteAssign, updateTask])
 
   const upd = (patch: Partial<Task>) => updateTask(task.id, patch)
 
@@ -933,6 +953,8 @@ export function TaskDetailModal() {
         milestones={milestones}
         projects={projects}
         assigneeOptions={assigneeOptions}
+        invitable={invitable}
+        onInvite={onInvite}
       />
     )
   }
@@ -1052,7 +1074,13 @@ export function TaskDetailModal() {
             </PropCell>
 
             <PropCell label="담당자">
-              <AssigneePicker assignee={task.assignee} options={assigneeOptions} onChange={v => upd({ assignee: v })} />
+              <AssigneePicker
+                  assignee={task.assignee}
+                  options={assigneeOptions}
+                  onChange={v => upd({ assignee: v })}
+                  invitable={invitable}
+                  onInvite={onInvite}
+                />
             </PropCell>
 
             <PropCell label="시작일">
