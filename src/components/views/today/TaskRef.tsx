@@ -149,17 +149,61 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
 
   return (
     /**
-     * ── 들여쓰지 않습니다 ────────────────────────────────────────────────────
+     * ── 어디에 있나, 그 다음 무엇인가 ────────────────────────────────────────
      *
-     * 한 칸 들여쓰고 ↳를 붙여 봤는데, 그게 **바로 위 줄이 부모**라고 말하고
-     * 있었습니다. 노트에서 줄 순서는 사람이 정하므로 그 위에 있는 것은 대개
-     * 남남입니다 — 없는 관계를 그린 셈입니다.
+     * 처음엔 들여쓰고 ↳를 붙였습니다. 그게 **바로 위 줄이 부모**라고 말하고
+     * 있었습니다 — 노트의 줄 순서는 사람이 정하므로 위에 있는 것은 대개
+     * 남남입니다. 없는 관계를 그린 셈입니다.
      *
-     * 부모는 자리가 아니라 **이름으로** 말합니다. 오른쪽 이름표에 '상위'라고
-     * 적고 그 업무의 이름을 답니다. 자리로 넌지시 말하는 것보다 길지만,
-     * 틀리지 않습니다.
+     * 그 다음엔 오른쪽 이름표에 '상위 ○○'를 넣었습니다. 틀리지는 않지만
+     * 한 줄에 상태·제목·상위·프로젝트·D-Day·×가 다 서게 되고, 넘칠 때
+     * 잘리는 건 **제목**입니다. 절대 잘려선 안 되는 그것이요.
+     *
+     * 그래서 제목 위에 작은 빵가루 한 줄을 둡니다. 읽는 순서가 질문의 순서와
+     * 같아지고('어디에' 다음 '무엇을'), 프로젝트와 상위를 한 번에 담으므로
+     * 아래 줄은 오히려 짧아집니다.
+     *
+     * **부모 없는 줄에는 이 줄이 없습니다.** 한 줄이 더 붙는 건 더 할 말이
+     * 있는 줄뿐입니다.
      */
-    <NodeViewWrapper as="div" contentEditable={false} style={ROW} data-drag-handle>
+    <NodeViewWrapper as="div" contentEditable={false} data-drag-handle>
+      {parent && (
+        <div style={{
+          // 상태 표시(20) + 사이(8). 제목의 첫 글자와 줄이 맞습니다.
+          paddingLeft: 28, marginTop: 2,
+          display: 'flex', alignItems: 'center', gap: 5,
+          fontSize: 11, color: 'var(--t3)', lineHeight: 1.4,
+        }}>
+          {project && (
+            <>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: project.color, flexShrink: 0 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
+                {project.name}
+              </span>
+              <span style={{ flexShrink: 0, opacity: .6 }}>›</span>
+            </>
+          )}
+          {milestone && (
+            <>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
+                {milestone.name}
+              </span>
+              <span style={{ flexShrink: 0, opacity: .6 }}>›</span>
+            </>
+          )}
+          <span
+            onClick={() => openTaskDetail(parent.id)}
+            style={{
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              cursor: 'pointer', color: 'var(--t2)', minWidth: 0,
+            }}
+          >
+            {parent.name || '이름 없음'}
+          </span>
+        </div>
+      )}
+
+    <div style={ROW}>
       <StatusPick status={task.status} onPick={setStatus} />
 
       <span
@@ -182,22 +226,17 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
         점 색깔은 어느 쪽이든 프로젝트 것입니다. 이름이 무엇으로 바뀌든
         '어느 프로젝트'는 색이 계속 말해 줍니다.
       */}
-      {(parent || milestone || project) && (
-        <span
-          onClick={parent ? () => openTaskDetail(parent.id) : undefined}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
-            fontSize: 11, color: 'var(--t3)', maxWidth: 180,
-            cursor: parent ? 'pointer' : 'default',
-          }}
-        >
+      {/* 부모가 있으면 위의 빵가루가 이미 다 말했으니 여기는 비워 둡니다.
+          같은 사실을 한 줄에 두 번 적으면 둘 다 흘려보게 됩니다. */}
+      {!parent && (milestone || project) && (
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
+          fontSize: 11, color: 'var(--t3)', maxWidth: 180,
+        }}>
           {project && <span style={{ width: 6, height: 6, borderRadius: '50%', background: project.color, flexShrink: 0 }} />}
-          {/* '상위'라고 적어 둡니다. 이름만 있으면 그게 부모인지 프로젝트인지
-              마일스톤인지 구별할 수가 없습니다. */}
-          {parent && <span style={{ flexShrink: 0, opacity: .75 }}>상위</span>}
-          {!parent && milestone && <span style={{ flexShrink: 0 }}>◇</span>}
+          {milestone && <span style={{ flexShrink: 0 }}>◇</span>}
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {parent ? parent.name || '이름 없음' : milestone ? milestone.name : project?.name}
+            {milestone ? milestone.name : project?.name}
           </span>
         </span>
       )}
@@ -214,6 +253,7 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
 
       {/* 노트에서 빼는 것과 업무를 지우는 건 다른 일입니다. 이건 앞의 것. */}
       <button onClick={() => deleteNode()} title="오늘 목록에서 빼기" style={REMOVE}>×</button>
+    </div>
     </NodeViewWrapper>
   )
 }
