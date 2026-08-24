@@ -75,6 +75,9 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i)
 /** The hour the grid is scrolled to on open — sits flush with the top edge. */
 const DAY_START_HOUR = 9
 
+/** 아직 구글에 없는, 화면에만 있는 블록의 id. */
+const PENDING_ID = '__pending__'
+
 const snap = (minutes: number) => Math.round(minutes / SNAP) * SNAP
 const clampDay = (minutes: number) => Math.max(0, Math.min(24 * 60, minutes))
 
@@ -254,6 +257,40 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
    * 업무의 이름입니다. 물어볼 것이 없으면 묻지 않습니다.
    */
   const [dropDraft, setDropDraft] = useState<Draft | null>(null)
+  /**
+   * ── 구글이 답하기 전의 그 블록 ────────────────────────────────────────────
+   *
+   * 놓은 자리에 미리보기 상자를 그려 두었더니, 진짜 블록으로 바뀌는 순간
+   * **한 번 덜컹**했습니다. 둘이 픽셀 단위로 다른 물건이라서입니다 —
+   * 미리보기는 테두리 1.5px에 모서리 6, 칸 전체 폭을 쓰고, 진짜 블록은
+   * 1px에 5, 그리고 겹친 일정이 있으면 자리를 나눠 씁니다. 바뀌는 순간
+   * 그만큼 어긋나고, 그게 그 미세한 덜컹거림입니다.
+   *
+   * 그래서 미리보기를 **진짜 블록으로** 그립니다. 같은 컴포넌트, 같은 배치
+   * 계산을 지나가므로 구글이 답해서 진짜와 바뀔 때 화면에서는 아무 일도
+   * 일어나지 않습니다 — 같은 자리에 같은 모양이 서 있을 뿐입니다.
+   */
+  const [pending, setPending] = useState<
+    { date: string; from: number; to: number; name: string; taskId?: string } | null
+  >(null)
+
+  /** 아직 없는 일정을 있는 것처럼 그리기 위한 껍데기. 화면에만 삽니다. */
+  const pendingEvent = useMemo((): GCalEvent | null => {
+    if (!pending) return null
+    return {
+      id: PENDING_ID,
+      summary: pending.name,
+      start: pending.date, end: pending.date,
+      allDay: false,
+      htmlLink: '',
+      calendarId: '',
+      calendarColor: '',
+      startIso: localIso(pending.date, pending.from),
+      endIso: localIso(pending.date, pending.to),
+      isBlock: true,
+      ...(pending.taskId ? { taskId: pending.taskId } : {}),
+    }
+  }, [pending])
   const [title, setTitle] = useState('')
   /**
    * 아젠다와 회의록 링크.
@@ -312,6 +349,18 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
   // mouseup fires outside React's render, so the latest ghost is read from a ref.
   useEffect(() => { ghostRef.current = ghost }, [ghost])
 
+  /**
+   * 방금 끌어서 옮겼는가.
+   *
+   * 마우스를 놓으면 브라우저는 mouseup 다음에 click도 보냅니다. 그래서 일정을
+   * 끌어 시간을 옮긴 손이 놓는 순간 카드가 열렸습니다 — 옮기려던 사람에게
+   * 카드는 방해물이고, 무엇보다 '옮겼다'는 결과를 그 카드가 덮습니다.
+   *
+   * 실제로 자리가 바뀐 경우에만 그 다음 click 하나를 흘려보냅니다. 제자리에서
+   * 눌렀다 뗀 것은 여전히 카드를 여는 동작입니다 — 그건 클릭이 맞으니까요.
+   */
+  const dragMoved = useRef(false)
+
   const beginMove = (
     e: React.MouseEvent, event: GCalEvent, date: string, from: number, to: number, mode: 'move' | 'resize',
   ) => {
@@ -332,12 +381,14 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
     if (!column) return
     const grabAt = minutesAt(e.clientY, column)
     moving.current = { id: event.id, date, grabAt, from, to, mode }
+    dragMoved.current = false
 
     const move = (ev: MouseEvent) => {
       const held = moving.current
       if (!held) return
       const at = minutesAt(ev.clientY, column)
       const delta = at - held.grabAt
+      if (delta !== 0) dragMoved.current = true
       if (held.mode === 'move') {
         const length = held.to - held.from
         const start = clampDay(Math.min(24 * 60 - length, Math.max(0, held.from + delta)))
@@ -363,6 +414,8 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
       window.removeEventListener('mouseup', up)
       window.removeEventListener('blur', cancel)
       window.removeEventListener('contextmenu', cancel)
+      // click은 mouseup 바로 다음에 옵니다. 그 하나만 지나가면 원래대로.
+      if (dragMoved.current) setTimeout(() => { dragMoved.current = false }, 0)
       const held = moving.current
       moving.current = null
       const settled = ghostRef.current
@@ -413,9 +466,12 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
     try {
       await placeTimeblock(payload, date, at)
     } finally {
-      // 진짜 블록이 들어왔거나 실패했거나. 어느 쪽이든 미리보기는 여기서
-      // 물러납니다 — 성공하면 그 자리에 진짜가 이미 서 있습니다.
-      setDropDraft(null)
+      /**
+       * 껍데기를 내립니다. 성공했다면 스토어에는 진짜가 이미 들어와 있고,
+       * 두 상태 변경이 같은 미세작업에서 일어나므로 리액트가 한 번에
+       * 그립니다 — 둘이 동시에 보이는 프레임은 없습니다.
+       */
+      setPending(null)
     }
   }
 
@@ -995,10 +1051,13 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
                  * 이름은 이제 압니다(끄는 동안에는 못 읽지만 놓을 때는 읽힙니다).
                  * 그래서 기다리는 동안의 미리보기가 완성된 블록과 거의 같습니다.
                  */
-                setDropDraft({
-                  date, fromMinutes: at,
-                  toMinutes: Math.min(24 * 60, at + BLOCK_MINUTES),
-                  label: payload.name,
+                setDropDraft(null)
+                setPending({
+                  date,
+                  from: clampDay(at),
+                  to: clampDay(Math.max(at + MIN_DURATION, at + BLOCK_MINUTES)),
+                  name: payload.name,
+                  ...(payload.taskId ? { taskId: payload.taskId } : {}),
                 })
                 void dropTimeblock(payload, date, at)
               }}
@@ -1020,7 +1079,10 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
               {naming?.date === date && <DraftBlock draft={naming} />}
               {dropDraft?.date === date && <DraftBlock draft={dropDraft} />}
 
-              {place(eventsByDate.get(date) ?? []).map(p => (
+              {place([
+                ...(eventsByDate.get(date) ?? []),
+                ...(pendingEvent && pending?.date === date ? [pendingEvent] : []),
+              ]).map(p => (
                 <EventBlock
                   key={p.event.id}
                   placed={p}
@@ -1028,7 +1090,10 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
                   selected={selected === p.event.id}
                   task={p.event.taskId ? allTasks.find(t => t.id === p.event.taskId) : undefined}
                   onStatus={setTaskStatus}
+                  provisional={p.event.id === PENDING_ID}
                   onSelect={e => {
+                    // 끌어서 옮긴 뒤에 따라오는 click입니다. 카드는 안 엽니다.
+                    if (dragMoved.current) return
                     setCardAt({ x: e.clientX, y: e.clientY })
                     setGuests((p.event.attendees ?? []).map(a => a.email).filter(email => email !== myEmail?.toLowerCase()))
                     setSelected(p.event.id)
@@ -1137,12 +1202,19 @@ export function place(events: GCalEvent[]): Placed[] {
   return out
 }
 
-function EventBlock({ placed, ghost, selected, task, onStatus, onSelect, onMove }: {
+function EventBlock({ placed, ghost, selected, task, provisional = false, onStatus, onSelect, onMove }: {
   placed: Placed
   ghost: { from: number; to: number } | null
   selected: boolean
   /** 이 블록이 가리키는 업무. 회의와 '간단한 할 일' 블록에는 없습니다. */
   task?: Task
+  /**
+   * 구글이 아직 답하지 않은 블록.
+   *
+   * 모양은 같고 손만 안 탑니다. 아직 없는 일정을 옮기거나 지우려 하면
+   * 가리킬 것이 없어서, 답이 오는 한두 초 사이에 누른 손이 허공을 짚습니다.
+   */
+  provisional?: boolean
   onStatus: (task: Task, next: Status) => void
   onSelect: (e: React.MouseEvent) => void
   onMove: (e: React.MouseEvent, mode: 'move' | 'resize') => void
@@ -1174,8 +1246,8 @@ function EventBlock({ placed, ghost, selected, task, onStatus, onSelect, onMove 
 
   return (
     <div
-      onMouseDown={e => onMove(e, 'move')}
-      onClick={e => { e.stopPropagation(); onSelect(e) }}
+      onMouseDown={e => { if (!provisional) onMove(e, 'move') }}
+      onClick={e => { e.stopPropagation(); if (!provisional) onSelect(e) }}
       /**
        * 일정에 우클릭하면 브라우저의 기본 메뉴('새로고침')가 떴습니다. 이
        * 화면에서 새로고침이 하고 싶은 사람은 없습니다 — 우클릭하는 손은 이
@@ -1207,7 +1279,10 @@ function EventBlock({ placed, ghost, selected, task, onStatus, onSelect, onMove 
         textDecoration: task?.status === '완료' ? 'line-through' : 'none',
         padding: roomy ? '3px 6px' : '2px 6px',
         fontSize: 11, lineHeight: 1.35,
-        overflow: 'hidden', zIndex: selected ? 5 : 2, cursor: 'grab',
+        overflow: 'hidden', zIndex: selected ? 5 : 2,
+        cursor: provisional ? 'default' : 'grab',
+        // 살짝 흐립니다 — 자리는 확정이고 저쪽의 답만 남았다는 뜻입니다.
+        opacity: provisional ? .7 : 1,
         display: 'flex', flexDirection: roomy ? 'column' : 'row',
         gap: roomy ? 0 : 5, alignItems: roomy ? 'stretch' : 'baseline',
       }}
