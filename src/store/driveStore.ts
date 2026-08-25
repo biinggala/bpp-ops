@@ -269,6 +269,14 @@ export const useDriveStore = create<DriveState>((set, get) => ({
        * 그 연결로 하는 다른 일이 다 같이 느려집니다.
        */
       const LANES = 3
+      /**
+       * 탭 이름까지 알아보는 것은 **앞의 몇 개만**.
+       *
+       * 그건 Docs API를 부르는 일이고, 그 응답은 문서 전체를 구조가 붙은
+       * JSON으로 돌려줍니다 — 글자만 치면 십만 자짜리 대본이 몇 메가가 됩니다.
+       * 열두 줄 전부에 그걸 하면 검색 한 번에 수십 메가입니다.
+       */
+      const TAB_LOOKUPS = 4
       let next = 0
       const lane = async () => {
         for (;;) {
@@ -277,12 +285,33 @@ export const useDriveStore = create<DriveState>((set, get) => ({
           const f = todo[i]
           const key = keys[i]
           try {
-            const snip = await docSnippet(token, f, needle)
-              ?? await fetchSnippet(token, { id: f.id, mimeType: f.mimeType }, needle)
-            set(s => ({ snippets: { ...s.snippets, [key]: snip } }))
-            done([key])
+            /**
+             * ── 값싼 쪽을 먼저 ────────────────────────────────────────────
+             *
+             * 순서가 거꾸로였습니다. 탭을 알아보는 Docs API를 먼저 부르고,
+             * 그게 빈손이면(탭이 하나뿐인 문서가 대부분입니다) **그제서야**
+             * 글자를 내려받았습니다. 문서 하나를 두 번 받은 셈이고, 첫
+             * 번째가 훨씬 뚱뚱한 쪽이었습니다.
+             *
+             * 이제 글자부터 받습니다. 사람이 읽는 건 그 문장이고, 탭 이름은
+             * 없어도 문서는 열립니다. 그래서 **문장이 먼저 화면에 서고**,
+             * 탭은 알아낸 뒤에 조용히 붙습니다.
+             */
+            const plain = await fetchSnippet(token, { id: f.id, mimeType: f.mimeType }, needle)
+            if (plain) {
+              set(s => ({ snippets: { ...s.snippets, [key]: plain } }))
+              done([key])
+            }
+
+            const mayHaveTabs = f.mimeType === 'application/vnd.google-apps.document' && i < TAB_LOOKUPS
+            const tabbed = mayHaveTabs ? await docSnippet(token, f, needle) : null
+            if (tabbed) set(s => ({ snippets: { ...s.snippets, [key]: tabbed } }))
+            else if (!plain) set(s => ({ snippets: { ...s.snippets, [key]: null } }))
+            if (!plain) done([key])
           } catch (e) {
-            set(s => ({ snippets: { ...s.snippets, [key]: null } }))
+            // 이미 문장을 세워 뒀으면 지우지 않습니다. 뒤이어 탭을 알아보다
+            // 실패한 것이지, 문장이 틀린 것은 아닙니다.
+            if (!get().snippets[key]) set(s => ({ snippets: { ...s.snippets, [key]: null } }))
             if (e instanceof Error && e.message === TOKEN_EXPIRED) {
               // 토큰이 죽었으면 남은 것도 다 실패합니다. 줄줄이 부르지 않고
               // 여기서 접습니다.
