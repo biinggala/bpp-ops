@@ -21,10 +21,20 @@ import { P } from '../../../lib/paths'
 import { useAuthStore } from '../../../store/authStore'
 import { useTaskStore } from '../../../store/taskStore'
 import { useVisibleProjects } from '../../../hooks/useVisibleProjects'
+import { useProjectStore } from '../../../store/projectStore'
 import { fmtYMD } from '../../../lib/utils'
 
 /** 며칠 전까지 거슬러 볼 것인가. 주말과 연휴를 건너뛸 만큼. */
 const LOOK_BACK = 7
+
+/**
+ * 콘솔의 `bpp()`가 같이 내놓는 진단값.
+ *
+ * 이 목록이 무엇을 왜 내놓는지 밖에서 볼 방법이 없어서, 안 고쳐지는 이유를
+ * 짐작으로만 좁히고 있었습니다. 여기에는 **거르기 전의 모든 줄**과 각 줄이
+ * 남거나 빠진 이유가 그대로 들어갑니다.
+ */
+export const carryDebug: { last: unknown } = { last: null }
 
 interface Carryable {
   key: string
@@ -159,6 +169,44 @@ export function CarryOver({ editor }: { editor: Editor | null }) {
         }
       })
   }, [source, tasks, visibleProjects])
+
+  // ── 진단 ──────────────────────────────────────────────────────────────────
+  //
+  // 거르기 **전**의 줄을 전부, 이유와 함께 남깁니다. 화면에 안 나오는 것까지
+  // 봐야 무엇이 잘못 남았는지 알 수 있습니다.
+  useEffect(() => {
+    if (!source) {
+      carryDebug.last = { 어제노트: '아직 못 찾았거나 없습니다' }
+      return
+    }
+    const allTasks = useTaskStore.getState().tasks
+    const allProjects = useProjectStore.getState().projects
+    const shown = new Set(visibleProjects.filter(p => !p.archived).map(p => p.id))
+    const byId = new Map(allTasks.map(t => [t.id, t]))
+    const pById = new Map(allProjects.map(p => [p.id, p]))
+    carryDebug.last = {
+      날짜: source.date,
+      줄: parseCarryables(source.html, id => byId.get(id)?.status ?? null).map(it => {
+        if (it.kind === 'todo') {
+          return { 종류: '체크박스(○)', 글: it.label, 설명: '노트에 친 글자입니다 — 프로젝트가 없어서 거를 근거가 없습니다' }
+        }
+        const task = byId.get(it.taskId!)
+        const project = task?.projectId ? pById.get(task.projectId) : undefined
+        return {
+          종류: '업무(◆)',
+          이름: task?.name ?? '(못 찾음)',
+          taskId: it.taskId,
+          상태: task?.status,
+          projectId: task?.projectId ?? '(없음 — 개인 업무)',
+          프로젝트: project?.name ?? (task?.projectId ? '(내 목록에 없는 프로젝트)' : '-'),
+          프로젝트소속: project?.orgId ?? '-',
+          보관: !!project?.archived,
+          화면에남나: !task?.projectId || shown.has(task.projectId),
+        }
+      }),
+      노트원문: source.html,
+    }
+  }, [source, visibleProjects])
 
   const chosen = items.filter(it => !skipped.has(it.key))
 

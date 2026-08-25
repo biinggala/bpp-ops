@@ -3,6 +3,7 @@ import { usePrefsStore } from '../store/prefsStore'
 import { useProjectStore } from '../store/projectStore'
 import { useAuthStore } from '../store/authStore'
 import { visibleProjects } from './visibleProjects'
+import { carryDebug } from '../components/views/today/CarryOver'
 
 /**
  * ── 콘솔에서 지금 상태를 봅니다 ──────────────────────────────────────────────
@@ -40,6 +41,7 @@ export function installDebug(): void {
         그룹: p.group ?? '',
         id: p.id,
       })),
+      가져올것: carryDebug.last,
     }
   }
 }
