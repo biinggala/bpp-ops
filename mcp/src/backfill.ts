@@ -26,7 +26,17 @@ interface ProjectInfo {
   name?: string
   orgId?: string
   creatorEmail?: string
+  /**
+   * 이 프로젝트의 사람들, 주소로.
+   *
+   * `meta.memberEmails`는 **화면에 보여 주려고 베껴 둔 사본**이라 옛 프로젝트
+   * 에는 아예 없습니다. 진짜 멤버는 `members/{계정id}`에 계정 id로 있고,
+   * 주소는 `userProfiles`에서 옵니다. 사본만 보고 '근거 없음'이라고 답하던
+   * 것이 못 정한 일곱 개의 원인이었습니다.
+   */
   memberEmails?: string[]
+  /** 멤버가 몇 명인지. 0명이면 그건 버려진 프로젝트라는 뜻입니다. */
+  memberCount?: number
 }
 
 export const emailKey = (e: string) => e.toLowerCase().trim().replace(/\./g, ',')
@@ -93,7 +103,13 @@ export function decide(p: ProjectInfo, orgs: OrgInfo[]): Verdict {
   if (found.size > 1) {
     return { projectId: p.id, name: p.name, why: `멤버가 두 곳 이상에 걸침 (${[...found].join(', ')}) — 사람이 정해야 합니다` }
   }
-  return { projectId: p.id, name: p.name, why: '근거 없음 — 만든 사람도 명단에 든 멤버도 없습니다' }
+  if (!p.memberEmails?.length) {
+    return {
+      projectId: p.id, name: p.name,
+      why: p.memberCount ? `멤버 ${p.memberCount}명이 있는데 주소를 못 찾았습니다 — 프로필이 없는 계정들` : '멤버가 아무도 없습니다 — 버려진 프로젝트로 보입니다',
+    }
+  }
+  return { projectId: p.id, name: p.name, why: `근거 없음 — ${p.memberEmails.join(', ')} 중 아무도 명단에 없습니다` }
 }
 
 /**
@@ -137,10 +153,18 @@ async function main() {
   const db = initDb()
 
   console.log('워크스페이스와 프로젝트를 읽는 중…')
-  const [orgSnap, projSnap] = await withDeadline(Promise.all([
+  const [orgSnap, projSnap, profileSnap] = await withDeadline(Promise.all([
     db.ref('orgs').get(),
     db.ref('projects').get(),
+    db.ref('userProfiles').get(),
   ]), 30, '데이터베이스 읽기')
+
+  // 계정 id → 주소. 옛 프로젝트의 멤버를 읽으려면 이 표가 있어야 합니다.
+  const emailByUid = new Map<string, string>()
+  for (const [uid, prof] of Object.entries((profileSnap.val() ?? {}) as Record<string, { email?: string }>)) {
+    const e = (prof?.email ?? '').toLowerCase()
+    if (e) emailByUid.set(uid, e)
+  }
 
   const orgs: OrgInfo[] = Object.entries((orgSnap.val() ?? {}) as Record<string, {
     meta?: { domain?: string }
@@ -155,13 +179,24 @@ async function main() {
 
   const projects: ProjectInfo[] = Object.entries((projSnap.val() ?? {}) as Record<string, {
     meta?: { name?: string; orgId?: string; creatorEmail?: string; memberEmails?: string[] }
-  }>).map(([id, node]) => ({
-    id,
-    name: node.meta?.name,
-    orgId: node.meta?.orgId,
-    creatorEmail: node.meta?.creatorEmail,
-    memberEmails: node.meta?.memberEmails,
-  }))
+    members?: Record<string, unknown>
+  }>).map(([id, node]) => {
+    const uids = Object.keys(node.members ?? {})
+    // 사본과 실제 멤버를 합칩니다. 둘 중 하나만 있는 프로젝트가 섞여 있습니다.
+    const emails = new Set<string>((node.meta?.memberEmails ?? []).map(e => e.toLowerCase()))
+    for (const uid of uids) {
+      const e = emailByUid.get(uid)
+      if (e) emails.add(e)
+    }
+    return {
+      id,
+      name: node.meta?.name,
+      orgId: node.meta?.orgId,
+      creatorEmail: node.meta?.creatorEmail,
+      memberEmails: [...emails],
+      memberCount: uids.length,
+    }
+  })
 
   console.log(`워크스페이스 ${orgs.length}개 · 프로젝트 ${projects.length}개\n`)
 
@@ -175,6 +210,10 @@ async function main() {
   for (const v of todo) console.log(`   ${v.projectId}  ${v.name ?? '(이름 없음)'}  → ${v.orgId}   [${v.why}]`)
   console.log(`\n■ 못 정한 것 ${stuck.length}개`)
   for (const v of stuck) console.log(`   ${v.projectId}  ${v.name ?? '(이름 없음)'}   [${v.why}]`)
+  if (stuck.length) {
+    console.log('\n  못 정한 것은 그냥 두는 편이 낫습니다. 소속은 한 번 쓰면 못 바꾸고,')
+    console.log('  도장이 없는 프로젝트는 지금까지처럼 굴러갑니다 — 다만 테넌트 벽 밖입니다.')
+  }
 
   if (!apply) {
     console.log('\n보여 주기만 했습니다. 실제로 찍으려면 --apply 를 붙이세요.')
