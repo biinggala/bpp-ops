@@ -45,6 +45,23 @@ async function post<T>(path: string, body: unknown, signal?: AbortSignal): Promi
   return res.json() as Promise<T>
 }
 
+/**
+ * 이 배포에 노션 열쇠가 들어 있는지.
+ *
+ * 없으면 `/notion/*`이 전부 503입니다. 그걸 모르고 스위치를 세워 두면 50명이
+ * 눌러 보고 오류를 하나씩 받습니다 — **없는 기능은 안 보이는 게 맞습니다.**
+ * 로그인 전에도 답하는 길이라 토큰을 안 붙입니다.
+ */
+export async function notionAvailable(): Promise<boolean> {
+  try {
+    const res = await fetch(`${SERVER_ORIGIN}/notion/health`)
+    if (!res.ok) return false
+    return !!(await res.json() as { configured?: boolean }).configured
+  } catch {
+    return false
+  }
+}
+
 /** 연결을 시작할 주소. 창을 여는 것은 부르는 쪽입니다 — 탭 열기가 셸마다 다릅니다. */
 export async function notionAuthUrl(): Promise<string> {
   const { url } = await post<{ url: string }>('/notion/start', {})

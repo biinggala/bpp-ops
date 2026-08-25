@@ -4,7 +4,7 @@ import { db } from '../lib/firebase'
 import { P } from '../lib/paths'
 import { openExternal } from '../lib/desktopLinks'
 import {
-  notionAuthUrl, searchNotion, notionSnippets, disconnectNotion,
+  notionAuthUrl, notionAvailable, searchNotion, notionSnippets, disconnectNotion,
   NotionNotConnected, type NotionHit, type NotionPassage,
 } from '../lib/notion'
 
@@ -26,6 +26,11 @@ import {
 export const snippetKey = (id: string, term: string) => `${id}::${term.trim().toLowerCase()}`
 
 interface NotionState {
+  /**
+   * 이 배포에 노션 열쇠가 들어 있는지. null은 **아직 안 물어봤다**입니다 —
+   * false(없다)와 구별해야 설정 화면이 '없음'을 미리 그리지 않습니다.
+   */
+  available: boolean | null
   /** 연결된 워크스페이스 이름. null이면 안 붙었습니다. */
   workspace: string | null
   linked: boolean
@@ -37,6 +42,8 @@ interface NotionState {
   snippetLoading: Record<string, true>
 
   subscribe: (uid: string) => () => void
+  /** 설정 화면이 열릴 때 한 번. 두 번째부터는 답이 이미 있습니다. */
+  checkAvailable: () => void
   connect: () => Promise<void>
   disconnect: () => Promise<void>
   search: (query: string) => Promise<NotionHit[]>
@@ -56,6 +63,7 @@ let snippetAbort: AbortController | null = null
 let snippetTerm = ''
 
 export const useNotionStore = create<NotionState>((set, get) => ({
+  available: null,
   workspace: null,
   linked: false,
   revoked: false,
@@ -77,6 +85,11 @@ export const useNotionStore = create<NotionState>((set, get) => ({
         ...(row ? { connecting: false } : {}),
       })
     }, () => set({ linked: false, workspace: null }))
+  },
+
+  checkAvailable: () => {
+    if (get().available !== null) return
+    void notionAvailable().then(available => set({ available }))
   },
 
   connect: async () => {

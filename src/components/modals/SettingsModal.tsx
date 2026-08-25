@@ -556,6 +556,9 @@ function MailLinkRow() {
  * 줄을 보고 있기 때문입니다.
  */
 function NotionLinkRow() {
+  const available = useNotionStore(s => s.available)
+  const checkAvailable = useNotionStore(s => s.checkAvailable)
+  useEffect(() => { checkAvailable() }, [checkAvailable])
   const linked = useNotionStore(s => s.linked)
   const workspace = useNotionStore(s => s.workspace)
   const revoked = useNotionStore(s => s.revoked)
@@ -563,6 +566,11 @@ function NotionLinkRow() {
   const error = useNotionStore(s => s.error)
   const connect = useNotionStore(s => s.connect)
   const disconnect = useNotionStore(s => s.disconnect)
+
+  // 아직 안 물어본 동안에도, 열쇠가 없을 때도 줄을 안 세웁니다. 붙어 있는
+  // 사람에게는 보여야 하므로 linked가 먼저입니다 — 서버가 잠깐 안 될 때
+  // 남의 연결이 화면에서 사라지면 그건 끊긴 것처럼 보입니다.
+  if (!linked && available !== true) return null
 
   const note = error ? error
     : revoked ? '노션에서 연동이 해제됐습니다. 다시 눌러 주세요.'
