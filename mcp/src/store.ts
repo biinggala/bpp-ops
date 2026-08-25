@@ -49,20 +49,62 @@ interface ProjectNode {
 const entries = <T,>(record: Record<string, T> | undefined): [string, T][] =>
   record ? Object.entries(record).filter(([, v]) => !!v) : []
 
-async function readProjectNodes(): Promise<Record<string, ProjectNode>> {
-  const snap = await initDb().ref('projects').get()
+/**
+ * ── 부르는 사람 것만 읽습니다 ────────────────────────────────────────────────
+ *
+ * 예전에는 `projects`를 통째로 읽고 메모리에서 걸렀습니다. 한 회사만 쓰는
+ * 동안에는 낭비였을 뿐이지만, 회사가 둘이 되면 그건 **남의 회사 데이터를
+ * 서버 메모리로 가져온 뒤 거르는 것**이 됩니다. 관리자 SDK는 규칙을 안
+ * 지나가므로, 거르는 코드가 한 번만 틀리면 그대로 샙니다.
+ *
+ * 좁히는 근거로 `orgs/{oid}/owns`(그 회사의 프로젝트 목록)를 쓰려다 그만
+ * 뒀습니다. 워크스페이스 없이 자기 프로젝트만 쓰는 사람 — 소속이 안 적힌
+ * 프로젝트 — 이 그 목록에 없어서, 그런 분이 커넥터를 붙이면 **아무것도 안
+ * 보입니다.** 실제로 그렇게 쓰는 분이 있습니다.
+ *
+ * `userIndex/{계정}/projects`가 정확합니다. 앱이 "내 프로젝트"를 찾는 데 쓰는
+ * 바로 그 목록이라, 소속이 있든 없든 맞고 회사가 몇 개든 자기 것만 나옵니다.
+ *
+ * 이메일을 안 주면 예전처럼 전부 읽습니다 — 아침 브리핑처럼 **모두를 대신해
+ * 도는 일**이 있어서고, 그런 일에는 부르는 사람이 없습니다.
+ */
+async function readProjectNodes(email?: string): Promise<Record<string, ProjectNode>> {
+  const database = initDb()
+
+  if (email) {
+    const uid = await uidForEmail(email)
+    if (uid) {
+      const indexSnap = await database.ref(`userIndex/${uid}/projects`).get()
+      const ids = Object.keys((indexSnap.val() ?? {}) as Record<string, unknown>)
+      // 색인이 비었다는 건 프로젝트가 없다는 뜻입니다. 전부 읽기로 물러나면
+      // 그 사람에게 남의 프로젝트를 보여 주려 시도하게 됩니다 — 접근 검사가
+      // 막긴 하지만, 애초에 가져오지 않는 편이 맞습니다.
+      const entries = await Promise.all(ids.map(async pid => {
+        const snap = await database.ref(`projects/${pid}`).get()
+        return [pid, snap.val() as ProjectNode | null] as const
+      }))
+      const out: Record<string, ProjectNode> = {}
+      for (const [pid, node] of entries) if (node) out[pid] = node
+      return out
+    }
+    // 프로필이 없는 계정입니다. 한 번도 앱을 안 켰다는 뜻이고, 그러면 프로젝트도
+    // 없습니다.
+    return {}
+  }
+
+  const snap = await database.ref('projects').get()
   return (snap.val() ?? {}) as Record<string, ProjectNode>
 }
 
-export async function readProjects(): Promise<Project[]> {
-  const nodes = await readProjectNodes()
+export async function readProjects(email?: string): Promise<Project[]> {
+  const nodes = await readProjectNodes(email)
   return entries(nodes)
     .filter(([, node]) => !!node.meta)
     .map(([pid, node]) => ({ ...(node.meta as Project), id: pid }))
 }
 
-export async function readMilestones(): Promise<Milestone[]> {
-  const nodes = await readProjectNodes()
+export async function readMilestones(email?: string): Promise<Milestone[]> {
+  const nodes = await readProjectNodes(email)
   return entries(nodes).flatMap(([pid, node]) =>
     entries(node.milestones).map(([mid, m]) => ({ ...m, id: mid, projectId: pid }))
   )
@@ -74,10 +116,10 @@ interface TaskLocation {
   path: string
 }
 
-async function readTaskLocations(): Promise<TaskLocation[]> {
+async function readTaskLocations(email?: string): Promise<TaskLocation[]> {
   const database = initDb()
   const [nodes, personalSnap, profilesSnap] = await Promise.all([
-    readProjectNodes(),
+    readProjectNodes(email),
     database.ref('personalTasks').get(),
     database.ref('userProfiles').get(),
   ])
@@ -105,8 +147,8 @@ async function readTaskLocations(): Promise<TaskLocation[]> {
   return out
 }
 
-export async function readTasks(): Promise<Task[]> {
-  return (await readTaskLocations()).map(l => l.task)
+export async function readTasks(email?: string): Promise<Task[]> {
+  return (await readTaskLocations(email)).map(l => l.task)
 }
 
 export async function readUserProfiles(): Promise<Record<string, { email?: string; name?: string; photoURL?: string }>> {
@@ -144,10 +186,12 @@ function stripUndefined<T>(value: T): T {
  * the failure the old transaction could only narrow, not close.
  */
 export async function mutateTasks<T>(
-  mutate: (tasks: Task[]) => { tasks: Task[]; result: T }
+  mutate: (tasks: Task[]) => { tasks: Task[]; result: T },
+  /** 부르는 사람. 그 사람 프로젝트만 읽어 옵니다. */
+  email?: string,
 ): Promise<T> {
   const database = initDb()
-  const locations = await readTaskLocations()
+  const locations = await readTaskLocations(email)
   const before = new Map(locations.map(l => [l.task.id, l]))
 
   const { tasks: mutated, result } = mutate(locations.map(l => l.task))

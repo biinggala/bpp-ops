@@ -47,7 +47,12 @@ async function main() {
     },
     // Anyone who is not part of a project would see nothing anyway, but refusing
     // at sign-in keeps strangers from holding a token at all.
-    async email => (await readProjects()).some(p => canAccessProject(p, email))
+    //
+    // 이메일을 넘기므로 그 사람 색인에 적힌 것만 읽습니다. 로그인 한 번에
+    // 워크스페이스 전체를 훑던 것이 이걸로 끝납니다. 멤버십 검사는 그대로
+    // 둡니다 — 색인은 그 사람이 쓰는 자리라, 프로젝트에서 빠진 뒤에도 줄이
+    // 남아 있을 수 있습니다.
+    async email => (await readProjects(email)).some(p => canAccessProject(p, email))
   )
 
   initDb() // fail fast on bad credentials

@@ -83,7 +83,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       annotations: { readOnlyHint: true },
     },
     async ({ include_archived }) => {
-      const projects = (await readProjects()).filter(p => canAccessProject(p, ctx.email))
+      const projects = (await readProjects(ctx.email)).filter(p => canAccessProject(p, ctx.email))
       const visible = include_archived ? projects : projects.filter(p => !p.archived)
       return text(visible.map(p => ({
         id: p.id,
@@ -104,8 +104,8 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       annotations: { readOnlyHint: true },
     },
     async ({ project_id }) => {
-      const ids = accessibleProjectIds(await readProjects(), ctx.email)
-      const milestones = (await readMilestones())
+      const ids = accessibleProjectIds(await readProjects(ctx.email), ctx.email)
+      const milestones = (await readMilestones(ctx.email))
         .filter(m => ids.has(m.projectId))
         .filter(m => !project_id || m.projectId === project_id)
       return text(milestones)
@@ -140,8 +140,8 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       annotations: { readOnlyHint: true },
     },
     async (args) => {
-      const ids = accessibleProjectIds(await readProjects(), ctx.email)
-      let tasks = (await readTasks()).filter(t => isTaskVisible(t, ctx.email, ids))
+      const ids = accessibleProjectIds(await readProjects(ctx.email), ctx.email)
+      let tasks = (await readTasks(ctx.email)).filter(t => isTaskVisible(t, ctx.email, ids))
 
       if (args.project_id) tasks = tasks.filter(t => t.projectId === args.project_id)
       if (args.milestone_id) tasks = tasks.filter(t => t.milestoneId === args.milestone_id)
@@ -190,8 +190,8 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       annotations: { readOnlyHint: true },
     },
     async ({ task_id }) => {
-      const ids = accessibleProjectIds(await readProjects(), ctx.email)
-      const tasks = await readTasks()
+      const ids = accessibleProjectIds(await readProjects(ctx.email), ctx.email)
+      const tasks = await readTasks(ctx.email)
       const task = tasks.find(t => t.id === task_id)
       if (!task || !isTaskVisible(task, ctx.email, ids)) {
         throw new Error('task not found or not accessible')
@@ -211,7 +211,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       annotations: { readOnlyHint: true },
     },
     async ({ project_id }) => {
-      const projects = (await readProjects()).filter(p => canAccessProject(p, ctx.email))
+      const projects = (await readProjects(ctx.email)).filter(p => canAccessProject(p, ctx.email))
       const scoped = project_id ? projects.filter(p => p.id === project_id) : projects
       if (project_id && !scoped.length) throw new Error('project not found or not accessible')
 
@@ -249,14 +249,14 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       annotations: { readOnlyHint: true },
     },
     async (args) => {
-      const projects = await readProjects()
+      const projects = await readProjects(ctx.email)
       const ids = accessibleProjectIds(projects, ctx.email)
       const nameById = new Map(projects.map(p => [p.id, p.name]))
       const horizonDays = args.days ?? 7
       const from = today()
       const to = shiftYmd(from, horizonDays)
 
-      let tasks = (await readTasks()).filter(t => isTaskVisible(t, ctx.email, ids))
+      let tasks = (await readTasks(ctx.email)).filter(t => isTaskVisible(t, ctx.email, ids))
       if (args.project_id) tasks = tasks.filter(t => t.projectId === args.project_id)
       if (args.mine_only) tasks = tasks.filter(t => isAssignedTo(t, ctx.email))
       const open = tasks.filter(t => t.status !== '완료')
@@ -300,7 +300,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
         .filter(p => p.open > 0)
         .sort((a, b) => b.overdue - a.overdue || b.open - a.open)
 
-      const milestonesSoon = (await readMilestones())
+      const milestonesSoon = (await readMilestones(ctx.email))
         .filter(m => ids.has(m.projectId))
         .filter(m => !args.project_id || m.projectId === args.project_id)
         .filter(m => !m.done && m.dueDate && m.dueDate <= to)
@@ -359,7 +359,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       },
     },
     async (args) => {
-      const projects = await readProjects()
+      const projects = await readProjects(ctx.email)
       const ids = accessibleProjectIds(projects, ctx.email)
       if (args.project_id && !ids.has(args.project_id)) {
         throw new Error('project not found or not accessible')
@@ -392,7 +392,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
           ...(args.tags?.length ? { tags: args.tags } : {}),
         }
         return { tasks: [...tasks, task], result: task }
-      })
+      }, ctx.email)
 
       return text({ created: summarise(created) })
     }
@@ -423,7 +423,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       },
     },
     async (args) => {
-      const ids = accessibleProjectIds(await readProjects(), ctx.email)
+      const ids = accessibleProjectIds(await readProjects(ctx.email), ctx.email)
       if (args.project_id && !ids.has(args.project_id)) {
         throw new Error('target project not found or not accessible')
       }
@@ -458,7 +458,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
         const next = [...tasks]
         next[i] = { ...tasks[i], ...patch }
         return { tasks: next, result: next[i] }
-      })
+      }, ctx.email)
 
       return text({ updated: summarise(updated) })
     }
@@ -474,7 +474,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       annotations: { destructiveHint: true },
     },
     async ({ task_id }) => {
-      const ids = accessibleProjectIds(await readProjects(), ctx.email)
+      const ids = accessibleProjectIds(await readProjects(ctx.email), ctx.email)
 
       const removed = await mutateTasks(tasks => {
         const target = tasks.find(t => t.id === task_id)
@@ -487,7 +487,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
           tasks: tasks.filter(t => !doomed.has(t.id)),
           result: { name: target.name, count: doomed.size },
         }
-      })
+      }, ctx.email)
 
       return text({ deleted: removed.name, tasksRemoved: removed.count })
     }
@@ -507,7 +507,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       },
     },
     async (args) => {
-      const ids = accessibleProjectIds(await readProjects(), ctx.email)
+      const ids = accessibleProjectIds(await readProjects(ctx.email), ctx.email)
       if (!ids.has(args.project_id)) throw new Error('project not found or not accessible')
 
       const created = await mutateMilestones(args.project_id, list => {
@@ -536,8 +536,8 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       },
     },
     async (args) => {
-      const ids = accessibleProjectIds(await readProjects(), ctx.email)
-      const target = (await readMilestones()).find(m => m.id === args.milestone_id)
+      const ids = accessibleProjectIds(await readProjects(ctx.email), ctx.email)
+      const target = (await readMilestones(ctx.email)).find(m => m.id === args.milestone_id)
       if (!target || !ids.has(target.projectId)) throw new Error('milestone not found or not accessible')
 
       const updated = await mutateMilestones(target.projectId, list => {
@@ -566,8 +566,8 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       annotations: { destructiveHint: true },
     },
     async ({ milestone_id }) => {
-      const ids = accessibleProjectIds(await readProjects(), ctx.email)
-      const target = (await readMilestones()).find(m => m.id === milestone_id)
+      const ids = accessibleProjectIds(await readProjects(ctx.email), ctx.email)
+      const target = (await readMilestones(ctx.email)).find(m => m.id === milestone_id)
       if (!target || !ids.has(target.projectId)) throw new Error('milestone not found or not accessible')
 
       await mutateMilestones(target.projectId, list => ({
@@ -583,7 +583,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
           return rest as Task
         })
         return { tasks: next, result: n }
-      })
+      }, ctx.email)
       return text({ deleted: target.name, tasksDetached: detached })
     }
   )
@@ -636,7 +636,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       },
     },
     async (args) => {
-      const ids = accessibleProjectIds(await readProjects(), ctx.email)
+      const ids = accessibleProjectIds(await readProjects(ctx.email), ctx.email)
       if (!ids.has(args.project_id)) throw new Error('project not found or not accessible')
       await writeProjectMeta(args.project_id, {
         ...(args.name !== undefined ? { name: args.name } : {}),
@@ -672,7 +672,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       },
     },
     async (args) => {
-      const ids = accessibleProjectIds(await readProjects(), ctx.email)
+      const ids = accessibleProjectIds(await readProjects(ctx.email), ctx.email)
       if (args.project_id && !ids.has(args.project_id)) {
         throw new Error('target project not found or not accessible')
       }
@@ -710,7 +710,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
         })
         const missing = args.task_ids.filter(id => !tasks.some(t => t.id === id))
         return { tasks: next, result: { changed, skipped, missing } }
-      })
+      }, ctx.email)
 
       return text({
         updated: report.changed.length,
@@ -734,7 +734,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       },
     },
     async (args) => {
-      const ids = accessibleProjectIds(await readProjects(), ctx.email)
+      const ids = accessibleProjectIds(await readProjects(ctx.email), ctx.email)
       const link = await mutateTasks(tasks => {
         const i = tasks.findIndex(t => t.id === args.task_id)
         if (i < 0 || !isTaskVisible(tasks[i], ctx.email, ids)) {
@@ -744,7 +744,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
         const next = [...tasks]
         next[i] = { ...tasks[i], links: [...(tasks[i].links ?? []), entry] }
         return { tasks: next, result: entry }
-      })
+      }, ctx.email)
       return text({ added: link })
     }
   )
@@ -758,7 +758,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       annotations: { destructiveHint: true },
     },
     async (args) => {
-      const ids = accessibleProjectIds(await readProjects(), ctx.email)
+      const ids = accessibleProjectIds(await readProjects(ctx.email), ctx.email)
       const removed = await mutateTasks(tasks => {
         const i = tasks.findIndex(t => t.id === args.task_id)
         if (i < 0 || !isTaskVisible(tasks[i], ctx.email, ids)) {
@@ -770,7 +770,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
         const next = [...tasks]
         next[i] = { ...tasks[i], links: links.filter(l => l.id !== args.link_id) }
         return { tasks: next, result: gone }
-      })
+      }, ctx.email)
       return text({ removed })
     }
   )
@@ -791,7 +791,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       annotations: { readOnlyHint: true },
     },
     async ({ project_id }) => {
-      const projects = (await readProjects()).filter(p => canAccessProject(p, ctx.email))
+      const projects = (await readProjects(ctx.email)).filter(p => canAccessProject(p, ctx.email))
       const scoped = project_id ? projects.filter(p => p.id === project_id) : projects
       if (project_id && !scoped.length) throw new Error('project not found or not accessible')
       return text(scoped.map(p => ({
@@ -817,7 +817,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       },
     },
     async (args) => {
-      const project = (await readProjects()).find(p => p.id === args.project_id)
+      const project = (await readProjects(ctx.email)).find(p => p.id === args.project_id)
       if (!project || !canAccessProject(project, ctx.email)) {
         throw new Error('project not found or not accessible')
       }
@@ -840,7 +840,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       annotations: { destructiveHint: true },
     },
     async (args) => {
-      const project = (await readProjects()).find(p => p.id === args.project_id)
+      const project = (await readProjects(ctx.email)).find(p => p.id === args.project_id)
       if (!project || !canAccessProject(project, ctx.email)) {
         throw new Error('project not found or not accessible')
       }
@@ -874,7 +874,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
     },
     async (args) => {
       const date = args.date ?? today()
-      const [html, tasks] = await Promise.all([readDailyNote(ctx.email, date), readTasks()])
+      const [html, tasks] = await Promise.all([readDailyNote(ctx.email, date), readTasks(ctx.email)])
       const markdown = noteToMarkdown(html, tasks)
       return text({ date, empty: !markdown, markdown })
     }
@@ -919,8 +919,8 @@ export function registerTools(server: McpServer, ctx: Ctx) {
 
       // 있지도 않은 업무를 가리키는 줄은 만들지 않습니다. 노트에 '삭제된
       // 업무'가 처음부터 적혀 있는 건 아무에게도 쓸모가 없습니다.
-      const tasks = await readTasks()
-      const accessible = accessibleProjectIds(await readProjects(), ctx.email)
+      const tasks = await readTasks(ctx.email)
+      const accessible = accessibleProjectIds(await readProjects(ctx.email), ctx.email)
       const known = new Set(
         tasks.filter(t => isTaskVisible(t, ctx.email, accessible)).map(t => t.id)
       )

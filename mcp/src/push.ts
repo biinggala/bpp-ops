@@ -189,6 +189,8 @@ export function registerPushRoutes(app: Express): void {
     }
 
     const [tasks, profiles, projects] = await Promise.all([
+      // **일부러 전부 읽습니다.** 아침 브리핑은 한 사람이 부르는 일이 아니라
+      // 모두를 대신해 도는 일이고, 그래서 부르는 사람이 없습니다.
       readTasks(), readUserProfiles(), readProjects(),
     ])
     // Archived projects are not somebody's morning problem.
