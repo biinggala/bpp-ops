@@ -6,7 +6,6 @@ import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import { useTaskStore } from '../../../store/taskStore'
 import { useAuthStore } from '../../../store/authStore'
-import { useProjectStore } from '../../../store/projectStore'
 import { useSyncStore } from '../../../store/syncStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useUiStore } from '../../../store/uiStore'
@@ -23,6 +22,7 @@ import { BlockTools } from './BlockTools'
 import { LoadingChips } from '../../shared/Loading'
 import type { Task } from '../../../types'
 import { useShallow } from 'zustand/react/shallow'
+import { useVisibleProjects } from '../../../hooks/useVisibleProjects'
 
 /**
  * ── 오늘 ─────────────────────────────────────────────────────────────────────
@@ -408,14 +408,28 @@ export function TodayView() {
 function useMine(): Task[] {
   const tasks = useTaskStore(s => s.tasks)
   const email = useAuthStore(s => s.email)
+  /**
+   * 지금 서 있는 워크스페이스의 것만.
+   *
+   * 여기가 오래 안 잡혔습니다. 사이드바에 없는 프로젝트의 업무가 '가져올
+   * 것'에 서 있었는데, 스토어를 그대로 읽고 있었습니다 — 이 목록에서 하나
+   * 집어 오늘 노트에 놓으면, 사이드바 어디에도 없는 일이 내 하루에 들어옵니다.
+   *
+   * 보관한 프로젝트도 뺍니다. '전체 업무·내 할 일·통계에서 내려간다'가
+   * 보관의 뜻이고, 오늘 아침에 집어 올 것 목록도 그 셈의 하나입니다.
+   */
+  const projects = useVisibleProjects()
   return useMemo(() => {
-    const mine = tasks.filter(t => t.status !== '완료' && isAssignedTo(t.assignee, email))
+    const here = new Set(projects.filter(p => !p.archived).map(p => p.id))
+    const mine = tasks.filter(t =>
+      (!t.projectId || here.has(t.projectId))
+      && t.status !== '완료' && isAssignedTo(t.assignee, email))
     return mine.sort((a, b) => {
       if (!a.due !== !b.due) return a.due ? -1 : 1
       if (a.due && b.due && a.due !== b.due) return a.due.localeCompare(b.due)
       return a.name.localeCompare(b.name)
     })
-  }, [tasks, email])
+  }, [tasks, email, projects])
 }
 
 /**
@@ -455,7 +469,7 @@ function dueBucket(due: string | undefined): { key: string; label: string; tone?
 
 function PullRail({ onAdd, inNote }: { onAdd: (t: Task) => void; inNote: Set<string> }) {
   const mine = useMine()
-  const projects = useProjectStore(s => s.projects)
+  const projects = useVisibleProjects()
   const ready = useSyncStore(s => s.ready)
   const [group, setGroup] = useState<RailGroup>(loadRailGroup)
   /**
@@ -594,7 +608,7 @@ function PullRow({ task, onAdd, taken, grouping }: {
 }) {
   const [hovered, setHovered] = useState(false)
   const [dragging, setDragging] = useState(false)
-  const projects = useProjectStore(s => s.projects)
+  const projects = useVisibleProjects()
   const milestones = useMilestoneStore(s => s.milestones)
   const openTaskDetail = useUiStore(s => s.openTaskDetail)
   const diff = task.due ? daysFrom(task.due) : null

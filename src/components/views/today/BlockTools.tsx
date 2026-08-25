@@ -10,9 +10,9 @@ import type { DriveFile } from '../../../lib/googleDrive'
 import { driveUrl } from '../../../lib/googleDrive'
 import { useTaskStore } from '../../../store/taskStore'
 import { useAuthStore } from '../../../store/authStore'
-import { useProjectStore } from '../../../store/projectStore'
 import { useUiStore } from '../../../store/uiStore'
 import { isAssignedTo } from '../../../lib/utils'
+import { useVisibleProjects } from '../../../hooks/useVisibleProjects'
 
 /**
  * ── 블록 손잡이와 슬래시 메뉴 ────────────────────────────────────────────────
@@ -557,7 +557,10 @@ function PromotePicker({ editor, item, date, x, y, onClose }: {
   const addTask = useTaskStore(s => s.addTask)
   const tasks = useTaskStore(s => s.tasks)
   const email = useAuthStore(s => s.email)
-  const projects = useProjectStore(s => s.projects)
+  // 고르는 목록입니다 — 지금 서 있는 워크스페이스의 것만 내놓습니다.
+  // 여기서 남의 워크스페이스 업무를 부모로 고르면, 오늘 친 한 줄이 사이드바
+  // 어디에도 없는 프로젝트로 들어갑니다.
+  const projects = useVisibleProjects()
   const uiProjectId = useUiStore(s => s.projectId)
 
   useEffect(() => {
@@ -584,11 +587,13 @@ function PromotePicker({ editor, item, date, x, y, onClose }: {
    */
   const parents = useMemo(() => {
     const q = query.trim().toLowerCase()
+    const here = new Set(projects.map(p => p.id))
     return tasks
+      .filter(t => !t.projectId || here.has(t.projectId))
       .filter(t => !t.parentId && t.status !== '완료' && isAssignedTo(t.assignee, email))
       .filter(t => !q || t.name.toLowerCase().includes(q))
       .slice(0, 8)
-  }, [tasks, query, email])
+  }, [tasks, query, email, projects])
 
   /**
    * 만들고, 그 줄을 업무 참조로 갈아 끼웁니다.
