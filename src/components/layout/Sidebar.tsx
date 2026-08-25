@@ -680,7 +680,7 @@ export function Sidebar() {
             count={myOpenCount}
             tour="mine"
             emphasis
-            icon="☑"
+            node={<Icon name="checkSquare" size={14} />}
           >
             내 할 일
           </NavItem>
@@ -688,7 +688,7 @@ export function Sidebar() {
           <NavItem
             active={screen === 'work' && !myTasksOnly && !personalOnly && projectId === null}
             onClick={() => { setPersonalOnly(false); setProject(null); setMyTasksOnly(false); closeSidebar() }}
-            icon="◈"
+            node={<Icon name="stack" size={14} />}
           >
             전체 업무
           </NavItem>
@@ -707,7 +707,7 @@ export function Sidebar() {
           <NavItem
             active={screen === 'work' && personalOnly}
             onClick={() => { setPersonalOnly(true); setMyTasksOnly(false); closeSidebar() }}
-            icon="◦"
+            node={<Icon name="person" size={14} />}
           >
             개인
           </NavItem>
@@ -1046,7 +1046,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-function NavItem({ children, active, onClick, count, emphasis, pill, icon, node, tour }: {
+function NavItem({ children, active, onClick, count, emphasis, pill, node, tour }: {
   children: React.ReactNode; active: boolean; onClick: () => void
   /** 소개 투어가 이 줄을 찾을 때 쓰는 이름. Welcome 참고. */
   tour?: string
@@ -1056,8 +1056,13 @@ function NavItem({ children, active, onClick, count, emphasis, pill, icon, node,
   emphasis?: boolean
   /** Draws the count as a filled pill. One row gets this: the one you start from. */
   pill?: boolean
-  icon?: string
-  /** A drawn icon, where a glyph will not do. */
+  /**
+   * 줄 앞의 그림.
+   *
+   * 전에는 글자(☑ ◈ ◦)로도 받았습니다. 글자는 굵기와 크기를 글꼴이 정해서
+   * 옆에 그려 놓은 아이콘과 안 맞았고, 한 열에 선 다섯 줄 중 셋만 다른
+   * 손으로 그린 것처럼 보였습니다. 이제 전부 그린 것입니다.
+   */
   node?: React.ReactNode
 }) {
   return (
@@ -1080,9 +1085,13 @@ function NavItem({ children, active, onClick, count, emphasis, pill, icon, node,
       onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--sb-hover)' }}
       onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
     >
-      {node
-        ? <span style={{ width: 16, display: 'flex', justifyContent: 'center', flexShrink: 0, opacity: .75 }}>{node}</span>
-        : icon && <span style={{ fontSize: 12, opacity: emphasis ? .85 : .6, width: 16, textAlign: 'center', flexShrink: 0 }}>{icon}</span>}
+      {node && (
+        <span style={{
+          width: 16, display: 'flex', justifyContent: 'center', flexShrink: 0,
+          // 매일 누르는 줄은 조금 더 또렷합니다 — 글자 굵기가 하는 말과 같은 말.
+          opacity: active || emphasis ? .85 : .6,
+        }}>{node}</span>
+      )}
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
       {count !== undefined && count > 0 && (
         pill ? (
