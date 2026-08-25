@@ -58,9 +58,19 @@ const THEMES: { value: ThemeChoice; label: string; icon: IconName }[] = [
 
 type Page = 'general' | 'notify' | 'link' | 'trash' | 'org' | 'rooms' | 'projects'
 
-export function SettingsModal({ onClose }: { onClose: () => void }) {
+export function SettingsModal({ onClose, start = 'general' }: {
+  onClose: () => void
+  /**
+   * 어느 장을 펴고 열 것인가.
+   *
+   * 프로필 메뉴의 '새 워크스페이스'가 이걸 씁니다 — 만드는 자리를 그 메뉴에
+   * 옮겨 놓는 대신, 이미 있는 자리를 펴서 보여 줍니다. 같은 일을 하는 화면이
+   * 둘이 되면 둘 중 하나는 언젠가 뒤처집니다.
+   */
+  start?: Page
+}) {
   const isMobile = useMobile()
-  const [page, setPage] = useState<Page>('general')
+  const [page, setPage] = useState<Page>(start)
   const email = useAuthStore(s => s.email)
   const orgId = useOrgStore(s => s.orgId)
   const joinRequests = useOrgStore(s => s.joinRequests)

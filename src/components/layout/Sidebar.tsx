@@ -23,6 +23,7 @@ import { usePrefsStore } from '../../store/prefsStore'
 import { useTodayCount } from '../views/today/count'
 import { useNoticeToast } from './NoticeToast'
 import { buildInviteToken } from '../../lib/paths'
+import { getCatColor } from '../../types'
 import type { Project } from '../../types'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -102,6 +103,8 @@ export function Sidebar() {
   const [memberModal, setMemberModal] = useState<{ id: string; name: string } | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  /** 설정을 어느 장으로 열 것인가. 프로필 메뉴가 자리를 지정합니다. */
+  const [settingsPage, setSettingsPage] = useState<'general' | 'org'>('general')
   /**
    * 사이드바가 무엇을 보여주고 있는가.
    *
@@ -483,7 +486,7 @@ export function Sidebar() {
               in the profile popover, and putting the rarer, more destructive of
               the two on the always-visible button was backwards. */}
           <button
-            onClick={() => { haptic('tap'); setProfileOpen(false); setSettingsOpen(true) }}
+            onClick={() => { haptic('tap'); setProfileOpen(false); setSettingsPage('general'); setSettingsOpen(true) }}
             title={pendingJoins ? `설정 · 참여 요청 ${pendingJoins}건` : '설정'}
             style={{ position: 'relative', width: 24, height: 24, borderRadius: 'var(--r1)', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--sb-t3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background .1s, color .1s' }}
             onMouseEnter={e => { e.currentTarget.style.background = 'var(--sb-hover)'; e.currentTarget.style.color = 'var(--sb-t1)' }}
@@ -552,29 +555,61 @@ export function Sidebar() {
                 </div>
               </div>
               {/*
-                ── 워크스페이스 전환 ────────────────────────────────────────
-                한 곳뿐이면 **아무것도 안 그립니다.** 고를 것이 없는 목록은
-                고르는 법을 가르치지 않고 자리만 차지합니다. 두 곳 이상인
-                사람에게만 나타납니다.
+                ── 워크스페이스 ────────────────────────────────────────────────
+                **한 곳뿐이어도 그립니다.** 전에는 안 그렸습니다 — 고를 것이
+                없는 목록은 고르는 법을 안 가르치니까요. 그 말은 지금도 맞는데,
+                이 자리가 이제 고르는 곳만이 아니라 **워크스페이스가 사는
+                곳**입니다: 새로 만드는 것도 여기서 합니다.
+                (전에는 설정 > 워크스페이스 맨 아래에 접혀 있었고, 두 번째
+                워크스페이스를 만들려면 그걸 찾아내야 했습니다.)
+
+                줄마다 이름 앞에 색 네모가 섭니다. 이름은 짧고 서로 닮을 수
+                있어서, 훑을 때 먼저 눈에 걸리는 건 글자가 아니라 색입니다.
               */}
-              {myOrgs.length > 1 && (
-                <div style={{ borderTop: '1px solid var(--bd)', paddingTop: 8, marginBottom: 8 }}>
-                  <div style={{ fontSize: 10, color: 'var(--t3)', padding: '0 8px 4px', letterSpacing: .3 }}>워크스페이스</div>
-                  {myOrgs.map(o => (
+              <div style={{ borderTop: '1px solid var(--bd)', paddingTop: 8, marginBottom: 8 }}>
+                <div style={{ fontSize: 10, color: 'var(--t3)', padding: '0 8px 5px', letterSpacing: .3 }}>워크스페이스</div>
+                {myOrgs.map(o => {
+                  const on = o.id === orgId
+                  const tint = getCatColor(o.name).text
+                  return (
                     <button
                       key={o.id}
-                      onClick={() => { if (email && o.id !== orgId) setActiveOrg(email, o.id); setProfileOpen(false) }}
-                      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 'var(--r2)', border: 'none', background: 'transparent', fontSize: 12, color: o.id === orgId ? 'var(--t1)' : 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left' }}
+                      onClick={() => { if (email && !on) setActiveOrg(email, o.id); setProfileOpen(false) }}
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 'var(--r2)', border: 'none', background: 'transparent', fontSize: 12, color: on ? 'var(--t1)' : 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left' }}
                       onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg2)' }}
                       onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
                     >
-                      <span style={{ width: 12, flexShrink: 0, color: 'var(--ac)' }}>{o.id === orgId ? '✓' : ''}</span>
-                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: o.id === orgId ? 600 : 400 }}>{o.name}</span>
+                      <span style={{
+                        width: 20, height: 20, borderRadius: 5, flexShrink: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: tint, color: '#fff', fontSize: 10, fontWeight: 700,
+                      }}>{o.name.trim()[0]?.toUpperCase() ?? 'W'}</span>
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: on ? 600 : 400 }}>{o.name}</span>
+                      {on && <span style={{ flexShrink: 0, color: 'var(--ac)', fontSize: 11 }}>✓</span>}
                     </button>
-                  ))}
-                </div>
-              )}
+                  )
+                })}
+                <button
+                  onClick={() => { setProfileOpen(false); setSettingsPage('org'); setSettingsOpen(true) }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 'var(--r2)', border: 'none', background: 'transparent', fontSize: 12, color: 'var(--ac)', cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg2)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  <span style={{ width: 20, display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
+                    <Icon name="plus" size={13} />
+                  </span>
+                  새 워크스페이스
+                </button>
+              </div>
               <div style={{ borderTop: '1px solid var(--bd)', paddingTop: 8 }}>
+                <button
+                  onClick={() => { setProfileOpen(false); setSettingsPage('general'); setSettingsOpen(true) }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 'var(--r2)', border: 'none', background: 'transparent', fontSize: 12, color: 'var(--t2)', cursor: 'pointer', fontFamily: 'var(--font)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg2)'; e.currentTarget.style.color = 'var(--t1)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t2)' }}
+                >
+                  <Icon name="settings" size={14} /> 설정
+                </button>
                 {/* 브라우저로 보고 있을 때만 나타납니다 — 앱 안에서는 이
                     컴포넌트가 스스로 아무것도 그리지 않습니다. */}
                 <GetDesktopApp variant="menu" onPick={() => setProfileOpen(false)} />
@@ -980,7 +1015,7 @@ export function Sidebar() {
         />
       )}
 
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsModal start={settingsPage} onClose={() => setSettingsOpen(false)} />}
 
       {/* Member management modal */}
       {memberModal && (() => {
