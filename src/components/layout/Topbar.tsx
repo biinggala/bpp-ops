@@ -10,7 +10,7 @@ import { Tip, CMD } from '../shared/Tip'
 import { useShallow } from 'zustand/react/shallow'
 
 export function Topbar() {
-  const { space, projectId, myTasksOnly, openTaskModal, toggleSidebar, view, screen } = useUiStore(useShallow(s => ({ space: s.space, projectId: s.projectId, myTasksOnly: s.myTasksOnly, openTaskModal: s.openTaskModal, toggleSidebar: s.toggleSidebar, view: s.view, screen: s.screen })))
+  const { projectId, myTasksOnly, openTaskModal, toggleSidebar, view, screen } = useUiStore(useShallow(s => ({ projectId: s.projectId, myTasksOnly: s.myTasksOnly, openTaskModal: s.openTaskModal, toggleSidebar: s.toggleSidebar, view: s.view, screen: s.screen })))
   const sidebarHidden = useUiStore(s => s.sidebarHidden)
   const toggleSidebarHidden = useUiStore(s => s.toggleSidebarHidden)
   const projects = useProjectStore(s => s.projects)
@@ -27,7 +27,7 @@ export function Topbar() {
     ? '오늘'
     : screen === 'calendar'
     ? '캘린더'
-    : (activeProject?.name ?? space ?? (personalOnly ? '개인' : myTasksOnly ? '내 할 일' : '전체 업무'))
+    : (activeProject?.name ?? (personalOnly ? '개인' : myTasksOnly ? '내 할 일' : '전체 업무'))
 
   return (
     <header style={{

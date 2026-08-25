@@ -645,7 +645,7 @@ export function TableView() {
   const allTasks = useTaskStore(s => s.tasks)          // raw — only for task-tree traversal
   const accessibleTasks = useAccessibleTasks()          // for option lists (tags etc.)
   const { addTask, deleteTask, updateTask } = useTaskStore(useShallow(s => ({ addTask: s.addTask, deleteTask: s.deleteTask, updateTask: s.updateTask })))
-  const { openTaskDetail, projectId, space, hideCompleted, listGroup, myTasksOnly } = useUiStore(useShallow(s => ({ openTaskDetail: s.openTaskDetail, projectId: s.projectId, space: s.space, hideCompleted: s.hideCompleted, listGroup: s.listGroup, myTasksOnly: s.myTasksOnly })))
+  const { openTaskDetail, projectId, hideCompleted, listGroup, myTasksOnly } = useUiStore(useShallow(s => ({ openTaskDetail: s.openTaskDetail, projectId: s.projectId, hideCompleted: s.hideCompleted, listGroup: s.listGroup, myTasksOnly: s.myTasksOnly })))
   const { milestones, updateMilestone, deleteMilestone, addMilestone } = useMilestoneStore()
   const allProjects = useProjectStore(s => s.projects)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
@@ -893,7 +893,7 @@ export function TableView() {
                 {draftSubtaskParentId === child.id && (
                   <AddTaskRow cols={visibleCols} defaultAssignee={myAssignee} isSubtask parentId={child.id}
                     assigneeOptions={cOpts} projectId={child.projectId} milestoneId={child.milestoneId}
-                    space={space ?? ''} addTask={addTask} userEmail={userEmail}
+                    addTask={addTask} userEmail={userEmail}
                     onDone={another => { if (!another) setDraftSubtaskParentId(null) }}
                     onCancel={() => setDraftSubtaskParentId(null)}
                   />
@@ -904,7 +904,7 @@ export function TableView() {
           {draftSubtaskParentId === task.id && (
             <AddTaskRow cols={visibleCols} defaultAssignee={myAssignee} isSubtask parentId={task.id}
               assigneeOptions={aOpts} projectId={task.projectId} milestoneId={task.milestoneId}
-              space={space ?? ''} addTask={addTask} userEmail={userEmail}
+              addTask={addTask} userEmail={userEmail}
               onDone={another => { if (!another) setDraftSubtaskParentId(null) }}
               onCancel={() => setDraftSubtaskParentId(null)}
             />
@@ -962,7 +962,7 @@ export function TableView() {
           {draftSubtaskParentId === task.id && (
             <AddTaskRow cols={visibleCols} defaultAssignee={myAssignee} isSubtask parentId={task.id}
               assigneeOptions={opts} projectId={task.projectId} milestoneId={task.milestoneId}
-              space={space ?? ''} addTask={addTask} userEmail={userEmail}
+              addTask={addTask} userEmail={userEmail}
               onDone={another => { if (!another) setDraftSubtaskParentId(null) }}
               onCancel={() => setDraftSubtaskParentId(null)}
             />
@@ -1031,7 +1031,6 @@ export function TableView() {
         assigneeOptions={getAssigneeOptions(pjId)}
         milestoneId={msId}
         projectId={pjId}
-        space={space ?? ''}
         addTask={addTask}
         userEmail={userEmail}
         onDone={(another) => { if (!another) setDraftMsId(null) }}
@@ -1214,7 +1213,6 @@ export function TableView() {
                 projectOptions={projectId ? undefined : projectPickerOptions}
                 milestoneOptions={milestones}
                 onMilestoneCreate={(pid, n, d) => addMilestone(pid, n, d).id}
-                space={space ?? ''}
                 addTask={addTask}
                 userEmail={userEmail}
                 onDone={another => { if (!another) setDraftEndPjId(null) }}
@@ -1284,8 +1282,7 @@ export function TableView() {
                         defaultAssignee={myAssignee}
                         assigneeOptions={getAssigneeOptions(proj.id)}
                         projectId={proj.id}
-                        space={space ?? ''}
-                        addTask={addTask}
+                                addTask={addTask}
                         userEmail={userEmail}
                         onDone={another => { if (!another) setDraftEndPjId(null) }}
                         onCancel={() => setDraftEndPjId(null)}
@@ -1325,8 +1322,7 @@ export function TableView() {
                       cols={visibleCols}
                       defaultAssignee={myAssignee}
                       assigneeOptions={getAssigneeOptions(undefined)}
-                      space={space ?? ''}
-                      addTask={addTask}
+                            addTask={addTask}
                       userEmail={userEmail}
                       onDone={another => { if (!another) setDraftEndPjId(null) }}
                       onCancel={() => setDraftEndPjId(null)}
@@ -1360,8 +1356,7 @@ export function TableView() {
               defaultAssignee={myAssignee}
               assigneeOptions={getAssigneeOptions(projectId)}
               projectId={projectId}
-              space={space ?? ''}
-              addTask={addTask}
+                    addTask={addTask}
               userEmail={userEmail}
               onDone={another => { if (!another) setDraftEndPjId(null) }}
               onCancel={() => setDraftEndPjId(null)}
@@ -2302,7 +2297,7 @@ function AddRowDatePicker({ value, context, onChange }: {
 
 // ── AddTaskRow ────────────────────────────────────────────────────────────────
 
-function AddTaskRow({ cols, assigneeOptions, defaultAssignee = '', milestoneId, milestoneOptions, onMilestoneCreate, parentId, projectId, projectOptions, space, addTask, userEmail, isSubtask = false, onDone, onCancel }: {
+function AddTaskRow({ cols, assigneeOptions, defaultAssignee = '', milestoneId, milestoneOptions, onMilestoneCreate, parentId, projectId, projectOptions, addTask, userEmail, isSubtask = false, onDone, onCancel }: {
   cols: ColDef[]
   assigneeOptions: { value: string; label: string }[]
   /**
@@ -2332,7 +2327,6 @@ function AddTaskRow({ cols, assigneeOptions, defaultAssignee = '', milestoneId, 
    * task under nothing.
    */
   projectOptions?: { id: string; name: string; color: string }[]
-  space: string
   addTask: (t: Omit<Task, 'id'>) => Task
   userEmail: string | null
   isSubtask?: boolean
@@ -2388,7 +2382,7 @@ function AddTaskRow({ cols, assigneeOptions, defaultAssignee = '', milestoneId, 
     const targets: (string | undefined)[] = pickedProjects.length ? pickedProjects : [undefined]
     for (const pid of targets) {
       addTask({
-        type: parentId ? '세부' : '상위', cat: space, name: name.trim(), assignee,
+        type: parentId ? '세부' : '상위', cat: '', name: name.trim(), assignee,
         start: '', due, priority, status,
         progress: 0, memo: '', parentId, projectId: pid,
         milestoneId: milestoneId ?? (pid && pid === soleProject ? pickedMs : undefined),

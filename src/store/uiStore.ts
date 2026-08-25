@@ -36,7 +36,6 @@ export type ListGroup = 'project' | 'none' | 'due' | 'priority' | 'assignee' | '
 interface UiState {
   view: ViewType
   listGroup: ListGroup
-  space: string | null
   projectId: string | null      // sidebar project filter
   myTasksOnly: boolean          // quick filter: my tasks
   /**
@@ -129,7 +128,6 @@ interface UiState {
 
   setView: (v: ViewType) => void
   setListGroup: (g: ListGroup) => void
-  setSpace: (s: string | null) => void
   setProject: (id: string | null) => void
   setPersonalOnly: (v: boolean) => void
   setMyTasksOnly: (v: boolean) => void
@@ -183,7 +181,6 @@ const defaultFilters: Filters = {
 export const useUiStore = create<UiState>((set, get) => ({
   view: 't',
   listGroup: loadListGroup(),
-  space: null,
   projectId: null,
   // The day starts with what is mine. Opening on 전체 업무 meant everybody's
   // first sight of the app was fifty people's work, and the first click of every
@@ -217,7 +214,6 @@ export const useUiStore = create<UiState>((set, get) => ({
     try { localStorage.setItem(LIST_GROUP_KEY, listGroup) } catch { /* ignore */ }
     set({ listGroup })
   },
-  setSpace: (space) => set({ space, projectId: null, screen: 'work' }),
   // Entering a project makes the project filter meaningless at best and
   // self-contradicting at worst — filtering to project B while inside project A
   // can only ever return nothing. Same for 내 할 일 and the assignee filter.
@@ -226,14 +222,14 @@ export const useUiStore = create<UiState>((set, get) => ({
   // 업무를 고르는 모든 길은 업무 화면으로 데려갑니다. 오늘에 서서 프로젝트를
   // 눌렀는데 아무 일도 안 일어나면 그 줄은 고장 난 것으로 보입니다.
   setProject: (projectId) => set(st => ({
-    projectId, space: null, screen: 'work',
+    projectId, screen: 'work',
     // 프로젝트를 고르면 '개인'은 꺼집니다 — 둘은 같이 참일 수 없습니다.
     personalOnly: false,
     filters: projectId ? { ...st.filters, projects: [] } : st.filters,
   })),
   setPersonalOnly: (personalOnly) => set(st => ({
     personalOnly, screen: 'work',
-    ...(personalOnly ? { projectId: null, space: null } : {}),
+    ...(personalOnly ? { projectId: null } : {}),
     filters: personalOnly ? { ...st.filters, projects: [] } : st.filters,
   })),
   setMyTasksOnly: (myTasksOnly) => set(st => ({
@@ -262,7 +258,7 @@ export const useUiStore = create<UiState>((set, get) => ({
     // 마감이 한 달 위에 쏟아져서, 정작 내 일정이 남의 마감에 묻혔습니다.
     // 이 화면의 질문은 '무슨 일들이 있나'가 아니라 '나 언제 뭐 하지'입니다.
     // 넓히고 싶으면 위 줄의 '내 업무만'을 끄면 됩니다.
-    projectId: null, space: null, myTasksOnly: true, personalOnly: false,
+    projectId: null, myTasksOnly: true, personalOnly: false,
     filters: { ...st.filters, projects: [], assignees: [] },
   })),
   openNote: (noteDate) => set({ noteDate, screen: 'today' }),

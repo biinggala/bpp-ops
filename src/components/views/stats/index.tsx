@@ -76,9 +76,18 @@ export function StatsView() {
       cur.count++; cur.progressSum += t.progress
       map.set(c, cur)
     })
-    return Array.from(map.entries())
+    const out = Array.from(map.entries())
       .map(([name, v]) => ({ name, count: v.count, progress: Math.round(v.progressSum / v.count) }))
       .sort((a, b) => b.count - a.count)
+    /**
+     * 전부 '미분류'면 그건 차트가 아닙니다.
+     *
+     * 카테고리를 붙이는 길이 스페이스와 함께 없어져서, 지금은 거의 모든 업무가
+     * 빈 값입니다. 그대로 그리면 100%짜리 막대 하나가 '미분류'라는 이름으로
+     * 서는데, 그건 아무 말도 안 하면서 말하는 것처럼 생겼습니다. 아래가
+     * 그럴 때 '업무가 없습니다' 대신 쓰는 빈 자리로 넘깁니다.
+     */
+    return out.length === 1 && out[0].name === '미분류' ? [] : out
   }, [tasks])
 
   const projectById = useMemo(() => {
@@ -150,7 +159,10 @@ export function StatsView() {
         <Card style={{ display: 'flex', flexDirection: 'column' }}>
           <CardTitle icon="📊">카테고리별 진행률</CardTitle>
           {categories.length === 0 ? (
-            <Empty>업무가 없습니다</Empty>
+            // '업무가 없습니다'는 이제 틀린 말일 수 있습니다 — 업무는 많은데
+            // 카테고리가 안 붙어 있는 쪽이 흔합니다. 둘을 같은 말로 덮으면
+            // 사람이 무엇을 해야 하는지 알 수 없습니다.
+            <Empty>{tasks.length === 0 ? '업무가 없습니다' : '카테고리가 붙은 업무가 없습니다'}</Empty>
           ) : (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 11 }}>
               {categories.map(c => {

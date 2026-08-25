@@ -9,7 +9,7 @@ import { useShallow } from 'zustand/react/shallow'
 
 export function useFilteredTasks(): Task[] {
   const tasks = useTaskStore(s => s.tasks)
-  const { space, projectId, myTasksOnly, personalOnly, hideCompleted, filters } = useUiStore(useShallow(s => ({ space: s.space, projectId: s.projectId, myTasksOnly: s.myTasksOnly, personalOnly: s.personalOnly, hideCompleted: s.hideCompleted, filters: s.filters })))
+  const { projectId, myTasksOnly, personalOnly, hideCompleted, filters } = useUiStore(useShallow(s => ({ projectId: s.projectId, myTasksOnly: s.myTasksOnly, personalOnly: s.personalOnly, hideCompleted: s.hideCompleted, filters: s.filters })))
   const email = useAuthStore(s => s.email)
   const projects = useProjectStore(s => s.projects)
 
@@ -36,7 +36,6 @@ export function useFilteredTasks(): Task[] {
       if (archivedIds.size) result = result.filter(t => !t.projectId || !archivedIds.has(t.projectId))
     }
 
-    if (space) result = result.filter(t => t.cat === space)
     if (projectId) result = result.filter(t => t.projectId === projectId)
     // 프로젝트가 없는 것들 — 나 말고는 아무도 못 보는 업무입니다.
     if (personalOnly) result = result.filter(t => !t.projectId)
@@ -102,5 +101,5 @@ export function useFilteredTasks(): Task[] {
     }
 
     return result
-  }, [tasks, space, projectId, myTasksOnly, personalOnly, hideCompleted, email, projects, filters])
+  }, [tasks, projectId, myTasksOnly, personalOnly, hideCompleted, email, projects, filters])
 }
