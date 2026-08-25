@@ -81,15 +81,12 @@ type Item = {
    * **점**(`dot`) — 프로젝트와 스페이스. 사이드바에서 그 둘을 알아보는
    * 방법이 색점이고, 여기서만 다른 모양을 쓰면 같은 것을 두 번 배웁니다.
    *
-   * **글자**(`glyph`) — 노션 페이지에 사람이 붙여 둔 이모지. 그건 우리가
-   * 정한 것이 아니라 그 페이지의 이름표라, 우리 그림으로 바꾸면 노션에서
-   * 알아보던 방법이 사라집니다.
+   * **상태**(`status`) — 업무. 목록·보드·노트가 쓰는 그 표시입니다.
    */
   icon?: IconName
   /** 뷰 아이콘은 화면 그림이라 따로 그립니다(NavIcons). */
   viewIcon?: ViewType
   dot?: string
-  glyph?: string
   label: string
   sub?: string
   hint?: string
@@ -431,9 +428,11 @@ export function CommandPalette() {
      * 사람이 노션에서 그 페이지를 알아보는 방법입니다.
      */
     notionHits.forEach(h => result.push({
-      // 사람이 그 페이지에 붙여 둔 이모지는 그대로 씁니다 — 우리 그림으로
-      // 바꾸면 노션에서 그 페이지를 알아보던 방법이 사라집니다. 없으면 종이.
-      id: `notion-${h.id}`, kind: 'notion', glyph: h.emoji, icon: 'file', label: h.title,
+      // 노션의 N. 이 줄이 어디서 왔는지가 한 글자로 보입니다 — 묶음 이름이
+      // 스크롤 위로 올라가도 남습니다. 페이지에 붙어 있던 이모지는 여기서
+      // 내려놓습니다: 두 가지를 한 자리에 놓으면 줄마다 다른 것이 서고,
+      // 목록을 훑는 눈은 그걸 '종류가 다른 줄'로 읽습니다.
+      id: `notion-${h.id}`, kind: 'notion', icon: 'notion', label: h.title,
       sub: h.parent,
       /**
        * 조각은 **찾았을 때만** 자리를 잡습니다.
@@ -614,7 +613,7 @@ export function CommandPalette() {
                         보입니다.
 
                         네 가지가 이 순서로 그려집니다. 앞의 것이 있으면
-                        뒤는 안 봅니다.
+                        뒤는 안 봅니다 — 한 줄에 표시는 하나입니다.
                       */}
                       {item.status ? <StatusMark status={item.status} size={14} />
                         : item.viewIcon ? <NavIcon view={item.viewIcon} size={16} />
@@ -624,7 +623,6 @@ export function CommandPalette() {
                             background: item.dot, display: 'block',
                           }} />
                         )
-                        : item.glyph ? <span>{item.glyph}</span>
                         : item.icon ? <Icon name={item.icon} size={15} />
                         : null}
                     </span>

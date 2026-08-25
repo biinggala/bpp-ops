@@ -29,6 +29,14 @@ export type IconName =
    */
   | 'doc' | 'sheet' | 'slide' | 'form' | 'pdf' | 'image' | 'video' | 'audio'
   | 'zip' | 'attach' | 'folder'
+  /**
+   * 노션의 N.
+   *
+   * 여기 하나만 **남의 상표**입니다. 나머지는 우리가 무엇을 뜻할지 정해서
+   * 그린 그림이고, 이건 '저쪽에서 왔다'는 표시라 저쪽이 정한 모양이어야
+   * 뜻이 섭니다 — 우리가 노션다운 무언가를 새로 그리면 아무 말도 안 됩니다.
+   */
+  | 'notion'
 
 /** The ones a single path can say. */
 const PATHS: Partial<Record<IconName, string>> = {
@@ -82,6 +90,14 @@ export function Icon({ name, size = 15, strokeWidth = 1.7 }: {
 
   const d = PATHS[name]
   if (d) return <svg {...common}><path d={d} /></svg>
+
+  /**
+   * 상표는 상표대로. 같은 24 격자에 얹되 선은 한 겹 두껍습니다 — 원래
+   * 로고가 굵고, 우리 굵기로 그리면 옆의 아이콘들 사이에서 혼자 흐려집니다.
+   */
+  if (name === 'notion') {
+    return <svg {...common} strokeWidth={2.1}><path d="M8 17.4V6.6l8 10.8V6.6" /></svg>
+  }
 
   if (name === 'users') {
     return (
