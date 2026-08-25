@@ -404,6 +404,24 @@ input, select, textarea, button {
 }
 .ProseMirror ul[data-type="taskList"] li > div { flex: 1; }
 
+/* ── 노트 줄의 × ──────────────────────────────────────────────────────────────
+   늘 켜져 있었습니다. 그 줄에서 제일 자주 하는 일은 상태를 바꾸거나 이름을
+   누르는 것인데, 매 줄 오른쪽 끝에 지우는 버튼이 서 있으면 목록을 훑을 때마다
+   그게 같이 읽힙니다 — 다섯 줄이면 다섯 개고, '지우기'가 다섯 번 보입니다.
+
+   왼쪽 손잡이(+ 와 점 여섯 개)는 이미 손이 그 줄에 왔을 때만 뜹니다. 오른쪽
+   끝도 같은 규칙이어야 한 줄이 한 가지로 행동합니다.
+
+   자리는 계속 차지합니다(opacity만 0) — 나타날 때 줄이 안 흔들립니다.
+
+   hover가 있는 기기에서만입니다. 폰에는 '손이 그 줄에 온' 상태가 없어서,
+   숨기면 영영 못 누릅니다. */
+@media (hover: hover) {
+  .bpp-rowx { opacity: 0; transition: opacity .1s; }
+  .bpp-noterow:hover .bpp-rowx,
+  .bpp-rowx:focus-visible { opacity: 1; }
+}
+
 /* Placeholder */
 .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);

@@ -141,12 +141,12 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
   // 지워진 업무. 줄을 조용히 없애 버리면 어제 세운 계획이 말없이 줄어듭니다.
   if (!task) {
     return (
-      <NodeViewWrapper as="div" contentEditable={false} style={ROW}>
+      <NodeViewWrapper as="div" contentEditable={false} className="bpp-noterow" style={ROW}>
         <span style={{ ...BOX, borderStyle: 'dashed' }} />
         <span style={{ fontSize: 14, color: 'var(--t3)', textDecoration: 'line-through' }}>
           삭제된 업무
         </span>
-        <button onClick={() => deleteNode()} style={REMOVE} aria-label="줄 지우기">×</button>
+        <button onClick={() => deleteNode()} className="bpp-rowx" style={REMOVE} aria-label="줄 지우기">×</button>
       </NodeViewWrapper>
     )
   }
@@ -215,6 +215,7 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
     <NodeViewWrapper
       as="div"
       contentEditable={false}
+      className="bpp-noterow"
       style={ROW}
       data-drag-handle
     >
@@ -303,7 +304,7 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
       )}
 
       {/* 노트에서 빼는 것과 업무를 지우는 건 다른 일입니다. 이건 앞의 것. */}
-      <button onClick={() => deleteNode()} title="오늘 목록에서 빼기" style={REMOVE}>×</button>
+      <button onClick={() => deleteNode()} title="오늘 목록에서 빼기" className="bpp-rowx" style={REMOVE}>×</button>
     </NodeViewWrapper>
   )
 }

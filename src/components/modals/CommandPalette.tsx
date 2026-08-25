@@ -670,10 +670,21 @@ export function CommandPalette() {
                         생기고, 목록을 훑는 손은 그 뺄셈을 안 합니다. */}
                     {item.due && item.status !== '완료' && <DueChip due={item.due} />}
 
-                    {/* 골라 놓은 줄에 붙는 ↵는 키보드가 있는 사람에게만
-                        뜻이 있습니다. 폰에서는 그냥 누르면 됩니다. */}
-                    {isSelected && !isMobile && (
-                      <kbd style={{ ...kbdStyle, opacity: .6, flexShrink: 0, marginLeft: 4 }}>↵</kbd>
+                    {/*
+                      골라 놓은 줄에 붙는 ↵는 키보드가 있는 사람에게만 뜻이
+                      있습니다. 폰에서는 그냥 누르면 됩니다.
+
+                      **자리는 늘 차지합니다**(안 골라진 줄은 투명). 나타날 때
+                      비로소 폭을 차지하면 그 줄의 오른쪽 내용이 전부 왼쪽으로
+                      밀립니다 — ↑↓로 훑는 동안 줄마다 글자가 움찔거렸고,
+                      그건 읽는 것을 방해합니다.
+                    */}
+                    {!isMobile && (
+                      <kbd style={{
+                        ...kbdStyle, flexShrink: 0, marginLeft: 4,
+                        opacity: isSelected ? .6 : 0,
+                        transition: 'opacity .08s',
+                      }}>↵</kbd>
                     )}
                   </div>
                 )

@@ -87,7 +87,7 @@ function FileRefView({ node, deleteNode }: NodeViewProps) {
   const gone = live === null
 
   return (
-    <NodeViewWrapper as="div" contentEditable={false} style={ROW} data-drag-handle>
+    <NodeViewWrapper as="div" contentEditable={false} className="bpp-noterow" style={ROW} data-drag-handle>
       {/* 업무 줄의 상태 표시와 같은 20px 칸. 폭이 정해져 있어야 줄마다 글
           시작점이 같습니다 — 이모지였을 때는 글꼴이 그 폭을 정했습니다. */}
       <span style={{
@@ -107,7 +107,7 @@ function FileRefView({ node, deleteNode }: NodeViewProps) {
       <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0 }}>
         {gone ? '접근 불가' : kind.label}
       </span>
-      <button onClick={() => deleteNode()} title="노트에서 빼기" style={REMOVE}>×</button>
+      <button onClick={() => deleteNode()} title="노트에서 빼기" className="bpp-rowx" style={REMOVE}>×</button>
     </NodeViewWrapper>
   )
 }
