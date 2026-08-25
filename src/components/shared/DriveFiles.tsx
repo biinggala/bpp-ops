@@ -228,7 +228,9 @@ export function FileRow({ link, file, onRemove, onNote, compact = false }: {
  * arrives it fills a box that was already the right size instead of shoving the
  * rest of the list down.
  */
-const SNIPPET_BOX: React.CSSProperties = {
+/** 본문 한 조각을 담는 상자. 커맨드 팔레트도 같은 것을 씁니다 — 같은 정보가
+ *  두 화면에서 다르게 생기면 사람은 그걸 다른 것으로 배웁니다. */
+export const SNIPPET_BOX: React.CSSProperties = {
   fontSize: 11, color: 'var(--t2)', marginTop: 3,
   lineHeight: 1.45, background: 'var(--bg2)', borderRadius: 4,
   padding: '3px 6px', overflow: 'hidden',

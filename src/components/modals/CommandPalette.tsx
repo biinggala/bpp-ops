@@ -10,7 +10,10 @@ import { useDriveStore } from '../../store/driveStore'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import { Icon } from '../shared/Icon'
-import { fileKind, driveUrl, type DriveSearchResult } from '../../lib/googleDrive'
+import { fileKind, driveUrl, type DriveSearchResult, type Snippet } from '../../lib/googleDrive'
+import { snippetKey } from '../../store/driveStore'
+import { SNIPPET_BOX } from '../shared/DriveFiles'
+import { NOTION } from '../../types'
 import { openExternal } from '../../lib/desktopLinks'
 import type { TaskLink, ViewType } from '../../types'
 import { useShallow } from 'zustand/react/shallow'
@@ -64,6 +67,10 @@ type Item = {
   label: string
   sub?: string
   hint?: string
+  /** 드라이브 문서의 본문 한 조각. 내용으로 걸린 결과에만 붙습니다. */
+  snippet?: Snippet | null
+  /** 그 조각을 아직 가져오는 중. null(영영 없음)과 구별해야 합니다. */
+  snippetLoading?: boolean
   accentColor?: string
   onSelect: () => void
 }
@@ -110,15 +117,31 @@ export function CommandPalette() {
   const [noteHits, setNoteHits] = useState<{ date: string; snippet: string }[]>([])
   const [driveHits, setDriveHits] = useState<DriveSearchResult[]>([])
   const driveConnected = useDriveStore(s => s.wasConnected && !s.needsReconnect)
+  /**
+   * 노트와 드라이브는 **나중에 옵니다.**
+   *
+   * 업무·프로젝트는 이미 손에 있어서 글자를 치는 즉시 걸러지지만, 저 둘은
+   * 물어보러 갑니다. 그 사이 화면이 '결과 없음'이라고 말하고 있었습니다 —
+   * 안 온 것을 없는 것으로 읽은 자리이고, 사람은 그 한 마디를 믿고 창을
+   * 닫습니다. 실제로는 잠시 뒤에 답이 왔고요.
+   */
+  const [notesBusy, setNotesBusy] = useState(false)
+  const [driveBusy, setDriveBusy] = useState(false)
+  const searching = notesBusy || driveBusy
+  const snippets = useDriveStore(s => s.snippets)
+  const snippetLoading = useDriveStore(s => s.snippetLoading)
 
   useEffect(() => { if (isCommandPaletteOpen) forgetNotes() }, [isCommandPaletteOpen])
 
   useEffect(() => {
     const q = query.trim()
-    if (!email || q.length < 2) { setNoteHits([]); return }
+    if (!email || q.length < 2) { setNoteHits([]); setNotesBusy(false); return }
     let alive = true
+    setNotesBusy(true)
     const timer = setTimeout(() => {
-      void searchNotes(email, q).then(hits => { if (alive) setNoteHits(hits) })
+      void searchNotes(email, q)
+        .then(hits => { if (alive) setNoteHits(hits) })
+        .finally(() => { if (alive) setNotesBusy(false) })
     }, 140)
     return () => { alive = false; clearTimeout(timer) }
   }, [query, email])
@@ -132,15 +155,30 @@ export function CommandPalette() {
    */
   useEffect(() => {
     const q = query.trim()
-    if (!driveConnected || q.length < 2) { setDriveHits([]); return }
+    if (!driveConnected || q.length < 2) { setDriveHits([]); setDriveBusy(false); return }
     let alive = true
+    setDriveBusy(true)
     const timer = setTimeout(() => {
       void useDriveStore.getState().search(q)
         .then(files => { if (alive) setDriveHits(files.slice(0, 6)) })
         .catch(() => { if (alive) setDriveHits([]) })
+        .finally(() => { if (alive) setDriveBusy(false) })
     }, 260)
     return () => { alive = false; clearTimeout(timer) }
   }, [query, driveConnected])
+
+  /**
+   * 내용으로 걸린 문서의 본문 한 조각.
+   *
+   * '내용에 있음'만으로는 눌러 볼지 말지를 못 정합니다 — 어디에, 무슨 문장에
+   * 있는지가 그 결정의 절반입니다. 자료 고르는 창이 이미 하고 있던 일이고,
+   * 같은 store 함수를 그대로 씁니다.
+   */
+  useEffect(() => {
+    const q = query.trim()
+    if (q.length < 2 || !driveHits.length) return
+    useDriveStore.getState().loadSnippets(driveHits, q)
+  }, [driveHits, query])
 
   /**
    * 업무와 프로젝트에 붙여 둔 링크들.
@@ -236,6 +274,8 @@ export function CommandPalette() {
       .forEach(f => result.push({
         id: `drive-${f.id}`, kind: 'drive', icon: fileKind(f.mimeType).icon, label: f.name,
         sub: f.contentMatch ? '내용에 있음' : fileKind(f.mimeType).label,
+        snippet: f.contentMatch ? snippets[snippetKey(f.id, q)] ?? null : null,
+        snippetLoading: !!f.contentMatch && !!snippetLoading[snippetKey(f.id, q)],
         onSelect: () => {
           void openExternal(f.webViewLink || driveUrl(f.id, f.mimeType))
           closeCommandPalette()
@@ -246,7 +286,7 @@ export function CommandPalette() {
     // 하나에서 나와야 합니다 — 둘이 따로 정해지면 엔터가 다른 줄을 엽니다.
     const rank = (k: Kind) => KINDS.findIndex(x => x.kind === k)
     return result.sort((a, b) => rank(a.kind) - rank(b.kind))
-  }, [query, tasks, spaces, projects, noteHits, driveHits, allLinks])
+  }, [query, tasks, spaces, projects, noteHits, driveHits, allLinks, snippets, snippetLoading])
 
   const execute = useCallback(() => {
     items[selectedIdx]?.onSelect()
@@ -355,9 +395,15 @@ export function CommandPalette() {
 
         {/* Result list */}
         <div ref={listRef} style={{ overflowY: 'auto', flex: 1, WebkitOverflowScrolling: 'touch', paddingBottom: isMobile ? 'env(safe-area-inset-bottom, 0px)' : 0 }}>
+          {/*
+            **아직 안 온 것과 없는 것을 구별합니다.** 노트와 드라이브는 물어보러
+            가는 사이 몇 백 밀리초가 비는데, 그동안 '결과 없음'이라고 말하면
+            사람은 그 한 마디를 믿고 창을 닫습니다.
+          */}
           {items.length === 0 && (
-            <div style={{ padding: '36px 16px', textAlign: 'center', fontSize: 13, color: 'var(--t3)' }}>
-              결과 없음
+            <div style={{ padding: '36px 16px', textAlign: 'center', fontSize: 13, color: 'var(--t3)' }}
+              className={searching ? 'bpp-snippet-loading' : undefined}>
+              {searching ? '찾는 중…' : '결과 없음'}
             </div>
           )}
 
@@ -369,6 +415,9 @@ export function CommandPalette() {
               {group.items.map((item, i) => {
                 const absIdx = group.startIdx + i
                 const isSelected = absIdx === selectedIdx
+                // 상자는 어느 쪽이든 자리를 잡습니다 — 글이 도착할 때 줄이
+                // 안 움직입니다.
+                const hasSnippet = !!item.snippet || !!item.snippetLoading
                 return (
                   <div
                     key={item.id}
@@ -376,7 +425,7 @@ export function CommandPalette() {
                     onClick={item.onSelect}
                     onMouseEnter={() => setSelectedIdx(absIdx)}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
+                      display: 'flex', alignItems: hasSnippet ? 'flex-start' : 'center', gap: 10,
                       // 손가락으로 누를 줄은 44pt 가까이 되어야 옆 줄이 안 눌립니다.
                       padding: isMobile ? '11px 14px' : '7px 16px',
                       cursor: 'pointer',
@@ -394,11 +443,26 @@ export function CommandPalette() {
                       {item.icon}
                     </span>
 
-                    <span style={{ fontSize: isMobile ? 15 : 13, color: 'var(--t1)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {item.label}
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: isMobile ? 15 : 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.label}
+                      </span>
+                      {hasSnippet && (
+                        <span style={{ ...SNIPPET_BOX, ...(item.snippet ? {} : { color: 'var(--t3)' }) }}
+                          className={item.snippet ? 'bpp-snippet' : 'bpp-snippet-loading'}
+                        >
+                          {item.snippet ? (
+                            <>
+                              {item.snippet.before}
+                              <mark style={{ background: NOTION.yellow.bg, color: NOTION.yellow.text, fontWeight: 600, padding: '0 1px', borderRadius: 2 }}>{item.snippet.match}</mark>
+                              {item.snippet.after}
+                            </>
+                          ) : '내용 불러오는 중…'}
+                        </span>
+                      )}
                     </span>
 
-                    {item.sub && (
+                    {item.sub && !hasSnippet && (
                       <span style={{ fontSize: isMobile ? 12 : 11, color: 'var(--t3)', flexShrink: 0, maxWidth: '40%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.sub}</span>
                     )}
 
