@@ -4,7 +4,7 @@ import { useUiStore } from '../../store/uiStore'
 import { useAuthStore } from '../../store/authStore'
 import { searchNotes, forgetNotes } from '../../lib/noteSearch'
 import { useTaskStore } from '../../store/taskStore'
-import { useProjectStore } from '../../store/projectStore'
+import { useVisibleProjects } from '../../hooks/useVisibleProjects'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { useDriveStore } from '../../store/driveStore'
 import { useNotionStore } from '../../store/notionStore'
@@ -146,8 +146,23 @@ export function CommandPalette() {
     openTaskModal, setView, setScreen, setProject, setDetailTaskId, openNote,
     openCalendar,
   } = useUiStore(useShallow(s => ({ isCommandPaletteOpen: s.isCommandPaletteOpen, closeCommandPalette: s.closeCommandPalette, openTaskModal: s.openTaskModal, setView: s.setView, setScreen: s.setScreen, setProject: s.setProject, setDetailTaskId: s.setDetailTaskId, openNote: s.openNote, openCalendar: s.openCalendar })))
-  const tasks = useTaskStore(s => s.tasks)
-  const projects = useProjectStore(s => s.projects)
+  /**
+   * ── 찾기도 지금 서 있는 워크스페이스 안에서 ────────────────────────────────
+   *
+   * 사이드바와 업무 목록은 갈랐는데 여기만 스토어를 직접 읽고 있었습니다.
+   * 그래서 전환해 놓고 ⌘K를 열면 다른 워크스페이스의 업무와 프로젝트가
+   * 그대로 나왔습니다 — 목록에서 사라진 것이 찾기에서는 나오면, 갈린 것이
+   * 아니라 **한 곳에서만 안 보이는 것**입니다.
+   *
+   * 보관한 프로젝트의 업무는 그대로 둡니다. 목록에서 내려가는 것과 찾을 수
+   * 없게 되는 것은 다른 일이고, 옛일을 다시 찾는 것이 찾기의 절반입니다.
+   */
+  const allTasks = useTaskStore(s => s.tasks)
+  const projects = useVisibleProjects()
+  const tasks = useMemo(() => {
+    const visible = new Set(projects.map(p => p.id))
+    return allTasks.filter(t => !t.projectId || visible.has(t.projectId))
+  }, [allTasks, projects])
   // 업무 줄이 '어디에 담겨 있는지'를 말하려면 필요합니다 — taskChain 참고.
   const milestones = useMilestoneStore(s => s.milestones)
 
