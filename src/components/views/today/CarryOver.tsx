@@ -32,6 +32,14 @@ interface Carryable {
   /** 화면에 보이는 말. 업무는 이름, 할 일은 그 줄의 글자. */
   label: string
   taskId?: string
+  /**
+   * 어느 프로젝트의 업무인가.
+   *
+   * 이름만 있으면 어제 적은 '수정 요청'이 어느 일인지 알 수가 없습니다 —
+   * 팔레트에 담긴 곳을 적어 준 것과 같은 이유입니다. 그리고 여기 선 것이
+   * 정말 지금 워크스페이스의 것인지도 이 줄이 답합니다.
+   */
+  project?: { name: string; color: string }
 }
 
 /** 노트에 사람이 적은 것이 하나라도 있는가. */
@@ -132,12 +140,24 @@ export function CarryOver({ editor }: { editor: Editor | null }) {
    */
   const items = useMemo(() => {
     if (!source) return []
-    const here = new Set(visibleProjects.map(p => p.id))
+    // 보관한 프로젝트는 뺍니다. 보관은 '전체 업무·내 할 일·통계에서 내려간다'는
+    // 뜻이고, 어제 못 끝낸 것도 그 셈의 하나입니다 — 한 곳만 예외로 두면
+    // 사이드바에서 내려간 일이 오늘 아침에 다시 올라옵니다.
+    const here = new Map(visibleProjects.filter(p => !p.archived).map(p => [p.id, p]))
     const byId = new Map(
       tasks.filter(t => !t.projectId || here.has(t.projectId)).map(t => [t.id, t]),
     )
     return parseCarryables(source.html, id => byId.get(id)?.status ?? null)
-      .map(it => it.kind === 'task' ? { ...it, label: byId.get(it.taskId!)?.name || '이름 없음' } : it)
+      .map(it => {
+        if (it.kind !== 'task') return it
+        const task = byId.get(it.taskId!)
+        const project = task?.projectId ? here.get(task.projectId) : undefined
+        return {
+          ...it,
+          label: task?.name || '이름 없음',
+          project: project ? { name: project.name, color: project.color } : undefined,
+        }
+      })
   }, [source, tasks, visibleProjects])
 
   const chosen = items.filter(it => !skipped.has(it.key))
@@ -208,6 +228,12 @@ export function CarryOver({ editor }: { editor: Editor | null }) {
           />
           <span style={{ color: 'var(--t3)', fontSize: 11, width: 10, flexShrink: 0 }}>{it.kind === 'task' ? '◆' : '○'}</span>
           <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.label}</span>
+          {it.project && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, fontSize: 11, color: 'var(--t3)', maxWidth: 120 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: it.project.color, flexShrink: 0 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.project.name}</span>
+            </span>
+          )}
         </label>
       ))}
       <button

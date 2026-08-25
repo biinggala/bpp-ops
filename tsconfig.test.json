@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "noEmit": false
   },
-  "include": ["src/lib/utils.ts", "src/types/index.ts", "src/lib/noteChecks.ts"]
+  "include": ["src/lib/utils.ts", "src/types/index.ts", "src/lib/noteChecks.ts", "src/lib/visibleProjects.ts"]
 }
