@@ -617,64 +617,97 @@ function ChimeRow() {
  * 길어질수록 관리자 목록이 스크롤 아래로 밀려서, 관리자가 누군지 보려면 방을
  * 다 지나가야 했습니다.
  */
+/**
+ * 워크스페이스를 만드는 자리.
+ *
+ * **첫 번째든 두 번째든 같은 화면입니다.** 예전에는 소속이 없을 때만 그렸는데,
+ * 그러면 하나가 생기는 순간 만드는 길이 사라집니다 — 전환은 있는데 만들 수가
+ * 없어서, 두 번째 워크스페이스가 생길 방법이 남의 초대뿐이었습니다.
+ */
+function MakeWorkspace({ email, myDomain, domainTaken }: {
+  email: string
+  myDomain: string
+  /** 내 도메인의 워크스페이스가 이미 있는가. 한 도메인에 하나뿐입니다. */
+  domainTaken: boolean
+}) {
+  const { createOrg, createInviteOrg, error } = useOrgStore(useShallow(s => ({
+    createOrg: s.createOrg, createInviteOrg: s.createInviteOrg, error: s.error,
+  })))
+  const [orgName, setOrgName] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  /*
+    만드는 방법이 둘이고, **나중에 못 바꿉니다** — 도메인은 한 번 정해지면 그
+    워크스페이스의 벽이라, 뒤늦게 붙이거나 떼면 이미 들어와 있는 사람의 소속이
+    통째로 흔들립니다. 그래서 고르는 자리에서 차이를 다 말해 줍니다.
+
+    회사 주소가 아닌 사람에게 도메인 쪽을 눌러 보게 두지 않습니다. 지메일로
+    만들면 이 앱을 쓰는 **모든 지메일 사용자**가 한 워크스페이스가 되는데,
+    그건 눌러 보고 알 일이 아닙니다.
+  */
+  const publicDomain = PUBLIC_DOMAINS.has(myDomain.toLowerCase())
+  const domainOff = publicDomain || domainTaken
+  const card: React.CSSProperties = {
+    flex: 1, minWidth: 0, textAlign: 'left', padding: '10px 12px',
+    border: '1px solid var(--bd)', borderRadius: 'var(--r2)', background: 'transparent',
+    cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 3,
+  }
+  const make = async (fn: () => Promise<boolean>) => {
+    setBusy(true)
+    if (await fn()) setOrgName('')
+    setBusy(false)
+  }
+
+  return (
+    <>
+      <input value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="워크스페이스 이름 (예: 블랙페이퍼)" style={{ ...INPUT, marginBottom: 8 }} />
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          onClick={() => make(() => createOrg(orgName, email))}
+          disabled={busy || !orgName.trim() || domainOff}
+          style={{ ...card, opacity: busy || !orgName.trim() || domainOff ? .45 : 1, cursor: domainOff ? 'not-allowed' : 'pointer' }}
+        >
+          <span style={{ fontSize: 13, color: 'var(--t1)', fontWeight: 600 }}>회사 도메인으로</span>
+          <span style={{ fontSize: 11, color: 'var(--t3)', wordBreak: 'keep-all' }}>
+            {publicDomain
+              ? `@${myDomain} 같은 개인 주소는 같은 회사를 뜻하지 않아서 쓸 수 없습니다.`
+              : domainTaken
+                ? `@${myDomain} 는 이미 워크스페이스가 있습니다. 한 도메인에 하나입니다.`
+                : `@${myDomain} 로 로그인한 사람은 초대 없이 들어옵니다.`}
+          </span>
+        </button>
+        <button
+          onClick={() => make(() => createInviteOrg(orgName, email))}
+          disabled={busy || !orgName.trim()}
+          style={{ ...card, opacity: busy || !orgName.trim() ? .45 : 1 }}
+        >
+          <span style={{ fontSize: 13, color: 'var(--t1)', fontWeight: 600 }}>초대로만</span>
+          <span style={{ fontSize: 11, color: 'var(--t3)', wordBreak: 'keep-all' }}>
+            도메인을 안 씁니다. 부른 사람만 들어옵니다. 개인 주소를 쓰는 팀이라면 이쪽입니다.
+          </span>
+        </button>
+      </div>
+      {busy && <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 6 }}>만드는 중…</div>}
+      {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6 }}>{error}</div>}
+    </>
+  )
+}
+
 function OrgSection() {
   const email = useAuthStore(s => s.email)
-  const { orgId, name, domain, admins, ready, createOrg, createInviteOrg, setAdmin, error } = useOrgStore(useShallow(s => ({ orgId: s.orgId, name: s.name, domain: s.domain, admins: s.admins, ready: s.ready, createOrg: s.createOrg, createInviteOrg: s.createInviteOrg, setAdmin: s.setAdmin, error: s.error })))
-  const [orgName, setOrgName] = useState('')
+  const { orgId, name, domain, admins, ready, setAdmin, error } = useOrgStore(useShallow(s => ({ orgId: s.orgId, name: s.name, domain: s.domain, admins: s.admins, ready: s.ready, setAdmin: s.setAdmin, error: s.error })))
   const [adminMail, setAdminMail] = useState('')
   const [busy, setBusy] = useState(false)
+  const [adding, setAdding] = useState(false)
   const myDomain = email?.split('@')[1] ?? ''
 
   if (!email) return null
   if (!ready) return <div style={{ fontSize: 12, color: 'var(--t3)' }}>불러오는 중…</div>
 
   if (!orgId) {
-    /*
-      만드는 방법이 둘입니다. 그리고 **나중에 못 바꿉니다** — 도메인은 한 번
-      정해지면 그 워크스페이스의 벽이라, 뒤늦게 붙이거나 떼면 이미 들어와 있는 사람의
-      소속이 통째로 흔들립니다. 그래서 고르는 자리에서 차이를 다 말해 줍니다.
-
-      회사 주소가 아닌 사람에게 도메인 쪽을 눌러 보게 두지 않습니다. 지메일로
-      워크스페이스를 만들면 이 앱을 쓰는 **모든 지메일 사용자**가 한 워크스페이스가 되는데,
-      그건 눌러 보고 알 일이 아닙니다.
-    */
-    const publicDomain = PUBLIC_DOMAINS.has(myDomain.toLowerCase())
-    const card: React.CSSProperties = {
-      flex: 1, minWidth: 0, textAlign: 'left', padding: '10px 12px',
-      border: '1px solid var(--bd)', borderRadius: 'var(--r2)', background: 'transparent',
-      cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 3,
-    }
-    const make = async (fn: () => Promise<boolean>) => { setBusy(true); await fn(); setBusy(false) }
-
     return (
       <Section title="워크스페이스" note="회의실과, 모두에게 공개한 프로젝트 목록을 함께 두는 단위입니다. 만든 사람이 첫 관리자가 됩니다. 만드는 방법은 나중에 바꿀 수 없습니다.">
-        <input value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="워크스페이스 이름 (예: 블랙페이퍼)" style={{ ...INPUT, marginBottom: 8 }} />
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button
-            onClick={() => make(() => createOrg(orgName, email))}
-            disabled={busy || !orgName.trim() || publicDomain}
-            style={{ ...card, opacity: busy || !orgName.trim() || publicDomain ? .45 : 1, cursor: publicDomain ? 'not-allowed' : 'pointer' }}
-          >
-            <span style={{ fontSize: 13, color: 'var(--t1)', fontWeight: 600 }}>회사 도메인으로</span>
-            <span style={{ fontSize: 11, color: 'var(--t3)', wordBreak: 'keep-all' }}>
-              {publicDomain
-                ? `@${myDomain} 같은 개인 주소는 같은 회사를 뜻하지 않아서 쓸 수 없습니다.`
-                : `@${myDomain} 로 로그인한 사람은 초대 없이 들어옵니다.`}
-            </span>
-          </button>
-          <button
-            onClick={() => make(() => createInviteOrg(orgName, email))}
-            disabled={busy || !orgName.trim()}
-            style={{ ...card, opacity: busy || !orgName.trim() ? .45 : 1 }}
-          >
-            <span style={{ fontSize: 13, color: 'var(--t1)', fontWeight: 600 }}>초대로만</span>
-            <span style={{ fontSize: 11, color: 'var(--t3)', wordBreak: 'keep-all' }}>
-              도메인을 안 씁니다. 부른 사람만 들어옵니다. 개인 주소를 쓰는 팀이라면 이쪽입니다.
-            </span>
-          </button>
-        </div>
-        {busy && <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 6 }}>만드는 중…</div>}
-        {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6 }}>{error}</div>}
+        <MakeWorkspace email={email} myDomain={myDomain} domainTaken={false} />
       </Section>
     )
   }
@@ -695,6 +728,31 @@ function OrgSection() {
           </span>
         </div>
       </Section>
+
+      {/*
+        ── 하나 더 만들기 ────────────────────────────────────────────────────
+        접어 둡니다. 대부분은 평생 한 번도 안 누르는 버튼이고, 펴 둔 채로
+        두면 '지금 이 워크스페이스'를 말해야 할 자리에서 그게 더 커 보입니다.
+      */}
+      {!adding ? (
+        <button
+          onClick={() => setAdding(true)}
+          style={{
+            alignSelf: 'flex-start', margin: '2px 0 4px', padding: 0,
+            border: 'none', background: 'transparent', cursor: 'pointer',
+            fontSize: 12, color: 'var(--t3)', fontFamily: 'var(--font)',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.color = 'var(--t1)' }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'var(--t3)' }}
+        >+ 새 워크스페이스 만들기</button>
+      ) : (
+        <Section
+          title="새 워크스페이스"
+          note="지금 있는 곳은 그대로 두고 하나 더 만듭니다. 만든 뒤에는 왼쪽 위 계정 사진을 눌러 오갑니다."
+        >
+          <MakeWorkspace email={email} myDomain={myDomain} domainTaken={!!domain && domain.toLowerCase() === myDomain.toLowerCase()} />
+        </Section>
+      )}
 
       {/*
         관리자가 아닌 사람에게도 **누가 관리자인지** 보여줍니다. 잠긴 버튼만

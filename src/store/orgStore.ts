@@ -516,6 +516,10 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       await fbSet(ref(db, P.orgAdmin(orgId, email)), true)
       // 마지막에 내 색인. 이 쓰기가 구독을 깨웁니다.
       await fbUpdate(ref(db, P.userOrgs(uid)), { [orgId]: Date.now() })
+      // 그리고 방금 만든 곳으로 들어갑니다. 안 그러면 이미 다른 워크스페이스에
+      // 있던 사람에게는 **아무 일도 안 일어난 것처럼** 보입니다 — 목록에만
+      // 한 줄이 늘고 화면은 그대로니까요.
+      usePrefsStore.getState().setActiveOrg(email, orgId)
       set({ error: null })
       return true
     } catch (e) {
@@ -562,6 +566,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
        */
       await fbSet(ref(db, P.orgAdmin(orgId, email)), true)
       await fbSet(ref(db, P.orgByDomain(email)), orgId)
+      usePrefsStore.getState().setActiveOrg(email, orgId)
       // orgId를 직접 넣지 않습니다. 색인을 보고 있으므로 이 쓰기가 그
       // 리스너를 깨우고, 거기서 meta와 회의실 구독까지 같이 붙습니다.
       // 손으로 넣으면 화면에는 조직이 있는데 아무도 안 듣는 상태가 됩니다.
