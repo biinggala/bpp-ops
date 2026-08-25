@@ -5,6 +5,7 @@ import { P, domainKey, emailKey } from '../lib/paths'
 import { gid } from '../lib/utils'
 import { useAuthStore } from './authStore'
 import { usePrefsStore } from './prefsStore'
+import { pickOrg } from '../lib/pickOrg'
 
 /**
  * ── 조직과 회의실 ────────────────────────────────────────────────────────────
@@ -264,8 +265,23 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     let fromDomain: string | null = null
     let fromIndex: string | null = null
     let current: string | null = null
-    /** 이 사람이 마지막으로 고른 곳. 개인 설정이라 userPrefs에 삽니다. */
+    /**
+     * 이 사람이 마지막으로 고른 곳. 개인 설정이라 userPrefs에 삽니다.
+     *
+     * **이 값도 데이터베이스에서 옵니다.** 여기서 한 번 읽는 순간에는 아직
+     * 안 와 있고, 그래서 처음 한 바퀴는 언제나 null입니다 — 그러면 아래
+     * `apply`가 도메인으로 찾은 곳(회사)에 붙었다가, 설정이 온 뒤에 진짜
+     * 고른 곳으로 옮겨 갑니다.
+     *
+     * 그 사이가 화면에 그대로 보였습니다. 새 워크스페이스에 서 있는 사람이
+     * 앱을 켜면 **회사 프로젝트가 한 번 떴다가 사라졌습니다.** 훅에서 아무리
+     * 걸러도 소용이 없습니다 — 그 순간에는 정말로 회사에 붙어 있었으니까요.
+     *
+     * 그래서 설정이 올 때까지 아무 데도 안 붙습니다. `prefsSeen`이 그 문입니다.
+     * (안 온 것을 없는 것으로 읽지 않기. 이번엔 여기였습니다.)
+     */
     let preferred: string | null = usePrefsStore.getState().activeOrg
+    let prefsSeen = usePrefsStore.getState().ready
     /**
      * 두 길이 **각자 한 번씩 대답한 뒤에야** '다 찾아봤다'가 됩니다.
      *
@@ -277,7 +293,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
      */
     let domainSeen = false
     let orgsSeen = false
-    const settle = () => { if (domainSeen && orgsSeen && !get().ready) set({ ready: true }) }
+    const settle = () => { if (domainSeen && orgsSeen && prefsSeen && !get().ready) set({ ready: true }) }
 
     /** 내 색인에 적힌 것들. 도메인으로 찾은 곳과 합쳐야 목록이 됩니다. */
     let indexIds: string[] = []
@@ -402,7 +418,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
        * (`oid !== fromDomain` 조항). 목록이 답이 되면 안전망은 두 번째 답이고,
        * 두 번째 답은 첫 답과 다를 때만 티가 납니다.
        */
-      const next = [preferred, fromDomain, fromIndex].find(o => o && ids.includes(o)) ?? null
+      const next = pickOrg({ preferred, prefsSeen, fromDomain, fromIndex, ids })
       if (next !== current) {
         current = next
         dropInner()
@@ -463,8 +479,9 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     // 설정을 통해 잇는 이유는, 그래야 폰에서 고른 것이 노트북에도 오기
     // 때문입니다 — 취향은 계정에 붙습니다.
     const unsubPrefs = usePrefsStore.subscribe(state => {
-      if (state.activeOrg === preferred) return
+      if (state.activeOrg === preferred && state.ready === prefsSeen) return
       preferred = state.activeOrg
+      prefsSeen = state.ready
       apply()
     })
 
