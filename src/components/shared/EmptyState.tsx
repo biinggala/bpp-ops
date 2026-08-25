@@ -35,10 +35,20 @@ export function ScopeEmpty() {
 
   const projectName = projectId ? projects.find(p => p.id === projectId)?.name : null
 
-  const { title, note } = narrowed
+  /**
+   * note는 글이 아니라 마크업입니다.
+   *
+   * '개인'의 안내는 두 마디입니다 — 무엇이 쌓이는 곳인가, 그리고 그걸 누가
+   * 보는가. 한 줄로 이어 놓으면 뒤 마디가 앞의 꼬리처럼 읽히고, 폭이 좁은
+   * 화면에서는 '있습 / 니다'로 끊겼습니다. 뜻이 갈리는 자리에서 줄을 바꿉니다.
+   */
+  const { title, note }: { title: string; note: React.ReactNode } = narrowed
     ? { title: '조건에 맞는 업무가 없습니다', note: '걸어 둔 필터를 풀면 다시 보입니다.' }
     : personalOnly
-    ? { title: '개인 업무가 없습니다', note: '프로젝트에 속하지 않은 업무가 여기 쌓입니다. 나만 볼 수 있습니다.' }
+    ? {
+        title: '개인 업무가 없습니다',
+        note: <>프로젝트에 속하지 않은 업무가 여기 쌓입니다.<br />나만 볼 수 있습니다.</>,
+      }
     : myTasksOnly
     ? { title: '나에게 온 업무가 없습니다', note: '담당자가 나로 지정된 업무가 여기 모입니다.' }
     : projectName
