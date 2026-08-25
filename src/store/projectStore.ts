@@ -9,6 +9,7 @@ import { useOrgStore } from './orgStore'
 import { claimGuestSeats, roleForDomain } from '../lib/roster'
 import { useUserProfileStore } from './userProfileStore'
 import type { Project } from '../types'
+import { reportProblem } from '../lib/notify'
 
 /**
  * A project is now a subtree: meta holds what the UI draws, members/$uid is what
@@ -115,13 +116,43 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     fbUpdate(ref(db, P.projectMeta(id)), payload).catch(e => console.warn('[project update]', e))
   },
 
+  /**
+   * ── 프로젝트를 지웁니다 ────────────────────────────────────────────────────
+   *
+   * **휴지통이 없습니다.** 업무 하나를 지우면 휴지통으로 가지만 프로젝트는
+   * 통째로 사라집니다 — 그래서 만든 사람과 워크스페이스 관리자만 할 수 있고,
+   * 규칙이 그걸 지킵니다.
+   *
+   * 순서가 있습니다. 워크스페이스 공개 목록에서 **먼저** 내립니다 — 그 목록을
+   * 고치려면 내가 이 프로젝트의 멤버여야 하는데, 프로젝트를 먼저 지우면
+   * 확인할 명단이 없어져서 이름만 목록에 남습니다. 없는 프로젝트에 참여를
+   * 요청하는 화면이 그렇게 생깁니다.
+   */
   deleteProject: (id) => {
     const uid = useAuthStore.getState().uid
-    set({ projects: get().projects.filter(p => p.id !== id) })
-    fbRemove(ref(db, P.project(id))).catch(e => console.warn('[project delete]', e))
-    // Other members keep a dangling index entry; their client drops it when the
-    // project reads back empty.
-    if (uid) fbRemove(ref(db, P.userProject(uid, id))).catch(() => {})
+    const before = get().projects
+    const project = before.find(p => p.id === id)
+    set({ projects: before.filter(p => p.id !== id) })
+
+    void (async () => {
+      if (project?.orgId) {
+        await fbRemove(ref(db, P.orgProject(project.orgId, id)))
+          .catch(e => console.warn('[project delete] 공개 목록', e))
+      }
+      try {
+        await fbRemove(ref(db, P.project(id)))
+      } catch (e) {
+        // 규칙이 거절했습니다. 화면에서만 사라지고 데이터는 그대로면,
+        // 다음에 켤 때 되살아나서 지운 적이 없는 것처럼 보입니다.
+        set({ projects: before })
+        console.warn('[project delete]', e)
+        reportProblem('프로젝트를 지우지 못했습니다 — 만든 사람과 워크스페이스 관리자만 지울 수 있습니다.')
+        return
+      }
+      // Other members keep a dangling index entry; their client drops it when the
+      // project reads back empty.
+      if (uid) await fbRemove(ref(db, P.userProject(uid, id))).catch(() => {})
+    })()
   },
 
   addMember: (projectId, email) => {

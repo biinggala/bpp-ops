@@ -296,6 +296,16 @@ function report(message: string) {
 }
 
 /**
+ * 알림 말고 다른 곳에서도 한 줄 띄워야 할 때.
+ *
+ * 토스트를 띄우는 길이 여기 하나뿐입니다. 조용히 실패하면 안 되는 일 —
+ * 이를테면 규칙이 거절한 삭제 — 도 같은 길로 나갑니다.
+ */
+export function reportProblem(message: string) {
+  report(message)
+}
+
+/**
  * One line for a run of notices rather than one per person.
  *
  * A single edit can reach three assignees, and three toasts in a row for one

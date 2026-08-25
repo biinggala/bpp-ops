@@ -386,3 +386,84 @@ test('만든 사람이 안 적힌 옛 워크스페이스는 예전대로 둔다'
   })
   await assertSucceeds(set(ref(authed(BOB), `orgs/${oid}/admins/${key(BOB.email)}`), true))
 })
+
+// ── 프로젝트 삭제 ────────────────────────────────────────────────────────────
+//
+// 업무 하나를 지우면 휴지통으로 가지만 프로젝트는 통째로 사라집니다. 휴지통이
+// 없습니다. 그런데 멤버면 누구나 지울 수 있었습니다 - 초대 링크로 어제 들어온
+// 사람도요.
+//
+// 이제 만든 사람과 그 워크스페이스의 관리자만 지웁니다. 지우는 것 말고
+// 나머지(업무 고치기, 멤버 넣기)는 멤버 전부 그대로입니다.
+
+const PROJ = (extra = {}) => ({
+  meta: { id: 'del', name: '지울 프로젝트', color: '#000', inviteCode: INVITE, ...extra },
+  members: { [ALICE.uid]: INVITE, [BOB.uid]: INVITE },
+  tasks: { t1: { id: 't1', name: '업무', status: '대기' } },
+})
+
+const seed = async (project, extra) => {
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, 'projects/del'), project)
+    if (extra) await extra(db)
+  })
+}
+
+test('만든 사람은 지운다', async () => {
+  await seed(PROJ({ creatorEmail: ALICE.email }))
+  await assertSucceeds(remove(ref(authed(ALICE), 'projects/del')))
+})
+
+test('그냥 멤버는 못 지운다', async () => {
+  await seed(PROJ({ creatorEmail: ALICE.email }))
+  await assertFails(remove(ref(authed(BOB), 'projects/del')))
+  // 지우는 것만 막습니다. 하던 일은 그대로 합니다.
+  await assertSucceeds(set(ref(authed(BOB), 'projects/del/tasks/t1/status'), '완료'))
+})
+
+test('워크스페이스 관리자는 지운다', async () => {
+  const oid = 'dom5'
+  await seed(PROJ({ creatorEmail: ALICE.email, orgId: oid }), async db => {
+    await set(ref(db, `orgs/${oid}/meta`), { name: '블랙페이퍼', domain: 'bpp.co.kr' })
+    await set(ref(db, `orgs/${oid}/members/${key(ALICE.email)}`), { role: 'member', at: 1 })
+    await set(ref(db, `orgs/${oid}/members/${key(BOB.email)}`), { role: 'member', at: 1 })
+    await set(ref(db, `orgs/${oid}/admins/${key(BOB.email)}`), true)
+  })
+  await assertSucceeds(remove(ref(authed(BOB), 'projects/del')))
+})
+
+test('다른 워크스페이스의 관리자는 못 지운다', async () => {
+  const mine = 'dom6'
+  const other = 'dom7'
+  await seed(PROJ({ creatorEmail: ALICE.email, orgId: mine }), async db => {
+    for (const oid of [mine, other]) {
+      await set(ref(db, `orgs/${oid}/meta`), { name: '블랙페이퍼', domain: 'bpp.co.kr' })
+      await set(ref(db, `orgs/${oid}/members/${key(ALICE.email)}`), { role: 'member', at: 1 })
+      await set(ref(db, `orgs/${oid}/members/${key(BOB.email)}`), { role: 'member', at: 1 })
+    }
+    // 밥은 **다른** 워크스페이스의 관리자입니다.
+    await set(ref(db, `orgs/${other}/admins/${key(BOB.email)}`), true)
+  })
+  await assertFails(remove(ref(authed(BOB), 'projects/del')))
+})
+
+test('만든 사람이 안 적혀 있으면 명단 첫 사람', async () => {
+  // 옛 프로젝트에는 creatorEmail이 없습니다. 화면이 쓰는 것과 같은 기준입니다.
+  await seed(PROJ({ memberEmails: [ALICE.email, BOB.email] }))
+  await assertFails(remove(ref(authed(BOB), 'projects/del')))
+  await assertSucceeds(remove(ref(authed(ALICE), 'projects/del')))
+})
+
+test('근거가 아무것도 없는 옛 프로젝트는 예전대로 둔다', async () => {
+  // creatorEmail도 memberEmails도 소속도 없는 것들이 실제로 있습니다.
+  // 여기서 조이면 아무도 못 지우는 프로젝트가 영영 남습니다.
+  await seed(PROJ())
+  await assertSucceeds(remove(ref(authed(BOB), 'projects/del')))
+})
+
+test('멤버가 아니면 여전히 아무것도 못 한다', async () => {
+  await seed(PROJ({ creatorEmail: ALICE.email }))
+  await assertFails(remove(ref(authed(MALLORY), 'projects/del')))
+  await assertFails(get(ref(authed(MALLORY), 'projects/del')))
+})

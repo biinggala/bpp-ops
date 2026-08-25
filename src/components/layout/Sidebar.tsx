@@ -123,6 +123,7 @@ export function Sidebar() {
   const orgId = useOrgStore(s => s.orgId)
   const setProjectShared = useOrgStore(s => s.setProjectShared)
   const orgProjects = useOrgStore(s => s.orgProjects)
+  const orgAdmins = useOrgStore(s => s.admins)
   const joinRequests = useOrgStore(s => s.joinRequests)
   const sharedProjectIds = useMemo(() => new Set(orgProjects.map(p => p.id)), [orgProjects])
   const pendingJoins = useMemo(
@@ -281,6 +282,39 @@ export function Sidebar() {
     if (p.creatorEmail) return p.creatorEmail.toLowerCase() === email.toLowerCase()
     return p.memberEmails?.[0]?.toLowerCase() === email.toLowerCase()
   }
+
+  /**
+   * ── 지울 수 있는 사람 ──────────────────────────────────────────────────────
+   *
+   * 업무 하나를 지우면 휴지통으로 가지만 **프로젝트는 통째로 사라집니다.**
+   * 그런데 멤버면 누구나 지울 수 있었습니다 — 초대 링크로 어제 들어온
+   * 사람도요.
+   *
+   * 만든 사람, 그리고 그 프로젝트가 속한 워크스페이스의 관리자입니다.
+   * '그 프로젝트가 속한'이 중요합니다 — 내가 다른 곳의 관리자인 것은
+   * 여기서 아무 말도 안 합니다.
+   *
+   * 막는 것은 규칙입니다. 여기서는 눌러 봤자 안 되는 것을 안 보여 줄 뿐이고,
+   * 그래서 둘이 같은 말을 해야 합니다.
+   */
+  const canDeleteProject = (id: string): boolean => {
+    if (isProjectCreator(id)) return true
+    const p = projects.find(pj => pj.id === id)
+    if (!p?.orgId || !email) return false
+    if (p.orgId !== orgId) return false
+    return orgAdmins.some(a => a.toLowerCase() === email.toLowerCase())
+  }
+
+  const deleteItem = (id: string, name: string) => canDeleteProject(id) ? (
+    <>
+      {/* 되돌릴 수 없는 것 앞에는 한 칸 더 둡니다. 붙어 있으면 손이
+          미끄러지는 거리가 그만큼 짧아집니다. */}
+      <div style={{ height: 1, background: 'var(--bd)', margin: '5px 6px' }} />
+      <ContextMenuItem icon="trash" danger onClick={() => { setDeleteConfirm({ id, name }); setContextMenu(null) }}>
+        삭제
+      </ContextMenuItem>
+    </>
+  ) : null
 
   const handleLeaveProject = async (id: string) => {
     if (!email) return
@@ -973,7 +1007,7 @@ export function Sidebar() {
         <div
           style={{
             position: 'fixed',
-            ...menuPlace(contextMenu.x, contextMenu.y, isProjectCreator(contextMenu.id) ? 8 : 4),
+            ...menuPlace(contextMenu.x, contextMenu.y, isProjectCreator(contextMenu.id) ? 8 : canDeleteProject(contextMenu.id) ? 5 : 4),
             zIndex: 9999,
             background: 'var(--bg)',
             border: '1px solid var(--bd)',
@@ -1006,12 +1040,7 @@ export function Sidebar() {
               </ContextMenuItem>
               <div style={{ height: 1, background: 'var(--bd)', margin: '4px -4px' }} />
               {orgShareItem(contextMenu.id)}
-              {/* 되돌릴 수 없는 것 앞에는 한 칸 더 둡니다. 붙어 있으면 손이
-                  미끄러지는 거리가 그만큼 짧아집니다. */}
-              <div style={{ height: 1, background: 'var(--bd)', margin: '5px 6px' }} />
-              <ContextMenuItem icon="trash" danger onClick={() => { setDeleteConfirm({ id: contextMenu.id, name: contextMenu.name }); setContextMenu(null) }}>
-                삭제
-              </ContextMenuItem>
+              {deleteItem(contextMenu.id, contextMenu.name)}
             </>
           ) : (
             <>
@@ -1020,6 +1049,7 @@ export function Sidebar() {
               <ContextMenuItem icon="exit" danger onClick={() => handleLeaveProject(contextMenu.id)}>
                 나가기
               </ContextMenuItem>
+              {deleteItem(contextMenu.id, contextMenu.name)}
             </>
           )}
         </div>
