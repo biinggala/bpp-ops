@@ -5,6 +5,7 @@ import { useUiStore } from '../../store/uiStore'
 import { useTaskStore } from '../../store/taskStore'
 import { useAuthStore } from '../../store/authStore'
 import { useProjectStore } from '../../store/projectStore'
+import { useVisibleProjects } from '../../hooks/useVisibleProjects'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { usePresenceStore } from '../../store/presenceStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
@@ -314,7 +315,14 @@ export function Sidebar() {
   const userName = displayName ?? null
   const presences = usePresenceStore(s => s.presences)
 
-  const accessibleProjects = projects
+  /**
+   * 사이드바에 서는 것은 **지금 서 있는 워크스페이스의 것만**입니다.
+   *
+   * 전환 단추를 만들어 놓고 목록을 안 갈랐더니, 워크스페이스를 바꿔도
+   * 프로젝트가 그대로여서 전환이 이름표만 바꾸는 단추로 보였습니다.
+   * 무엇이 숨고 무엇이 남는지는 useVisibleProjects에 적어 두었습니다.
+   */
+  const accessibleProjects = useVisibleProjects()
   const visibleProjects = accessibleProjects.filter(p => !p.archived)
   const archivedProjects = accessibleProjects.filter(p => p.archived)
 

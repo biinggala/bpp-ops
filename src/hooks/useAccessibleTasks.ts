@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useTaskStore } from '../store/taskStore'
 import { useAuthStore } from '../store/authStore'
-import { useProjectStore } from '../store/projectStore'
+import { useVisibleProjects } from './useVisibleProjects'
 import { useUiStore } from '../store/uiStore'
 import type { Task } from '../types'
 
@@ -10,7 +10,10 @@ import type { Task } from '../types'
 export function useAccessibleTasks(): Task[] {
   const tasks = useTaskStore(s => s.tasks)
   const email = useAuthStore(s => s.email)
-  const projects = useProjectStore(s => s.projects)
+  // 필터 메뉴가 내놓는 후보도 지금 서 있는 워크스페이스의 것만입니다 —
+  // 안 그러면 다른 곳의 태그와 담당자가 메뉴에 서고, 고르면 빈 목록이
+  // 나옵니다. 이 훅의 원래 취지(고를 수 있는 것만 내놓기)와 같습니다.
+  const projects = useVisibleProjects()
   const projectId = useUiStore(s => s.projectId)
 
   return useMemo(() => {

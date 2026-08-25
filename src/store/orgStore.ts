@@ -147,7 +147,7 @@ interface OrgState {
   setAdmin: (email: string, on: boolean) => Promise<boolean>
 
   /** 프로젝트를 조직 목록에 올리거나 내립니다. 그 프로젝트 멤버만. */
-  setProjectShared: (project: { id: string; name: string; color?: string }, on: boolean) => Promise<boolean>
+  setProjectShared: (project: { id: string; name: string; color?: string; orgId?: string }, on: boolean) => Promise<boolean>
   /** 이름이 바뀌면 사본도 맞춥니다. 목록에 없으면 아무 일도 안 합니다. */
   syncProjectName: (projectId: string, name: string) => void
   /** 참여를 요청합니다. */
@@ -619,6 +619,23 @@ export const useOrgStore = create<OrgState>((set, get) => ({
   setProjectShared: async (project, on) => {
     const { orgId, admins: _a } = get()
     if (!orgId) return false
+    /**
+     * **자기 워크스페이스에만 공개합니다.**
+     *
+     * 여기서 쓰던 `orgId`는 '지금 서 있는 곳'입니다. 워크스페이스가 하나일
+     * 때는 그게 곧 그 프로젝트의 곳이었는데, 둘이 되는 순간 아닙니다 —
+     * B에 서서 블랙페이퍼 프로젝트를 공개하면 그 **이름이 B의 공개 목록에**
+     * 올라갑니다. 내용은 여전히 프로젝트 멤버만 보지만, 이름도 말을 합니다.
+     *
+     * 옮겨 붙이는 대신 거절합니다. 어느 목록에 올리는지 안 보이는 채로
+     * 올라가는 것보다, 그쪽으로 가서 누르는 편이 무슨 일이 일어나는지
+     * 분명합니다. (소속이 없는 프로젝트는 지금 서 있는 곳에 올립니다 —
+     * 올릴 다른 곳이 없습니다.)
+     */
+    if (project.orgId && project.orgId !== orgId) {
+      set({ error: '다른 워크스페이스의 프로젝트입니다. 그쪽으로 전환한 뒤에 공개해 주세요.' })
+      return false
+    }
     try {
       if (on) {
         await fbSet(ref(db, P.orgProject(orgId, project.id)), {

@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useTaskStore } from '../store/taskStore'
 import { useUiStore } from '../store/uiStore'
 import { useAuthStore } from '../store/authStore'
-import { useProjectStore } from '../store/projectStore'
+import { useVisibleProjects } from './useVisibleProjects'
 import { assigneeAliases, parseAssignees, isAssignedTo } from '../lib/utils'
 import type { Task } from '../types'
 import { useShallow } from 'zustand/react/shallow'
@@ -11,10 +11,13 @@ export function useFilteredTasks(): Task[] {
   const tasks = useTaskStore(s => s.tasks)
   const { projectId, myTasksOnly, personalOnly, hideCompleted, filters } = useUiStore(useShallow(s => ({ projectId: s.projectId, myTasksOnly: s.myTasksOnly, personalOnly: s.personalOnly, hideCompleted: s.hideCompleted, filters: s.filters })))
   const email = useAuthStore(s => s.email)
-  const projects = useProjectStore(s => s.projects)
+  // 지금 서 있는 워크스페이스의 것만. 다른 곳의 업무가 '전체 업무'에
+  // 섞이면 전환이 아무것도 안 가른 것이 됩니다.
+  const projects = useVisibleProjects()
 
   return useMemo(() => {
-    // 구독 자체가 내가 멤버인 프로젝트로 한정되므로, 스토어에 있는 것은 전부 접근 가능하다.
+    // 구독 자체가 내가 멤버인 프로젝트로 한정되고, 여기서 한 겹 더 —
+    // 지금 서 있는 워크스페이스의 것만 남습니다.
     const accessibleIds = new Set(projects.map(p => p.id))
     // Tasks without a projectId are shown only if the user is the creator or assignee,
     // never to unrelated users just because they happen to have any project access.
