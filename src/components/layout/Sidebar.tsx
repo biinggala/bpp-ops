@@ -809,6 +809,7 @@ export function Sidebar() {
                       daysInfo={daysInfo}
                       projectId={p.id}
                       inviteCode={p.inviteCode}
+                      shared={sharedProjectIds.has(p.id)}
                       indented={!!shelf.name}
                       dragging={dragging === p.id}
                       dropAt={dropAt?.id === p.id ? (dropAt.below ? 'below' : 'above') : null}
@@ -1300,10 +1301,23 @@ function GroupHeader({ name, count, collapsed, onToggle, onRename, onDropProject
 }
 
 function ProjectItem({
-  children, active, dot, overdue, daysInfo, projectId, inviteCode, dimmed, indented,
+  children, active, dot, overdue, daysInfo, projectId, inviteCode, dimmed, indented, shared,
   dragging, dropAt, onDragStart, onDragEnd, onDragOver, onDrop, onClick, onContextMenu,
 }: {
   children: React.ReactNode; active: boolean; dot: string
+  /**
+   * 이름이 워크스페이스 목록에 올라 있는가.
+   *
+   * '공개'와 '내리기'를 눌러도 화면이 아무 말도 안 했습니다 — 메뉴 글자만
+   * 바뀌고, 그건 다시 우클릭해야 보입니다. 누른 결과가 안 보이면 사람은
+   * 눌렸는지를 모릅니다.
+   *
+   * **자물쇠가 아니라 사람입니다.** 안 올린 프로젝트가 잠긴 것이 아닙니다 —
+   * 둘 다 그 프로젝트의 멤버만 열 수 있고, 다른 점은 이름이 워크스페이스
+   * 목록에 서느냐뿐입니다. 자물쇠를 그리면 '올리면 남이 볼 수 있다'는 뜻이
+   * 되는데, 그건 참이 아닙니다.
+   */
+  shared?: boolean
   /** Tasks past their due date. Nothing is drawn at zero. */
   overdue: number
   daysInfo: { days: number; overdue: boolean } | null
@@ -1379,6 +1393,14 @@ function ProjectItem({
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flexShrink: 0, opacity: dimmed ? .5 : 1 }} />
       )}
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
+      {shared && (
+        <span
+          title="워크스페이스 목록에 이름이 올라 있습니다 — 멤버가 참여를 요청할 수 있습니다"
+          style={{ display: 'flex', flexShrink: 0, color: 'var(--sb-t3)', opacity: .8 }}
+        >
+          <Icon name="users" size={12} />
+        </span>
+      )}
 
       {hovered && inviteCode ? (
         <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
