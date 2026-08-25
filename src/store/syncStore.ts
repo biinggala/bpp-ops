@@ -17,9 +17,8 @@ import { P } from '../lib/paths'
 import { useProjectStore } from './projectStore'
 import { useTaskStore } from './taskStore'
 import { useMilestoneStore } from './milestoneStore'
-import { useSpaceStore } from './spaceStore'
 import { useUserProfileStore } from './userProfileStore'
-import type { Milestone, Project, Space, Task } from '../types'
+import type { Milestone, Project, Task } from '../types'
 
 interface ProjectNode {
   meta?: Partial<Project>
@@ -281,17 +280,11 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         })
       : null
 
-    const spacesRef = ref(db, 'spaces')
-    const spacesHandler = onValue(spacesRef, snap => {
-      useSpaceStore.getState().applyRemote(values<Space>(snap.val()))
-    })
-
     return () => {
       stopped = true
       clearTimeout(deadline)
       off(indexRef, 'value', indexHandler)
       off(personalRef, 'value', personalHandler)
-      off(spacesRef, 'value', spacesHandler)
       if (inviteRef && inviteHandler) off(inviteRef, 'value', inviteHandler)
       for (const stop of projectListeners.values()) stop()
       for (const stop of profileListeners.values()) stop()

@@ -3,17 +3,11 @@ export type Status = '진행중' | '대기' | '검토중' | '완료'
 export type Priority = '높음' | '중간' | '낮음'
 export type ViewType = 't' | 'b' | 'c' | 'g' | 's' | 'f'
 
-// Category는 이제 동적 — Space의 name 값
+/** 업무에 적히는 분류 이름. 지금은 부모에게서 물려받는 것 말고는 안 붙습니다. */
 export type Category = string
 
 /** How much time the calendar shows at once. */
 export type CalRange = 1 | 3 | 7 | 'month'
-
-export interface Space {
-  id: string
-  name: string
-  color: string   // hex or css color for dot
-}
 
 export interface Project {
   id: string
@@ -217,17 +211,12 @@ export function statusAccent(status: Status): string {
 
 // Notion's icon-strength colours: saturated enough to identify a dot at 8px,
 // still from the same family as the badge tints so nothing clashes.
-export const SPACE_PALETTE = [
-  '#337EA9','var(--danger)','#448361','#CB912F','#9065B0',
-  '#9F6B53','#C14C8A','#787774','#D9730D','#2383E2',
-]
-
 export const PROJECT_PALETTE = [
   '#2383E2','#9065B0','#448361','var(--danger)','#D9730D',
   '#337EA9','#C14C8A','#CB912F','#9F6B53','#787774',
 ]
 
-// Space 이름으로 배지 색상 생성 (해시 기반)
+// 분류 이름으로 배지 색상 생성 (해시 기반)
 export function getCatColor(spaceName: string): { bg: string; text: string } {
   const presets: Record<string, { bg: string; text: string }> = {
     Strategy:       NOTION.yellow,

@@ -144,15 +144,27 @@ test('authStore: 로그인할 때 자기 프로필을 쓴다', async () => {
   await assertFails(set(ref(as(BOB), `userProfiles/${ALICE.uid}`), { email: ALICE.email, name: '변조' }))
 })
 
-test('presenceStore와 spaceStore의 쓰기가 통과한다', async () => {
+test('presenceStore의 쓰기가 통과한다', async () => {
   const db = as(ALICE)
   await assertSucceeds(set(ref(db, `presence/${ALICE.uid}`), { who: ALICE.uid, name: '앨리스', online: true, lastSeen: 1, currentTask: null }))
+})
 
-  // spaces는 50명이 함께 쓰는 목록이라 '여기 속한 사람'만 씁니다 — 프로젝트가
-  // 하나라도 있어야 합니다. 앱에서 이 쓰기를 하는 사람은 언제나 그렇습니다.
-  await assertFails(set(ref(db, 'spaces/s1'), { id: 's1', name: 'Production', color: '#ef4444' }))
+/**
+ * spaces는 워크스페이스가 하나였던 시절의 전역 목록입니다. 만드는 버튼이
+ * 사라진 뒤로 아무도 못 만드는데 규칙만 남아 있었고, 그 조건이 '프로젝트가
+ * 하나라도 있나'였습니다 — 낯선 사람이 로그인해서 자기 프로젝트를 하나
+ * 만들면(그건 누구나 됩니다) 회사의 스페이스 목록을 읽고 지울 수 있었습니다.
+ *
+ * 프로젝트가 있는 멀쩡한 멤버로 확인합니다. 이 사람조차 못 열어야 닫힌 것입니다.
+ */
+test('spaces는 프로젝트가 있는 멤버도 못 읽는다', async () => {
   await testEnv.withSecurityRulesDisabled(async ctx => {
-    await set(ref(ctx.database(), `userIndex/${ALICE.uid}/projects/p0`), true)
+    const db = ctx.database()
+    await set(ref(db, `userIndex/${ALICE.uid}/projects/p0`), true)
+    await set(ref(db, 'spaces/s1'), { id: 's1', name: 'Production', color: '#ef4444' })
   })
-  await assertSucceeds(set(ref(db, 'spaces/s1'), { id: 's1', name: 'Production', color: '#ef4444' }))
+  const db = as(ALICE)
+  await assertFails(get(ref(db, 'spaces')))
+  await assertFails(get(ref(db, 'spaces/s1')))
+  await assertFails(set(ref(db, 'spaces/s2'), { id: 's2', name: '새 스페이스', color: '#000' }))
 })

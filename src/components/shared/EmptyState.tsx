@@ -1,5 +1,4 @@
 import { useUiStore } from '../../store/uiStore'
-import { useSpaceStore } from '../../store/spaceStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -84,10 +83,19 @@ export function ScopeEmpty() {
   )
 }
 
+/**
+ * ── 아무것도 없는 첫날 ───────────────────────────────────────────────────────
+ *
+ * 두 갈래였습니다: 스페이스가 없으면 '스페이스부터 만드세요', 있으면 '업무를
+ * 추가하세요'. 그런데 **스페이스를 만드는 버튼은 이미 없어졌습니다** —
+ * 프로젝트와 그룹이 그 일을 하게 되면서 사이드바에서 내려갔고, 이 안내만
+ * 남아서 없는 버튼을 누르라고 말하고 있었습니다.
+ *
+ * 갈래를 없앴습니다. 처음 온 사람이 할 일은 하나입니다 — 업무를 하나 만드는
+ * 것. 프로젝트는 그 뒤에 필요해지면 사이드바에서 만듭니다.
+ */
 export function EmptyState() {
   const { openTaskModal } = useUiStore(useShallow(s => ({ openTaskModal: s.openTaskModal })))
-  const { spaces } = useSpaceStore()
-  const hasSpaces = spaces.length > 0
 
   return (
     <div style={{
@@ -102,28 +110,6 @@ export function EmptyState() {
     }}>
       <div style={{ fontSize: 56, userSelect: 'none', lineHeight: 1 }}>📋</div>
 
-      {!hasSpaces ? (
-        <>
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--t1)', marginBottom: 10 }}>
-              시작해볼까요?
-            </div>
-            <div style={{ fontSize: 14, color: 'var(--t3)', lineHeight: 1.7, maxWidth: 340 }}>
-              왼쪽 사이드바에서 <strong style={{ color: 'var(--t2)' }}>스페이스</strong>를 먼저 만들어보세요.<br />
-              스페이스는 팀의 업무 카테고리입니다.
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Step n={1} label="사이드바 하단 '스페이스 추가' 클릭" />
-            <Arrow />
-            <Step n={2} label="스페이스 이름 입력" />
-            <Arrow />
-            <Step n={3} label="업무 추가로 시작" />
-          </div>
-        </>
-      ) : (
-        <>
           <div>
             <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--t1)', marginBottom: 10 }}>
               업무가 없어요
@@ -165,30 +151,7 @@ export function EmptyState() {
             </svg>
             업무 추가
           </button>
-        </>
-      )}
     </div>
   )
 }
 
-function Step({ n, label }: { n: number; label: string }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-      <div style={{
-        width: 32, height: 32, borderRadius: '50%',
-        background: 'rgba(35,131,226,.1)', color: 'var(--ac)',
-        fontSize: 14, fontWeight: 700,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        {n}
-      </div>
-      <div style={{ fontSize: 12, color: 'var(--t3)', maxWidth: 110, lineHeight: 1.5 }}>{label}</div>
-    </div>
-  )
-}
-
-function Arrow() {
-  return (
-    <div style={{ color: 'var(--bd2)', fontSize: 20, marginBottom: 20, flexShrink: 0 }}>→</div>
-  )
-}

@@ -58,8 +58,8 @@
       }
     },
     "spaces": {
-      ".read": "auth != null && auth.token.email != null && auth.token.email_verified == true && root.child('userIndex/' + auth.uid + '/projects').exists()",
-      ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && root.child('userIndex/' + auth.uid + '/projects').exists()"
+      ".read": false,
+      ".write": false
     },
     "orgs": {
       "$org": {

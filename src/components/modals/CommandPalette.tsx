@@ -4,7 +4,6 @@ import { useUiStore } from '../../store/uiStore'
 import { useAuthStore } from '../../store/authStore'
 import { searchNotes, forgetNotes } from '../../lib/noteSearch'
 import { useTaskStore } from '../../store/taskStore'
-import { useSpaceStore } from '../../store/spaceStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { useDriveStore } from '../../store/driveStore'
@@ -60,7 +59,6 @@ const KINDS = [
   { kind: 'action',  label: '빠른 실행' },
   { kind: 'task',    label: '업무' },
   { kind: 'project', label: '프로젝트' },
-  { kind: 'space',   label: '스페이스' },
   { kind: 'link',    label: '붙여 둔 자료' },
   { kind: 'note',    label: '데일리 노트' },
   { kind: 'drive',   label: '드라이브' },
@@ -78,8 +76,8 @@ type Item = {
    * **드로잉**(`icon`) — 앱이 그린 아이콘. 같은 24 격자, 같은 굵기라 목록이
    * 한 가족으로 읽힙니다. 이게 기본입니다.
    *
-   * **점**(`dot`) — 프로젝트와 스페이스. 사이드바에서 그 둘을 알아보는
-   * 방법이 색점이고, 여기서만 다른 모양을 쓰면 같은 것을 두 번 배웁니다.
+   * **점**(`dot`) — 프로젝트. 사이드바가 프로젝트를 알아보는 방법이
+   * 색점이고, 여기서만 다른 모양을 쓰면 같은 것을 두 번 배웁니다.
    *
    * **상태**(`status`) — 업무. 목록·보드·노트가 쓰는 그 표시입니다.
    */
@@ -145,11 +143,10 @@ function taskChain(
 export function CommandPalette() {
   const {
     isCommandPaletteOpen, closeCommandPalette,
-    openTaskModal, setView, setScreen, setSpace, setProject, setDetailTaskId, openNote,
+    openTaskModal, setView, setScreen, setProject, setDetailTaskId, openNote,
     openCalendar,
-  } = useUiStore(useShallow(s => ({ isCommandPaletteOpen: s.isCommandPaletteOpen, closeCommandPalette: s.closeCommandPalette, openTaskModal: s.openTaskModal, setView: s.setView, setScreen: s.setScreen, setSpace: s.setSpace, setProject: s.setProject, setDetailTaskId: s.setDetailTaskId, openNote: s.openNote, openCalendar: s.openCalendar })))
+  } = useUiStore(useShallow(s => ({ isCommandPaletteOpen: s.isCommandPaletteOpen, closeCommandPalette: s.closeCommandPalette, openTaskModal: s.openTaskModal, setView: s.setView, setScreen: s.setScreen, setProject: s.setProject, setDetailTaskId: s.setDetailTaskId, openNote: s.openNote, openCalendar: s.openCalendar })))
   const tasks = useTaskStore(s => s.tasks)
-  const spaces = useSpaceStore(s => s.spaces)
   const projects = useProjectStore(s => s.projects)
   // 업무 줄이 '어디에 담겨 있는지'를 말하려면 필요합니다 — taskChain 참고.
   const milestones = useMilestoneStore(s => s.milestones)
@@ -346,15 +343,6 @@ export function CommandPalette() {
         onSelect: () => { setDetailTaskId(t.id); closeCommandPalette() },
       }))
 
-    spaces
-      .filter(s => fuzzy(s.name, q))
-      .forEach(s => result.push({
-        // 사이드바가 스페이스와 프로젝트를 알아보는 방법이 색점입니다.
-        id: s.id, kind: 'space', dot: s.color, label: s.name, hint: '스페이스로 이동',
-        accentColor: s.color,
-        onSelect: () => { setSpace(s.name); closeCommandPalette() },
-      }))
-
     projects
       .filter(p => fuzzy(p.name, q))
       .forEach(p => result.push({
@@ -451,7 +439,7 @@ export function CommandPalette() {
     // 하나에서 나와야 합니다 — 둘이 따로 정해지면 엔터가 다른 줄을 엽니다.
     const rank = (k: Kind) => KINDS.findIndex(x => x.kind === k)
     return result.sort((a, b) => rank(a.kind) - rank(b.kind))
-  }, [query, tasks, spaces, projects, noteHits, driveHits, notionHits, allLinks, snippets, snippetLoading, notionSnips])
+  }, [query, tasks, projects, noteHits, driveHits, notionHits, allLinks, snippets, snippetLoading, notionSnips])
 
   const execute = useCallback(() => {
     items[selectedIdx]?.onSelect()
