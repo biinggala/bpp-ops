@@ -227,3 +227,91 @@ test('개인 업무의 휴지통은 본인만 연다', async () => {
   await assertFails(get(ref(authed(BOB), `personalTrash/${ALICE.uid}`)))
   await assertFails(set(ref(authed(BOB), `personalTrash/${ALICE.uid}/pt2`), item))
 })
+
+/* ── 워크스페이스 만들기 ─────────────────────────────────────────────────────
+ *
+ * 규칙에 조직 테스트가 하나도 없었습니다. 그래서 초대형 워크스페이스를 아무도
+ * 못 만드는 상태로 배포됐습니다 — 관리자 조항이 `$mail.endsWith('@' + 도메인)`을
+ * 요구하는데 초대형에는 도메인이 없어서, `null.replace(...)`가 되어 그 줄이
+ * 언제나 거짓이었습니다. 화면에는 PERMISSION_DENIED 한 줄만 떴고요.
+ *
+ * 그래서 여기서는 조건을 흉내 내지 않고 **orgStore.createInviteOrg가 실제로
+ * 쓰는 네 줄을 그 순서 그대로** 씁니다. 한 줄이라도 막히면 사람도 못 만듭니다.
+ */
+
+const GMAIL = { uid: 'gm', email: 'someone@gmail.com' }
+const key = e => e.toLowerCase().replace(/\./g, ',')
+
+test('도메인 없는 워크스페이스를 끝까지 만들 수 있다', async () => {
+  const db = authed(GMAIL)
+  const oid = 'inv1'
+  const me = key(GMAIL.email)
+
+  // 1. meta — 규칙이 owner를 여기서 읽으므로 이게 먼저입니다.
+  await assertSucceeds(set(ref(db, `orgs/${oid}/meta`), {
+    name: '팀플', owner: me, createdBy: GMAIL.email, createdAt: 1,
+  }))
+  // 2. 내 명단 행
+  await assertSucceeds(set(ref(db, `orgs/${oid}/members/${me}`), { role: 'member', at: 1 }))
+  // 3. 관리자 — 여기가 막혀 있었습니다
+  await assertSucceeds(set(ref(db, `orgs/${oid}/admins/${me}`), true))
+  // 4. 내 색인. 이 조직을 찾는 유일한 길이라 빠지면 자기도 못 찾습니다.
+  await assertSucceeds(set(ref(db, `userOrgs/${GMAIL.uid}/${oid}`), 1))
+
+  // 만들었으면 읽혀야 합니다 — 회의실까지.
+  await assertSucceeds(get(ref(db, `orgs/${oid}/meta`)))
+  await assertSucceeds(get(ref(db, `orgs/${oid}/rooms`)))
+  await assertSucceeds(set(ref(db, `orgs/${oid}/rooms/r1`), { name: '큰 방', order: 0 }))
+})
+
+test('도메인 없는 워크스페이스에서 명단 밖 사람은 관리자가 못 된다', async () => {
+  const db = authed(GMAIL)
+  const oid = 'inv2'
+  const me = key(GMAIL.email)
+  await assertSucceeds(set(ref(db, `orgs/${oid}/meta`), { name: '팀플', owner: me, createdAt: 1 }))
+  await assertSucceeds(set(ref(db, `orgs/${oid}/members/${me}`), { role: 'member', at: 1 }))
+  await assertSucceeds(set(ref(db, `orgs/${oid}/admins/${me}`), true))
+
+  // 경계가 도메인에서 명단으로 바뀐 것이지 없어진 것이 아닙니다.
+  await assertFails(set(ref(db, `orgs/${oid}/admins/${key(MALLORY.email)}`), true))
+
+  // 게스트도 안 됩니다 — 관리자는 멤버 중에서만.
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), `orgs/${oid}/members/${key(MALLORY.email)}`), { role: 'guest', at: 1 })
+  })
+  await assertFails(set(ref(db, `orgs/${oid}/admins/${key(MALLORY.email)}`), true))
+})
+
+test('도메인형에서는 여전히 그 도메인 주소만 관리자가 된다', async () => {
+  const oid = 'dom1'
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), { name: '블랙페이퍼', domain: 'bpp.co.kr' })
+    await set(ref(db, `orgs/${oid}/members/${key(ALICE.email)}`), { role: 'member', at: 1 })
+    await set(ref(db, `orgs/${oid}/admins/${key(ALICE.email)}`), true)
+  })
+  const db = authed(ALICE)
+  await assertSucceeds(set(ref(db, `orgs/${oid}/admins/${key(BOB.email)}`), true))
+  // 도메인 밖 주소는 관리자로 못 세웁니다. 초대형을 열어 주면서 이쪽이
+  // 같이 열리면 안 됩니다 — 도메인이 곧 그 워크스페이스의 벽입니다.
+  await assertFails(set(ref(db, `orgs/${oid}/admins/${key(MALLORY.email)}`), true))
+})
+
+/**
+ * 남의 워크스페이스에 게스트로 들어가 있는 사람.
+ *
+ * 화면 쪽 버그(orgStore.apply의 안전망)가 이 사람을 남의 조직에 붙였고, 그때
+ * 붉은 권한 오류가 떴습니다. 규칙이 막는 것 자체는 맞습니다 — 그걸 못 박아
+ * 둡니다. 화면이 애초에 안 붙는 것이 고친 내용이고요.
+ */
+test('게스트는 그 워크스페이스의 회의실을 못 읽는다', async () => {
+  const oid = 'dom2'
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), { name: '블랙페이퍼', domain: 'bpp.co.kr' })
+    await set(ref(db, `orgs/${oid}/members/${key(MALLORY.email)}`), { role: 'guest', at: 1 })
+    await set(ref(db, `orgs/${oid}/rooms/r1`), { name: '큰 방' })
+    await set(ref(db, `userOrgs/${MALLORY.uid}/${oid}`), 1)
+  })
+  await assertFails(get(ref(authed(MALLORY), `orgs/${oid}/rooms`)))
+})

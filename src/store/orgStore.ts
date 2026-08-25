@@ -380,11 +380,29 @@ export const useOrgStore = create<OrgState>((set, get) => ({
        * 오는 대로 다시 판단합니다.
        */
       const ids = get().myOrgs.map(o => o.id)
-      const pick = [preferred, fromDomain, fromIndex].find(o => o && ids.includes(o))
-      // 목록이 비었는데 도메인으로 찾은 곳이 있으면 거기 붙습니다. 규칙도
-      // 도메인을 예비 근거로 인정하므로 읽을 수 있고, 무엇보다 **목록이 못
-      // 만들어졌다는 이유로 자기 회사에서 쫓겨나면 안 됩니다.**
-      const next = pick ?? (ids.length === 0 ? fromDomain : null)
+      /**
+       * ── 안전망을 걷어냈습니다 ──────────────────────────────────────────────
+       *
+       * 여기 이런 줄이 있었습니다:
+       *
+       *     next = pick ?? (ids.length === 0 ? fromDomain : null)
+       *
+       * '목록이 못 만들어졌다는 이유로 자기 회사에서 쫓겨나면 안 된다'는
+       * 뜻이었는데, **목록이 아직 안 온 것과 목록이 빈 것을 구별하지
+       * 못했습니다.** 목록은 비동기로 만들어지므로 처음 한 바퀴는 언제나
+       * 비어 있고, 그래서 이 줄은 늘 켜졌습니다 — 멤버인지 한 번도 안 묻고
+       * 도메인 색인이 가리키는 곳에 붙었습니다.
+       *
+       * 개인 지메일로 로그인하면 그 자리에서 남의 워크스페이스에 붙었다가
+       * 회의실을 못 읽고 붉은 오류를 봤습니다. 자기 것도 아닌 곳의 권한
+       * 오류를요. (안 온 것을 없는 것으로 읽지 않기 — 또 여기입니다.)
+       *
+       * 걷어내도 잃는 것이 없습니다. 지키려던 경우 — 도메인은 맞는데 명단에
+       * 아직 행이 없는 첫 로그인 — 는 `myOrgsFrom`이 이미 통과시킵니다
+       * (`oid !== fromDomain` 조항). 목록이 답이 되면 안전망은 두 번째 답이고,
+       * 두 번째 답은 첫 답과 다를 때만 티가 납니다.
+       */
+      const next = [preferred, fromDomain, fromIndex].find(o => o && ids.includes(o)) ?? null
       if (next !== current) {
         current = next
         dropInner()
@@ -697,9 +715,26 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     const { orgId, domain, admins } = get()
     if (!orgId) return false
     const address = email.trim().toLowerCase()
-    if (!address.endsWith(`@${domain.toLowerCase()}`)) {
-      set({ error: `${domain} 주소만 관리자가 될 수 있습니다` })
-      return false
+    /**
+     * 도메인형에서는 우리 도메인 주소만 관리자가 됩니다 — 도메인이 곧 경계라
+     * 밖의 주소를 세우면 경계가 뚫립니다.
+     *
+     * **초대형에는 도메인이 없습니다.** 그런데 이 검사가 `@` 하나로 끝나는
+     * 문자열을 찾고 있어서 아무 주소도 통과하지 못했고, 오류 문구도 '  주소만
+     * 관리자가 될 수 있습니다'로 앞이 빈 채 떴습니다. 그쪽의 경계는 도메인이
+     * 아니라 **명단**이라, 명단에 있는 사람인지를 대신 봅니다.
+     */
+    if (domain) {
+      if (!address.endsWith(`@${domain.toLowerCase()}`)) {
+        set({ error: `${domain} 주소만 관리자가 될 수 있습니다` })
+        return false
+      }
+    } else {
+      const row = await fbGet(ref(db, P.orgMember(orgId, address))).catch(() => null)
+      if ((row?.val() as { role?: string } | null)?.role !== 'member') {
+        set({ error: '이 워크스페이스의 멤버만 관리자가 될 수 있습니다' })
+        return false
+      }
     }
     /**
      * 마지막 관리자는 스스로 못 나갑니다.
