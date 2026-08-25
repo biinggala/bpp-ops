@@ -20,6 +20,7 @@ import { askConfirm } from '../shared/Confirm'
 import { showTestNotice } from '../layout/NoticeToast'
 import { Icon, type IconName } from '../shared/Icon'
 import { useShallow } from 'zustand/react/shallow'
+import { isComposing } from '../../lib/utils'
 
 /**
  * ── 설정 ─────────────────────────────────────────────────────────────────────
@@ -864,7 +865,151 @@ function OrgSection() {
         )}
         {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6, lineHeight: 1.5 }}>{error}</div>}
       </Section>
+
+      <DangerZone orgId={orgId} name={name || myDomain} email={email} isAdmin={isAdmin} adminCount={admins.length} />
     </>
+  )
+}
+
+/**
+ * ── 위험한 칸 ────────────────────────────────────────────────────────────────
+ *
+ * 두 가지가 여기 있는데, **무게가 다릅니다.**
+ *
+ *   나가기  나 하나에게만 일어납니다. 되돌리려면 누가 다시 불러야 하지만,
+ *           남의 데이터는 그대로입니다. 한 번 묻고 끝냅니다.
+ *   삭제    모두에게, 그리고 영영입니다. 이름을 정확히 쳐야 열립니다 —
+ *           프로젝트 삭제와 같은 문턱이고, 같은 무게의 일이니 같은 문턱이어야
+ *           합니다.
+ *
+ * 접혀 있습니다. 펴 둔 채로 두면 설정을 훑는 눈에 붉은 글자가 계속 걸리고,
+ * 그러면 그게 평범한 줄이 됩니다. 위험한 것은 찾아가서 눌러야 합니다.
+ */
+function DangerZone({ orgId, name, email, isAdmin, adminCount }: {
+  orgId: string; name: string; email: string; isAdmin: boolean; adminCount: number
+}) {
+  const { leaveOrg, deleteOrg } = useOrgStore(useShallow(s => ({ leaveOrg: s.leaveOrg, deleteOrg: s.deleteOrg })))
+  const uid = useAuthStore(s => s.uid)
+  const [open, setOpen] = useState(false)
+  const [typed, setTyped] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+
+  // 관리자가 나 혼자면 나갈 수 없습니다. 나가는 순간 회의실도 명단도 아무도
+  // 못 고치는 워크스페이스가 남습니다 — 남은 사람들에게 떠넘기는 일입니다.
+  const lastAdmin = isAdmin && adminCount <= 1
+
+  const leave = async () => {
+    if (!uid) return
+    const ok = await askConfirm({
+      message: `'${name}'에서 나가시겠어요?`,
+      detail: '이 워크스페이스의 프로젝트가 안 보이게 됩니다. 다시 들어오려면 관리자가 불러야 합니다.',
+      confirmLabel: '나가기',
+    })
+    if (!ok) return
+    setBusy(true)
+    const done = await leaveOrg(orgId, email, uid)
+    setBusy(false)
+    if (!done) setProblem('나가지 못했습니다. 잠시 뒤에 다시 시도해 주세요.')
+  }
+
+  const wipe = async () => {
+    if (!uid || typed !== name) return
+    setBusy(true)
+    const result = await deleteOrg(orgId, email, uid)
+    setBusy(false)
+    setTyped('')
+    if (result.ok) return
+    if (result.remaining > 0) {
+      setProblem(`이 워크스페이스에 프로젝트가 ${result.remaining}개 남아 있습니다. 먼저 지우거나 다른 곳으로 옮겨 주세요.`)
+      return
+    }
+    setProblem(result.error ?? '워크스페이스를 지우지 못했습니다.')
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        style={{
+          alignSelf: 'flex-start', margin: '10px 0 0', padding: 0,
+          border: 'none', background: 'transparent', cursor: 'pointer',
+          fontSize: 12, color: 'var(--t3)', fontFamily: 'var(--font)',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)' }}
+        onMouseLeave={e => { e.currentTarget.style.color = 'var(--t3)' }}
+      >워크스페이스 나가기 · 삭제</button>
+    )
+  }
+
+  return (
+    <div style={{
+      marginTop: 14, border: '1px solid var(--danger)', borderRadius: 'var(--r2)',
+      padding: '14px 14px 16px', display: 'flex', flexDirection: 'column', gap: 4,
+    }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--danger)' }}>위험</div>
+      <div style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1.6, marginBottom: 6 }}>
+        아래 둘은 되돌릴 수 없습니다.
+      </div>
+
+      <div style={{ ...ROW, alignItems: 'center' }}>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+          이 워크스페이스에서 나가기
+          <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2, lineHeight: 1.5 }}>
+            {lastAdmin
+              ? '관리자가 나 혼자입니다. 다른 사람을 관리자로 세운 뒤에 나갈 수 있습니다.'
+              : '여기 프로젝트가 안 보이게 됩니다. 남의 것은 그대로입니다.'}
+          </span>
+        </span>
+        <button
+          onClick={() => void leave()}
+          disabled={busy || lastAdmin}
+          style={{
+            ...navBtn, padding: '4px 12px', fontSize: 12, flexShrink: 0,
+            borderColor: 'var(--danger)', color: 'var(--danger)',
+            opacity: busy || lastAdmin ? .4 : 1,
+            cursor: busy || lastAdmin ? 'default' : 'pointer',
+          }}
+        >나가기</button>
+      </div>
+
+      {isAdmin && (
+        <div style={{ ...ROW, flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+          <span style={{ fontSize: 13, color: 'var(--t1)' }}>
+            워크스페이스 삭제
+            <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2, lineHeight: 1.5 }}>
+              모두에게서 사라집니다. 회의실과 예약, 공개 목록이 같이 없어집니다.
+              {' '}<b style={{ color: 'var(--t2)' }}>프로젝트가 하나라도 남아 있으면 지울 수 없습니다</b> —
+              워크스페이스가 없어지면 그 프로젝트를 아무도 못 읽게 되기 때문입니다.
+            </span>
+          </span>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              value={typed}
+              onChange={e => setTyped(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e) && typed === name) void wipe() }}
+              placeholder={`지우려면 '${name}' 입력`}
+              style={INPUT}
+            />
+            <button
+              onClick={() => void wipe()}
+              disabled={busy || typed !== name}
+              style={{
+                ...navBtn, padding: '4px 12px', fontSize: 12, flexShrink: 0,
+                borderColor: typed === name ? 'var(--danger)' : 'var(--bd)',
+                color: typed === name ? 'var(--danger)' : 'var(--t3)',
+                opacity: busy ? .4 : 1,
+                cursor: busy || typed !== name ? 'default' : 'pointer',
+              }}
+            >삭제</button>
+          </div>
+        </div>
+      )}
+
+      {problem && (
+        <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 8, lineHeight: 1.6 }}>{problem}</div>
+      )}
+    </div>
   )
 }
 

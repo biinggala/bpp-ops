@@ -467,3 +467,164 @@ test('멤버가 아니면 여전히 아무것도 못 한다', async () => {
   await assertFails(remove(ref(authed(MALLORY), 'projects/del')))
   await assertFails(get(ref(authed(MALLORY), 'projects/del')))
 })
+
+// ── 워크스페이스에서 나가기 ──────────────────────────────────────────────────
+//
+// 나가는 길이 아예 없었습니다. 자기 명단 줄은 **만들 수만** 있고 고칠 수는
+// 없었거든요(!data.exists()).
+//
+// 지우지 않고 'removed'로 덮습니다. 도메인형에서 줄을 지우면 '명단에 없고
+// 도메인이 맞으면 통과' 조항이 그 자리에서 다시 넣어 줍니다 - 나간 것이
+// 아니라 한 바퀴 돈 것이 됩니다. 비석이 필요합니다.
+
+const org = async (oid, meta, rows = {}) => {
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), meta)
+    for (const [mail, row] of Object.entries(rows)) {
+      await set(ref(db, `orgs/${oid}/members/${key(mail)}`), row)
+    }
+  })
+}
+
+test('스스로 나갈 수 있다', async () => {
+  await org('w1', { name: 'W', domain: 'bpp.co.kr' }, { [ALICE.email]: { role: 'member', at: 1 } })
+  await assertSucceeds(set(ref(authed(ALICE), `orgs/w1/members/${key(ALICE.email)}`), { role: 'removed', at: 2 }))
+})
+
+test('나간 뒤에는 그 워크스페이스를 못 읽는다', async () => {
+  await org('w2', { name: 'W', domain: 'bpp.co.kr' }, { [ALICE.email]: { role: 'removed', at: 2 } })
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), 'orgs/w2/rooms/r1'), { name: '큰 방' })
+  })
+  // 도메인이 맞아도 안 됩니다. 비석이 도메인 조항보다 앞섭니다.
+  await assertFails(get(ref(authed(ALICE), 'orgs/w2/rooms')))
+})
+
+test('남을 대신 내보낼 수는 없다', async () => {
+  await org('w3', { name: 'W', domain: 'bpp.co.kr' }, {
+    [ALICE.email]: { role: 'member', at: 1 },
+    [BOB.email]: { role: 'member', at: 1 },
+  })
+  await assertFails(set(ref(authed(ALICE), `orgs/w3/members/${key(BOB.email)}`), { role: 'removed', at: 2 }))
+})
+
+test('나가면서 자기를 관리자로 올릴 수는 없다', async () => {
+  await org('w4', { name: 'W', domain: 'bpp.co.kr' }, { [ALICE.email]: { role: 'member', at: 1 } })
+  // role이 'removed'가 아니면 이 갈래를 못 씁니다.
+  await assertFails(set(ref(authed(ALICE), `orgs/w4/members/${key(ALICE.email)}`), { role: 'member', at: 2, by: 'x' }))
+})
+
+// ── 없어진 프로젝트의 장부 줄 ────────────────────────────────────────────────
+//
+// orgs/{}/owns 는 넣기만 되고 빼기가 안 됐습니다. 프로젝트를 지워도 줄이
+// 남아서, 이 장부는 '지금 이 워크스페이스에 뭐가 있나'에 답을 못 했습니다.
+// 워크스페이스 삭제를 안전하게 막으려면 그 답이 정확해야 합니다.
+
+test('프로젝트가 없어진 뒤에만 장부에서 뺄 수 있다', async () => {
+  await org('w5', { name: 'W', domain: 'bpp.co.kr' }, { [ALICE.email]: { role: 'member', at: 1 } })
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, 'orgs/w5/owns/p1'), true)
+    await set(ref(db, 'projects/p1'), {
+      meta: { id: 'p1', name: 'P', color: '#000', inviteCode: INVITE, orgId: 'w5' },
+      members: { [ALICE.uid]: INVITE },
+    })
+  })
+  // 살아 있는 프로젝트는 장부에서 못 뺍니다 — 그러면 삭제 문이 거짓으로 열립니다.
+  await assertFails(remove(ref(authed(ALICE), 'orgs/w5/owns/p1')))
+  await testEnv.withSecurityRulesDisabled(async ctx => { await remove(ref(ctx.database(), 'projects/p1')) })
+  await assertSucceeds(remove(ref(authed(ALICE), 'orgs/w5/owns/p1')))
+})
+
+// ── 워크스페이스 지우기 ──────────────────────────────────────────────────────
+//
+// **워크스페이스 노드가 사라지면 그 소속 프로젝트를 아무도 영영 못 읽습니다.**
+// 규칙이 프로젝트의 소속을 보고 그 워크스페이스의 명단을 찾는데, 찾을 곳이
+// 없어지니까요. 도장은 한 번 찍히면 다른 값으로 못 바꿉니다.
+//
+// 그래서 프로젝트가 하나라도 남아 있으면 못 지웁니다. 이건 불편이 아니라
+// 되돌릴 수 없는 일을 막는 문입니다.
+
+test('워크스페이스 노드가 사라지면 그 프로젝트가 잠긴다', async () => {
+  // 이 사실이 아래 모든 조건의 이유입니다. 여기서 초록불이면 나머지는
+  // 지나친 조심이 아닙니다.
+  await org('w6', { name: 'W', domain: 'bpp.co.kr' }, { [ALICE.email]: { role: 'member', at: 1 } })
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, 'projects/locked'), {
+      meta: { id: 'locked', name: 'P', color: '#000', inviteCode: INVITE, orgId: 'w6' },
+      members: { [ALICE.uid]: INVITE },
+    })
+  })
+  await assertSucceeds(get(ref(authed(ALICE), 'projects/locked')))
+  await testEnv.withSecurityRulesDisabled(async ctx => { await remove(ref(ctx.database(), 'orgs/w6')) })
+  await assertFails(get(ref(authed(ALICE), 'projects/locked')))
+})
+
+test('프로젝트가 남아 있으면 못 지운다', async () => {
+  await org('w7', { name: 'W', domain: 'bpp.co.kr' }, { [ALICE.email]: { role: 'member', at: 1 } })
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/w7/admins/${key(ALICE.email)}`), true)
+    await set(ref(db, 'orgs/w7/owns/p1'), true)
+  })
+  await assertFails(remove(ref(authed(ALICE), 'orgs/w7')))
+})
+
+test('공개 목록에 이름이 남아 있어도 못 지운다', async () => {
+  await org('w8', { name: 'W', domain: 'bpp.co.kr' }, { [ALICE.email]: { role: 'member', at: 1 } })
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/w8/admins/${key(ALICE.email)}`), true)
+    await set(ref(db, 'orgs/w8/projects/p1'), { id: 'p1', name: 'P' })
+  })
+  await assertFails(remove(ref(authed(ALICE), 'orgs/w8')))
+})
+
+test('비어 있으면 관리자가 지운다', async () => {
+  await org('w9', { name: 'W', domain: 'bpp.co.kr' }, { [ALICE.email]: { role: 'member', at: 1 } })
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), `orgs/w9/admins/${key(ALICE.email)}`), true)
+    await set(ref(ctx.database(), 'orgs/w9/rooms/r1'), { name: '큰 방' })
+  })
+  await assertSucceeds(remove(ref(authed(ALICE), 'orgs/w9')))
+})
+
+test('관리자가 아니면 못 지운다', async () => {
+  await org('w10', { name: 'W', domain: 'bpp.co.kr' }, {
+    [ALICE.email]: { role: 'member', at: 1 },
+    [BOB.email]: { role: 'member', at: 1 },
+  })
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), `orgs/w10/admins/${key(ALICE.email)}`), true)
+  })
+  await assertFails(remove(ref(authed(BOB), 'orgs/w10')))
+})
+
+test('지우는 것 말고는 이 자리가 열리지 않는다', async () => {
+  // 여기에 쓰기를 열면 그 아래 모든 칸이 같이 열립니다 — 명단도 관리자도요.
+  await org('w11', { name: 'W', domain: 'bpp.co.kr' }, { [ALICE.email]: { role: 'member', at: 1 } })
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), `orgs/w11/admins/${key(ALICE.email)}`), true)
+  })
+  // 관리자여도 통째로는 못 씁니다. 지우는 것만 열려 있습니다.
+  await assertFails(set(ref(authed(ALICE), 'orgs/w11'), { meta: { name: '통째로' } }))
+  // 관리자가 명단을 고치는 것은 원래 되는 일입니다(그쪽 규칙). 여기서 연
+  // 문이 그것까지 넓히지 않았는지만 봅니다 — 관리자가 아닌 사람으로.
+  await assertFails(set(ref(authed(BOB), 'orgs/w11'), null))
+  await assertFails(set(ref(authed(MALLORY), 'orgs/w11'), null))
+})
+
+test('도메인 색인은 그 워크스페이스의 관리자만 지운다', async () => {
+  await org('w12', { name: 'W', domain: 'bpp.co.kr' }, {
+    [ALICE.email]: { role: 'member', at: 1 },
+    [BOB.email]: { role: 'member', at: 1 },
+  })
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), `orgs/w12/admins/${key(ALICE.email)}`), true)
+    await set(ref(ctx.database(), 'orgByDomain/bpp,co,kr'), 'w12')
+  })
+  await assertFails(remove(ref(authed(BOB), 'orgByDomain/bpp,co,kr')))
+  await assertSucceeds(remove(ref(authed(ALICE), 'orgByDomain/bpp,co,kr')))
+})

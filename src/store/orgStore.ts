@@ -162,6 +162,21 @@ interface OrgState {
   }) => Promise<boolean>
   /** 방을 지웁니다. 지난 예약은 잡을 때 적어 둔 이름으로 계속 읽힙니다. */
   removeRoom: (id: string) => Promise<void>
+  /**
+   * 이 워크스페이스에서 나갑니다.
+   *
+   * 줄을 지우지 않고 'removed'로 덮습니다 — 도메인형에서 지우면 '명단에 없고
+   * 도메인이 맞으면 통과' 조항이 그 자리에서 다시 넣어 줍니다. 나간 것이
+   * 아니라 한 바퀴 돈 것이 됩니다.
+   */
+  leaveOrg: (oid: string, email: string, uid: string) => Promise<boolean>
+  /**
+   * 워크스페이스를 지웁니다. **프로젝트가 하나도 없을 때만.**
+   *
+   * 반환값이 남은 프로젝트 수입니다. 0이면 지워졌고, 그보다 크면 아무것도
+   * 안 했습니다.
+   */
+  deleteOrg: (oid: string, email: string, uid: string) => Promise<{ ok: boolean; remaining: number; error?: string }>
   /** 관리자가 아무도 없는 조직을 맡습니다. 규칙도 이걸 허용합니다. */
   claimAdmin: (email: string) => Promise<boolean>
   release: (date: string, bookingId: string) => Promise<void>
@@ -333,6 +348,17 @@ export const useOrgStore = create<OrgState>((set, get) => ({
         try {
           const roleSnap = await fbGet(ref(db, P.orgMember(oid, email)))
           const role = (roleSnap.val() as { role?: string } | null)?.role
+          /**
+           * 나간 사람은 여기서 끝입니다. **도메인이어도요.**
+           *
+           * 아래 줄이 '도메인으로 찾은 곳은 명단에 없어도 내 곳'이라고
+           * 하는데, 나간 사람은 명단에 **비석이 있는** 사람입니다. 둘을 안
+           * 가르면 나가자마자 색인이 다시 끌어당기고, 붙었는데 규칙이
+           * 거절해서 붉은 권한 오류만 봅니다.
+           *
+           * 없는 것과 지워진 것은 다릅니다.
+           */
+          if (role === 'removed') continue
           // 도메인으로 찾은 곳은 명단에 아직 없어도 내 곳입니다 — 규칙도
           // 도메인을 예비 근거로 인정합니다. 첫 로그인이 그 자리입니다.
           if (role !== 'member' && oid !== fromDomain) continue
@@ -751,6 +777,65 @@ export const useOrgStore = create<OrgState>((set, get) => ({
    * 남지 않게 하는 안전장치), 화면에는 그 길이 없어서 자기가 만든 조직을
    * 읽기만 하는 상태가 됐습니다. 규칙이 허용하는 일은 화면에도 있어야 합니다.
    */
+  leaveOrg: async (oid, email, uid) => {
+    try {
+      await fbSet(ref(db, P.orgMember(oid, email)), { role: 'removed', at: Date.now() })
+      // 내 색인에서도 뺍니다. 안 빼면 다음에 켤 때 후보로 다시 서고,
+      // 명단이 'removed'라 못 붙어서 조용히 아무 데도 아닌 상태가 됩니다.
+      await remove(ref(db, P.userOrg(uid, oid))).catch(() => {})
+      if (usePrefsStore.getState().activeOrg === oid) {
+        const next = get().myOrgs.find(o => o.id !== oid)
+        if (next) usePrefsStore.getState().setActiveOrg(email, next.id)
+      }
+      set({ error: null })
+      return true
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : '나가지 못했습니다' })
+      return false
+    }
+  },
+
+  deleteOrg: async (oid, email, uid) => {
+    /**
+     * ── 장부를 먼저 훑습니다 ──────────────────────────────────────────────
+     *
+     * `owns`에는 이 워크스페이스에 찍힌 프로젝트가 적혀 있는데, 예전에는
+     * 넣기만 되고 빼기가 안 돼서 이미 지운 것도 남아 있습니다.
+     *
+     * 그런데 화면에서는 '지워진 것'과 '내가 멤버가 아닌 것'을 구별할 수가
+     * 없습니다 — 둘 다 못 읽으니까요. 그래서 **지워 봅니다.** 규칙은 위에서
+     * 다 보므로, 프로젝트가 정말 없어졌으면 통과시키고 살아 있으면 거절
+     * 합니다. 남는 줄이 곧 살아 있는 프로젝트입니다.
+     */
+    let remaining = 0
+    try {
+      const owns = (await fbGet(ref(db, P.orgOwns(oid)))).val() as Record<string, boolean> | null
+      for (const pid of Object.keys(owns ?? {})) {
+        const gone = await remove(ref(db, `${P.orgOwns(oid)}/${pid}`)).then(() => true).catch(() => false)
+        if (!gone) remaining++
+      }
+    } catch {
+      return { ok: false, remaining: -1, error: '워크스페이스의 프로젝트를 확인하지 못했습니다' }
+    }
+    if (remaining > 0) return { ok: false, remaining }
+
+    try {
+      // 도메인 색인을 먼저 뺍니다. 워크스페이스가 사라진 뒤에는 규칙이
+      // 관리자인지 확인할 곳이 없어서 색인만 남습니다 — 그러면 그 도메인으로
+      // 아무도 새 워크스페이스를 못 만듭니다(색인은 한 번만 씁니다).
+      // 지금 서 있는 곳일 때만 색인을 건드립니다. `domain`은 '붙어 있는
+      // 워크스페이스의 도메인'이라, 다른 곳을 지우는데 이걸 쓰면 엉뚱한
+      // 색인을 지웁니다.
+      if (oid === get().orgId && get().domain) await remove(ref(db, P.orgByDomain(email))).catch((e: unknown) => console.warn('[org delete] 색인', e))
+      await remove(ref(db, P.org(oid)))
+      await remove(ref(db, P.userOrg(uid, oid))).catch(() => {})
+      set({ error: null })
+      return { ok: true, remaining: 0 }
+    } catch (e) {
+      return { ok: false, remaining: 0, error: e instanceof Error ? e.message : '워크스페이스를 지우지 못했습니다' }
+    }
+  },
+
   claimAdmin: async (email) => {
     const { orgId, admins } = get()
     if (!orgId) return false
