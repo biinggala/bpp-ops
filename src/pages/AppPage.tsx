@@ -37,7 +37,6 @@ import { NoticeToast } from '../components/layout/NoticeToast'
 import { setNoticeReporter } from '../lib/notify'
 import { useToast } from '../components/shared/Toast'
 import { useShallow } from 'zustand/react/shallow'
-import { installDebug } from '../lib/debugState'
 
 class TaskDetailErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -92,10 +91,6 @@ export function AppPage() {
     if (!uid) return
     return subscribeWorkspace(uid, email ?? null)
   }, [uid, email])
-
-  // 콘솔에서 `bpp()`로 지금 상태를 볼 수 있게. 워크스페이스가 안 갈리는
-  // 문제를 짐작으로 세 번 고치고 세 번 틀린 뒤에 넣었습니다.
-  useEffect(() => { installDebug() }, [])
 
   // 이 사람이 소개를 봤는지, 어느 업데이트까지 읽었는지. 계정에 붙습니다.
   const subscribePrefs = usePrefsStore(s => s.subscribe)

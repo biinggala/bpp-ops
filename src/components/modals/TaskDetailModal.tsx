@@ -12,6 +12,7 @@ import { Tip } from '../shared/Tip'
 import { Icon } from '../shared/Icon'
 import { useToast } from '../shared/Toast'
 import { taskLinkFor } from '../../lib/paths'
+import { sanitizeHtml, safeHref } from '../../lib/sanitizeHtml'
 import { askConfirm } from '../shared/Confirm'
 import { useAuthStore } from '../../store/authStore'
 import { usePresenceStore } from '../../store/presenceStore'
@@ -487,7 +488,11 @@ function LinkButton({ editor }: { editor: NonNullable<ReturnType<typeof useEdito
     if (!value) {
       editor.chain().focus().extendMarkRange('link').unsetLink().run()
     } else {
-      const href = /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}`
+      // 스킴처럼 생긴 것을 전부 받아 주고 있었습니다 — `javascript:alert(1)`도
+      // 그대로 링크가 됐고, 그건 누르는 순간 코드입니다. http·https·mailto만.
+      const raw = /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}`
+      const href = safeHref(raw)
+      if (!href) { setUrl(''); setOpen(false); return }
       editor.chain().focus().extendMarkRange('link').setLink({ href }).run()
     }
     setOpen(false); setUrl('')
@@ -815,7 +820,9 @@ function MobileTaskDetail({ task, onClose, editor, saveStatus, upd, milestones, 
                   <div style={{ fontSize: 11, color: 'var(--t3)', marginBottom: 8 }}>Notes</div>
                   {hasMemo ? (
                     <div
-                      dangerouslySetInnerHTML={{ __html: task.memo! }}
+                      // 남이 쓴 HTML입니다. 그대로 그리면 그 사람이 심은
+                      // 코드가 이 사람 권한으로 돕니다 — lib/sanitizeHtml.
+                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(task.memo!) }}
                       className="task-editor-area"
                       style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--t1)', pointerEvents: 'none', overflow: 'hidden' }}
                     />

@@ -196,6 +196,40 @@ export function gid(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
 }
 
+/**
+ * ── 초대 코드 ────────────────────────────────────────────────────────────────
+ *
+ * 프로젝트에 들어오는 **유일한 열쇠**입니다. 규칙이 보는 것이 이것뿐이라
+ * (`members/$uid`에 이 값을 적으면 멤버가 됩니다), 맞히면 초대받은 적 없는
+ * 프로젝트의 모든 업무와 메모를 읽고 씁니다.
+ *
+ * `gid()`로 만들고 있었습니다. 두 가지가 문제였습니다:
+ *
+ *   1. `Math.random()`은 암호용이 아닙니다. 브라우저의 그 난수는 상태를
+ *      가진 계산기라, 출력 몇 개를 보면 상태를 되찾아 **앞뒤 값을 계산**할
+ *      수 있습니다.
+ *   2. 프로젝트를 만들 때 초대 코드를 뽑고 **바로 다음에** 프로젝트 id를
+ *      같은 난수로 뽑았습니다. 그 id는 워크스페이스에 공개하면 명단에
+ *      올라가고, 참여 요청에도 실립니다 — 즉 **옆자리 값이 남에게 보입니다.**
+ *      1번과 합치면 보이는 값에서 안 보이는 값으로 갈 수 있습니다.
+ *
+ * `crypto.getRandomValues`는 그런 되찾기가 안 됩니다. 16자리 base32이고,
+ * 헷갈리는 글자(0/O, 1/I/l)는 뺐습니다 — 사람이 옮겨 적을 수도 있어서.
+ *
+ * 이미 나가 있는 코드는 그대로 삽니다. 바꾸면 이미 보낸 초대 링크가 전부
+ * 죽습니다 — 새로 만드는 것부터 강해집니다.
+ */
+const CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'
+
+export function inviteCode(): string {
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  // 31글자를 256에서 고르면 앞쪽 글자가 조금 더 자주 나옵니다. 초대 코드
+  // 하나를 맞히는 일에 영향을 줄 만한 치우침은 아니고, 버리고 다시 뽑는
+  // 쪽이 이 자리에서는 더 복잡합니다.
+  return Array.from(bytes, b => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('')
+}
+
 export function fmtDate(d: string): string {
   if (!d) return ''
   const dt = new Date(d)

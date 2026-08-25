@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { ref, get as fbGet, set as fbSet, update as fbUpdate, remove as fbRemove } from 'firebase/database'
 import { db } from '../lib/firebase'
-import { gid } from '../lib/utils'
+import { gid, inviteCode as newInviteCode } from '../lib/utils'
 import { P } from '../lib/paths'
 import { PROJECT_PALETTE } from '../types'
 import { useAuthStore } from './authStore'
@@ -67,7 +67,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   addProject: (name, color, dueDate, clientName, creatorEmail) => {
     const uid = useAuthStore.getState().uid
     const existing = get().projects
-    const inviteCode = gid().slice(0, 8)
+    const inviteCode = newInviteCode()
     const project: Project = {
       id: gid(),
       name: name.trim(),
