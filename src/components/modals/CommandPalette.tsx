@@ -6,20 +6,23 @@ import { searchNotes, forgetNotes } from '../../lib/noteSearch'
 import { useTaskStore } from '../../store/taskStore'
 import { useSpaceStore } from '../../store/spaceStore'
 import { useProjectStore } from '../../store/projectStore'
+import { useMilestoneStore } from '../../store/milestoneStore'
 import { useDriveStore } from '../../store/driveStore'
 import { useNotionStore } from '../../store/notionStore'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import { Icon } from '../shared/Icon'
+import { StatusMark } from '../shared/StatusMark'
+import { daysFrom } from '../../lib/utils'
 import { fileKind, driveUrl, type DriveSearchResult, type Snippet } from '../../lib/googleDrive'
 import { snippetKey, warmDriveAuth } from '../../store/driveStore'
 import { snippetKey as notionKey } from '../../store/notionStore'
 import type { NotionHit } from '../../lib/notion'
 import { docTabUrl } from '../../lib/googleDocs'
 import { SNIPPET_BOX } from '../shared/DriveFiles'
-import { NOTION } from '../../types'
+import { NOTION, statusAccent } from '../../types'
 import { openExternal } from '../../lib/desktopLinks'
-import type { TaskLink, ViewType } from '../../types'
+import type { Status, Task, TaskLink, ViewType } from '../../types'
 import { useShallow } from 'zustand/react/shallow'
 
 // 보드는 뷰 탭에서 내렸으므로 여기서도 내립니다 — 팔레트에만 남으면
@@ -76,8 +79,52 @@ type Item = {
   snippet?: Snippet | null
   /** 그 조각을 아직 가져오는 중. null(영영 없음)과 구별해야 합니다. */
   snippetLoading?: boolean
+  /**
+   * 업무 결과의 지금 상태. 있으면 아이콘 자리에 이모지 대신 이것이 섭니다.
+   *
+   * 📝는 모든 업무에 대해 같은 말을 합니다 — '이건 업무다'. 묶음 이름이 이미
+   * 그 말을 하고 있어서, 그 자리는 비어 있던 것과 같았습니다. 상태는 줄마다
+   * 다르고, 목록·보드·노트·시간 축이 쓰는 그 표시 그대로입니다.
+   */
+  status?: Status
+  /** 마감일. D-day 칩으로 섭니다 — 노트의 업무 줄과 같은 모양. */
+  due?: string
   accentColor?: string
   onSelect: () => void
+}
+
+/**
+ * 이 업무가 어디에 담겨 있나 — 노트의 업무 줄과 같은 사슬입니다.
+ *
+ *   상위 업무   `◇ 브랜딩`
+ *   하위 업무   `◇ 브랜딩 › ↳ 로고 시안`
+ *
+ * 팔레트에서 나오는 이름은 대개 짧고 서로 닮았습니다('로고 시안'이 세
+ * 프로젝트에 하나씩). 어느 것인지는 이름이 아니라 담긴 곳이 말해 줍니다 —
+ * 지금까지 그 자리에는 카테고리와 날짜가 있었는데, 둘 다 그 질문에 답을
+ * 못 합니다.
+ *
+ * 마일스톤이 없으면 프로젝트가 대신 섭니다. 셋 다 없으면 카테고리라도
+ * 씁니다 — 빈 줄보다는 낫습니다.
+ */
+function taskChain(
+  task: Task,
+  tasks: Task[],
+  milestones: { id: string; name: string }[],
+  projects: { id: string; name: string }[],
+): string {
+  const parent = task.parentId ? tasks.find(t => t.id === task.parentId) : undefined
+  // 하위 업무에 마일스톤이 안 적혀 있으면 부모의 것을 씁니다 — 마일스톤은
+  // 가족 단위로 붙고, 부모가 그 안이면 자식도 그 안입니다(TaskRef와 같은 규칙).
+  const milestone = milestones.find(m => m.id === (task.milestoneId || parent?.milestoneId))
+  const project = task.projectId ? projects.find(p => p.id === task.projectId) : undefined
+
+  const chain: string[] = []
+  if (milestone) chain.push(`◇ ${milestone.name}`)
+  else if (project) chain.push(`● ${project.name}`)
+  if (parent) chain.push(`↳ ${parent.name || '이름 없음'}`)
+
+  return chain.length ? chain.join(' › ') : (task.cat || '')
 }
 
 export function CommandPalette() {
@@ -89,6 +136,8 @@ export function CommandPalette() {
   const tasks = useTaskStore(s => s.tasks)
   const spaces = useSpaceStore(s => s.spaces)
   const projects = useProjectStore(s => s.projects)
+  // 업무 줄이 '어디에 담겨 있는지'를 말하려면 필요합니다 — taskChain 참고.
+  const milestones = useMilestoneStore(s => s.milestones)
 
   const isMobile = useMobile()
   const [query, setQuery] = useState('')
@@ -275,8 +324,10 @@ export function CommandPalette() {
       .filter(t => fuzzy(t.name, q) || fuzzy(t.cat, q))
       .slice(0, 8)
       .forEach(t => result.push({
-        id: t.id, kind: 'task', icon: '📝', label: t.name,
-        sub: [t.cat, t.due].filter(Boolean).join(' · '),
+        id: t.id, kind: 'task', icon: '', label: t.name,
+        status: t.status,
+        sub: taskChain(t, tasks, milestones, projects),
+        due: t.due,
         onSelect: () => { setDetailTaskId(t.id); closeCommandPalette() },
       }))
 
@@ -532,13 +583,25 @@ export function CommandPalette() {
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       borderRadius: 6, fontSize: 13,
                       background: item.accentColor ? item.accentColor + '18' : 'var(--bg2)',
-                      color: item.kind === 'space' ? item.accentColor : 'var(--t2)',
+                      color: item.status
+                        ? statusAccent(item.status)
+                        : item.kind === 'space' ? item.accentColor : 'var(--t2)',
                     }}>
-                      {item.icon}
+                      {/* 목록·보드·노트·시간 축이 쓰는 그 표시입니다. 같은 값을
+                          화면마다 다른 모양으로 배우게 하지 않습니다. */}
+                      {item.status ? <StatusMark status={item.status} size={14} /> : item.icon}
                     </span>
 
                     <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ display: 'block', fontSize: isMobile ? 15 : 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {/* 끝난 일은 여기서도 끝나 보입니다. 목록에서도 노트에서도
+                          그렇게 생겼으니, 찾기 결과에서만 안 그러면 같은 업무가
+                          화면마다 다른 상태처럼 보입니다. */}
+                      <span style={{
+                        display: 'block', fontSize: isMobile ? 15 : 13,
+                        color: item.status === '완료' ? 'var(--t3)' : 'var(--t1)',
+                        textDecoration: item.status === '완료' ? 'line-through' : 'none',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
                         {item.label}
                       </span>
                       {hasSnippet && (
@@ -567,6 +630,11 @@ export function CommandPalette() {
                       <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0 }}>{item.hint}</span>
                     )}
 
+                    {/* 마감은 날짜가 아니라 남은 날입니다 — 노트의 업무 줄과
+                        같은 칩. '2026-09-02'는 읽고 나서 오늘을 빼야 뜻이
+                        생기고, 목록을 훑는 손은 그 뺄셈을 안 합니다. */}
+                    {item.due && item.status !== '완료' && <DueChip due={item.due} />}
+
                     {/* 골라 놓은 줄에 붙는 ↵는 키보드가 있는 사람에게만
                         뜻이 있습니다. 폰에서는 그냥 누르면 됩니다. */}
                     {isSelected && !isMobile && (
@@ -590,6 +658,22 @@ export function CommandPalette() {
         )}
       </div>
     </>
+  )
+}
+
+/** 남은 날. 지났으면 붉게 — 노트의 업무 줄이 쓰는 그 칩과 같은 모양입니다. */
+function DueChip({ due }: { due: string }) {
+  const diff = daysFrom(due, new Date())
+  const late = diff < 0
+  return (
+    <span style={{
+      flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--r1)',
+      background: late ? 'var(--danger-l)' : 'var(--bg3)',
+      color: late ? 'var(--danger)' : 'var(--t3)',
+      fontVariantNumeric: 'tabular-nums',
+    }}>
+      {late ? `D+${Math.abs(diff)}` : diff === 0 ? 'D-Day' : `D-${diff}`}
+    </span>
   )
 }
 
