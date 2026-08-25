@@ -11,6 +11,7 @@ import { authorizedEmails } from '../../../lib/utils'
 import { hasTimeblock, readTimeblock, BLOCK_MINUTES, type TimeblockDrag } from '../../../lib/timeblock'
 import type { Task, Status } from '../../../types'
 import { StatusPick } from '../../shared/StatusPick'
+import { useNoteChecks, toggleNoteCheck } from '../../../hooks/useNoteChecks'
 import { haptic } from '../../../lib/haptics'
 import type { Rsvp } from '../../../lib/googleCalendar'
 import { Icon } from '../../shared/Icon'
@@ -150,6 +151,27 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
   const projectId = useUiStore(s => s.projectId)
   const projects = useProjectStore(s => s.projects)
   const myEmail = useAuthStore(s => s.email)
+
+  /**
+   * ── 체크박스 줄에서 온 블록 ────────────────────────────────────────────
+   *
+   * 업무 블록은 그 업무의 상태를 보여 주고, 눌러서 바꿉니다. 체크박스 줄에서
+   * 온 블록에는 가리킬 업무가 없어서 **눌리지 않는 네모**였습니다 — 시간까지
+   * 잡아 둔 일을 끝내도 노트의 그 줄은 안 눌린 채로 남았고, 그러면 하루가
+   * 끝났는지를 두 군데서 따로 세게 됩니다.
+   *
+   * 이제 그 네모가 노트의 그 줄입니다. 화면에 선 날짜들의 노트를 같이 보고
+   * 있어서, 노트에서 눌러도 블록이 같은 순간에 그어집니다.
+   */
+  const noteChecks = useNoteChecks(days)
+  const toggleNote = async (noteRef: string | undefined, next: boolean) => {
+    haptic('toggle')
+    const ok = await toggleNoteCheck(myEmail, noteRef, next)
+    // 줄이 지워졌으면 아무 일도 안 일어납니다. 그걸 말 안 하면 눌리지 않는
+    // 네모가 눌리는 척하는 것이 됩니다.
+    if (!ok) useGCalStore.setState({ error: '노트에서 그 줄을 찾지 못했습니다' })
+  }
+
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
 
   // Who can be invited: the people this account already shares a project with.
@@ -308,7 +330,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
    * 일어나지 않습니다 — 같은 자리에 같은 모양이 서 있을 뿐입니다.
    */
   const [pending, setPending] = useState<
-    { date: string; from: number; to: number; name: string; taskId?: string } | null
+    { date: string; from: number; to: number; name: string; taskId?: string; noteRef?: string } | null
   >(null)
 
   /** 아직 없는 일정을 있는 것처럼 그리기 위한 껍데기. 화면에만 삽니다. */
@@ -343,6 +365,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
       endIso: localIso(pending.date, pending.to),
       isBlock: true,
       ...(pending.taskId ? { taskId: pending.taskId } : {}),
+      ...(pending.noteRef ? { noteRef: pending.noteRef } : {}),
     }
   }, [pending, events])
   const [title, setTitle] = useState('')
@@ -551,6 +574,8 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
       startDateTime: localIso(date, from),
       endDateTime: localIso(date, to),
       taskId: payload.taskId,
+      // 어느 줄에서 왔는지. 이게 있어야 블록의 네모가 그 줄을 누릅니다.
+      noteRef: payload.noteRef,
       /**
        * 타임블록은 '한가함'입니다.
        *
@@ -913,6 +938,8 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
           event={selectedInfo.event}
           task={selectedInfo.event.taskId ? allTasks.find(t => t.id === selectedInfo.event.taskId) : undefined}
           onStatus={setTaskStatus}
+          noteChecked={selectedInfo.event.noteRef ? !!noteChecks[selectedInfo.event.noteRef] : undefined}
+          onNoteCheck={next => void toggleNote(selectedInfo.event.noteRef, next)}
           onOpenTask={openTaskDetail}
           onDelete={async () => {
             setSelected(null)
@@ -1114,6 +1141,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
                   to: clampDay(Math.max(at + MIN_DURATION, at + BLOCK_MINUTES)),
                   name: payload.name,
                   ...(payload.taskId ? { taskId: payload.taskId } : {}),
+                  ...(payload.noteRef ? { noteRef: payload.noteRef } : {}),
                 })
                 void dropTimeblock(payload, date, at)
               }}
@@ -1146,6 +1174,8 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
                   selected={selected === p.event.id}
                   task={p.event.taskId ? allTasks.find(t => t.id === p.event.taskId) : undefined}
                   onStatus={setTaskStatus}
+                  noteChecked={p.event.noteRef ? !!noteChecks[p.event.noteRef] : undefined}
+                  onNoteCheck={next => void toggleNote(p.event.noteRef, next)}
                   provisional={p.event.id === PENDING_ID}
                   onSelect={e => {
                     // 끌어서 옮긴 뒤에 따라오는 click입니다. 카드는 안 엽니다.
@@ -1258,7 +1288,7 @@ export function place(events: GCalEvent[]): Placed[] {
   return out
 }
 
-function EventBlock({ placed, ghost, selected, task, provisional = false, onStatus, onSelect, onMove }: {
+function EventBlock({ placed, ghost, selected, task, provisional = false, onStatus, noteChecked, onNoteCheck, onSelect, onMove }: {
   placed: Placed
   ghost: { from: number; to: number } | null
   selected: boolean
@@ -1272,6 +1302,15 @@ function EventBlock({ placed, ghost, selected, task, provisional = false, onStat
    */
   provisional?: boolean
   onStatus: (task: Task, next: Status) => void
+  /**
+   * 체크박스 줄에서 온 블록의 지금 상태.
+   *
+   * undefined는 '없다'가 아니라 **'이 블록은 그런 줄에서 온 게 아니다'**
+   * 입니다 — 업무 블록이거나, 이름표가 붙기 전에 만든 옛 블록입니다.
+   * false(안 눌림)와 구별해야 안 눌린 네모와 못 누르는 네모가 안 섞입니다.
+   */
+  noteChecked?: boolean
+  onNoteCheck: (next: boolean) => void
   onSelect: (e: React.MouseEvent) => void
   onMove: (e: React.MouseEvent, mode: 'move' | 'resize') => void
 }) {
@@ -1332,7 +1371,7 @@ function EventBlock({ placed, ghost, selected, task, provisional = false, onStat
         color: 'var(--t1)',
         // 끝난 일은 시간 축에서도 끝나 보입니다. 자리는 그대로 둡니다 —
         // 사라지면 오후에 아침이 없던 일이 됩니다.
-        textDecoration: task?.status === '완료' ? 'line-through' : 'none',
+        textDecoration: (task ? task.status === '완료' : noteChecked) ? 'line-through' : 'none',
         padding: roomy ? '3px 6px' : '2px 6px',
         fontSize: 11, lineHeight: 1.35,
         overflow: 'hidden', zIndex: selected ? 5 : 2,
@@ -1370,7 +1409,9 @@ function EventBlock({ placed, ghost, selected, task, provisional = false, onStat
           ? <span style={{ display: 'inline-flex', verticalAlign: 'middle', marginRight: 2 }}>
               <StatusPick status={task.status} size={16} stop onPick={next => onStatus(task, next)} />
             </span>
-          : <span aria-hidden style={{ opacity: .6, marginRight: 4 }}>▢</span>
+          : noteChecked === undefined
+            ? <span aria-hidden style={{ opacity: .6, marginRight: 4 }}>▢</span>
+            : <NoteCheck checked={noteChecked} onToggle={onNoteCheck} />
         )}
         {event.summary}
       </span>
@@ -1379,6 +1420,35 @@ function EventBlock({ placed, ghost, selected, task, provisional = false, onStat
         style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 8, cursor: 'ns-resize' }}
       />
     </div>
+  )
+}
+
+/**
+ * 체크박스 줄에서 온 블록의 네모.
+ *
+ * **노트의 그 줄과 같은 물건입니다.** 그래서 모양도 노트의 체크박스를 그대로
+ * 씁니다 — 진짜 `input[type=checkbox]`에 같은 강조색. 같은 값을 두 화면에서
+ * 다른 모양으로 배우게 하지 않습니다.
+ *
+ * 누르는 것을 위로 안 올립니다(stopPropagation). 블록을 누르면 카드가 열리고
+ * 끌면 시간이 옮겨지는데, 네모를 겨냥한 손은 그 둘 중 아무것도 원하지
+ * 않습니다.
+ */
+function NoteCheck({ checked, onToggle }: { checked: boolean; onToggle: (next: boolean) => void }) {
+  return (
+    <input
+      type="checkbox"
+      checked={checked}
+      title={checked ? '노트에서 체크 해제' : '노트에서 체크'}
+      onMouseDown={e => e.stopPropagation()}
+      onClick={e => { e.stopPropagation(); onToggle(!checked) }}
+      onChange={() => { /* onClick이 합니다 — 리액트가 제어 컴포넌트라고 알아야 해서 둡니다 */ }}
+      style={{
+        width: 12, height: 12, margin: '0 4px 0 0',
+        verticalAlign: 'middle', cursor: 'pointer',
+        accentColor: 'var(--ac)', flexShrink: 0,
+      }}
+    />
   )
 }
 
@@ -1769,12 +1839,15 @@ const linkBtn: React.CSSProperties = {
  * 셋입니다. 단순한 화면이 다른 화면이라서가 아니라 없는 것이 안 그려져서
  * 단순해집니다.
  */
-function BlockCard({ at, heading, event, task, onStatus, onOpenTask, onDelete, onClose }: {
+function BlockCard({ at, heading, event, task, onStatus, noteChecked, onNoteCheck, onOpenTask, onDelete, onClose }: {
   at: { x: number; y: number }
   heading: string
   event: GCalEvent
   task?: Task
   onStatus: (task: Task, next: Status) => void
+  /** 체크박스 줄에서 온 블록의 지금 상태. 업무 블록에서는 undefined입니다. */
+  noteChecked?: boolean
+  onNoteCheck: (next: boolean) => void
   onOpenTask: (id: string) => void
   onDelete: () => void
   onClose: () => void
@@ -1815,10 +1888,18 @@ function BlockCard({ at, heading, event, task, onStatus, onOpenTask, onDelete, o
         </div>
 
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-          {task && <StatusPick status={task.status} onPick={next => onStatus(task, next)} />}
+          {task
+            ? <StatusPick status={task.status} onPick={next => onStatus(task, next)} />
+            : noteChecked !== undefined && (
+                // 격자의 그 네모와 같은 것입니다. 카드를 열어 놓고 끝냈을 때
+                // 카드를 닫았다 다시 눌러야 하면 그건 한 동작이 아닙니다.
+                <span style={{ display: 'inline-flex', alignItems: 'center', height: 21 }}>
+                  <NoteCheck checked={noteChecked} onToggle={onNoteCheck} />
+                </span>
+              )}
           <span style={{
             flex: 1, minWidth: 0, fontSize: 14, lineHeight: 1.5, color: 'var(--t1)',
-            textDecoration: task?.status === '완료' ? 'line-through' : 'none',
+            textDecoration: (task ? task.status === '완료' : noteChecked) ? 'line-through' : 'none',
           }}>
             {event.summary}
           </span>

@@ -131,7 +131,30 @@ export function TodayView() {
        * draggable 속성은 여기서 안 붙습니다(내용이 있는 노드라 프로즈미러가
        * 안 붙입니다). 끄는 일은 손잡이가 합니다.
        */
-      TaskItem.extend({ draggable: true }).configure({ nested: true }),
+      TaskItem.extend({
+        draggable: true,
+        /**
+         * 줄마다 붙는 id.
+         *
+         * 시간 축에 놓인 블록이 **어느 줄에서 왔는지** 기억하는 유일한 방법
+         * 입니다. 글자로 찾으면 같은 말이 두 줄일 때 엉뚱한 줄이 눌리고,
+         * 사람이 줄을 고치는 순간 조용히 아무 일도 안 일어납니다.
+         *
+         * 기본값은 없습니다 — 모든 줄에 미리 박아 두면 노트를 열기만 해도
+         * 저장이 한 번 나가고, 지금 있는 노트 전부가 한 번씩 다시 쓰입니다.
+         * 시간을 붙이는 그 순간에만 새깁니다(BlockTools.beginDrag).
+         */
+        addAttributes() {
+          return {
+            ...this.parent?.(),
+            bid: {
+              default: null,
+              parseHTML: el => el.getAttribute('data-bid'),
+              renderHTML: attrs => (attrs.bid ? { 'data-bid': attrs.bid } : {}),
+            },
+          }
+        },
+      }).configure({ nested: true }),
       TaskRef,
       FileRef,
       MarkdownTasks,

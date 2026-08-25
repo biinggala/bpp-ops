@@ -26,6 +26,14 @@ export const TIMEBLOCK_MIME = 'application/x-bpp-timeblock'
 export interface TimeblockDrag {
   /** 진짜 업무를 끌었을 때만. 체크박스 한 줄에는 가리킬 id가 없습니다. */
   taskId?: string
+  /**
+   * 체크박스 한 줄을 끌었을 때만 — `날짜|줄id`.
+   *
+   * 업무에는 id가 있어서 블록이 그 업무를 가리킵니다. 체크박스 줄에는
+   * 가리킬 것이 없어서 블록의 네모가 눌리지 않는 그림이었습니다. 그 줄에
+   * 이름표를 달아 여기 싣습니다(BlockTools.beginDrag).
+   */
+  noteRef?: string
   name: string
 }
 
@@ -50,7 +58,11 @@ export function readTimeblock(dt: DataTransfer | null): TimeblockDrag | null {
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<TimeblockDrag>
     if (!parsed.name?.trim()) return null
-    return { name: parsed.name.trim(), ...(parsed.taskId ? { taskId: parsed.taskId } : {}) }
+    return {
+      name: parsed.name.trim(),
+      ...(parsed.taskId ? { taskId: parsed.taskId } : {}),
+      ...(parsed.noteRef ? { noteRef: parsed.noteRef } : {}),
+    }
   } catch {
     return null
   }

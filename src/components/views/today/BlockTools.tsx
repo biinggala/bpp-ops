@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { writeTimeblock } from '../../../lib/timeblock'
+import { newBlockId, noteRefOf } from '../../../lib/noteChecks'
 import { NodeSelection, TextSelection } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
 import { Icon } from '../../shared/Icon'
@@ -197,6 +198,34 @@ export function BlockTools({ editor, boundary, date }: {
   const beginDrag = (e: React.DragEvent) => {
     if (!editor || !slot) return
     const { view } = editor
+
+    /**
+     * ── 이름표부터 답니다 ────────────────────────────────────────────────
+     *
+     * 시간 축에 놓인 블록의 네모를 나중에 누르면 **이 줄이** 눌려야 합니다.
+     * 글자로 찾으면 같은 말이 두 줄일 때 엉뚱한 줄이 눌리고, 사람이 줄을
+     * 고치는 순간 조용히 아무 일도 안 일어납니다. 그래서 줄에 id를 새깁니다.
+     *
+     * **아래 sel.content()보다 먼저 해야 합니다.** 노트 안에서 줄 순서를
+     * 바꾸는 것은 그 조각을 그대로 다시 심는 일이라, 조각을 뜬 뒤에 이름표를
+     * 달면 한 번 옮기는 순간 그 이름표가 사라집니다 — 어제 잡아 둔 블록이
+     * 오늘 아침 줄을 옮겼다는 이유로 길을 잃습니다.
+     *
+     * 노트를 열 때 모든 줄에 미리 달지 않는 이유도 같은 자리에 있습니다:
+     * 그러면 열기만 해도 저장이 한 번 나가고 지금 있는 노트가 통째로 다시
+     * 쓰입니다. **시간을 붙이는 줄만** 이름표가 필요합니다.
+     */
+    const rowPos = slot.item ?? slot.pos
+    const row = view.state.doc.nodeAt(rowPos)
+    let noteRef: string | undefined
+    if (row?.type.name === 'taskItem') {
+      const bid = (row.attrs.bid as string | null) || newBlockId()
+      if (!row.attrs.bid) {
+        view.dispatch(view.state.tr.setNodeMarkup(rowPos, undefined, { ...row.attrs, bid }))
+      }
+      noteRef = noteRefOf(date, bid)
+    }
+
     const sel = NodeSelection.create(view.state.doc, slot.pos)
     view.dispatch(view.state.tr.setSelection(sel))
     const dom = view.nodeDOM(slot.pos)
@@ -262,7 +291,9 @@ export function BlockTools({ editor, boundary, date }: {
     if (node.type.name === 'taskItem') {
       // 사람이 방금 친 글자가 곧 일정 이름입니다.
       const text = node.textContent.trim()
-      if (text) writeTimeblock(e.dataTransfer, { name: text })
+      if (!text) return
+      // 이름표는 위에서 이미 달았습니다 — 조각을 뜨기 전에 달아야 해서요.
+      writeTimeblock(e.dataTransfer, { name: text, noteRef })
     }
   }
 

@@ -58,6 +58,18 @@ export const TASK_LINK_KEY = 'bppTaskId'
  */
 export const TIMEBLOCK_KEY = 'bppTimeblock'
 
+/**
+ * 체크박스 한 줄에서 온 블록이 **그 줄로 돌아가는 길**. `날짜|줄id` 한 덩어리.
+ *
+ * 업무 블록에는 taskId가 있어서 상태를 바꾸면 그 업무가 바뀝니다. 체크박스
+ * 줄에는 가리킬 업무가 없어서 지금까지 블록의 네모가 눌리지 않는 그림이었고,
+ * 시간을 잡아 둔 일을 끝내도 정작 노트의 그 줄은 안 눌린 채였습니다.
+ *
+ * 글자로 찾지 않습니다 — 같은 말이 두 줄이면 엉뚱한 줄이 눌리고, 줄을 고치면
+ * 조용히 아무 일도 안 일어납니다. 줄에 id를 붙이고 그 id를 싣습니다.
+ */
+export const NOTE_LINK_KEY = 'bppNoteRef'
+
 /** Signals that the token is no longer good, so callers can stop and reconnect. */
 export const TOKEN_EXPIRED = 'GOOGLE_TOKEN_EXPIRED'
 
@@ -167,6 +179,8 @@ export interface NewEvent {
   transparency?: 'opaque' | 'transparent'
   /** 노트에서 끌어다 놓아 만든 시간. 회의와 다르게 그립니다. */
   timeblock?: boolean
+  /** 이 블록이 온 체크박스 줄 — `날짜|줄id`. NOTE_LINK_KEY 참고. */
+  noteRef?: string
 }
 
 /**
@@ -200,12 +214,13 @@ export async function createCalendarEvent(token: string, event: NewEvent): Promi
         start: { dateTime: event.startDateTime, timeZone },
         end: { dateTime: event.endDateTime, timeZone },
         ...(event.attendees?.length ? { attendees: event.attendees.map(email => ({ email })) } : {}),
-        ...(event.taskId || event.timeblock
+        ...(event.taskId || event.timeblock || event.noteRef
           ? {
               extendedProperties: {
                 private: {
                   ...(event.taskId ? { [TASK_LINK_KEY]: event.taskId } : {}),
                   ...(event.timeblock ? { [TIMEBLOCK_KEY]: '1' } : {}),
+                  ...(event.noteRef ? { [NOTE_LINK_KEY]: event.noteRef } : {}),
                 },
               },
             }
