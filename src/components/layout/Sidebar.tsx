@@ -98,6 +98,7 @@ export function Sidebar() {
   const [editProjectName, setEditProjectName] = useState('')
   const projectEditRef = useRef<HTMLInputElement>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string; name: string; archived: boolean; type: 'project' } | null>(null)
+  const [copiedInvite, setCopiedInvite] = useState<'yes' | 'no' | null>(null)
   const [archivedExpanded, setArchivedExpanded] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
   const [memberModal, setMemberModal] = useState<{ id: string; name: string } | null>(null)
@@ -241,6 +242,35 @@ export function Sidebar() {
         }}
       >
         {shared ? '워크스페이스 목록에서 내리기' : '워크스페이스에 공개'}
+      </ContextMenuItem>
+    )
+  }
+
+  /**
+   * 초대 링크.
+   *
+   * 줄 위 아이콘이었습니다. 프로젝트가 수십 개 놓이는 목록에서는 마우스가
+   * 지나갈 때마다 줄 끝이 바뀌어서, 목록이 가만있지를 않았습니다. 자주 쓰는
+   * 것도 아닙니다 — 우클릭 메뉴가 제자리입니다.
+   */
+  const inviteLinkItem = (id: string) => {
+    const project = projects.find(p => p.id === id)
+    const code = project?.inviteCode
+    if (!code) return null
+    return (
+      <ContextMenuItem icon="link" onClick={() => {
+        // 링크에 프로젝트와 회사를 같이 싣습니다. 받는 사람은 아직 프로젝트를
+        // 못 읽는데 소속이 그 안에 적혀 있어서, 링크가 말해 주지 않으면 조직
+        // 명단에 자기 자리를 앉힐 수가 없습니다. docs/tenants.md 3.5단계.
+        const link = `${window.location.origin}${window.location.pathname}?invite=${buildInviteToken(id, code, project.orgId)}`
+        void copyText(link).then(ok => {
+          // 눌린 티는 내야 하는데 토스트가 없어서, 메뉴가 잠깐 더 서 있다가
+          // 스스로 닫힙니다. 바로 닫으면 복사됐는지를 알 수가 없습니다.
+          setCopiedInvite(ok ? 'yes' : 'no')
+          setTimeout(() => { setCopiedInvite(null); setContextMenu(null) }, 900)
+        })
+      }}>
+        {copiedInvite === 'yes' ? '복사됨!' : copiedInvite === 'no' ? '복사 실패' : '초대 링크 복사'}
       </ContextMenuItem>
     )
   }
@@ -808,8 +838,6 @@ export function Sidebar() {
                       overdue={overdueByProject.get(p.id) ?? 0}
                       daysInfo={daysInfo}
                       projectId={p.id}
-                      inviteCode={p.inviteCode}
-                      shared={sharedProjectIds.has(p.id)}
                       indented={!!shelf.name}
                       dragging={dragging === p.id}
                       dropAt={dropAt?.id === p.id ? (dropAt.below ? 'below' : 'above') : null}
@@ -945,7 +973,7 @@ export function Sidebar() {
         <div
           style={{
             position: 'fixed',
-            ...menuPlace(contextMenu.x, contextMenu.y, isProjectCreator(contextMenu.id) ? 7 : 3),
+            ...menuPlace(contextMenu.x, contextMenu.y, isProjectCreator(contextMenu.id) ? 8 : 4),
             zIndex: 9999,
             background: 'var(--bg)',
             border: '1px solid var(--bd)',
@@ -965,6 +993,7 @@ export function Sidebar() {
               <ContextMenuItem icon="users" onClick={() => { setMemberModal({ id: contextMenu.id, name: contextMenu.name }); setContextMenu(null) }}>
                 멤버 관리
               </ContextMenuItem>
+              {inviteLinkItem(contextMenu.id)}
               <ContextMenuItem icon="layers" onClick={() => {
                 const project = projects.find(p => p.id === contextMenu.id)
                 setGroupFor({ id: contextMenu.id, name: contextMenu.name, group: project?.group ?? '' })
@@ -986,6 +1015,7 @@ export function Sidebar() {
             </>
           ) : (
             <>
+              {inviteLinkItem(contextMenu.id)}
               {orgShareItem(contextMenu.id)}
               <ContextMenuItem icon="exit" danger onClick={() => handleLeaveProject(contextMenu.id)}>
                 나가기
@@ -1301,28 +1331,14 @@ function GroupHeader({ name, count, collapsed, onToggle, onRename, onDropProject
 }
 
 function ProjectItem({
-  children, active, dot, overdue, daysInfo, projectId, inviteCode, dimmed, indented, shared,
+  children, active, dot, overdue, daysInfo, projectId, dimmed, indented,
   dragging, dropAt, onDragStart, onDragEnd, onDragOver, onDrop, onClick, onContextMenu,
 }: {
   children: React.ReactNode; active: boolean; dot: string
-  /**
-   * 이름이 워크스페이스 목록에 올라 있는가.
-   *
-   * '공개'와 '내리기'를 눌러도 화면이 아무 말도 안 했습니다 — 메뉴 글자만
-   * 바뀌고, 그건 다시 우클릭해야 보입니다. 누른 결과가 안 보이면 사람은
-   * 눌렸는지를 모릅니다.
-   *
-   * **자물쇠가 아니라 사람입니다.** 안 올린 프로젝트가 잠긴 것이 아닙니다 —
-   * 둘 다 그 프로젝트의 멤버만 열 수 있고, 다른 점은 이름이 워크스페이스
-   * 목록에 서느냐뿐입니다. 자물쇠를 그리면 '올리면 남이 볼 수 있다'는 뜻이
-   * 되는데, 그건 참이 아닙니다.
-   */
-  shared?: boolean
   /** Tasks past their due date. Nothing is drawn at zero. */
   overdue: number
   daysInfo: { days: number; overdue: boolean } | null
   projectId: string
-  inviteCode?: string
   dimmed?: boolean
   /** Sitting on a named shelf, which is a step in from the loose ones. */
   indented?: boolean
@@ -1337,20 +1353,6 @@ function ProjectItem({
   onContextMenu: (e: React.MouseEvent) => void
 }) {
   const [hovered, setHovered] = useState(false)
-  const [copied, setCopied] = useState<'yes' | 'no' | null>(null)
-  const copyLink = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!inviteCode) return
-    // The token names the project as well as the code — whoever opens the link
-    // is not a member yet and cannot look the project up by code alone.
-    // 회사도 같이 싣습니다. 받는 사람은 아직 프로젝트를 못 읽는데, 소속이
-    // 그 안에 적혀 있어서 — 링크가 말해 주지 않으면 조직 명단에 자기 자리를
-    // 앉힐 수가 없습니다. docs/tenants.md 3.5단계.
-    const orgId = useProjectStore.getState().projects.find(p => p.id === projectId)?.orgId
-    const link = `${window.location.origin}${window.location.pathname}?invite=${buildInviteToken(projectId, inviteCode, orgId)}`
-    setCopied(await copyText(link) ? 'yes' : 'no')
-    setTimeout(() => setCopied(null), 1800)
-  }
 
   return (
     <div
@@ -1393,26 +1395,10 @@ function ProjectItem({
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flexShrink: 0, opacity: dimmed ? .5 : 1 }} />
       )}
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
-      {shared && (
-        <span
-          title="워크스페이스 목록에 이름이 올라 있습니다 — 멤버가 참여를 요청할 수 있습니다"
-          style={{ display: 'flex', flexShrink: 0, color: 'var(--sb-t3)', opacity: .8 }}
-        >
-          <Icon name="users" size={12} />
-        </span>
-      )}
-
-      {hovered && inviteCode ? (
-        <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
-          <ActionIcon
-            onClick={copyLink}
-            title={copied === 'yes' ? '복사됨!' : copied === 'no' ? '복사 실패 — 링크를 직접 선택해 주세요' : '초대 링크 복사'}
-          >
-            {copied === 'yes' ? '✓' : copied === 'no' ? '✕' : '↗'}
-          </ActionIcon>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto', flexShrink: 0 }}>
+      {/* 오른쪽 끝은 마감 하나만 씁니다. 프로젝트가 수십 개 놓이는 목록에서
+          줄마다 표시가 붙으면 정작 급한 것이 안 보입니다. 공개 여부와 초대
+          링크는 우클릭 메뉴에 있습니다. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto', flexShrink: 0 }}>
           {daysInfo && (
             <span style={{
               fontSize: 10, fontWeight: 600, flexShrink: 0,
@@ -1431,8 +1417,7 @@ function ProjectItem({
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             }}>{overdue}</span>
           )}
-        </div>
-      )}
+      </div>
     </div>
   )
 }

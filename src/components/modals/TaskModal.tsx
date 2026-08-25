@@ -18,6 +18,7 @@ import { PropCell, OptionPicker, STATUS_STYLE, PRIORITY_STYLE } from '../shared/
 import { STATUS_LIST, PRIORITY_LIST, getTagColor } from '../../types'
 import type { Task, Status, Priority } from '../../types'
 import { useShallow } from 'zustand/react/shallow'
+import { useVisibleProjects } from '../../hooks/useVisibleProjects'
 
 /**
  * ── 새 업무 ──────────────────────────────────────────────────────────────────
@@ -49,7 +50,8 @@ const EMPTY: Omit<Task, 'id'> = {
 export function TaskModal() {
   const { isTaskModalOpen, newTaskParentId, newTaskMilestoneId, newTaskProjectId, newTaskDue, closeTaskModal, projectId: uiProjectId } = useUiStore(useShallow(s => ({ isTaskModalOpen: s.isTaskModalOpen, newTaskParentId: s.newTaskParentId, newTaskMilestoneId: s.newTaskMilestoneId, newTaskProjectId: s.newTaskProjectId, newTaskDue: s.newTaskDue, closeTaskModal: s.closeTaskModal, projectId: s.projectId })))
   const { tasks, addTask } = useTaskStore(useShallow(s => ({ tasks: s.tasks, addTask: s.addTask })))
-  const projects = useProjectStore(s => s.projects)
+  // 고를 수 있는 것만 내놓습니다 — 지금 서 있는 워크스페이스의 프로젝트.
+  const projects = useVisibleProjects()
   const milestones = useMilestoneStore(s => s.milestones)
   const email = useAuthStore(s => s.email)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
@@ -461,12 +463,17 @@ function TagInput({ value, onChange }: { value: string[]; onChange: (tags: strin
 function Backlog({ date, onClose }: { date: string; onClose: () => void }) {
   const tasks = useTaskStore(s => s.tasks)
   const updateTask = useTaskStore(s => s.updateTask)
-  const projects = useProjectStore(s => s.projects)
+  const projects = useVisibleProjects()
   const [open, setOpen] = useState(false)
 
   const undated = useMemo(
-    () => tasks.filter(t => !t.due && !t.start && t.status !== '완료' && !t.parentId),
-    [tasks],
+    () => {
+      // 여기 있는 것은 전부 고를 수 있어야 합니다. 다른 워크스페이스의 업무가
+      // 섞이면 눌러 놓고 어디로 갔는지 못 찾습니다.
+      const here = new Set(projects.map(p => p.id))
+      return tasks.filter(t => (!t.projectId || here.has(t.projectId)) && !t.due && !t.start && t.status !== '완료' && !t.parentId)
+    },
+    [tasks, projects],
   )
   if (!undated.length) return null
 

@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useUiStore, type ListGroup } from '../../store/uiStore'
-import { useProjectStore } from '../../store/projectStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { useAuthStore } from '../../store/authStore'
 import { useScopedTasks } from '../../hooks/useScopedTasks'
@@ -10,6 +9,7 @@ import { haptic } from '../../lib/haptics'
 import { STATUS_LIST, STATUS_COLORS } from '../../types'
 import type { Status } from '../../types'
 import { useShallow } from 'zustand/react/shallow'
+import { useVisibleProjects } from '../../hooks/useVisibleProjects'
 
 /**
  * ── Filters on a phone ───────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ export function MobileFilterSheet({ onClose }: { onClose: () => void }) {
     view, myTasksOnly, projectId,
   } = useUiStore(useShallow(s => ({ filters: s.filters, setFilters: s.setFilters, resetFilters: s.resetFilters, hideCompleted: s.hideCompleted, setHideCompleted: s.setHideCompleted, listGroup: s.listGroup, setListGroup: s.setListGroup, view: s.view, myTasksOnly: s.myTasksOnly, projectId: s.projectId })))
   const scoped = useScopedTasks()
-  const projects = useProjectStore(s => s.projects)
+  const projects = useVisibleProjects()
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const email = useAuthStore(s => s.email)
 

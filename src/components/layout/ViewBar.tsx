@@ -1,7 +1,6 @@
 import React from 'react'
 import { authorizedEmails, isAuthorizedAssignee, assigneeKeyToEmail, parseAssignees } from '../../lib/utils'
 import { useUiStore } from '../../store/uiStore'
-import { useProjectStore } from '../../store/projectStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { useAuthStore } from '../../store/authStore'
 import { useScopedTasks } from '../../hooks/useScopedTasks'
@@ -13,6 +12,7 @@ import type { ViewType, Status } from '../../types'
 import { STATUS_LIST } from '../../types'
 import { Icon } from '../shared/Icon'
 import { useShallow } from 'zustand/react/shallow'
+import { useVisibleProjects } from '../../hooks/useVisibleProjects'
 
 /**
  * 뷰 탭. 묶음 단위로 적습니다 — 사이의 세로선이 곧 이 묶음의 경계라,
@@ -83,7 +83,7 @@ export function ViewBar({ filtersOnly = false }: { filtersOnly?: boolean }) {
   // a menu that offers values which cannot appear in this view is a menu of
   // ways to get an empty list.
   const scopedTasks = useScopedTasks()
-  const projects = useProjectStore(s => s.projects)
+  const projects = useVisibleProjects()
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const email = useAuthStore(s => s.email)
 

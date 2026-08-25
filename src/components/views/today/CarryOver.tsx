@@ -20,6 +20,7 @@ import { db } from '../../../lib/firebase'
 import { P } from '../../../lib/paths'
 import { useAuthStore } from '../../../store/authStore'
 import { useTaskStore } from '../../../store/taskStore'
+import { useVisibleProjects } from '../../../hooks/useVisibleProjects'
 import { fmtYMD } from '../../../lib/utils'
 
 /** 며칠 전까지 거슬러 볼 것인가. 주말과 연휴를 건너뛸 만큼. */
@@ -87,6 +88,7 @@ function dayLabelFor(date: string): string {
 export function CarryOver({ editor }: { editor: Editor | null }) {
   const email = useAuthStore(s => s.email)
   const tasks = useTaskStore(s => s.tasks)
+  const visibleProjects = useVisibleProjects()
   const [source, setSource] = useState<{ date: string; html: string } | null>(null)
   const [open, setOpen] = useState(false)
   const [skipped, setSkipped] = useState<Set<string>>(new Set())
@@ -115,12 +117,28 @@ export function CarryOver({ editor }: { editor: Editor | null }) {
     return () => { cancelled = true }
   }, [email, today])
 
+  /**
+   * ── 어제 것도 지금 서 있는 워크스페이스 안에서 ────────────────────────────
+   *
+   * 노트는 하루에 하나고 워크스페이스를 안 가립니다 — 오전에 A, 오후에 B를
+   * 하는 사람에게 하루는 여전히 하루니까요. 그건 그대로입니다.
+   *
+   * 그런데 **거기 적힌 업무 줄**은 다릅니다. 어제 다른 워크스페이스에서 담아
+   * 둔 업무가 오늘 이쪽 화면의 '가져올 것'에 섰습니다 — 사이드바 어디에도
+   * 없는 프로젝트의 업무가요. 눌러도 갈 데가 없습니다.
+   *
+   * 지워진 업무와 같은 취급입니다: 목록에서 빠집니다. 저쪽으로 전환하면
+   * 저쪽 노트가 아니라 **같은 노트**가 그 줄을 다시 내놓습니다.
+   */
   const items = useMemo(() => {
     if (!source) return []
-    const byId = new Map(tasks.map(t => [t.id, t]))
+    const here = new Set(visibleProjects.map(p => p.id))
+    const byId = new Map(
+      tasks.filter(t => !t.projectId || here.has(t.projectId)).map(t => [t.id, t]),
+    )
     return parseCarryables(source.html, id => byId.get(id)?.status ?? null)
       .map(it => it.kind === 'task' ? { ...it, label: byId.get(it.taskId!)?.name || '이름 없음' } : it)
-  }, [source, tasks])
+  }, [source, tasks, visibleProjects])
 
   const chosen = items.filter(it => !skipped.has(it.key))
 

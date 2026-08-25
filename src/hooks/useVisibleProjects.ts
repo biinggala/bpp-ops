@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useProjectStore } from '../store/projectStore'
 import { useOrgStore } from '../store/orgStore'
+import { usePrefsStore } from '../store/prefsStore'
 import { useShallow } from 'zustand/react/shallow'
 import type { Project } from '../types'
 
@@ -34,11 +35,38 @@ import type { Project } from '../types'
  */
 export function useVisibleProjects(): Project[] {
   const projects = useProjectStore(s => s.projects)
-  const { orgId, myOrgs } = useOrgStore(useShallow(s => ({ orgId: s.orgId, myOrgs: s.myOrgs })))
+  const { orgId, myOrgs, ready } = useOrgStore(useShallow(s => ({ orgId: s.orgId, myOrgs: s.myOrgs, ready: s.ready })))
+  /**
+   * 마지막으로 고른 곳. 목록보다 **훨씬 빨리** 옵니다 — userPrefs 한 줄이라서.
+   *
+   * 앱을 켜면 프로젝트가 먼저 오고 `myOrgs`는 조직마다 한 번씩 물어본 뒤에
+   * 옵니다. 그 사이에는 숨길 목록이 비어 있어서 **다른 워크스페이스의
+   * 프로젝트가 잠깐 떴다가 사라졌습니다.**
+   *
+   * 나타났다 사라지는 것은 늦게 나타나는 것보다 나쁩니다. 사라지는 것은
+   * 방금 본 것을 의심하게 만들고, 늦는 것은 그냥 불러오는 중입니다.
+   */
+  const preferred = usePrefsStore(s => s.activeOrg)
 
   return useMemo(() => {
-    const elsewhere = new Set(myOrgs.map(o => o.id).filter(id => id !== orgId))
-    if (!elsewhere.size) return projects
-    return projects.filter(p => !p.orgId || !elsewhere.has(p.orgId))
-  }, [projects, orgId, myOrgs])
+    if (ready) {
+      const elsewhere = new Set(myOrgs.map(o => o.id).filter(id => id !== orgId))
+      if (!elsewhere.size) return projects
+      return projects.filter(p => !p.orgId || !elsewhere.has(p.orgId))
+    }
+
+    /**
+     * ── 아직 다 못 찾아본 동안 ────────────────────────────────────────────
+     *
+     * 여기서는 **좁게** 잡습니다: 지금 서 있을 곳의 것과 소속 없는 것만.
+     * 게스트로 들어간 남의 프로젝트가 한 박자 늦게 나타나지만, 그건 늦는
+     * 것이지 사라지는 것이 아닙니다.
+     *
+     * 설 곳조차 모르면(고른 적 없는 사람) 아무것도 안 숨깁니다 — 그 사람은
+     * 워크스페이스가 하나뿐이라 숨길 것도 없습니다.
+     */
+    const active = orgId ?? preferred
+    if (!active) return projects
+    return projects.filter(p => !p.orgId || p.orgId === active)
+  }, [projects, orgId, myOrgs, ready, preferred])
 }
