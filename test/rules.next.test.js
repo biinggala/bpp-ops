@@ -315,3 +315,74 @@ test('게스트는 그 워크스페이스의 회의실을 못 읽는다', async 
   })
   await assertFails(get(ref(authed(MALLORY), `orgs/${oid}/rooms`)))
 })
+
+// ── 알림함은 남이 나에게 쓰는 자리입니다 ─────────────────────────────────────
+//
+// 그래서 열려 있어야 하는데, 그 틈으로 **아무나 아무에게나** 쓸 수 있었습니다.
+// 쓰기 조건이 '로그인했나' 하나였고, 보낸 사람 이름(by)은 그냥 글자라
+// 규칙이 확인할 수 없었습니다. 이메일 주소는 추측 가능합니다 —
+// 'mallory@example.com'로 로그인해서 alice@bpp.co.kr의 알림함에
+// '대표님이 업무를 배정했습니다'를 꽂을 수 있었습니다.
+
+const notice = (byEmail, extra = {}) => ({
+  kind: 'assigned', by: '대표님', at: 1, taskName: '급한 건', ...(byEmail ? { byEmail } : {}), ...extra,
+})
+
+test('남의 이름으로 알림을 못 보낸다', async () => {
+  const db = authed(MALLORY)
+  // 보낸 사람 주소를 아예 안 적는 것 — 예전에는 이게 통했습니다.
+  await assertFails(set(ref(db, `notices/${key(ALICE.email)}/n1`), notice(null)))
+  // 남의 주소를 적는 것.
+  await assertFails(set(ref(db, `notices/${key(ALICE.email)}/n2`), notice(ALICE.email)))
+  await assertFails(set(ref(db, `notices/${key(ALICE.email)}/n3`), notice('ceo@bpp.co.kr')))
+})
+
+test('자기 이름으로는 남에게 알림을 보낼 수 있다', async () => {
+  // 담당자를 지정하면 상대 알림함에 한 줄이 갑니다. 그건 막으면 안 됩니다.
+  await assertSucceeds(set(ref(authed(BOB), `notices/${key(ALICE.email)}/n4`), notice(BOB.email)))
+})
+
+test('받은 사람은 읽음 표시를 할 수 있다', async () => {
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), `notices/${key(ALICE.email)}/n5`), notice(BOB.email))
+    // 이 고침 전에 쌓인 알림에는 byEmail이 없습니다. 그것도 읽음 표시가 돼야
+    // 합니다 — 안 그러면 지난 알림이 영영 안 읽은 채로 남습니다.
+    await set(ref(ctx.database(), `notices/${key(ALICE.email)}/old`), notice(null))
+  })
+  const db = authed(ALICE)
+  await assertSucceeds(set(ref(db, `notices/${key(ALICE.email)}/n5/read`), true))
+  await assertSucceeds(set(ref(db, `notices/${key(ALICE.email)}/old/read`), true))
+  await assertSucceeds(remove(ref(db, `notices/${key(ALICE.email)}/n5`)))
+  // 남의 알림함은 여전히 못 고칩니다.
+  await assertFails(set(ref(authed(MALLORY), `notices/${key(ALICE.email)}/old/read`), true))
+})
+
+// ── 관리자 자리 선점 ─────────────────────────────────────────────────────────
+//
+// '관리자가 아직 하나도 없으면 아무 멤버나 세울 수 있다'는 조항이 있습니다.
+// 처음 만드는 사람을 위한 것인데, 만든 사람이 누구인지 적혀 있으면 그 사람만
+// 쓸 수 있어야 합니다. 안 그러면 관리자가 비어 있는 워크스페이스에서 아무나
+// 자기를 관리자로 만듭니다.
+
+test('관리자가 비어 있어도 만든 사람만 첫 관리자를 세운다', async () => {
+  const oid = 'dom3'
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), { name: '블랙페이퍼', domain: 'bpp.co.kr', createdBy: ALICE.email })
+    await set(ref(db, `orgs/${oid}/members/${key(BOB.email)}`), { role: 'member', at: 1 })
+  })
+  await assertFails(set(ref(authed(BOB), `orgs/${oid}/admins/${key(BOB.email)}`), true))
+  await assertSucceeds(set(ref(authed(ALICE), `orgs/${oid}/admins/${key(ALICE.email)}`), true))
+})
+
+test('만든 사람이 안 적힌 옛 워크스페이스는 예전대로 둔다', async () => {
+  // 여기서 조이면 관리자가 비어 있고 createdBy도 없는 워크스페이스는
+  // 아무도 관리자가 될 수 없습니다 — 회의실을 영영 못 고칩니다.
+  const oid = 'dom4'
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), { name: '블랙페이퍼', domain: 'bpp.co.kr' })
+    await set(ref(db, `orgs/${oid}/members/${key(BOB.email)}`), { role: 'member', at: 1 })
+  })
+  await assertSucceeds(set(ref(authed(BOB), `orgs/${oid}/admins/${key(BOB.email)}`), true))
+})
