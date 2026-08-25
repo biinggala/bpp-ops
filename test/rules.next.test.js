@@ -628,3 +628,88 @@ test('도메인 색인은 그 워크스페이스의 관리자만 지운다', asy
   await assertFails(remove(ref(authed(BOB), 'orgByDomain/bpp,co,kr')))
   await assertSucceeds(remove(ref(authed(ALICE), 'orgByDomain/bpp,co,kr')))
 })
+
+// ── 만든 사람 ────────────────────────────────────────────────────────────────
+//
+// 관리자끼리 서로 대등해서, 아무 관리자나 **만든 사람을 관리자에서 내릴 수**
+// 있었습니다. 도메인형에서는 그게 영구입니다 — 되찾는 조항이 '관리자가 하나도
+// 없을 때'라, 내린 사람이 남아 있으면 안 비니까요.
+//
+// 두 줄로 막습니다: 만든 사람은 **언제나** 돌아올 수 있고, **남이 못 내립니다.**
+//
+// owner는 콤마 형태로, createdBy는 점 형태로 저장됩니다(각각 createInviteOrg와
+// createOrg). 규칙 세 곳이 이미 그렇게 비교하고 있어서 모양을 맞춥니다 —
+// 실제 데이터가 정답이고 규칙이 따라가야 합니다.
+
+test('만든 사람을 남이 관리자에서 못 내린다 (도메인형)', async () => {
+  const oid = 'f1'
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), { name: 'W', domain: 'bpp.co.kr', createdBy: ALICE.email })
+    await set(ref(db, `orgs/${oid}/members/${key(ALICE.email)}`), { role: 'member', at: 1 })
+    await set(ref(db, `orgs/${oid}/members/${key(BOB.email)}`), { role: 'member', at: 1 })
+    await set(ref(db, `orgs/${oid}/admins/${key(ALICE.email)}`), true)
+    await set(ref(db, `orgs/${oid}/admins/${key(BOB.email)}`), true)
+  })
+  await assertFails(remove(ref(authed(BOB), `orgs/${oid}/admins/${key(ALICE.email)}`)))
+  // 관리자끼리 서로 세우고 내리는 것은 그대로입니다 — 만든 사람만 다릅니다.
+  await assertSucceeds(remove(ref(authed(ALICE), `orgs/${oid}/admins/${key(BOB.email)}`)))
+})
+
+test('만든 사람을 남이 관리자에서 못 내린다 (초대형)', async () => {
+  const oid = 'f2'
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), { name: 'W', owner: key(ALICE.email) })
+    await set(ref(db, `orgs/${oid}/members/${key(ALICE.email)}`), { role: 'member', at: 1 })
+    await set(ref(db, `orgs/${oid}/members/${key(BOB.email)}`), { role: 'member', at: 1 })
+    await set(ref(db, `orgs/${oid}/admins/${key(ALICE.email)}`), true)
+    await set(ref(db, `orgs/${oid}/admins/${key(BOB.email)}`), true)
+  })
+  await assertFails(remove(ref(authed(BOB), `orgs/${oid}/admins/${key(ALICE.email)}`)))
+})
+
+test('만든 사람은 관리자가 남아 있어도 되찾는다', async () => {
+  // 되찾는 조항이 '관리자가 하나도 없을 때'뿐이었습니다. 누가 나를 내려
+  // 두고 자기는 남아 있으면 영영 안 비어서 못 돌아왔습니다.
+  const oid = 'f3'
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), { name: 'W', domain: 'bpp.co.kr', createdBy: ALICE.email })
+    await set(ref(db, `orgs/${oid}/members/${key(ALICE.email)}`), { role: 'member', at: 1 })
+    await set(ref(db, `orgs/${oid}/members/${key(BOB.email)}`), { role: 'member', at: 1 })
+    await set(ref(db, `orgs/${oid}/admins/${key(BOB.email)}`), true)
+  })
+  await assertSucceeds(set(ref(authed(ALICE), `orgs/${oid}/admins/${key(ALICE.email)}`), true))
+  // 만든 사람이 아니면 그냥 멤버는 여전히 스스로 관리자가 못 됩니다.
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), `orgs/${oid}/members/${key(MALLORY.email)}`), { role: 'member', at: 1 })
+  })
+  await assertFails(set(ref(authed(MALLORY), `orgs/${oid}/admins/${key(MALLORY.email)}`), true))
+})
+
+test('만든 사람을 나중에 바꿔칠 수 없다', async () => {
+  // 이게 없으면 위 보호가 아무 소용이 없습니다 — 관리자가 meta를 고쳐서
+  // 자기를 만든 사람으로 적으면 그만입니다.
+  const oid = 'f4'
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), { name: 'W', domain: 'bpp.co.kr', createdBy: ALICE.email })
+    await set(ref(db, `orgs/${oid}/members/${key(BOB.email)}`), { role: 'member', at: 1 })
+    await set(ref(db, `orgs/${oid}/admins/${key(BOB.email)}`), true)
+  })
+  await assertFails(set(ref(authed(BOB), `orgs/${oid}/meta`), { name: 'W', domain: 'bpp.co.kr', createdBy: BOB.email }))
+  // 이름 바꾸기는 그대로 됩니다.
+  await assertSucceeds(set(ref(authed(BOB), `orgs/${oid}/meta`), { name: '새 이름', domain: 'bpp.co.kr', createdBy: ALICE.email }))
+})
+
+test('초대형 만든 사람은 관리자가 비어도 되찾고, 지울 수 있다', async () => {
+  // 어제 넣은 삭제 규칙의 owner 갈래가 모양이 안 맞아 죽어 있었습니다.
+  const oid = 'f5'
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), { name: 'W', owner: key(ALICE.email) })
+    await set(ref(db, `orgs/${oid}/members/${key(ALICE.email)}`), { role: 'member', at: 1 })
+  })
+  await assertSucceeds(remove(ref(authed(ALICE), `orgs/${oid}`)))
+})

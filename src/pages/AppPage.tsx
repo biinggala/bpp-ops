@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useUiStore } from '../store/uiStore'
 import { useTaskStore } from '../store/taskStore'
 import { useGCalStore } from '../store/gcalStore'
@@ -231,6 +231,36 @@ export function AppPage() {
     return unsub
   }, [uid])
 
+  /**
+   * ── 받은 프로젝트가 있는 곳으로 옮겨 갑니다 ────────────────────────────────
+   *
+   * 초대는 **목적지가 있는 행동**입니다. 그런데 다른 워크스페이스에 서 있는
+   * 채로 수락하면, 방금 받은 프로젝트가 사이드바 어디에도 없습니다 — 거르는
+   * 규칙대로면 맞는 동작이라 더 헷갈립니다. 수락이 안 먹힌 것처럼 보입니다.
+   *
+   * **거르는 규칙에 예외를 만들지 않습니다.** '방금 들어온 건 특별히 보여
+   * 준다'를 더하면 그 규칙이 또 갈라집니다. 서 있는 곳만 옮깁니다 — 그건
+   * 개인 설정이라 싸고, 되돌리기 쉽고, 남에게 아무 영향이 없습니다.
+   *
+   * **내가 멤버인 곳일 때만** 옮깁니다. 게스트로 들어간 남의 회사는 전환
+   * 목록에 없어서 옮겨 봐야 아무 데도 아닌 곳에 서게 되고, 그런 프로젝트는
+   * 어차피 어디 서 있든 보입니다. 두 경우 다 맞습니다.
+   *
+   * 화면이 통째로 바뀌는 일은 이유를 말해야 합니다.
+   */
+  const goToWorkspace = useCallback((oid?: string) => {
+    // 스토어에서 그 자리에 읽습니다. 이 함수를 부르는 곳이 '초대 링크를 들고
+    // 처음 켠 순간'이라, 값을 닫아 두면 아직 안 온 email을 붙들게 됩니다.
+    const me = useAuthStore.getState().email
+    if (!oid || !me) return
+    const { orgId: standing, myOrgs } = useOrgStore.getState()
+    if (standing === oid) return
+    const there = myOrgs.find(o => o.id === oid)
+    if (!there) return
+    usePrefsStore.getState().setActiveOrg(me, oid)
+    useToast.getState().show(`'${there.name}'로 이동했습니다`)
+  }, [])
+
   // Invite link. The token carries the project id as well as the code, because
   // a non-member cannot search the project list to find which project a bare
   // code belongs to.
@@ -242,7 +272,9 @@ export function AppPage() {
     if (!parsed) return
     let cancelled = false
     joinProject(parsed.projectId, parsed.inviteCode, parsed.orgId).then(joined => {
-      if (joined && !cancelled) setProject(parsed.projectId)
+      if (!joined || cancelled) return
+      goToWorkspace(parsed.orgId)
+      setProject(parsed.projectId)
     })
     return () => { cancelled = true }
   }, [uid])
@@ -437,7 +469,10 @@ export function AppPage() {
             dismissedInvites.current.add(id)
             setInvitePending(null)
             void joinProject(id, inviteCode ?? '', from).then(joined => {
-              if (joined) return void setProject(id)
+              if (joined) {
+                goToWorkspace(from)
+                return void setProject(id)
+              }
               // 실패하면 말합니다. 조용히 사라지면 수락한 줄 알고 기다립니다.
               dismissedInvites.current.delete(id)
               useToast.getState().show('초대를 수락하지 못했습니다. 초대한 사람에게 다시 부탁해 주세요')
