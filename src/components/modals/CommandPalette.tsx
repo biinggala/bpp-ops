@@ -258,17 +258,27 @@ export function CommandPalette() {
         onSelect: () => { setProject(p.id); closeCommandPalette() },
       }))
 
+    /**
+     * 붙여 둔 자료 묶음에 **실제로 세운** 파일들.
+     *
+     * 아래에서 드라이브 결과를 거를 때 씁니다. 예전에는 '붙여 둔 파일 전부'로
+     * 걸렀는데, 이 묶음은 **이름과 메모만** 보고 드라이브 쪽은 **내용까지**
+     * 봅니다. 그래서 이름에 없는 낱말이 본문에 있는 파일은 — 붙여 둔 자료라는
+     * 이유로 드라이브에서 빠지고, 이름이 안 맞아 여기에도 안 서서, **어느
+     * 쪽에도 안 나타났습니다.**
+     */
+    const shownLinks = new Set<string>()
     if (q) {
       allLinks
         .filter(({ link }) => fuzzy(link.title, q) || (link.note ? fuzzy(link.note, q) : false))
         .slice(0, 6)
-        .forEach(({ link, where }) => result.push({
+        .forEach(({ link, where }) => (link.driveId && shownLinks.add(link.driveId), result.push({
           id: `link-${link.url}`, kind: 'link',
           icon: link.driveId ? fileKind(link.mimeType).icon : '🔗',
           label: link.note || link.title,
           sub: where,
           onSelect: () => { void openExternal(link.url); closeCommandPalette() },
-        }))
+        })))
     }
 
     noteHits.forEach(h => result.push({
@@ -277,14 +287,15 @@ export function CommandPalette() {
       onSelect: () => { openNote(h.date); closeCommandPalette() },
     }))
 
-    // 이미 앱 안에 붙어 있는 파일은 위의 '붙여 둔 자료'가 말했습니다. 같은
-    // 파일을 드라이브 쪽에서 한 번 더 세우면 같은 줄이 둘이 됩니다.
-    const attached = new Set(allLinks.map(({ link }) => link.driveId).filter(Boolean))
+    // 위에서 **이미 세운** 파일만 뺍니다. 같은 줄이 둘이 되는 것은 막되,
+    // 거기 안 선 파일까지 빼면 그건 빼는 게 아니라 잃는 것입니다.
     driveHits
-      .filter(f => !attached.has(f.id))
+      .filter(f => !shownLinks.has(f.id))
       .forEach(f => result.push({
         id: `drive-${f.id}`, kind: 'drive', icon: fileKind(f.mimeType).icon, label: f.name,
-        sub: f.contentMatch ? '내용에 있음' : fileKind(f.mimeType).label,
+        sub: (f.contentMatch ? snippets[snippetKey(f.id, q)]?.tabTitle : null)
+          ? `탭: ${snippets[snippetKey(f.id, q)]!.tabTitle}`
+          : f.contentMatch ? '내용에 있음' : fileKind(f.mimeType).label,
         snippet: f.contentMatch ? snippets[snippetKey(f.id, q)] ?? null : null,
         snippetLoading: !!f.contentMatch && !!snippetLoading[snippetKey(f.id, q)],
         /**
@@ -483,7 +494,9 @@ export function CommandPalette() {
                       )}
                     </span>
 
-                    {item.sub && !hasSnippet && (
+                    {/* 조각이 있으면 '내용에 있음'은 중복입니다. 다만 탭
+                        이름은 조각이 못 하는 말이라 그대로 둡니다. */}
+                    {item.sub && (!hasSnippet || item.sub.startsWith('탭: ')) && (
                       <span style={{ fontSize: isMobile ? 12 : 11, color: 'var(--t3)', flexShrink: 0, maxWidth: '40%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.sub}</span>
                     )}
 
