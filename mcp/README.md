@@ -237,6 +237,7 @@ GitHub → Settings → Secrets and variables → Actions → New repository sec
 | `MCP_PUBLIC_URL` | 배포된 주소 (`https://crng-task-manager-2bbjjrjoya-du.a.run.app`, 끝에 `/` 없이) |
 | `GOOGLE_OAUTH_CLIENT_ID` | OAuth **웹** 클라이언트 ID |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | 같은 클라이언트의 시크릿 |
+| `NOTION_CLIENT_ID` / `NOTION_CLIENT_SECRET` | 노션 연동 (선택 — 없으면 노션 찾기만 꺼집니다) |
 
 RTDB 주소는 기본값이 들어 있어 따로 넣지 않아도 됩니다. 바꾸려면 저장소 변수
 `FIREBASE_DATABASE_URL`을 지정하세요.
@@ -263,6 +264,7 @@ RTDB 주소는 기본값이 들어 있어 따로 넣지 않아도 됩니다. 바
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | 푸시 알림 키 쌍 (아래) |
 | `VAPID_SUBJECT` | 기본 `mailto:heegun@bpp.co.kr` |
 | `PUSH_BRIEF_SECRET` | 아침 브리핑을 부를 때 쓰는 공유 암호 |
+| `NOTION_CLIENT_ID` / `NOTION_CLIENT_SECRET` | 노션 찾기 (아래). **없어도 서버는 뜹니다** — `/notion/*`만 503 |
 
 `BPP_OPS_OPERATOR_EMAIL`은 HTTP 모드에서 쓰지 않습니다 — 신원이 토큰에서 나오기 때문이고, 그게 공용 서버가 안전한 이유입니다.
 
@@ -306,3 +308,50 @@ gcloud scheduler jobs create http bpp-ops-morning-brief \
 ```
 
 마감이 지난 일도, 오늘 마감도 없는 사람에게는 아무것도 보내지 않습니다.
+
+## 노션 찾기
+
+앱의 ⌘K가 노션 페이지도 같이 찾습니다. **그 요청은 반드시 이 서버를 거칩니다** —
+노션 API는 브라우저에서 오는 호출을 CORS로 막아 두었고, 그건 우리가 켤 수 있는
+스위치가 아닙니다.
+
+| 경로 | 누가 부르는가 | 무엇을 확인하는가 |
+|---|---|---|
+| `POST /notion/start` | 앱 (설정 › 연동에서 켤 때) | Firebase ID 토큰. 일회용 `state`를 만들어 노션 로그인 주소를 돌려줌 |
+| `GET /notion/callback` | 노션 (사람의 브라우저가) | 그 `state` — 10분 지나면 안 받고, 한 번 쓰면 지웁니다 |
+| `POST /notion/search` | 앱 (⌘K) | Firebase ID 토큰 → 그 **사람의** 노션 열쇠 |
+| `POST /notion/snippets` | 앱 (⌘K) | 같음. 걸린 페이지 6개까지 본문 한 조각 |
+| `POST /notion/disconnect` | 앱 | 같음. 열쇠와 표시를 둘 다 지웁니다 |
+| `GET /notion/health` | 사람 (curl) | 켜져 있는지, 그리고 **노션에 등록해야 하는 리디렉션 주소** |
+
+### 열쇠는 사람마다 하나입니다
+
+`owner=user`로 받습니다. 회사 하나에 열쇠 하나를 두면 그 열쇠를 든 서버가 한 번만
+잘못 걸러도 남의 페이지가 남의 화면에 뜹니다. 각자 자기 계정을 붙이면, **각자가
+노션에서 볼 수 있는 것만** 검색됩니다 — 거를 코드가 아예 없습니다.
+
+열쇠는 `notionAuth/{uid}`에 있고, 그 자리는 규칙이 **아무에게도** 안 열어 줍니다
+(`mcpAuth`와 같은 모양). 앱이 읽는 것은 `notionLinked/{uid}` 한 줄뿐이고, 거기엔
+'붙었다'와 워크스페이스 이름만 있습니다.
+
+### 찾는 것은 제목입니다
+
+노션 검색 API(`POST /v1/search`)는 **제목만** 봅니다 — 본문에만 있는 낱말로는
+페이지가 안 걸립니다. 드라이브와 다른 점이고, 노션이 API로 안 내주는 것이라
+우리 쪽에서 고칠 수 있는 자리가 아닙니다. 대신 제목으로 걸린 페이지의 본문에서
+그 낱말이 있는 문장을 찾아 붙여 줍니다(`/notion/snippets`, 한 겹만 읽습니다).
+
+### 준비
+
+1. https://www.notion.so/my-integrations → **New integration** → Type을
+   **Public**으로. (Internal은 워크스페이스 하나에 고정이라 사람마다 붙일 수
+   없습니다.)
+2. Redirect URI에 `GET /notion/health`가 알려 주는 주소를 그대로 넣습니다 —
+   `https://<배포주소>/notion/callback`.
+3. Capabilities는 **Read content**만 있으면 됩니다. 쓰지 않습니다.
+4. OAuth client ID / secret을 GitHub 저장소 시크릿 `NOTION_CLIENT_ID` ·
+   `NOTION_CLIENT_SECRET`으로 넣고 배포합니다. **시크릿은 채팅이나 저장소가
+   아니라 GitHub Secrets 화면에 직접 붙여 넣습니다.**
+5. 각자 앱에서 설정 › 연동 › 노션을 켜고, 열린 창에서 **찾게 할 페이지를
+   고릅니다.** 노션은 고른 것만 연동에 보여 줍니다 — 안 고른 페이지는 검색에
+   안 나옵니다.

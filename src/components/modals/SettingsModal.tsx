@@ -8,6 +8,7 @@ import { chimeEnabled, playChime, setChimeEnabled } from '../../lib/chime'
 import { fileWatchEnabled, setFileWatchEnabled } from '../../lib/driveWatch'
 import { useDriveStore } from '../../store/driveStore'
 import { useMailStore } from '../../store/mailStore'
+import { useNotionStore } from '../../store/notionStore'
 import { PUBLIC_DOMAINS, useOrgStore, pendingJoinCount } from '../../store/orgStore'
 import { useTrashStore } from '../../store/trashStore'
 import { useProjectStore } from '../../store/projectStore'
@@ -170,6 +171,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             {page === 'link' && (
               <Section title="연동" note="받은 알림에 밖에서 온 소식을 들이는 통로입니다. 이 기기가 아니라 계정에 붙습니다.">
                 <MailLinkRow />
+                <NotionLinkRow />
                 <ConnectorRow />
               </Section>
             )}
@@ -536,6 +538,50 @@ function MailLinkRow() {
         on={on}
         busy={connecting}
         onClick={() => { if (on) disconnect(); else void connect() }}
+      />
+    </div>
+  )
+}
+
+/**
+ * 노션 — 켜면 ⌘K에서 노션 페이지도 같이 찾습니다.
+ *
+ * 메일과 다른 점 하나를 문구로 말해 둡니다: **내 노션만** 붙습니다. 회사
+ * 하나에 열쇠 하나를 두면 그 열쇠로 아무나 아무 페이지나 보게 되므로, 각자
+ * 자기 계정을 붙이고 각자가 볼 수 있는 것만 나옵니다. '나만 보는 페이지가
+ * 남에게 보이나'가 켜기 전에 드는 생각이고, 답이 여기 있어야 합니다.
+ *
+ * 연결하는 창은 **다른 탭에서** 끝납니다(데스크톱 앱에서는 진짜 브라우저).
+ * 그래서 눌러 놓고 여기 돌아오면 스위치가 저절로 켜져 있습니다 — DB의 한
+ * 줄을 보고 있기 때문입니다.
+ */
+function NotionLinkRow() {
+  const linked = useNotionStore(s => s.linked)
+  const workspace = useNotionStore(s => s.workspace)
+  const revoked = useNotionStore(s => s.revoked)
+  const connecting = useNotionStore(s => s.connecting)
+  const error = useNotionStore(s => s.error)
+  const connect = useNotionStore(s => s.connect)
+  const disconnect = useNotionStore(s => s.disconnect)
+
+  const note = error ? error
+    : revoked ? '노션에서 연동이 해제됐습니다. 다시 눌러 주세요.'
+    : linked ? `${workspace || '내 노션'} · 검색에서 페이지를 같이 찾습니다`
+    : connecting ? '노션 창에서 허용하면 여기가 켜집니다'
+    : '내 계정으로 붙습니다. 내가 볼 수 있는 페이지만 나옵니다.'
+
+  return (
+    <div style={ROW}>
+      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+        노션
+        <span style={{ display: 'block', fontSize: 11, color: error ? 'var(--danger)' : 'var(--t3)', marginTop: 2 }}>
+          {note}
+        </span>
+      </span>
+      <MiniSwitch
+        on={linked}
+        busy={connecting}
+        onClick={() => { if (linked) void disconnect(); else void connect() }}
       />
     </div>
   )

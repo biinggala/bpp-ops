@@ -15,6 +15,7 @@ import { registerTools } from './tools.js'
 import { canAccessProject } from './access.js'
 import { initDb, readProjects } from './store.js'
 import { pushConfigured, registerPushRoutes } from './push.js'
+import { notionConfigured, registerNotionRoutes } from './notion.js'
 
 /**
  * Every missing variable at once, not just the first.
@@ -116,6 +117,10 @@ async function main() {
   // not working; without the VAPID keys the two senders answer 503.
   registerPushRoutes(app)
 
+  // 노션 찾기 — 브라우저가 노션에 직접 못 물어서(CORS) 여기를 거칩니다.
+  // 열쇠가 없으면 각 길이 503으로 답하므로, 안 켜져 있어도 서버는 뜹니다.
+  registerNotionRoutes(app, publicUrl)
+
   /**
    * 상태 확인, 그리고 **구글에 등록해야 하는 주소**.
    *
@@ -127,6 +132,7 @@ async function main() {
   app.get('/healthz', (_req, res) => void res.json({
     ok: true,
     push: pushConfigured(),
+    notion: notionConfigured(),
     issuer: publicUrl,
     googleRedirectUri: new URL(googleCallbackPath, publicUrl).toString(),
   }))

@@ -11,6 +11,7 @@ import { useUserProfileStore } from '../store/userProfileStore'
 import { useSyncStore } from '../store/syncStore'
 import { useOrgStore } from '../store/orgStore'
 import { usePrefsStore } from '../store/prefsStore'
+import { useNotionStore } from '../store/notionStore'
 import { Welcome } from '../components/modals/Welcome'
 import { parseInviteToken, PENDING_TASK_KEY } from '../lib/paths'
 import { claimGuestSeats, claimInvitedOrgs, stampProjects, syncRoster } from '../lib/roster'
@@ -106,6 +107,14 @@ export function AppPage() {
     if (!email) return
     return subscribeOrg(email, uid)
   }, [email, uid, subscribeOrg])
+
+  // 노션이 붙었는지. 연결 창은 다른 탭에서 끝나므로, 돌아온 것을 이 화면이
+  // 아는 방법은 DB의 그 한 줄을 보고 있는 것뿐입니다.
+  const subscribeNotion = useNotionStore(s => s.subscribe)
+  useEffect(() => {
+    if (!uid) return
+    return subscribeNotion(uid)
+  }, [uid, subscribeNotion])
 
   /**
    * ── 조직 명단 채우기 ───────────────────────────────────────────────────────

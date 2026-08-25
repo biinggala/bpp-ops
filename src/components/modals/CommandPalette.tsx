@@ -7,11 +7,14 @@ import { useTaskStore } from '../../store/taskStore'
 import { useSpaceStore } from '../../store/spaceStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useDriveStore } from '../../store/driveStore'
+import { useNotionStore } from '../../store/notionStore'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import { Icon } from '../shared/Icon'
 import { fileKind, driveUrl, type DriveSearchResult, type Snippet } from '../../lib/googleDrive'
 import { snippetKey, warmDriveAuth } from '../../store/driveStore'
+import { snippetKey as notionKey } from '../../store/notionStore'
+import type { NotionHit } from '../../lib/notion'
 import { docTabUrl } from '../../lib/googleDocs'
 import { SNIPPET_BOX } from '../shared/DriveFiles'
 import { NOTION } from '../../types'
@@ -57,6 +60,7 @@ const KINDS = [
   { kind: 'link',    label: '붙여 둔 자료' },
   { kind: 'note',    label: '데일리 노트' },
   { kind: 'drive',   label: '드라이브' },
+  { kind: 'notion',  label: '노션' },
 ] as const
 
 type Kind = typeof KINDS[number]['kind']
@@ -117,7 +121,9 @@ export function CommandPalette() {
   const email = useAuthStore(s => s.email)
   const [noteHits, setNoteHits] = useState<{ date: string; snippet: string }[]>([])
   const [driveHits, setDriveHits] = useState<DriveSearchResult[]>([])
+  const [notionHits, setNotionHits] = useState<NotionHit[]>([])
   const driveConnected = useDriveStore(s => s.wasConnected && !s.needsReconnect)
+  const notionConnected = useNotionStore(s => s.linked)
   /**
    * 노트와 드라이브는 **나중에 옵니다.**
    *
@@ -128,9 +134,11 @@ export function CommandPalette() {
    */
   const [notesBusy, setNotesBusy] = useState(false)
   const [driveBusy, setDriveBusy] = useState(false)
-  const searching = notesBusy || driveBusy
+  const [notionBusy, setNotionBusy] = useState(false)
+  const searching = notesBusy || driveBusy || notionBusy
   const snippets = useDriveStore(s => s.snippets)
   const snippetLoading = useDriveStore(s => s.snippetLoading)
+  const notionSnips = useNotionStore(s => s.snippets)
 
   useEffect(() => {
     if (!isCommandPaletteOpen) return
@@ -190,6 +198,36 @@ export function CommandPalette() {
     if (q.length < 2 || !driveHits.length) return
     useDriveStore.getState().loadSnippets(driveHits, q)
   }, [driveHits, query])
+
+  /**
+   * 노션도 남의 서버입니다 — 그리고 한 겹 더 멉니다.
+   *
+   * 노션 API는 브라우저에서 오는 호출을 막아 두어서, 이 요청은 우리 서버를
+   * 거쳐 노션에 갑니다. 그만큼 늦게 오므로 드라이브보다 조금 더 기다렸다
+   * 묻습니다 — 대신 지난 검색어로 가던 것은 store가 끊습니다.
+   *
+   * **제목만 걸립니다.** 노션 검색 API가 본문을 안 봅니다. 본문은 걸린
+   * 페이지에 한해 뒤이어 붙습니다(아래 조각 효과).
+   */
+  useEffect(() => {
+    const q = query.trim()
+    if (!notionConnected || q.length < 2) { setNotionHits([]); setNotionBusy(false); return }
+    let alive = true
+    setNotionBusy(true)
+    const timer = setTimeout(() => {
+      void useNotionStore.getState().search(q)
+        .then(hits => { if (alive) setNotionHits(hits) })
+        .catch(() => { if (alive) setNotionHits([]) })
+        .finally(() => { if (alive) setNotionBusy(false) })
+    }, 200)
+    return () => { alive = false; clearTimeout(timer) }
+  }, [query, notionConnected])
+
+  useEffect(() => {
+    const q = query.trim()
+    if (q.length < 2 || !notionHits.length) return
+    useNotionStore.getState().loadSnippets(notionHits, q)
+  }, [notionHits, query])
 
   /**
    * 업무와 프로젝트에 붙여 둔 링크들.
@@ -314,11 +352,35 @@ export function CommandPalette() {
         },
       }))
 
+    /**
+     * 노션 페이지.
+     *
+     * 부제는 **어디 아래에 있는지**입니다 — 노션에서는 같은 이름의 페이지가
+     * 데이터베이스마다 하나씩 있는 일이 흔해서, 제목만으로는 어느 것인지
+     * 못 고릅니다. 아이콘도 페이지에 붙여 둔 이모지를 그대로 씁니다: 그게
+     * 사람이 노션에서 그 페이지를 알아보는 방법입니다.
+     */
+    notionHits.forEach(h => result.push({
+      id: `notion-${h.id}`, kind: 'notion', icon: h.emoji || '📄', label: h.title,
+      sub: h.parent,
+      /**
+       * 조각은 **찾았을 때만** 자리를 잡습니다.
+       *
+       * 드라이브는 '내용에 있음'으로 걸린 파일에만 조각을 붙이므로 그 줄에는
+       * 반드시 문장이 있습니다. 노션은 제목으로 걸린 것이라 본문에 그 낱말이
+       * 없는 줄이 대부분이고, 그런 줄마다 '불러오는 중…' 상자를 세웠다가
+       * 없애면 목록이 여섯 번 출렁입니다. 제목은 이미 서 있으니 조각은
+       * 덤입니다 — 오면 붙고, 없으면 아무 일도 없습니다.
+       */
+      snippet: notionSnips[notionKey(h.id, q)] ?? null,
+      onSelect: () => { void openExternal(h.url); closeCommandPalette() },
+    }))
+
     // KINDS 순서로 세워 둡니다. 화면의 묶음도 ↑↓가 세는 순서도 이 배열
     // 하나에서 나와야 합니다 — 둘이 따로 정해지면 엔터가 다른 줄을 엽니다.
     const rank = (k: Kind) => KINDS.findIndex(x => x.kind === k)
     return result.sort((a, b) => rank(a.kind) - rank(b.kind))
-  }, [query, tasks, spaces, projects, noteHits, driveHits, allLinks, snippets, snippetLoading])
+  }, [query, tasks, spaces, projects, noteHits, driveHits, notionHits, allLinks, snippets, snippetLoading, notionSnips])
 
   const execute = useCallback(() => {
     items[selectedIdx]?.onSelect()
@@ -495,8 +557,9 @@ export function CommandPalette() {
                     </span>
 
                     {/* 조각이 있으면 '내용에 있음'은 중복입니다. 다만 탭
-                        이름은 조각이 못 하는 말이라 그대로 둡니다. */}
-                    {item.sub && (!hasSnippet || item.sub.startsWith('탭: ')) && (
+                        이름과 노션의 부모 페이지는 조각이 못 하는 말이라
+                        그대로 둡니다. */}
+                    {item.sub && (!hasSnippet || item.sub.startsWith('탭: ') || item.kind === 'notion') && (
                       <span style={{ fontSize: isMobile ? 12 : 11, color: 'var(--t3)', flexShrink: 0, maxWidth: '40%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.sub}</span>
                     )}
 

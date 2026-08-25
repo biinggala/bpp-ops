@@ -52,6 +52,8 @@ beforeEach(async () => {
     await set(ref(db, `personalTasks/${ALICE.uid}/pt1`), { id: 'pt1', name: '개인 메모' })
     await set(ref(db, `userProfiles/${ALICE.uid}`), { email: ALICE.email, name: 'Alice' })
     await set(ref(db, 'mcpAuth/secret'), { token: 'do-not-leak' })
+    await set(ref(db, `notionAuth/${ALICE.uid}`), { accessToken: 'do-not-leak' })
+    await set(ref(db, `notionLinked/${ALICE.uid}`), { workspace: 'BPP', at: 1 })
   })
 })
 
@@ -173,6 +175,23 @@ test('비로그인 사용자는 아무것도 못 한다', async () => {
 test('mcpAuth는 여전히 아무도 못 읽는다', async () => {
   await assertFails(get(ref(authed(ALICE), 'mcpAuth')))
   await assertFails(set(ref(authed(ALICE), 'mcpAuth/x'), 1))
+})
+
+// 노션 열쇠는 본인도 못 읽습니다. 앱은 열쇠가 필요 없고 — 검색은 서버가
+// 대신 갑니다 — 읽을 수 있으면 확장 프로그램 하나가 그 사람 노션을 통째로
+// 가져갈 수 있는 값이 브라우저에 놓입니다.
+test('노션 열쇠는 본인조차 못 읽는다', async () => {
+  await assertFails(get(ref(authed(ALICE), `notionAuth/${ALICE.uid}`)))
+  await assertFails(set(ref(authed(ALICE), `notionAuth/${ALICE.uid}`), { accessToken: 'mine' }))
+  await assertFails(get(ref(authed(MALLORY), `notionAuth/${ALICE.uid}`)))
+})
+
+test('붙었다는 표시만 본인이 읽고, 아무도 못 쓴다', async () => {
+  await assertSucceeds(get(ref(authed(ALICE), `notionLinked/${ALICE.uid}`)))
+  await assertFails(get(ref(authed(BOB), `notionLinked/${ALICE.uid}`)))
+  // 서버만 씁니다. 앱이 쓸 수 있으면 안 붙여 놓고 붙은 척할 수 있고, 그러면
+  // 검색이 조용히 빈 결과를 주는 상태가 '연결됨'으로 보입니다.
+  await assertFails(set(ref(authed(ALICE), `notionLinked/${ALICE.uid}`), { workspace: '가짜' }))
 })
 
 test('휴지통은 그 프로젝트 멤버만 읽고 쓴다', async () => {

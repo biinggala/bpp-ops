@@ -204,6 +204,15 @@ export const P = {
   /** Where a device's push subscription lives, so the server can reach it. */
   pushSubs:         (uid: string) => `pushSubs/${uid}`,
   pushSub:          (uid: string, id: string) => `pushSubs/${uid}/${id}`,
+
+  /**
+   * 노션이 연결됐는지 — **여기만 앱이 읽습니다.**
+   *
+   * 노션 열쇠 자체는 `notionAuth/{uid}`에 있고 그 자리는 규칙이 아무에게도
+   * 안 열어 줍니다(서버만 관리자 권한으로 씁니다). 앱이 알아야 하는 건
+   * '붙었는가'뿐이라, 그 한 줄만 따로 내놓습니다.
+   */
+  notionLinked:     (uid: string) => `notionLinked/${uid}`,
 } as const
 
 /**

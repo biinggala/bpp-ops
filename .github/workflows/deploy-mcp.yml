@@ -91,7 +91,12 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --quiet \
-            --set-env-vars "^@^PUBLIC_URL=${{ secrets.MCP_PUBLIC_URL }}@FIREBASE_DATABASE_URL=${{ vars.FIREBASE_DATABASE_URL || 'https://crng-task-manager-default-rtdb.firebaseio.com' }}@GOOGLE_OAUTH_CLIENT_ID=${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}@GOOGLE_OAUTH_CLIENT_SECRET=${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}"
+            --set-env-vars "^@^PUBLIC_URL=${{ secrets.MCP_PUBLIC_URL }}@FIREBASE_DATABASE_URL=${{ vars.FIREBASE_DATABASE_URL || 'https://crng-task-manager-default-rtdb.firebaseio.com' }}@GOOGLE_OAUTH_CLIENT_ID=${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}@GOOGLE_OAUTH_CLIENT_SECRET=${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}@NOTION_CLIENT_ID=${{ secrets.NOTION_CLIENT_ID }}@NOTION_CLIENT_SECRET=${{ secrets.NOTION_CLIENT_SECRET }}"
+
+      # 노션 열쇠 둘은 **없어도 배포됩니다** — 없으면 /notion/* 만 503으로
+      # 답하고 나머지는 그대로 돕니다. 위 목록에 늘 적어 두는 이유는 이
+      # 배포가 환경 변수의 유일한 출처이기 때문입니다: 여기서 빠지면 다음
+      # 배포가 콘솔에 넣어 둔 값을 지웁니다.
 
       # FIREBASE_SERVICE_ACCOUNT is deliberately not set: on Cloud Run the
       # runtime's own service account is used, so there is no key to hand around
