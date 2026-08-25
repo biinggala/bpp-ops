@@ -114,6 +114,18 @@ interface OrgState {
   /** 조직을 찾는 첫 조회가 끝났는가. 그 전에는 '없다'고 말하지 않습니다. */
   ready: boolean
   error: string | null
+  /**
+   * 지금 이 워크스페이스를 스스로 떠나는 중인가. (내부용)
+   *
+   * 나가기와 삭제는 **내가 읽을 권한을 스스로 없애는 일**입니다. 그런데 그
+   * 순간 회의실 리스너는 아직 붙어 있어서, 규칙이 거절하자마자 '회의실을
+   * 읽지 못했습니다'를 띄웁니다. 곧 리스너가 떨어지면서 사라지므로 붉은
+   * 글자가 한 번 번쩍합니다.
+   *
+   * 그 오류는 참이지만 **말할 가치가 없습니다.** 방금 사람이 시킨 일의
+   * 결과니까요. 오류 문구가 필요한 경우는 시키지 않았는데 못 읽을 때입니다.
+   */
+  teardown: boolean
 
   subscribe: (email: string, uid: string | null) => () => void
   /**
@@ -239,6 +251,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
   orgId: null,
   name: '',
   domain: '',
+  teardown: false,
   rooms: [],
   myOrgs: [],
   admins: [],
@@ -382,8 +395,10 @@ export const useOrgStore = create<OrgState>((set, get) => ({
           .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name))
         set({ rooms })
       }, e => {
-        // 규칙이 거절한 것도 알려야 합니다. 조용히 빈 목록이 되면 회의실이
-        // 없는 것과 못 읽는 것이 화면에서 같아 보입니다.
+        // 내가 시켜서 못 읽게 된 것이면 아무 말도 안 합니다 — 나가기·삭제가
+        // 그 자리입니다. 그 외에는 알려야 합니다: 조용히 빈 목록이 되면
+        // 회의실이 없는 것과 못 읽는 것이 화면에서 같아 보입니다.
+        if (get().teardown) return void set({ rooms: [] })
         set({ rooms: [], error: e instanceof Error ? `회의실을 읽지 못했습니다: ${e.message}` : null })
       })
       const adminsRef = ref(db, P.orgAdmins(orgId))
@@ -778,6 +793,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
    * 읽기만 하는 상태가 됐습니다. 규칙이 허용하는 일은 화면에도 있어야 합니다.
    */
   leaveOrg: async (oid, email, uid) => {
+    set({ teardown: true })
     try {
       await fbSet(ref(db, P.orgMember(oid, email)), { role: 'removed', at: Date.now() })
       // 내 색인에서도 뺍니다. 안 빼면 다음에 켤 때 후보로 다시 서고,
@@ -788,9 +804,14 @@ export const useOrgStore = create<OrgState>((set, get) => ({
         if (next) usePrefsStore.getState().setActiveOrg(email, next.id)
       }
       set({ error: null })
+      // 리스너가 떨어질 틈을 주고 깃발을 내립니다. 바로 내리면 마지막
+      // 거절이 그 뒤에 도착해서 결국 번쩍입니다.
+      setTimeout(() => set({ teardown: false, error: null }), 1500)
       return true
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : '나가지 못했습니다' })
+      // 실패했으면 아직 여기 있습니다. 깃발을 바로 내리고, 방금 쓴 오류는
+      // 그대로 둡니다 — 나중에 지우면 사람이 실패를 못 봅니다.
+      set({ teardown: false, error: e instanceof Error ? e.message : '나가지 못했습니다' })
       return false
     }
   },
@@ -808,6 +829,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
      * 합니다. 남는 줄이 곧 살아 있는 프로젝트입니다.
      */
     let remaining = 0
+    set({ teardown: true })
     try {
       const owns = (await fbGet(ref(db, P.orgOwns(oid)))).val() as Record<string, boolean> | null
       for (const pid of Object.keys(owns ?? {})) {
@@ -815,9 +837,11 @@ export const useOrgStore = create<OrgState>((set, get) => ({
         if (!gone) remaining++
       }
     } catch {
+      set({ teardown: false })
       return { ok: false, remaining: -1, error: '워크스페이스의 프로젝트를 확인하지 못했습니다' }
     }
-    if (remaining > 0) return { ok: false, remaining }
+    // 못 지운 경우입니다. 아직 여기 있으므로 오류는 다시 말해야 합니다.
+    if (remaining > 0) { set({ teardown: false }); return { ok: false, remaining } }
 
     try {
       // 도메인 색인을 먼저 뺍니다. 워크스페이스가 사라진 뒤에는 규칙이
@@ -830,8 +854,12 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       await remove(ref(db, P.org(oid)))
       await remove(ref(db, P.userOrg(uid, oid))).catch(() => {})
       set({ error: null })
+      // 리스너가 떨어질 틈을 주고 깃발을 내립니다. 바로 내리면 마지막
+      // 거절이 그 뒤에 도착해서 결국 번쩍입니다.
+      setTimeout(() => set({ teardown: false, error: null }), 1500)
       return { ok: true, remaining: 0 }
     } catch (e) {
+      set({ teardown: false })
       return { ok: false, remaining: 0, error: e instanceof Error ? e.message : '워크스페이스를 지우지 못했습니다' }
     }
   },
