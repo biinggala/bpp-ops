@@ -1,0 +1,167 @@
+// ── 프로젝트에 소속 도장을 찍습니다 ──────────────────────────────────────────
+//
+// 앱이 켜질 때마다 하는 일과 같습니다(웹의 lib/roster.ts). 다만 앱은 **그 사람이
+// 속한 프로젝트만** 찍을 수 있어서, 아무도 안 켠 프로젝트는 영영 도장이 안
+// 찍힙니다. 출장이나 휴가면 몇 주가 되고요.
+//
+// 여기는 관리자 SDK라 전부 보입니다. 한 번 돌리면 사람을 기다릴 일이 없습니다.
+//
+// **도장이 없는 프로젝트는 테넌트 벽 밖에 있습니다.** 규칙이 '소속이 안 적혔으면
+// 통과'라서요 — 속도 문제가 아니라 아직 안 잠긴 문입니다.
+//
+//   node dist/backfill.js          무엇을 찍을지 보여만 줍니다
+//   node dist/backfill.js --apply  실제로 찍습니다
+
+import { initDb } from './store.js'
+
+interface OrgInfo {
+  id: string
+  domain?: string
+  /** 이메일키 → 'member' | 'guest' | 'removed' */
+  members: Record<string, string>
+}
+
+interface ProjectInfo {
+  id: string
+  name?: string
+  orgId?: string
+  creatorEmail?: string
+  memberEmails?: string[]
+}
+
+export const emailKey = (e: string) => e.toLowerCase().trim().replace(/\./g, ',')
+
+/**
+ * 이 주소가 어느 워크스페이스 사람인가.
+ *
+ * 명단이 먼저 답합니다 — 도메인 없이 초대만으로 굴러가는 워크스페이스에서는
+ * 도메인이 아무 말도 못 합니다. 명단에 없으면 도메인으로 봅니다: 아직 한 번도
+ * 안 들어온 직원이 그 자리입니다.
+ *
+ * **게스트는 근거가 못 됩니다.** 외부 협업자는 여러 회사에 걸쳐 있을 수 있고,
+ * 그 사람이 있다는 것만으로 프로젝트의 소속을 정하면 남의 회사 프로젝트에
+ * 도장을 찍게 됩니다.
+ */
+export function orgOf(email: string, orgs: OrgInfo[]): string | null {
+  const key = emailKey(email)
+  const named = orgs.find(o => o.members[key] === 'member')
+  if (named) return named.id
+
+  const at = email.lastIndexOf('@')
+  if (at < 0) return null
+  const domain = email.slice(at + 1).toLowerCase().trim()
+  const byDomain = orgs.filter(o => o.domain && o.domain.toLowerCase() === domain)
+  // 한 도메인에 워크스페이스는 하나입니다. 둘이면 데이터가 이상한 것이고,
+  // 그럴 때 찍는 것보다 안 찍고 보고하는 편이 낫습니다.
+  return byDomain.length === 1 ? byDomain[0].id : null
+}
+
+export interface Verdict {
+  projectId: string
+  name?: string
+  orgId?: string
+  /** 왜 그렇게 정했는지, 혹은 왜 못 정했는지. 사람이 읽습니다. */
+  why: string
+}
+
+/**
+ * 프로젝트 하나의 소속을 정합니다. **애매하면 안 찍습니다.**
+ *
+ * 소속은 한 번 쓰면 규칙이 덮어쓰기를 거절합니다. 틀리게 찍으면 되돌릴 방법이
+ * 없으므로, 근거가 갈리면 사람에게 넘깁니다.
+ */
+export function decide(p: ProjectInfo, orgs: OrgInfo[]): Verdict {
+  if (p.orgId) return { projectId: p.id, name: p.name, why: '이미 찍혀 있음' }
+
+  // 만든 사람이 제일 좋은 근거입니다. 그 사람이 그 자리에서 만든 것이니까요.
+  if (p.creatorEmail) {
+    const oid = orgOf(p.creatorEmail, orgs)
+    if (oid) return { projectId: p.id, name: p.name, orgId: oid, why: `만든 사람 ${p.creatorEmail}` }
+  }
+
+  // 만든 사람이 안 적힌 옛 프로젝트. 멤버들이 가리키는 곳이 **하나뿐일 때만**
+  // 씁니다. 둘로 갈리면 그건 우리가 정할 일이 아닙니다.
+  const found = new Set<string>()
+  for (const m of p.memberEmails ?? []) {
+    const oid = orgOf(m, orgs)
+    if (oid) found.add(oid)
+  }
+  if (found.size === 1) {
+    const oid = [...found][0]
+    return { projectId: p.id, name: p.name, orgId: oid, why: `멤버 전원이 한 곳(${p.memberEmails?.length ?? 0}명)` }
+  }
+  if (found.size > 1) {
+    return { projectId: p.id, name: p.name, why: `멤버가 두 곳 이상에 걸침 (${[...found].join(', ')}) — 사람이 정해야 합니다` }
+  }
+  return { projectId: p.id, name: p.name, why: '근거 없음 — 만든 사람도 명단에 든 멤버도 없습니다' }
+}
+
+async function main() {
+  const apply = process.argv.includes('--apply')
+  const db = initDb()
+
+  const [orgSnap, projSnap] = await Promise.all([
+    db.ref('orgs').get(),
+    db.ref('projects').get(),
+  ])
+
+  const orgs: OrgInfo[] = Object.entries((orgSnap.val() ?? {}) as Record<string, {
+    meta?: { domain?: string }
+    members?: Record<string, { role?: string }>
+  }>).map(([id, node]) => ({
+    id,
+    domain: node.meta?.domain,
+    members: Object.fromEntries(
+      Object.entries(node.members ?? {}).map(([k, v]) => [k, v?.role ?? '']),
+    ),
+  }))
+
+  const projects: ProjectInfo[] = Object.entries((projSnap.val() ?? {}) as Record<string, {
+    meta?: { name?: string; orgId?: string; creatorEmail?: string; memberEmails?: string[] }
+  }>).map(([id, node]) => ({
+    id,
+    name: node.meta?.name,
+    orgId: node.meta?.orgId,
+    creatorEmail: node.meta?.creatorEmail,
+    memberEmails: node.meta?.memberEmails,
+  }))
+
+  console.log(`워크스페이스 ${orgs.length}개 · 프로젝트 ${projects.length}개\n`)
+
+  const verdicts = projects.map(p => decide(p, orgs))
+  const already = verdicts.filter(v => v.why === '이미 찍혀 있음')
+  const todo = verdicts.filter(v => v.orgId && v.why !== '이미 찍혀 있음')
+  const stuck = verdicts.filter(v => !v.orgId && v.why !== '이미 찍혀 있음')
+
+  console.log(`이미 찍힘 ${already.length}개`)
+  console.log(`\n■ 찍을 것 ${todo.length}개`)
+  for (const v of todo) console.log(`   ${v.projectId}  ${v.name ?? '(이름 없음)'}  → ${v.orgId}   [${v.why}]`)
+  console.log(`\n■ 못 정한 것 ${stuck.length}개`)
+  for (const v of stuck) console.log(`   ${v.projectId}  ${v.name ?? '(이름 없음)'}   [${v.why}]`)
+
+  if (!apply) {
+    console.log('\n보여 주기만 했습니다. 실제로 찍으려면 --apply 를 붙이세요.')
+    return
+  }
+
+  // 프로젝트 쪽과 워크스페이스 쪽 둘 다. 한 번에 쓰므로 반만 적히는 일이
+  // 없습니다 — 둘이 어긋나면 규칙이 한쪽만 보고 판단하게 됩니다.
+  const writes: Record<string, unknown> = {}
+  for (const v of todo) {
+    writes[`projects/${v.projectId}/meta/orgId`] = v.orgId
+    writes[`orgs/${v.orgId}/owns/${v.projectId}`] = true
+  }
+  if (!Object.keys(writes).length) {
+    console.log('\n찍을 것이 없습니다.')
+    return
+  }
+  await db.ref().update(writes)
+  console.log(`\n${todo.length}개 찍었습니다.`)
+}
+
+// 테스트가 이 파일을 읽을 때는 안 돕니다.
+if (process.argv[1]?.endsWith('backfill.js')) {
+  main()
+    .then(() => process.exit(0))
+    .catch(err => { console.error('[backfill]', err instanceof Error ? err.message : err); process.exit(1) })
+}

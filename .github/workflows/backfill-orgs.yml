@@ -1,0 +1,57 @@
+name: 프로젝트 소속 도장 백필
+
+# 손으로만 돌립니다. 그리고 **기본은 보여 주기**입니다.
+#
+# 소속은 한 번 쓰면 규칙이 덮어쓰기를 거절합니다. 틀리게 찍으면 되돌릴 방법이
+# 없으므로, 무엇을 찍을지 먼저 눈으로 보고 나서 다시 돌립니다.
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: '실제로 찍기 (비우면 무엇을 찍을지 보여만 줍니다)'
+        type: boolean
+        default: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: mcp/package-lock.json
+
+      # 판단 로직에는 테스트가 붙어 있습니다. 그게 깨진 채로 데이터베이스를
+      # 만지지 않습니다 — 여기서 쓰는 값은 되돌릴 수 없습니다.
+      - name: Build & test
+        working-directory: mcp
+        run: |
+          npm ci
+          npm run build
+          npm test
+
+      - name: Backfill
+        working-directory: mcp
+        env:
+          # 배포에 쓰는 것과 같은 열쇠입니다. 새로 만들 것이 없습니다.
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.GCP_SA_KEY }}
+          FIREBASE_DATABASE_URL: ${{ vars.FIREBASE_DATABASE_URL || 'https://crng-task-manager-default-rtdb.firebaseio.com' }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::error::GCP_SA_KEY 저장소 시크릿이 없습니다."
+            exit 1
+          fi
+          if [ "${{ inputs.apply }}" = "true" ]; then
+            node dist/backfill.js --apply | tee out.txt
+          else
+            node dist/backfill.js | tee out.txt
+          fi
+          {
+            echo '### 소속 도장 백필'
+            echo '```'
+            cat out.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
