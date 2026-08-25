@@ -11,7 +11,8 @@ import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import { Icon } from '../shared/Icon'
 import { fileKind, driveUrl, type DriveSearchResult, type Snippet } from '../../lib/googleDrive'
-import { snippetKey } from '../../store/driveStore'
+import { snippetKey, warmDriveAuth } from '../../store/driveStore'
+import { docTabUrl } from '../../lib/googleDocs'
 import { SNIPPET_BOX } from '../shared/DriveFiles'
 import { NOTION } from '../../types'
 import { openExternal } from '../../lib/desktopLinks'
@@ -131,7 +132,13 @@ export function CommandPalette() {
   const snippets = useDriveStore(s => s.snippets)
   const snippetLoading = useDriveStore(s => s.snippetLoading)
 
-  useEffect(() => { if (isCommandPaletteOpen) forgetNotes() }, [isCommandPaletteOpen])
+  useEffect(() => {
+    if (!isCommandPaletteOpen) return
+    forgetNotes()
+    // 첫 글자를 치기 전에 토큰을 미리 챙겨 둡니다. 이게 없으면 첫 검색만
+    // 유독 느리고, 사람은 그 한 번으로 '검색이 느리다'를 배웁니다.
+    if (driveConnected) warmDriveAuth()
+  }, [isCommandPaletteOpen])
 
   useEffect(() => {
     const q = query.trim()
@@ -160,10 +167,14 @@ export function CommandPalette() {
     setDriveBusy(true)
     const timer = setTimeout(() => {
       void useDriveStore.getState().search(q)
-        .then(files => { if (alive) setDriveHits(files.slice(0, 6)) })
+        // 여섯 줄이면 이름으로 걸린 것만으로 차서, 내용으로 걸린 파일이
+        // 화면에 아예 안 섰습니다. 팔레트는 스크롤되는 목록입니다.
+        .then(files => { if (alive) setDriveHits(files.slice(0, 12)) })
         .catch(() => { if (alive) setDriveHits([]) })
         .finally(() => { if (alive) setDriveBusy(false) })
-    }, 260)
+      // 노트와 같은 박자로 묻습니다. 260ms였는데, 사람이 손을 멈춘 뒤로
+      // 그만큼을 더 기다리는 것이 '느리다'의 대부분이었습니다.
+    }, 150)
     return () => { alive = false; clearTimeout(timer) }
   }, [query, driveConnected])
 
@@ -276,8 +287,18 @@ export function CommandPalette() {
         sub: f.contentMatch ? '내용에 있음' : fileKind(f.mimeType).label,
         snippet: f.contentMatch ? snippets[snippetKey(f.id, q)] ?? null : null,
         snippetLoading: !!f.contentMatch && !!snippetLoading[snippetKey(f.id, q)],
+        /**
+         * 찾은 문장이 **그 탭에 있으면 그 탭을 엽니다.**
+         *
+         * 탭이 열두 개인 문서에서 파일만 열어 주면, 방금 화면에서 읽은 그
+         * 문장을 다시 손으로 찾아야 합니다. 자료 고르는 창이 이미 이렇게
+         * 하고 있었습니다.
+         */
         onSelect: () => {
-          void openExternal(f.webViewLink || driveUrl(f.id, f.mimeType))
+          const tabId = f.contentMatch ? snippets[snippetKey(f.id, q)]?.tabId : undefined
+          void openExternal(
+            tabId ? docTabUrl(f.id, tabId) : (f.webViewLink || driveUrl(f.id, f.mimeType)),
+          )
           closeCommandPalette()
         },
       }))

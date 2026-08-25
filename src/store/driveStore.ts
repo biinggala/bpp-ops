@@ -257,26 +257,44 @@ export const useDriveStore = create<DriveState>((set, get) => ({
     void (async () => {
       const token = await get().ensureToken()
       if (!token) { done(keys); return }
-      // Serial, not parallel: each of these can be a few hundred kilobytes, and
-      // they are a nicety — they must not crowd out the search itself.
-      for (let i = 0; i < todo.length; i++) {
-        const f = todo[i]
-        const key = keys[i]
-        try {
-          const snip = await docSnippet(token, f, needle)
-            ?? await fetchSnippet(token, { id: f.id, mimeType: f.mimeType }, needle)
-          set(s => ({ snippets: { ...s.snippets, [key]: snip } }))
-          done([key])
-        } catch (e) {
-          set(s => ({ snippets: { ...s.snippets, [key]: null } }))
-          if (e instanceof Error && e.message === TOKEN_EXPIRED) {
-            set({ token: null, expiry: null })
-            done(keys.slice(i))
-            return
+      /**
+       * 한 번에 셋씩.
+       *
+       * 하나씩 줄 세워 받고 있었습니다 — 각각이 몇 백 킬로바이트라 검색 자체를
+       * 밀어내지 않게 하려던 것인데, 검색은 이미 끝난 뒤에 시작하는 일이라
+       * 밀어낼 것이 없습니다. 넷이 걸리면 넷을 차례로 기다렸고, 그동안 화면은
+       * '내용 불러오는 중…' 넷을 띄운 채로 있었습니다.
+       *
+       * 전부 한꺼번에 부르지는 않습니다. 여덟 개가 동시에 몇 메가를 끌어오면
+       * 그 연결로 하는 다른 일이 다 같이 느려집니다.
+       */
+      const LANES = 3
+      let next = 0
+      const lane = async () => {
+        for (;;) {
+          const i = next++
+          if (i >= todo.length) return
+          const f = todo[i]
+          const key = keys[i]
+          try {
+            const snip = await docSnippet(token, f, needle)
+              ?? await fetchSnippet(token, { id: f.id, mimeType: f.mimeType }, needle)
+            set(s => ({ snippets: { ...s.snippets, [key]: snip } }))
+            done([key])
+          } catch (e) {
+            set(s => ({ snippets: { ...s.snippets, [key]: null } }))
+            if (e instanceof Error && e.message === TOKEN_EXPIRED) {
+              // 토큰이 죽었으면 남은 것도 다 실패합니다. 줄줄이 부르지 않고
+              // 여기서 접습니다.
+              set({ token: null, expiry: null })
+              done(keys.slice(i))
+              return
+            }
+            done([key])
           }
-          done([key])
         }
       }
+      await Promise.all(Array.from({ length: Math.min(LANES, todo.length) }, lane))
     })()
   },
 

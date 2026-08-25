@@ -127,8 +127,23 @@ export async function searchFiles(
       : none,
   ])
   push(scoped.files)
-  push(byName.files)
+  /**
+   * 내용으로 걸린 것의 자리를 **미리 남겨 둡니다.**
+   *
+   * 이름으로 걸린 것을 먼저 다 밀어 넣고 있었습니다. 흔한 낱말을 치면 이름
+   * 일치만으로 정원이 차서, 내용으로 걸린 파일은 한 줄도 못 섰습니다 —
+   * 그런데 **이름만으로는 못 찾는 것**이 바로 그쪽이라, 흔한 낱말일수록
+   * 답은 내용 쪽에 있습니다.
+   *
+   * 남은 자리가 있으면 잘린 이름 일치도 뒤에 다시 붙입니다. 버리는 건
+   * 없고, 순서만 바뀝니다.
+   */
+  const named = byName.files ?? []
+  const room = term ? Math.min(6, Math.floor(limit / 3)) : 0
+  const head = Math.max(0, limit - room - out.length)
+  push(named.slice(0, head))
   push(byText.files, true)
+  push(named.slice(head))
   return out.slice(0, limit)
 }
 
