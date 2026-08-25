@@ -1443,11 +1443,10 @@ function NoteCheck({ checked, onToggle }: { checked: boolean; onToggle: (next: b
       onMouseDown={e => e.stopPropagation()}
       onClick={e => { e.stopPropagation(); onToggle(!checked) }}
       onChange={() => { /* onClick이 합니다 — 리액트가 제어 컴포넌트라고 알아야 해서 둡니다 */ }}
-      style={{
-        width: 12, height: 12, margin: '0 4px 0 0',
-        verticalAlign: 'middle', cursor: 'pointer',
-        accentColor: 'var(--check)', flexShrink: 0,
-      }}
+      // 노트의 체크박스와 **같은 그림**입니다(index.css의 .bpp-check).
+      // 크기만 블록에 맞춰 줄입니다.
+      className="bpp-check"
+      style={{ width: 12, height: 12, marginRight: 4, verticalAlign: 'middle' }}
     />
   )
 }

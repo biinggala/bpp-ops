@@ -358,12 +358,45 @@ input, select, textarea, button {
   min-height: 1.7em;
   flex-shrink: 0;
 }
-.ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"] {
+/* ── 체크박스는 우리가 그립니다 ────────────────────────────────────────────
+   accent-color만 바꿔서는 안 됐습니다. 그건 창이 **활성일 때** 무슨 색으로
+   칠할지만 정하고, 창이 뒤로 가면 OS가 자기 '비활성' 모양으로 다시 그립니다 —
+   칠이 통째로 사라지고 체크 표시만 남습니다. 다른 탭에 갔다 오면 같은 체크가
+   다른 물건처럼 보이던 게 그것입니다.
+
+   그래서 브라우저의 그림을 끄고(appearance: none) 네모와 체크를 직접
+   그립니다. 우리가 그린 것은 창이 뒤로 가든 말든 그대로입니다.
+
+   체크 표시는 배경 그림입니다. ::after로 그리면 input에 가상 요소가 붙는
+   것에 기대게 되고, 그건 브라우저마다 다릅니다. 배경은 어디서나 같습니다. */
+.ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"],
+.bpp-check {
+  appearance: none;
+  -webkit-appearance: none;
   width: 15px;
   height: 15px;
   margin: 0;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  border: 1.5px solid var(--bd2);
+  border-radius: 3px;
+  background-color: transparent;
   cursor: pointer;
-  accent-color: var(--check);
+}
+.ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"]:checked,
+.bpp-check:checked {
+  background-color: var(--check);
+  border-color: var(--check);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' d='M2.6 6.2 4.9 8.5 9.4 3.7'/%3E%3C/svg%3E");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+}
+/* 자판으로 옮겨 다니는 사람에게는 지금 어디 있는지가 보여야 합니다.
+   :focus-visible이라 마우스로 누를 때는 안 뜹니다. */
+.ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"]:focus-visible,
+.bpp-check:focus-visible {
+  outline: 2px solid var(--ac);
+  outline-offset: 1px;
 }
 .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div {
   text-decoration: line-through;
