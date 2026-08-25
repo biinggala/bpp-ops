@@ -277,7 +277,19 @@ export function AppPage() {
       const tag = (document.activeElement as HTMLElement)?.tagName
       const isEditing = tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement as HTMLElement)?.isContentEditable
 
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      /**
+       * 검색 — ⌘K와 ⌘F 둘 다.
+       *
+       * ⌘K가 이 종류의 앱이 쓰는 키입니다(슬랙·노션·리니어·깃허브). 그런데
+       * **찾을 때 손이 먼저 가는 건 ⌘F**고, 그건 배워서 그런 게 아니라 삼십 년
+       * 동안 모든 프로그램에서 그랬기 때문입니다.
+       *
+       * ⌘F를 가로채면 브라우저의 '이 페이지에서 찾기'를 잃습니다. 그걸 감수
+       * 합니다 — 이 앱에서 찾는 것은 대개 화면에 안 그려져 있는 업무나 문서고,
+       * 브라우저 찾기는 그런 것을 못 찾습니다. 노션도 같은 이유로 ⌘F를 자기
+       * 검색으로 씁니다.
+       */
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'f')) {
         e.preventDefault()
         if (!isTaskModalOpen) openCommandPalette()
       }
