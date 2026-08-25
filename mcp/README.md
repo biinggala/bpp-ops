@@ -219,6 +219,11 @@ Cloud Console → IAM 및 관리자 → 서비스 계정 → 만들기. 이 역�
 | Artifact Registry 작성자 (`roles/artifactregistry.writer`) | 이미지 저장 |
 | 스토리지 관리자 (`roles/storage.admin`) | 소스 업로드 |
 | 서비스 계정 사용자 (`roles/iam.serviceAccountUser`) | 런타임 계정으로 실행 |
+| Firebase Realtime Database 관리자 (`roles/firebasedatabase.admin`) | **소속 도장 백필**에만 필요합니다. 배포에는 안 씁니다 |
+
+> 마지막 역할이 없으면 백필이 **오류 없이 매달립니다.** RTDB는 권한이 없어도
+> 거절하지 않고 조용히 재시도만 반복하기 때문입니다. 스크립트에 시간 제한을
+> 걸어 두어 이제는 30초 뒤에 그 이유를 적고 멈춥니다.
 
 키를 JSON으로 내려받습니다.
 

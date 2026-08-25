@@ -96,14 +96,51 @@ export function decide(p: ProjectInfo, orgs: OrgInfo[]): Verdict {
   return { projectId: p.id, name: p.name, why: '근거 없음 — 만든 사람도 명단에 든 멤버도 없습니다' }
 }
 
+/**
+ * ── 매달리지 않게 ───────────────────────────────────────────────────────────
+ *
+ * RTDB는 인증이 거절돼도 **오류를 안 줍니다.** 경고 한 줄을 찍고 조용히 계속
+ * 다시 시도합니다 — 연결이 잠깐 끊긴 것과 권한이 없는 것을 구별하지 않으니까요.
+ * 그래서 권한 없는 열쇠로 부르면 이 스크립트가 영원히 서 있습니다. 실제로
+ * 12분을 그렇게 보냈고, 화면에는 아무 말도 없었습니다.
+ *
+ * 기다릴 만큼 기다린 뒤에는 **왜 그런지 짐작을 적어** 놓고 끝냅니다. 답 없이
+ * 매달리는 것보다 틀릴 수 있는 짐작이 낫습니다.
+ */
+function withDeadline<T>(work: Promise<T>, seconds: number, what: string): Promise<T> {
+  return Promise.race([
+    work,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(
+      `${what}: ${seconds}초 동안 답이 없습니다.\n` +
+      '  거의 언제나 권한 문제입니다 — 이 열쇠에 실시간 데이터베이스 권한이 없으면\n' +
+      '  Firebase는 거절 대신 재시도를 반복합니다.\n' +
+      '  GCP 콘솔 → IAM → 이 서비스 계정에 "Firebase Realtime Database 관리자"를 주세요.',
+    )), seconds * 1000)),
+  ])
+}
+
 async function main() {
   const apply = process.argv.includes('--apply')
+
+  // 어느 계정으로 붙는지 먼저 말합니다. IAM에서 찾아야 할 이름이 그것입니다.
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT
+  if (raw) {
+    try {
+      const json = JSON.parse(raw.trim().startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf8'))
+      console.log(`서비스 계정: ${json.client_email}`)
+    } catch { console.log('서비스 계정: (JSON을 못 읽었습니다)') }
+  } else {
+    console.log('서비스 계정: 런타임 기본 자격증명')
+  }
+  console.log(`데이터베이스: ${process.env.FIREBASE_DATABASE_URL}\n`)
+
   const db = initDb()
 
-  const [orgSnap, projSnap] = await Promise.all([
+  console.log('워크스페이스와 프로젝트를 읽는 중…')
+  const [orgSnap, projSnap] = await withDeadline(Promise.all([
     db.ref('orgs').get(),
     db.ref('projects').get(),
-  ])
+  ]), 30, '데이터베이스 읽기')
 
   const orgs: OrgInfo[] = Object.entries((orgSnap.val() ?? {}) as Record<string, {
     meta?: { domain?: string }
@@ -155,7 +192,7 @@ async function main() {
     console.log('\n찍을 것이 없습니다.')
     return
   }
-  await db.ref().update(writes)
+  await withDeadline(db.ref().update(writes), 30, '데이터베이스 쓰기')
   console.log(`\n${todo.length}개 찍었습니다.`)
 }
 
