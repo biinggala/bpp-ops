@@ -87,6 +87,35 @@ let snippetTerm = ''
 let snippetAbort: AbortController | null = null
 
 /**
+ * ── 한 번 찾은 문장은 이 기기에 남깁니다 ────────────────────────────────────
+ *
+ * 같은 사람 이름을 다음 주에 또 찾습니다. 그때마다 문서를 통째로 다시 받을
+ * 이유가 없습니다.
+ *
+ * **문서가 고쳐졌으면 버립니다.** 열쇠에 그 문서의 수정 시각을 같이 넣어
+ * 두므로, 내용이 바뀌면 열쇠가 달라져서 저절로 안 맞습니다 — 옛 문장을
+ * 새것처럼 보여 주는 일이 없습니다.
+ */
+const DISK_KEY = 'bpp_snippets_v1'
+const DISK_MAX = 300
+type Cached = Record<string, { s: Snippet | null; at: number }>
+
+function readDisk(): Cached {
+  try { return JSON.parse(localStorage.getItem(DISK_KEY) ?? '{}') as Cached } catch { return {} }
+}
+function writeDisk(next: Cached) {
+  // 오래된 것부터 버립니다. 무한히 자라면 언젠가 저장 공간을 다 씁니다.
+  const keys = Object.keys(next)
+  if (keys.length > DISK_MAX) {
+    keys.sort((a, b) => next[a].at - next[b].at).slice(0, keys.length - DISK_MAX).forEach(k => delete next[k])
+  }
+  try { localStorage.setItem(DISK_KEY, JSON.stringify(next)) } catch { /* 꽉 찼으면 그냥 캐시가 없는 것 */ }
+}
+/** 파일이 고쳐지면 달라지는 열쇠. */
+const diskKey = (f: { id: string; modifiedTime?: string }, term: string) =>
+  `${f.id}@${f.modifiedTime ?? ''}::${term.trim().toLowerCase()}`
+
+/**
  * 문장, 그리고 그게 있는 탭 — 구글 문서에 대해서.
  *
  * **문서는 이제 이쪽만 씁니다.** 드라이브의 텍스트 내보내기가 탭 안의 글자를
@@ -263,6 +292,17 @@ export const useDriveStore = create<DriveState>((set, get) => ({
       snippetTerm = needle
     }
     const signal = snippetAbort?.signal
+
+    // 지난번에 찾아 둔 것부터 꺼내 놓습니다. 요청이 아예 안 나갑니다.
+    const disk = readDisk()
+    const fromDisk: Record<string, Snippet | null> = {}
+    for (const f of files) {
+      if (!f.contentMatch) continue
+      const hit = disk[diskKey(f, needle)]
+      if (hit) fromDisk[snippetKey(f.id, needle)] = hit.s
+    }
+    if (Object.keys(fromDisk).length) set(s => ({ snippets: { ...s.snippets, ...fromDisk } }))
+
     const { snippets } = get()
     const todo = files
       .filter(f => f.contentMatch && canSnippet(f.mimeType))
@@ -324,7 +364,12 @@ export const useDriveStore = create<DriveState>((set, get) => ({
               if (!snip && (!isDoc || docsApiDown())) {
                 snip = await fetchSnippet(token, { id: f.id, mimeType: f.mimeType }, needle, 70, signal)
               }
-              if (alive()) store(key, snip)
+              if (alive()) {
+                store(key, snip)
+                const next = readDisk()
+                next[diskKey(f, needle)] = { s: snip, at: Date.now() }
+                writeDisk(next)
+              }
             } catch (e) {
               // 멈춘 것은 실패가 아닙니다 — '이 문서에는 없다'로 적어 두면
               // 다음에 같은 검색어로 물어도 영영 안 찾아봅니다.

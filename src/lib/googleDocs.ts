@@ -81,8 +81,15 @@ const LEAF = `tabProperties(tabId,title),documentTab(body(content(${P_TEXT},${TA
 const TAB_FIELDS = `tabs(${LEAF},childTabs(${LEAF},childTabs(${LEAF})))`
 
 export async function fetchDocTabs(token: string, documentId: string, signal?: AbortSignal): Promise<DocTab[]> {
+  /**
+   * `prettyPrint=false`는 공짜로 얻는 것입니다.
+   *
+   * 구글 API는 기본이 **들여쓴 JSON**입니다. 사람이 읽으라고 줄바꿈과 공백을
+   * 넣어 주는데, 이걸 읽는 건 코드고 문서 하나에 글자 조각이 수천 개라 그
+   * 여백만 수 메가가 됩니다.
+   */
   const url = (fields?: string) =>
-    `https://docs.googleapis.com/v1/documents/${encodeURIComponent(documentId)}?includeTabsContent=true`
+    `https://docs.googleapis.com/v1/documents/${encodeURIComponent(documentId)}?includeTabsContent=true&prettyPrint=false`
     + (fields ? `&fields=${encodeURIComponent(fields)}` : '')
 
   const ask = async (fields?: string) => {
