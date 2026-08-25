@@ -59,3 +59,27 @@ test('목록이 아직 비어 있으면 안 붙는다', () => {
   // 붙으면 멤버인지 한 번도 안 묻고 남의 워크스페이스에 붙습니다.
   assert.equal(pickOrg({ ...base, ids: [] }), null)
 })
+
+// ── '다 찾아봤다'가 언제 참이 되는가 ─────────────────────────────────────────
+//
+// 참이 되는 순간부터 화면은 목록을 믿습니다. 하나라도 안 왔는데 참이 되면
+// 안 온 것이 없는 것으로 읽히고, 그 한 순간이 사람 눈에 보입니다.
+
+import { orgsSettled } from '../.test-build/lib/pickOrg.js'
+
+const ALL_SEEN = { domain: true, index: true, roster: true, prefs: true }
+
+test('네 곳이 다 대답해야 참이다', () => {
+  assert.equal(orgsSettled(ALL_SEEN), true)
+  for (const gate of ['domain', 'index', 'roster', 'prefs']) {
+    assert.equal(orgsSettled({ ...ALL_SEEN, [gate]: false }), false, `${gate}가 안 왔는데 참이 됐습니다`)
+  }
+})
+
+test('내 색인은 초대형 워크스페이스의 유일한 길이라 빠뜨리면 안 된다', () => {
+  // 도메인·명단·설정이 다 왔어도, 내 색인이 안 왔으면 후보가 비어 있습니다.
+  // 여기서 참이 되면 '내 워크스페이스가 하나도 없다'가 되고, 그러면 숨길
+  // 것도 없어서 모든 프로젝트가 한 번 보입니다. 왼쪽 위에 이름 대신
+  // 'bpp-ops'가 뜨는 그 순간입니다.
+  assert.equal(orgsSettled({ domain: true, index: false, roster: true, prefs: true }), false)
+})

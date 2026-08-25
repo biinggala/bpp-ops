@@ -28,3 +28,33 @@ export function pickOrg(c: OrgCandidates): string | null {
   if (!c.prefsSeen) return null
   return [c.preferred, c.fromDomain, c.fromIndex].find(o => o && c.ids.includes(o)) ?? null
 }
+
+/**
+ * ── '다 찾아봤다'가 되려면 네 곳이 대답해야 합니다 ───────────────────────────
+ *
+ * 이 값이 참이 되는 순간부터 화면은 목록을 믿습니다. 그래서 **하나라도 아직
+ * 안 왔는데 참이 되면, 안 온 것이 없는 것으로 읽힙니다.**
+ *
+ *   domain  이메일 도메인 색인. 회사 계정에 즉시 답합니다.
+ *   index   내 색인(`userOrgs`). 도메인 없이 초대만으로 만든 워크스페이스는
+ *           **이 길밖에 없습니다.**
+ *   roster  그 후보들 중 내가 정말 멤버인 곳을 골라낸 결과.
+ *   prefs   마지막으로 고른 곳. 이것도 데이터베이스에서 옵니다.
+ *
+ * `index`가 빠져 있었습니다. 도메인이 대답하는 순간 후보 목록을 만들기
+ * 시작하는데, 그때 내 색인은 아직 안 와서 후보가 비어 있습니다. 결과도
+ * 비고, 그런데 '다 찾아봤다'가 참이 됩니다 — 그러면 거르는 쪽이 '숨길 곳이
+ * 하나도 없다'로 읽어서 **모든 워크스페이스의 프로젝트가 한 번 보입니다.**
+ *
+ * 빈 목록이 '없다'가 아니라 '아직 안 왔다'인 자리입니다.
+ */
+export interface SeenGates {
+  domain: boolean
+  index: boolean
+  roster: boolean
+  prefs: boolean
+}
+
+export function orgsSettled(g: SeenGates): boolean {
+  return g.domain && g.index && g.roster && g.prefs
+}

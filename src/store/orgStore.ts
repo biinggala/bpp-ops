@@ -5,7 +5,7 @@ import { P, domainKey, emailKey } from '../lib/paths'
 import { gid } from '../lib/utils'
 import { useAuthStore } from './authStore'
 import { usePrefsStore } from './prefsStore'
-import { pickOrg } from '../lib/pickOrg'
+import { pickOrg, orgsSettled } from '../lib/pickOrg'
 
 /**
  * ── 조직과 회의실 ────────────────────────────────────────────────────────────
@@ -293,7 +293,27 @@ export const useOrgStore = create<OrgState>((set, get) => ({
      */
     let domainSeen = false
     let orgsSeen = false
-    const settle = () => { if (domainSeen && orgsSeen && prefsSeen && !get().ready) set({ ready: true }) }
+    /**
+     * **내 색인(`userOrgs`)이 대답했는가.**
+     *
+     * 이게 없어서 다른 워크스페이스의 프로젝트가 번쩍였습니다. 도메인 쪽이
+     * 대답하면 그 자리에서 `recompute()`가 돌고, 그때 `indexIds`는 아직
+     * 비어 있습니다 — 그러면 `myOrgs`가 **빈 목록**인 채로 `orgsSeen`이
+     * 참이 되고, 네 문이 다 열려서 `ready`가 참이 됩니다.
+     *
+     * `ready`인데 `myOrgs`가 비어 있으면 거르는 쪽은 '숨길 곳이 하나도 없다'로
+     * 읽습니다(게스트가 그런 상태입니다). 그래서 **모든 프로젝트가 한 번
+     * 보입니다.** 왼쪽 위에 워크스페이스 이름 대신 'bpp-ops'가 뜨는 그 순간이
+     * 정확히 여기입니다.
+     *
+     * 빈 목록이 '없다'가 아니라 '아직 안 왔다'였습니다. 다섯 번째입니다.
+     */
+    let indexSeen = false
+    const settle = () => {
+      if (orgsSettled({ domain: domainSeen, index: indexSeen, roster: orgsSeen, prefs: prefsSeen }) && !get().ready) {
+        set({ ready: true })
+      }
+    }
 
     /** 내 색인에 적힌 것들. 도메인으로 찾은 곳과 합쳐야 목록이 됩니다. */
     let indexIds: string[] = []
@@ -471,9 +491,12 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     const myOrgsRef = uid ? ref(db, P.userOrgs(uid)) : null
     const myOrgsHandler = myOrgsRef ? onValue(myOrgsRef, snap => {
       indexIds = Object.keys((snap.val() ?? {}) as Record<string, number>)
+      indexSeen = true
       recompute()
-    }, () => { indexIds = []; recompute() }) : null
-    if (!myOrgsRef) recompute()
+    }, () => { indexIds = []; indexSeen = true; recompute() }) : null
+    // 로그인은 했는데 uid가 없는 경우입니다. 물어볼 색인이 없으니 그 문은
+    // 처음부터 열려 있습니다 — 안 그러면 영영 '불러오는 중'에 머뭅니다.
+    if (!myOrgsRef) { indexSeen = true; recompute() }
 
     // 다른 워크스페이스를 고르면 여기로 옵니다. 스토어 둘을 직접 잇지 않고
     // 설정을 통해 잇는 이유는, 그래야 폰에서 고른 것이 노트북에도 오기
