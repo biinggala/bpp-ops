@@ -42,6 +42,13 @@
   --ac-l: rgba(35,131,226,.10);
   --ac-d: #1a73d1;
 
+  /* ── 체크박스는 회색입니다 ──────────────────────────────────────────────
+     강조색(파랑)을 쓰면 창이 포커스를 잃는 순간 OS가 그걸 회색으로 다시
+     칠합니다 — 다른 탭에 갔다 오면 색이 바뀌어 있습니다. 색이 상태를 말하는
+     것처럼 보이는데 실제로는 '지금 이 창을 보고 있나'를 말하고 있어서,
+     같은 체크가 두 가지로 보입니다. 처음부터 회색이면 그럴 일이 없습니다. */
+  --check:    #8a8a87;
+
   /* The one red, for everything destructive. */
   --danger:   #D44C47;
   --danger-l: rgba(212,76,71,.10);
@@ -108,6 +115,8 @@
   --ac:   #2383e2;
   --ac-l: rgba(35,131,226,.22);
   --ac-d: #3a92e8;
+
+  --check:    #6e6e6e;            /* 위와 같은 이유. #191919 위에서 읽히는 회색 */
 
   --danger:   #FF7369;            /* Notion's dark red, legible on #191919 */
   --danger-l: rgba(255,115,105,.16);
@@ -354,7 +363,7 @@ input, select, textarea, button {
   height: 15px;
   margin: 0;
   cursor: pointer;
-  accent-color: var(--ac);
+  accent-color: var(--check);
 }
 .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div {
   text-decoration: line-through;

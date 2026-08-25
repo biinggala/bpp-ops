@@ -1446,7 +1446,7 @@ function NoteCheck({ checked, onToggle }: { checked: boolean; onToggle: (next: b
       style={{
         width: 12, height: 12, margin: '0 4px 0 0',
         verticalAlign: 'middle', cursor: 'pointer',
-        accentColor: 'var(--ac)', flexShrink: 0,
+        accentColor: 'var(--check)', flexShrink: 0,
       }}
     />
   )

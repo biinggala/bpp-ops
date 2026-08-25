@@ -57,7 +57,12 @@ export async function notionAvailable(): Promise<boolean> {
     const res = await fetch(`${SERVER_ORIGIN}/notion/health`)
     if (!res.ok) return false
     return !!(await res.json() as { configured?: boolean }).configured
-  } catch {
+  } catch (e) {
+    // 화면에서는 조용히 줄을 안 세웁니다 — 안 켜진 기능이 스위치를 내놓으면
+    // 눌러 보고 오류를 받게 되니까요. 다만 **왜 안 보이는지**는 어딘가에
+    // 남아야 합니다: '서버가 안 켜졌다'와 '브라우저가 막았다(CORS)'는
+    // 화면에서 똑같이 생겼고, 고치는 자리는 정반대입니다.
+    console.warn('[notion] /notion/health에 못 닿았습니다', e)
     return false
   }
 }

@@ -61,6 +61,49 @@ async function main() {
   const app = express()
   app.use(express.json())
 
+  /**
+   * ── 앱이 이 서버를 부를 수 있게 ────────────────────────────────────────────
+   *
+   * 이 서버는 원래 Claude 커넥터만 상대했습니다. 커넥터는 브라우저가 아니라
+   * 서버끼리 부르는 것이라 CORS가 필요 없었고, 그래서 아무 데도 없었습니다.
+   *
+   * 노션 찾기가 그 전제를 깼습니다 — **브라우저가 직접 부릅니다.** 헤더가
+   * 없으면 브라우저가 응답을 통째로 버리고, 앱에서는 '서버가 죽었다'와
+   * 구별되지 않습니다. (푸시 알림도 같은 자리에 있었습니다. 부르는 쪽이
+   * 실패를 삼키게 되어 있어서 아무도 몰랐을 뿐입니다.)
+   *
+   * **주소를 적어 놓고 그것만 허락합니다.** `*`로 열면 아무 웹페이지나 이
+   * 서버에 요청을 보낼 수 있게 됩니다 — 토큰이 자동으로 실려 가지는 않지만,
+   * 남의 페이지가 우리 서버를 두드릴 수 있는 상태를 만들 이유가 없습니다.
+   * Origin 헤더는 브라우저가 붙이는 것이라 페이지 쪽에서 못 속입니다.
+   *
+   * 데스크톱 앱도 여기 있는 주소를 씁니다 — 화면을 배포된 웹에서 불러오므로
+   * 출처가 웹과 같습니다(tauri.conf.json의 frontendDist).
+   */
+  const ALLOWED_ORIGINS = new Set([
+    'https://crng-task-manager.web.app',
+    'https://crng-task-manager.firebaseapp.com',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+  ])
+
+  app.use((req, res, next) => {
+    const origin = req.header('origin')
+    if (origin && ALLOWED_ORIGINS.has(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin)
+      // 주소마다 답이 달라지므로 캐시가 한 곳의 답을 다른 곳에 주면 안 됩니다.
+      res.setHeader('Vary', 'Origin')
+      res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type')
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+      res.setHeader('Access-Control-Max-Age', '3600')
+    }
+    // 브라우저는 진짜 요청 전에 OPTIONS로 한 번 물어봅니다. 여기서 끝냅니다 —
+    // 아래로 내려보내면 '그런 길 없음'으로 답하고, 브라우저는 그걸 거절로
+    // 읽습니다.
+    if (req.method === 'OPTIONS') return void res.sendStatus(origin && ALLOWED_ORIGINS.has(origin) ? 204 : 403)
+    next()
+  })
+
   const issuer = new URL(publicUrl)
   app.use(
     mcpAuthRouter({
