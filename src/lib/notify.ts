@@ -43,6 +43,17 @@ export interface Notice {
   kind: NoticeKind
   /** Who did it, as a display name — resolved when written, so it survives. */
   by: string
+  /**
+   * 보낸 사람의 주소.
+   *
+   * `by`는 사람이 읽는 이름이라 아무 글자나 들어갑니다 — 규칙이 그걸로는
+   * 보낸 사람을 확인할 수 없습니다. 알림함은 **남이 나에게** 쓰는 자리라
+   * 열려 있어야 하는데, 그 틈으로 아무나 '대표님이 업무를 배정했습니다'를
+   * 꽂을 수 있었습니다.
+   *
+   * 이 값은 규칙이 로그인한 주소와 대조합니다. 화면에는 안 나옵니다.
+   */
+  byEmail?: string
   /** The thing it is about. */
   taskId?: string
   taskName?: string
@@ -145,7 +156,13 @@ function leave(target: Target, notice: Omit<Notice, 'id' | 'at' | 'by'>) {
   if (target.uid === me || target.email === myEmail?.toLowerCase()) return
 
   const node = push(ref(db, P.notices(target.email)))
-  const payload: Record<string, unknown> = { ...notice, by: myName(), at: Date.now() }
+  const payload: Record<string, unknown> = {
+    ...notice,
+    by: myName(),
+    // 규칙이 이 값을 로그인한 주소와 대조합니다. 못 적으면 쓰기가 거절됩니다.
+    ...(myEmail ? { byEmail: myEmail.toLowerCase() } : {}),
+    at: Date.now(),
+  }
   for (const key of Object.keys(payload)) {
     if (payload[key] === undefined) delete payload[key]
   }

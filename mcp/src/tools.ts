@@ -9,7 +9,7 @@ import {
   parseAssignees,
 } from './access.js'
 import {
-  createProject, mutateMilestones, mutateTasks, newId,
+  createProject, mutateMilestones, mutateTasks, newId, newInviteCode,
   readMilestones, readProjects, readTasks, readUserProfiles, writeProjectMeta,
   readDailyNote, readDailyNoteDates, writeDailyNote,
 } from './store.js'
@@ -608,7 +608,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
         id: newId(),
         name: args.name.trim(),
         color: args.color ?? '#2383E2',
-        inviteCode: newId().slice(0, 8),
+        inviteCode: newInviteCode(),
         memberEmails: [ctx.email.toLowerCase()],
         creatorEmail: ctx.email.toLowerCase(),
         ...(args.due_date ? { dueDate: args.due_date } : {}),

@@ -2,6 +2,7 @@ import { applicationDefault, cert, getApps, initializeApp, type ServiceAccount }
 import { getDatabase, type Database } from 'firebase-admin/database'
 import type { Milestone, Project, Task } from './types.js'
 import { readableAssignee } from './access.js'
+import { randomBytes } from 'node:crypto'
 
 /**
  * Data access for the per-project layout described in docs/data-model.md.
@@ -244,6 +245,20 @@ export async function mutateTasks<T>(
 
 export function newId(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
+}
+
+/**
+ * 초대 코드. **id와 같은 난수를 쓰면 안 됩니다.**
+ *
+ * 앱 쪽에서 고친 것과 같은 자리입니다(src/lib/utils.ts). 이건 프로젝트에
+ * 들어오는 유일한 열쇠라, 맞히면 초대받은 적 없는 프로젝트를 통째로 읽고
+ * 씁니다. Math.random()은 출력 몇 개로 상태를 되찾을 수 있고, 바로 옆에서
+ * 뽑은 프로젝트 id는 워크스페이스 공개 목록을 통해 남에게 보입니다.
+ */
+const CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'
+
+export function newInviteCode(): string {
+  return Array.from(randomBytes(16), b => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('')
 }
 
 // ── Milestones ────────────────────────────────────────────────────────────────

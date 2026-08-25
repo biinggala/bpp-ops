@@ -158,7 +158,9 @@ export async function pollDriveChanges(): Promise<void> {
       if (now - (seen[fileId] ?? 0) < QUIET_MS) continue
       const task = files.get(fileId)!
       const notice = noticeFor(change, task, now)
-      const { id: _drop, ...payload } = notice
+      // 자기 알림함에 자기가 씁니다. 규칙이 보낸 사람을 확인할 수 있게
+      // 주소를 같이 적습니다 — notify.ts와 같은 자리입니다.
+      const { id: _drop, ...payload } = { ...notice, byEmail: me }
       for (const key of Object.keys(payload)) {
         if ((payload as Record<string, unknown>)[key] === undefined) {
           delete (payload as Record<string, unknown>)[key]

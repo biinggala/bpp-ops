@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from 'express'
 import { getAuth } from 'firebase-admin/auth'
 import { initDb } from './store.js'
+import { randomBytes } from 'node:crypto'
 
 /**
  * ── 노션 찾기 ────────────────────────────────────────────────────────────────
@@ -241,7 +242,9 @@ async function callerUid(req: Request): Promise<string | null> {
 const STATE_TTL = 10 * 60_000
 
 function randomState(): string {
-  return Array.from({ length: 4 }, () => Math.random().toString(36).slice(2, 10)).join('')
+  // CSRF 쪽지입니다. 맞히면 남의 노션 계정을 이 사람 자리에 붙일 수 있어서,
+  // 여기도 Math.random()은 안 됩니다.
+  return randomBytes(24).toString('base64url')
 }
 
 export function registerNotionRoutes(app: Express, publicUrl: string): void {

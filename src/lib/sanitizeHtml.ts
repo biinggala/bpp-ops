@@ -42,6 +42,21 @@ const ALLOWED_ATTRS = new Set(['class', 'href', 'title', 'type', 'checked', 'col
 /** 체크박스 줄이 살아 있으려면 필요한 것들. 값을 실행하지 않는 표시입니다. */
 const ALLOWED_DATA_PREFIX = 'data-'
 
+/**
+ * 껍질을 벗기지 **않고 통째로** 버리는 것들.
+ *
+ * 두 부류입니다. 안의 글자가 글이 아니라 코드인 것(`script`, `style`), 그리고
+ * **파싱 규칙이 다른 곳으로 들어가는 문**(`svg`, `math`, `template`,
+ * `noscript`...)입니다. 뒤쪽이 더 까다롭습니다 — 그 안에서는 브라우저가
+ * HTML을 다르게 읽어서, 지운 뒤 다시 글자로 만들었다가 또 읽으면 없던
+ * 태그가 되살아날 수 있습니다(mXSS). 그래서 껍질만 벗기지 않고 버립니다.
+ */
+const DROP_WHOLE = new Set([
+  'script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'base',
+  'svg', 'math', 'template', 'noscript', 'noembed', 'noframes',
+  'xmp', 'plaintext', 'title', 'textarea', 'form',
+])
+
 export function tagAllowed(tag: string): boolean {
   return ALLOWED_TAGS.has(tag.toLowerCase())
 }
@@ -80,6 +95,24 @@ export function safeHref(href: string): string | null {
  */
 export function sanitizeHtml(html: string): string {
   if (!html) return ''
+  /**
+   * 두 번 돌립니다.
+   *
+   * 한 번 씻은 결과를 다시 글자로 만들었다가 브라우저가 또 읽으면, 첫 번째와
+   * 다르게 읽히는 자리가 있습니다 — 그 어긋남을 이용해 없앤 태그를 되살리는
+   * 수법(mXSS)이 있습니다. 결과가 그대로일 때까지 돌리면 그 어긋남이 남을
+   * 자리가 없습니다. 세 번째까지는 안 갑니다.
+   */
+  let out = sanitizeOnce(html)
+  for (let i = 0; i < 2; i++) {
+    const again = sanitizeOnce(out)
+    if (again === out) break
+    out = again
+  }
+  return out
+}
+
+function sanitizeOnce(html: string): string {
   const doc = new DOMParser().parseFromString(html, 'text/html')
 
   const walk = (node: Element) => {
@@ -88,13 +121,8 @@ export function sanitizeHtml(html: string): string {
 
     const tag = node.tagName.toLowerCase()
     if (!tagAllowed(tag)) {
-      // 스크립트·스타일 안의 글자는 글이 아니라 코드입니다. 남기면 화면에
-      // 코드가 그대로 찍힙니다.
-      if (tag === 'script' || tag === 'style' || tag === 'iframe' || tag === 'object' || tag === 'embed') {
-        node.remove()
-      } else {
-        node.replaceWith(...node.childNodes)
-      }
+      if (DROP_WHOLE.has(tag)) node.remove()
+      else node.replaceWith(...node.childNodes)
       return
     }
 
