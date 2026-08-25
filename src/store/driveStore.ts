@@ -74,6 +74,19 @@ let renewal: Promise<string | null> | null = null
 const SNIPPET_LIMIT = 8
 
 /**
+ * ── 지난 검색어로 받던 것은 멈춥니다 ────────────────────────────────────────
+ *
+ * 한글은 조합하는 동안에도 글자가 바뀝니다. '최재원'을 치면 '최ㅈ' · '최재' ·
+ * '최재ㅇ' · '최재원' 넷이 차례로 검색어가 되고, 넷 다 **같은 문서를 처음부터
+ * 다시** 내려받았습니다. 앞의 셋은 이미 쓸모없는데도요.
+ *
+ * 문서 하나가 몇 백 킬로바이트고 통로는 셋뿐이라, 마지막 검색어의 조각은
+ * 앞의 아홉 개가 끝나기를 기다렸습니다. 그게 그 삼십 초입니다.
+ */
+let snippetTerm = ''
+let snippetAbort: AbortController | null = null
+
+/**
  * The passage and the tab it lives in, for a Doc that has tabs.
  *
  * Returns null for anything else — a plain document, a Sheet, or a workspace
@@ -81,13 +94,16 @@ const SNIPPET_LIMIT = 8
  * falls back to the Drive export, which finds the same passage but cannot say
  * where in the document it is.
  */
-async function docSnippet(token: string, f: DriveSearchResult, needle: string): Promise<Snippet | null> {
+async function docSnippet(token: string, f: DriveSearchResult, needle: string, signal?: AbortSignal): Promise<Snippet | null> {
   if (f.mimeType !== 'application/vnd.google-apps.document') return null
   if (docsUnavailable) return null
   let tabs
   try {
-    tabs = await fetchDocTabs(token, f.id)
-  } catch {
+    tabs = await fetchDocTabs(token, f.id, signal)
+  } catch (e) {
+    // 취소는 거절이 아닙니다. 여기서 latch를 걸면 글자를 하나 지웠다는
+    // 이유로 탭 기능이 그 세션 내내 죽습니다.
+    if (e instanceof DOMException && e.name === 'AbortError') throw e
     // One refusal is enough: the API is off, or the scope was never granted.
     // Asking again per document per search would be a request each for nothing.
     docsUnavailable = true
@@ -233,6 +249,13 @@ export const useDriveStore = create<DriveState>((set, get) => ({
   loadSnippets: (files, term) => {
     const needle = term.trim()
     if (!needle) return
+    if (needle !== snippetTerm) {
+      // 검색어가 바뀌었습니다. 지난 것으로 받던 것은 이제 아무도 안 봅니다.
+      snippetAbort?.abort()
+      snippetAbort = new AbortController()
+      snippetTerm = needle
+    }
+    const signal = snippetAbort?.signal
     const { snippets } = get()
     const todo = files
       .filter(f => f.contentMatch && canSnippet(f.mimeType))
@@ -257,73 +280,88 @@ export const useDriveStore = create<DriveState>((set, get) => ({
     void (async () => {
       const token = await get().ensureToken()
       if (!token) { done(keys); return }
-      /**
-       * 한 번에 셋씩.
-       *
-       * 하나씩 줄 세워 받고 있었습니다 — 각각이 몇 백 킬로바이트라 검색 자체를
-       * 밀어내지 않게 하려던 것인데, 검색은 이미 끝난 뒤에 시작하는 일이라
-       * 밀어낼 것이 없습니다. 넷이 걸리면 넷을 차례로 기다렸고, 그동안 화면은
-       * '내용 불러오는 중…' 넷을 띄운 채로 있었습니다.
-       *
-       * 전부 한꺼번에 부르지는 않습니다. 여덟 개가 동시에 몇 메가를 끌어오면
-       * 그 연결로 하는 다른 일이 다 같이 느려집니다.
-       */
-      const LANES = 3
-      /**
-       * 탭 이름까지 알아보는 것은 **앞의 몇 개만**.
-       *
-       * 그건 Docs API를 부르는 일이고, 그 응답은 문서 전체를 구조가 붙은
-       * JSON으로 돌려줍니다 — 글자만 치면 십만 자짜리 대본이 몇 메가가 됩니다.
-       * 열두 줄 전부에 그걸 하면 검색 한 번에 수십 메가입니다.
-       */
-      const TAB_LOOKUPS = 4
-      let next = 0
-      const lane = async () => {
-        for (;;) {
-          const i = next++
-          if (i >= todo.length) return
-          const f = todo[i]
-          const key = keys[i]
-          try {
-            /**
-             * ── 값싼 쪽을 먼저 ────────────────────────────────────────────
-             *
-             * 순서가 거꾸로였습니다. 탭을 알아보는 Docs API를 먼저 부르고,
-             * 그게 빈손이면(탭이 하나뿐인 문서가 대부분입니다) **그제서야**
-             * 글자를 내려받았습니다. 문서 하나를 두 번 받은 셈이고, 첫
-             * 번째가 훨씬 뚱뚱한 쪽이었습니다.
-             *
-             * 이제 글자부터 받습니다. 사람이 읽는 건 그 문장이고, 탭 이름은
-             * 없어도 문서는 열립니다. 그래서 **문장이 먼저 화면에 서고**,
-             * 탭은 알아낸 뒤에 조용히 붙습니다.
-             */
-            const plain = await fetchSnippet(token, { id: f.id, mimeType: f.mimeType }, needle)
-            if (plain) {
-              set(s => ({ snippets: { ...s.snippets, [key]: plain } }))
-              done([key])
-            }
 
-            const mayHaveTabs = f.mimeType === 'application/vnd.google-apps.document' && i < TAB_LOOKUPS
-            const tabbed = mayHaveTabs ? await docSnippet(token, f, needle) : null
-            if (tabbed) set(s => ({ snippets: { ...s.snippets, [key]: tabbed } }))
-            else if (!plain) set(s => ({ snippets: { ...s.snippets, [key]: null } }))
-            if (!plain) done([key])
-          } catch (e) {
-            // 이미 문장을 세워 뒀으면 지우지 않습니다. 뒤이어 탭을 알아보다
-            // 실패한 것이지, 문장이 틀린 것은 아닙니다.
-            if (!get().snippets[key]) set(s => ({ snippets: { ...s.snippets, [key]: null } }))
-            if (e instanceof Error && e.message === TOKEN_EXPIRED) {
-              // 토큰이 죽었으면 남은 것도 다 실패합니다. 줄줄이 부르지 않고
-              // 여기서 접습니다.
-              set({ token: null, expiry: null })
-              done(keys.slice(i))
-              return
-            }
-            done([key])
+      const alive = () => snippetTerm === needle
+      const store = (key: string, snip: Snippet | null) =>
+        set(s => ({ snippets: { ...s.snippets, [key]: snip } }))
+
+      /**
+       * ── 두 판으로 나눕니다 ──────────────────────────────────────────────
+       *
+       * 사람이 읽는 것은 **문장**이고, 탭 이름은 없어도 문서는 열립니다.
+       * 그런데 둘을 한 통로 안에서 이어 놓으면, 뚱뚱한 쪽(탭)이 다음 문서의
+       * 문장을 막고 섭니다.
+       *
+       * 그래서 문장부터 전부 받고, 탭은 그게 다 끝난 뒤에 따로 알아봅니다.
+       * 목록은 문장 속도로 차고, 탭 이름은 나중에 조용히 붙습니다.
+       */
+      const run = async (lanes: number, job: (i: number) => Promise<void>, count: number) => {
+        let next = 0
+        const lane = async () => {
+          for (;;) {
+            const i = next++
+            if (i >= count) return
+            await job(i)
           }
         }
+        await Promise.all(Array.from({ length: Math.min(lanes, count) }, lane))
       }
-      await Promise.all(Array.from({ length: Math.min(LANES, todo.length) }, lane))
+
+      /** 이 판에서 실패했으면 다음 판은 건너뜁니다. */
+      const dead = new Set<number>()
+
+      // ── 1판: 글자 ──────────────────────────────────────────────────────
+      await run(3, async i => {
+        const f = todo[i]
+        const key = keys[i]
+        if (!alive()) { dead.add(i); return }
+        try {
+          const plain = await fetchSnippet(token, { id: f.id, mimeType: f.mimeType }, needle, 70, signal)
+          // 못 찾았어도 여기서 화면을 비우지 않습니다. 탭 안에 있을 수 있고,
+          // 그건 2판이 압니다.
+          if (plain) { store(key, plain); done([key]) }
+        } catch (e) {
+          dead.add(i)
+          // 멈춘 것은 실패가 아닙니다 — '이 문서에는 없다'로 적어 두면 다음에
+          // 같은 검색어로 물어도 영영 안 찾아봅니다.
+          if (e instanceof DOMException && e.name === 'AbortError') { done([key]); return }
+          if (e instanceof Error && e.message === TOKEN_EXPIRED) set({ token: null, expiry: null })
+          store(key, null)
+          done([key])
+        }
+      }, todo.length)
+
+      // ── 2판: 탭 ────────────────────────────────────────────────────────
+      //
+      // Docs API는 문서 전체를 구조가 붙은 JSON으로 돌려줍니다 — 글자만 십만
+      // 자인 대본이 몇 메가입니다. 그래서 앞의 넷까지만, 그리고 한 번에
+      // 하나씩. 이 판이 늦어져도 화면에는 이미 문장이 서 있습니다.
+      const docs = todo
+        .map((f, i) => ({ f, i }))
+        .filter(({ f, i }) => !dead.has(i) && f.mimeType === 'application/vnd.google-apps.document')
+        .slice(0, 4)
+
+      await run(1, async n => {
+        const { f, i } = docs[n]
+        const key = keys[i]
+        if (!alive()) return
+        try {
+          const tabbed = await docSnippet(token, f, needle, signal)
+          if (tabbed && alive()) store(key, tabbed)
+          else if (!get().snippets[key]) store(key, null)
+        } catch (e) {
+          if (e instanceof DOMException && e.name === 'AbortError') return
+          if (!get().snippets[key]) store(key, null)
+        } finally {
+          done([key])
+        }
+      }, docs.length)
+
+      // 2판을 안 지나간 것들 — 시트, 텍스트, 그리고 넷을 넘긴 문서들.
+      const settled = new Set(docs.map(({ i }) => keys[i]))
+      const rest = keys.filter(k => !settled.has(k))
+      rest.forEach(k => { if (!(k in get().snippets)) store(k, null) })
+      done(rest)
     })()
   },
 

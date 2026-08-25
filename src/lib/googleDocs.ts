@@ -62,10 +62,10 @@ export const DOCS_UNAVAILABLE = 'DOCS_API_UNAVAILABLE'
  * first tab, in a legacy field, and everything below silently looks like a
  * one-tab document.
  */
-export async function fetchDocTabs(token: string, documentId: string): Promise<DocTab[]> {
+export async function fetchDocTabs(token: string, documentId: string, signal?: AbortSignal): Promise<DocTab[]> {
   const res = await fetch(
     `https://docs.googleapis.com/v1/documents/${encodeURIComponent(documentId)}?includeTabsContent=true`,
-    { headers: { Authorization: `Bearer ${token}` } },
+    { headers: { Authorization: `Bearer ${token}` }, signal },
   )
   // 403 here means the API is off or the token predates the scope; 401 means a
   // stale token. Neither is worth an error in front of somebody attaching a

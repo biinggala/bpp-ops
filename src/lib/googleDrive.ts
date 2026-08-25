@@ -325,6 +325,7 @@ export async function fetchSnippet(
   file: { id: string; mimeType: string },
   term: string,
   radius = 70,
+  signal?: AbortSignal,
 ): Promise<Snippet | null> {
   const needle = term.trim()
   if (!needle || !canSnippet(file.mimeType)) return null
@@ -334,7 +335,7 @@ export async function fetchSnippet(
     ? `${API}/files/${encodeURIComponent(file.id)}/export?mimeType=${encodeURIComponent(exportAs)}`
     : `${API}/files/${encodeURIComponent(file.id)}?alt=media&supportsAllDrives=true`
 
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal })
   if (res.status === 401) throw new Error(TOKEN_EXPIRED)
   if (!res.ok) return null
 
