@@ -277,7 +277,10 @@ export function AppPage() {
     )
     if (!entry) return
     const [pid, invite] = entry
-    setInvitePending({ project: { id: pid, name: invite.name || '초대받은 프로젝트', color: '#2383E2', inviteCode: invite.code } })
+    // 소속을 같이 싣습니다. 초대장에는 있는데 여기서 떨어뜨리고 있었고,
+    // 그러면 아래 수락이 joinProject에 넘길 것이 없어집니다 — 외부 협업자가
+    // 조직 명단에 자기 자리를 못 앉고, 그 프로젝트가 안 열립니다.
+    setInvitePending({ project: { id: pid, name: invite.name || '초대받은 프로젝트', color: '#2383E2', inviteCode: invite.code, ...(invite.orgId ? { orgId: invite.orgId } : {}) } })
   }, [invites, projects, invitePending])
 
   useEffect(() => {
@@ -422,9 +425,23 @@ export function AppPage() {
         <InviteAcceptModal
           project={invitePending.project}
           onAccept={() => {
-            void joinProject(invitePending.project.id, invitePending.project.inviteCode ?? '')
-              .then(joined => { if (joined) setProject(invitePending.project.id) })
+            const { id, inviteCode, orgId: from } = invitePending.project
+            /**
+             * 수락한 것도 '다시 안 묻는다'에 넣습니다.
+             *
+             * 안 넣으면 이 창이 곧바로 다시 뜹니다. 가입이 오가는 동안
+             * 초대장은 아직 남아 있고 프로젝트는 아직 안 와서, 위 조건
+             * ('초대장에 있고 내 프로젝트에는 없는 것')이 그대로 참입니다.
+             * 사람에게는 수락이 안 먹힌 것처럼 보입니다.
+             */
+            dismissedInvites.current.add(id)
             setInvitePending(null)
+            void joinProject(id, inviteCode ?? '', from).then(joined => {
+              if (joined) return void setProject(id)
+              // 실패하면 말합니다. 조용히 사라지면 수락한 줄 알고 기다립니다.
+              dismissedInvites.current.delete(id)
+              useToast.getState().show('초대를 수락하지 못했습니다. 초대한 사람에게 다시 부탁해 주세요')
+            })
           }}
           onDecline={() => {
             dismissedInvites.current.add(invitePending.project.id)

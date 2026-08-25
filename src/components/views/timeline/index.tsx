@@ -24,6 +24,7 @@ import { openExternal } from '../../../lib/desktopLinks'
 import { splitAgenda, joinAgenda } from '../../../lib/googleCalendar'
 import type { GCalEvent } from '../../../store/gcalStore'
 import { useShallow } from 'zustand/react/shallow'
+import { useVisibleProjects } from '../../../hooks/useVisibleProjects'
 
 /**
  * Day and week timeline.
@@ -149,7 +150,8 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
   const openTaskDetail = useUiStore(s => s.openTaskDetail)
   const openTaskModal = useUiStore(s => s.openTaskModal)
   const projectId = useUiStore(s => s.projectId)
-  const projects = useProjectStore(s => s.projects)
+  // 고르는 목록의 재료입니다 — 지금 서 있는 워크스페이스의 것만.
+  const projects = useVisibleProjects()
   const myEmail = useAuthStore(s => s.email)
 
   /**
@@ -177,7 +179,10 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
   // Who can be invited: the people this account already shares a project with.
   // Not everyone who has ever signed in — that is a list of accounts, not a team.
   const teammates = useMemo(
-    () => [...authorizedEmails(projects, myEmail)].filter(e => e !== myEmail?.toLowerCase()).sort(),
+    // 보관한 프로젝트는 뺍니다. 치워 둔 일의 사람들이 후보로 서면, 지금
+    // 같이 일하는 사람을 그만큼 늦게 찾습니다.
+    () => [...authorizedEmails(projects.filter(p => !p.archived), myEmail)]
+      .filter(e => e !== myEmail?.toLowerCase()).sort(),
     [projects, myEmail],
   )
 

@@ -1086,10 +1086,28 @@ export function Sidebar() {
           <MemberManageModal
             project={proj}
             currentEmail={email ?? undefined}
-            // Only people already sharing a project with the inviter may be
-            // suggested — userProfiles holds every account that has ever signed
-            // in, which is not a team.
-            suggestable={authorizedEmails(projects, email)}
+            /**
+             * 고를 수 있는 사람 — **이 프로젝트와 같은 워크스페이스**에서만.
+             *
+             * 원래는 내가 멤버인 프로젝트 전부에서 모았습니다. 유출은
+             * 아닙니다(내가 이미 명단을 볼 수 있는 사람들입니다). 그런데
+             * 개인 계정으로 회사 프로젝트에 게스트로 들어가 있으면, 자기
+             * 워크스페이스에서 사람을 부르는데 회사 동료들이 목록에 섰습니다.
+             * 한 번 잘못 누르면 남을 엉뚱한 데로 부릅니다.
+             *
+             * **'지금 서 있는 곳'으로는 못 거릅니다.** 게스트로 들어간
+             * 남의 회사 프로젝트는 어느 워크스페이스에서든 보이도록 만들어
+             * 뒀습니다(외부 협업자가 자기 일을 잃지 않게). 그래서 기준이
+             * 서 있는 곳이 아니라 **부르려는 그 프로젝트의 소속**입니다.
+             *
+             * 소속 없는 프로젝트는 어디에도 걸치므로 늘 같이 셉니다.
+             * 목록에 없는 사람도 주소를 다 적으면 부를 수 있습니다 — 여기서
+             * 줄이는 것은 실수할 거리지 할 수 있는 일이 아닙니다.
+             */
+            suggestable={authorizedEmails(
+              projects.filter(p => !p.orgId || p.orgId === proj.orgId),
+              email,
+            )}
             onAddMember={e => addMember(proj.id, e)}
             onRemoveMember={e => removeMember(proj.id, e)}
             onClose={() => setMemberModal(null)}
