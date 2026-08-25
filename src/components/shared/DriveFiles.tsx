@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useDriveStore, warmDriveAuth, snippetKey } from '../../store/driveStore'
 import { useProjectStore } from '../../store/projectStore'
 import { isComposing, gid, safeExternalUrl } from '../../lib/utils'
+import { Icon } from './Icon'
 import { fileKind, relativeTime, driveIdFromUrl, driveUrl, type DriveFile, type DriveSearchResult } from '../../lib/googleDrive'
 import { docTabUrl } from '../../lib/googleDocs'
 import { NOTION } from '../../types'
@@ -146,8 +147,11 @@ export function FileRow({ link, file, onRemove, onNote, compact = false }: {
       onMouseEnter={e => { setHovered(true); e.currentTarget.style.background = compact ? 'var(--bg3)' : 'var(--bg2)'; e.currentTarget.style.borderColor = compact ? 'transparent' : 'var(--bd2)' }}
       onMouseLeave={e => { setHovered(false); e.currentTarget.style.background = compact ? 'transparent' : 'var(--bg2)'; e.currentTarget.style.borderColor = compact ? 'transparent' : 'var(--bd)' }}
     >
-      <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1, opacity: gone ? .4 : 1 }}>
-        {isDrive ? kind.icon : '🔗'}
+      <span style={{
+        flexShrink: 0, display: 'flex', color: 'var(--t2)',
+        opacity: gone ? .4 : 1,
+      }}>
+        <Icon name={isDrive ? kind.icon : 'link'} size={15} />
       </span>
       <a
         href={href ?? undefined} target="_blank" rel="noopener noreferrer"
@@ -367,7 +371,12 @@ export function DriveSearch({ folderId, attachedIds, onPick, onClose }: {
               onMouseEnter={e => { if (!already) e.currentTarget.style.background = 'var(--bg3)' }}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
-              <span style={{ fontSize: 14, flexShrink: 0, lineHeight: hasBox ? 1.4 : 1 }}>{kind.icon}</span>
+              <span style={{
+                flexShrink: 0, display: 'flex', color: 'var(--t2)',
+                marginTop: hasBox ? 2 : 0,
+              }}>
+                <Icon name={kind.icon} size={15} />
+              </span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: 'block', fontSize: 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {f.name}

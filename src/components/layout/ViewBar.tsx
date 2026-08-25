@@ -218,7 +218,7 @@ export function ViewBar({ filtersOnly = false }: { filtersOnly?: boolean }) {
           <React.Fragment key={g[0].id}>
             {gi > 0 && <Divider />}
             {g.map(v => (
-              <ViewTab key={v.id} active={view === v.id} onClick={() => setView(v.id)}>
+              <ViewTab key={v.id} view={v.id} active={view === v.id} onClick={() => setView(v.id)}>
                 {v.label}
               </ViewTab>
             ))}
@@ -367,12 +367,28 @@ function FilterChip({ chip }: { chip: Chip }) {
  * The rectangle wins because it is already what the sidebar, the phone's bottom
  * bar and every menu row use. One shape, everywhere.
  */
-function ViewTab({ children, active, onClick }: { children: React.ReactNode; active: boolean; onClick: () => void }) {
+/**
+ * ── 이름 앞에 그 화면의 그림 ─────────────────────────────────────────────────
+ *
+ * 폰의 아래 바는 처음부터 그림으로 서 있었는데(NavIcons) 이 탭들은 글자만
+ * 있었습니다. 같은 다섯 가지를 화면마다 다른 방식으로 고르고 있던 셈이고,
+ * 사이드바의 '오늘'과 '캘린더'도 그림을 달고 있으니 여기만 맨몸이었습니다.
+ *
+ * **폰의 그 그림 그대로**입니다 — 리스트는 줄, 캘린더는 한 달, 간트는 계단
+ * 모양 막대. 새로 그리지 않았습니다: 같은 화면을 가리키는 그림이 둘이면
+ * 그건 두 가지를 배우는 것입니다.
+ *
+ * 켜진 탭에서 선이 한 겹 두꺼워집니다. 선택을 색 하나에만 맡기지 않으려는
+ * 것이고, 아래 바가 이미 그렇게 하고 있습니다.
+ */
+function ViewTab({ children, view, active, onClick }: {
+  children: React.ReactNode; view: ViewType; active: boolean; onClick: () => void
+}) {
   return (
     <button
       onClick={onClick}
       style={{
-        display: 'flex', alignItems: 'center', padding: '5px 12px',
+        display: 'flex', alignItems: 'center', gap: 6, padding: '5px 11px',
         borderRadius: 'var(--r2)', fontSize: 14, fontWeight: active ? 500 : 400,
         cursor: 'pointer', border: 'none', whiteSpace: 'nowrap',
         background: active ? 'var(--bg3)' : 'transparent',
@@ -383,6 +399,9 @@ function ViewTab({ children, active, onClick }: { children: React.ReactNode; act
       onMouseEnter={e => { if (!active) { e.currentTarget.style.color = 'var(--t1)'; e.currentTarget.style.background = 'var(--bg3)' } }}
       onMouseLeave={e => { if (!active) { e.currentTarget.style.color = 'var(--t2)'; e.currentTarget.style.background = 'transparent' } }}
     >
+      <span style={{ display: 'flex', opacity: active ? 1 : .75 }}>
+        <NavIcon view={view} size={15} active={active} />
+      </span>
       {children}
     </button>
   )

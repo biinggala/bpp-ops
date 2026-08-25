@@ -4,6 +4,7 @@ import {
   MenuDivider, MenuFooter, MENU_INPUT, CellTrigger, Dot, useMenuKeys,
 } from '../../shared/Menu'
 import { AssigneePicker } from '../../shared/AssigneePicker'
+import { Icon } from '../../shared/Icon'
 import { useToast } from '../../shared/Toast'
 import { BadgeSelect } from '../../shared/BadgeSelect'
 import { StatusPill, PriorityLabel } from '../../shared/StatusPill'
@@ -2703,7 +2704,7 @@ function LinksCell({ links, projectId, onChange }: {
   const first = links[0]
   const firstName = first ? (resolved.get(driveIdOf(first) ?? '')?.name ?? first.title) : null
   const firstIcon = first
-    ? (driveIdOf(first) ? fileKind(resolved.get(driveIdOf(first)!)?.mimeType ?? first.mimeType).icon : '🔗')
+    ? (driveIdOf(first) ? fileKind(resolved.get(driveIdOf(first)!)?.mimeType ?? first.mimeType).icon : 'link')
     : null
 
   return (
@@ -2711,7 +2712,9 @@ function LinksCell({ links, projectId, onChange }: {
       <CellTrigger open={m.open} onOpen={el => m.toggleAt(el, 340, 480)}>
         {!first ? <Dash /> : (
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, fontSize: 12 }}>
-            <span style={{ flexShrink: 0 }}>{firstIcon}</span>
+            <span style={{ flexShrink: 0, display: 'flex', color: 'var(--t2)' }}>
+              {firstIcon && <Icon name={firstIcon} size={13} />}
+            </span>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--t1)' }}>{firstName}</span>
             {links.length > 1 && <span style={{ color: 'var(--t3)', flexShrink: 0 }}>+{links.length - 1}</span>}
           </span>

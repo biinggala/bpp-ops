@@ -1,3 +1,4 @@
+import type { IconName } from '../components/shared/Icon'
 // Google Drive, read-only.
 //
 // The app never copies a file's contents or changes anything in Drive. It stores
@@ -254,22 +255,33 @@ export function driveIdFromUrl(url: string): string | null {
   return null
 }
 
-const KIND: { match: (m: string) => boolean; icon: string; label: string }[] = [
-  { match: m => m === 'application/vnd.google-apps.folder',       icon: '📁', label: '폴더' },
-  { match: m => m === 'application/vnd.google-apps.document',     icon: '📄', label: '문서' },
-  { match: m => m === 'application/vnd.google-apps.spreadsheet',  icon: '📊', label: '스프레드시트' },
-  { match: m => m === 'application/vnd.google-apps.presentation', icon: '📽', label: '슬라이드' },
-  { match: m => m === 'application/vnd.google-apps.form',         icon: '📝', label: '설문지' },
-  { match: m => m === 'application/pdf',                          icon: '📕', label: 'PDF' },
-  { match: m => m.startsWith('image/'),                           icon: '🖼', label: '이미지' },
-  { match: m => m.startsWith('video/'),                           icon: '🎬', label: '영상' },
-  { match: m => m.startsWith('audio/'),                           icon: '🎵', label: '오디오' },
-  { match: m => m.includes('zip') || m.includes('compressed'),    icon: '🗜', label: '압축' },
+/**
+ * ── 파일의 종류, 그리고 그 종류의 그림 ───────────────────────────────────────
+ *
+ * 전에는 이모지였습니다(📄 📊 📽 📕 🖼). 이모지는 글자가 아니라 **그림**이라,
+ * 선으로 그린 나머지 아이콘 옆에 놓이면 혼자 색을 갖고 혼자 두껍고 혼자
+ * 베이스라인이 다릅니다. 자료 목록이나 검색 결과 한 목록에 둘이 섞여 있으면
+ * 그 목록이 두 가족으로 보입니다.
+ *
+ * 이제 이름만 돌려줍니다 — 그리는 것은 Icon이 합니다. 종류는 그대로입니다:
+ * 문서와 스프레드시트가 같아 보이면 어느 것을 열지 눈으로 못 고릅니다.
+ */
+const KIND: { match: (m: string) => boolean; icon: IconName; label: string }[] = [
+  { match: m => m === 'application/vnd.google-apps.folder',       icon: 'folder', label: '폴더' },
+  { match: m => m === 'application/vnd.google-apps.document',     icon: 'doc',    label: '문서' },
+  { match: m => m === 'application/vnd.google-apps.spreadsheet',  icon: 'sheet',  label: '스프레드시트' },
+  { match: m => m === 'application/vnd.google-apps.presentation', icon: 'slide',  label: '슬라이드' },
+  { match: m => m === 'application/vnd.google-apps.form',         icon: 'form',   label: '설문지' },
+  { match: m => m === 'application/pdf',                          icon: 'pdf',    label: 'PDF' },
+  { match: m => m.startsWith('image/'),                           icon: 'image',  label: '이미지' },
+  { match: m => m.startsWith('video/'),                           icon: 'video',  label: '영상' },
+  { match: m => m.startsWith('audio/'),                           icon: 'audio',  label: '오디오' },
+  { match: m => m.includes('zip') || m.includes('compressed'),    icon: 'zip',    label: '압축' },
 ]
 
-export function fileKind(mimeType?: string): { icon: string; label: string } {
+export function fileKind(mimeType?: string): { icon: IconName; label: string } {
   const m = mimeType ?? ''
-  return KIND.find(k => k.match(m)) ?? { icon: '📎', label: '파일' }
+  return KIND.find(k => k.match(m)) ?? { icon: 'attach', label: '파일' }
 }
 
 /** A Drive item's canonical URL, for ids we hold without having fetched them yet. */

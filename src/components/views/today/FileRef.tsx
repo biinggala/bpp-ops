@@ -4,6 +4,7 @@ import { ReactNodeViewRenderer, NodeViewWrapper } from '@tiptap/react'
 import type { NodeViewProps } from '@tiptap/react'
 import { useDriveStore } from '../../../store/driveStore'
 import { fileKind, driveUrl } from '../../../lib/googleDrive'
+import { Icon } from '../../shared/Icon'
 import { openExternal } from '../../../lib/desktopLinks'
 
 /**
@@ -87,12 +88,12 @@ function FileRefView({ node, deleteNode }: NodeViewProps) {
 
   return (
     <NodeViewWrapper as="div" contentEditable={false} style={ROW} data-drag-handle>
-      {/* 업무 줄의 상태 표시와 같은 20px 칸. 이모지는 글꼴마다 폭이 달라서
-          그냥 놓으면 줄마다 글 시작점이 달라집니다. */}
+      {/* 업무 줄의 상태 표시와 같은 20px 칸. 폭이 정해져 있어야 줄마다 글
+          시작점이 같습니다 — 이모지였을 때는 글꼴이 그 폭을 정했습니다. */}
       <span style={{
-        width: 20, flexShrink: 0, fontSize: 14, lineHeight: 1,
+        width: 20, flexShrink: 0, color: 'var(--t2)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>{kind.icon}</span>
+      }}><Icon name={kind.icon} size={15} /></span>
       <span
         onClick={() => url && void openExternal(url)}
         title={gone ? '드라이브에서 찾을 수 없습니다' : name}

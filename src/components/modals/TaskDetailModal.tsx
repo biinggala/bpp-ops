@@ -503,7 +503,7 @@ function LinkButton({ editor }: { editor: NonNullable<ReturnType<typeof useEdito
           setUrl(active ? (editor.getAttributes('link').href ?? '') : '')
           setOpen(true)
         }}
-      >🔗</ToolBtn>
+      ><Icon name="link" size={14} /></ToolBtn>
       {open && (
         <div style={{
           position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 10,

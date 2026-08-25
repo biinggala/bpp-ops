@@ -11,7 +11,8 @@ import { useDriveStore } from '../../store/driveStore'
 import { useNotionStore } from '../../store/notionStore'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
-import { Icon } from '../shared/Icon'
+import { Icon, type IconName } from '../shared/Icon'
+import { NavIcon } from '../layout/NavIcons'
 import { StatusMark } from '../shared/StatusMark'
 import { daysFrom } from '../../lib/utils'
 import { fileKind, driveUrl, type DriveSearchResult, type Snippet } from '../../lib/googleDrive'
@@ -27,11 +28,11 @@ import { useShallow } from 'zustand/react/shallow'
 
 // 보드는 뷰 탭에서 내렸으므로 여기서도 내립니다 — 팔레트에만 남으면
 // 화면 어디에도 없는 곳으로 가는 문이 됩니다. 코드는 그대로 있습니다.
-const VIEW_META: { id: ViewType; icon: string; label: string }[] = [
-  { id: 't', icon: '≡', label: '리스트 뷰' },
-  { id: 'c', icon: '📅', label: '캘린더 뷰' },
-  { id: 'g', icon: '📊', label: '간트 차트' },
-  { id: 's', icon: '📈', label: '통계' },
+const VIEW_META: { id: ViewType; label: string }[] = [
+  { id: 't', label: '리스트 뷰' },
+  { id: 'c', label: '캘린더 뷰' },
+  { id: 'g', label: '간트 차트' },
+  { id: 's', label: '통계' },
 ]
 
 function fuzzy(str: string, q: string): boolean {
@@ -71,7 +72,24 @@ type Kind = typeof KINDS[number]['kind']
 type Item = {
   id: string
   kind: Kind
-  icon: string
+  /**
+   * 줄 앞의 표시. 셋 중 하나입니다.
+   *
+   * **드로잉**(`icon`) — 앱이 그린 아이콘. 같은 24 격자, 같은 굵기라 목록이
+   * 한 가족으로 읽힙니다. 이게 기본입니다.
+   *
+   * **점**(`dot`) — 프로젝트와 스페이스. 사이드바에서 그 둘을 알아보는
+   * 방법이 색점이고, 여기서만 다른 모양을 쓰면 같은 것을 두 번 배웁니다.
+   *
+   * **글자**(`glyph`) — 노션 페이지에 사람이 붙여 둔 이모지. 그건 우리가
+   * 정한 것이 아니라 그 페이지의 이름표라, 우리 그림으로 바꾸면 노션에서
+   * 알아보던 방법이 사라집니다.
+   */
+  icon?: IconName
+  /** 뷰 아이콘은 화면 그림이라 따로 그립니다(NavIcons). */
+  viewIcon?: ViewType
+  dot?: string
+  glyph?: string
   label: string
   sub?: string
   hint?: string
@@ -302,18 +320,18 @@ export function CommandPalette() {
 
     if (!q) {
       result.push({
-        id: 'new-task', kind: 'action', icon: '+', label: '새 업무 추가', hint: 'N',
+        id: 'new-task', kind: 'action', icon: 'plus', label: '새 업무 추가', hint: 'N',
         onSelect: () => { openTaskModal(); closeCommandPalette() },
       })
       // 범위 없는 캘린더 — 사이드바의 그 줄과 같은 곳입니다. 뷰 탭의
       // '캘린더 뷰'(지금 범위를 달력으로)와는 다른 문이라 따로 둡니다.
       result.push({
-        id: 'go-calendar', kind: 'action', icon: '📆', label: '캘린더',
+        id: 'go-calendar', kind: 'action', icon: 'calendar', label: '캘린더',
         sub: '내 일정 전부',
         onSelect: () => { openCalendar(); closeCommandPalette() },
       })
       VIEW_META.forEach(v => result.push({
-        id: `view-${v.id}`, kind: 'action', icon: v.icon, label: v.label,
+        id: `view-${v.id}`, kind: 'action', viewIcon: v.id, label: v.label,
         // 오늘에 서서 뷰를 고르면 업무 화면으로 데려가야 합니다 — 안 그러면
         // 고른 것이 화면에 나타나지 않아 눌리지 않은 것처럼 보입니다.
         onSelect: () => { setView(v.id); setScreen('work'); closeCommandPalette() },
@@ -324,7 +342,7 @@ export function CommandPalette() {
       .filter(t => fuzzy(t.name, q) || fuzzy(t.cat, q))
       .slice(0, 8)
       .forEach(t => result.push({
-        id: t.id, kind: 'task', icon: '', label: t.name,
+        id: t.id, kind: 'task', label: t.name,
         status: t.status,
         sub: taskChain(t, tasks, milestones, projects),
         due: t.due,
@@ -334,7 +352,8 @@ export function CommandPalette() {
     spaces
       .filter(s => fuzzy(s.name, q))
       .forEach(s => result.push({
-        id: s.id, kind: 'space', icon: '●', label: s.name, hint: '스페이스로 이동',
+        // 사이드바가 스페이스와 프로젝트를 알아보는 방법이 색점입니다.
+        id: s.id, kind: 'space', dot: s.color, label: s.name, hint: '스페이스로 이동',
         accentColor: s.color,
         onSelect: () => { setSpace(s.name); closeCommandPalette() },
       }))
@@ -342,7 +361,7 @@ export function CommandPalette() {
     projects
       .filter(p => fuzzy(p.name, q))
       .forEach(p => result.push({
-        id: p.id, kind: 'project', icon: '🗂', label: p.name, hint: '프로젝트로 이동',
+        id: p.id, kind: 'project', dot: p.color, label: p.name, hint: '프로젝트로 이동',
         accentColor: p.color,
         onSelect: () => { setProject(p.id); closeCommandPalette() },
       }))
@@ -363,7 +382,7 @@ export function CommandPalette() {
         .slice(0, 6)
         .forEach(({ link, where }) => (link.driveId && shownLinks.add(link.driveId), result.push({
           id: `link-${link.url}`, kind: 'link',
-          icon: link.driveId ? fileKind(link.mimeType).icon : '🔗',
+          icon: link.driveId ? fileKind(link.mimeType).icon : 'link',
           label: link.note || link.title,
           sub: where,
           onSelect: () => { void openExternal(link.url); closeCommandPalette() },
@@ -371,7 +390,7 @@ export function CommandPalette() {
     }
 
     noteHits.forEach(h => result.push({
-      id: `note-${h.date}`, kind: 'note', icon: '🗓', label: h.snippet,
+      id: `note-${h.date}`, kind: 'note', icon: 'today', label: h.snippet,
       sub: noteDayLabel(h.date), hint: '노트로 이동',
       onSelect: () => { openNote(h.date); closeCommandPalette() },
     }))
@@ -412,7 +431,9 @@ export function CommandPalette() {
      * 사람이 노션에서 그 페이지를 알아보는 방법입니다.
      */
     notionHits.forEach(h => result.push({
-      id: `notion-${h.id}`, kind: 'notion', icon: h.emoji || '📄', label: h.title,
+      // 사람이 그 페이지에 붙여 둔 이모지는 그대로 씁니다 — 우리 그림으로
+      // 바꾸면 노션에서 그 페이지를 알아보던 방법이 사라집니다. 없으면 종이.
+      id: `notion-${h.id}`, kind: 'notion', glyph: h.emoji, icon: 'file', label: h.title,
       sub: h.parent,
       /**
        * 조각은 **찾았을 때만** 자리를 잡습니다.
@@ -583,13 +604,29 @@ export function CommandPalette() {
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       borderRadius: 6, fontSize: 13,
                       background: item.accentColor ? item.accentColor + '18' : 'var(--bg2)',
-                      color: item.status
-                        ? statusAccent(item.status)
-                        : item.kind === 'space' ? item.accentColor : 'var(--t2)',
+                      color: item.status ? statusAccent(item.status) : 'var(--t2)',
                     }}>
-                      {/* 목록·보드·노트·시간 축이 쓰는 그 표시입니다. 같은 값을
-                          화면마다 다른 모양으로 배우게 하지 않습니다. */}
-                      {item.status ? <StatusMark status={item.status} size={14} /> : item.icon}
+                      {/*
+                        ── 한 목록, 한 가족 ────────────────────────────────────
+                        전에는 여기에 ≡ · 📅 · 🗂 · 🔗 · 📄 가 섞여 있었습니다.
+                        선으로 그린 글자와 색이 칠해진 그림이 한 열에 번갈아
+                        서면, 목록이 하나가 아니라 여러 곳에서 긁어모은 것으로
+                        보입니다.
+
+                        네 가지가 이 순서로 그려집니다. 앞의 것이 있으면
+                        뒤는 안 봅니다.
+                      */}
+                      {item.status ? <StatusMark status={item.status} size={14} />
+                        : item.viewIcon ? <NavIcon view={item.viewIcon} size={16} />
+                        : item.dot ? (
+                          <span style={{
+                            width: 8, height: 8, borderRadius: '50%',
+                            background: item.dot, display: 'block',
+                          }} />
+                        )
+                        : item.glyph ? <span>{item.glyph}</span>
+                        : item.icon ? <Icon name={item.icon} size={15} />
+                        : null}
                     </span>
 
                     <span style={{ flex: 1, minWidth: 0 }}>
