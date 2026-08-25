@@ -87,12 +87,17 @@ let snippetTerm = ''
 let snippetAbort: AbortController | null = null
 
 /**
- * The passage and the tab it lives in, for a Doc that has tabs.
+ * 문장, 그리고 그게 있는 탭 — 구글 문서에 대해서.
  *
- * Returns null for anything else — a plain document, a Sheet, or a workspace
- * where the Docs API is off or the grant predates the scope — and the caller
- * falls back to the Drive export, which finds the same passage but cannot say
- * where in the document it is.
+ * **문서는 이제 이쪽만 씁니다.** 드라이브의 텍스트 내보내기가 탭 안의 글자를
+ * 안 담는다는 것이 확인됐습니다. 탭에 적힌 문장을 내보내기로 찾으려던 것은
+ * 통째로 헛일이었고, 그래서 문장이 늘 이 호출을 기다렸습니다.
+ *
+ * 이제 이 호출이 필요한 것만 받아 오므로(googleDocs의 마스크) 먼저 부르는
+ * 편이 쌉니다. 탭이 하나뿐이어도 문장은 돌려줍니다 — 탭 이름만 안 붙습니다.
+ *
+ * 이 API가 아예 없는 워크스페이스에서는 null이고, 그때는 부른 쪽이 내보내기로
+ * 물러납니다.
  */
 async function docSnippet(token: string, f: DriveSearchResult, needle: string, signal?: AbortSignal): Promise<Snippet | null> {
   if (f.mimeType !== 'application/vnd.google-apps.document') return null
@@ -109,16 +114,18 @@ async function docSnippet(token: string, f: DriveSearchResult, needle: string, s
     docsUnavailable = true
     return null
   }
-  // A single unnamed tab is just a document. Sending someone to "?tab=t.0" of a
-  // document with one tab is noise in the URL and a promise the UI should not
-  // make.
-  if (tabs.length < 2) return null
   for (const tab of tabs) {
     const found = passageIn(tab.text, needle)
-    if (found) return { ...found, tabId: tab.tabId, tabTitle: tab.title }
+    if (!found) continue
+    // 탭이 하나뿐인 문서는 그냥 문서입니다. "?tab=t.0"으로 보내는 건 주소에
+    // 군더더기고, 화면이 하지 말아야 할 약속입니다 — 문장만 돌려줍니다.
+    return tabs.length < 2 ? found : { ...found, tabId: tab.tabId, tabTitle: tab.title }
   }
   return null
 }
+
+/** 그 마지막 호출이 '이 워크스페이스는 Docs API가 없다'로 끝났는가. */
+export function docsApiDown(): boolean { return docsUnavailable }
 
 /** Latched after the first refusal; cleared when somebody reconnects. */
 let docsUnavailable = false
@@ -286,82 +293,50 @@ export const useDriveStore = create<DriveState>((set, get) => ({
         set(s => ({ snippets: { ...s.snippets, [key]: snip } }))
 
       /**
-       * ── 두 판으로 나눕니다 ──────────────────────────────────────────────
+       * ── 파일 종류에 맞는 곳에만 묻습니다 ────────────────────────────────
        *
-       * 사람이 읽는 것은 **문장**이고, 탭 이름은 없어도 문서는 열립니다.
-       * 그런데 둘을 한 통로 안에서 이어 놓으면, 뚱뚱한 쪽(탭)이 다음 문서의
-       * 문장을 막고 섭니다.
+       * 두 판으로 나눠 뒀었습니다: 먼저 드라이브 내보내기로 글자를 받고, 그
+       * 뒤에 Docs API로 탭을 알아보는 식이었습니다. 전제가 틀렸습니다 —
+       * **내보내기는 탭 안의 글자를 안 담습니다.** 탭에 적힌 문장은 1판이
+       * 절대 못 찾았고, 그래서 문장이 늘 2판을 기다렸습니다. 1판은 그동안
+       * 문서를 통째로 한 번 더 받고 있었고요.
        *
-       * 그래서 문장부터 전부 받고, 탭은 그게 다 끝난 뒤에 따로 알아봅니다.
-       * 목록은 문장 속도로 차고, 탭 이름은 나중에 조용히 붙습니다.
+       * 구글 문서는 Docs API 하나로 끝냅니다. 시트와 텍스트 파일은 그 API가
+       * 모르는 형식이라 내보내기로 갑니다. 문서 하나에 요청 하나입니다.
        */
-      const run = async (lanes: number, job: (i: number) => Promise<void>, count: number) => {
+      await (async () => {
+        const LANES = 3
         let next = 0
         const lane = async () => {
           for (;;) {
             const i = next++
-            if (i >= count) return
-            await job(i)
+            if (i >= todo.length) return
+            const f = todo[i]
+            const key = keys[i]
+            if (!alive()) { done([key]); continue }
+            const isDoc = f.mimeType === 'application/vnd.google-apps.document'
+            try {
+              let snip: Snippet | null = null
+              if (isDoc) snip = await docSnippet(token, f, needle, signal)
+              // 그 API가 없는 워크스페이스일 때만 내보내기로 물러납니다.
+              // 있는데 못 찾았다면 문서 안에 없는 것이고(댓글이나 파일 설명에
+              // 걸린 경우입니다), 그건 내보내기도 못 찾습니다.
+              if (!snip && (!isDoc || docsApiDown())) {
+                snip = await fetchSnippet(token, { id: f.id, mimeType: f.mimeType }, needle, 70, signal)
+              }
+              if (alive()) store(key, snip)
+            } catch (e) {
+              // 멈춘 것은 실패가 아닙니다 — '이 문서에는 없다'로 적어 두면
+              // 다음에 같은 검색어로 물어도 영영 안 찾아봅니다.
+              if (e instanceof DOMException && e.name === 'AbortError') { done([key]); continue }
+              if (e instanceof Error && e.message === TOKEN_EXPIRED) set({ token: null, expiry: null })
+              store(key, null)
+            }
+            done([key])
           }
         }
-        await Promise.all(Array.from({ length: Math.min(lanes, count) }, lane))
-      }
-
-      /** 이 판에서 실패했으면 다음 판은 건너뜁니다. */
-      const dead = new Set<number>()
-
-      // ── 1판: 글자 ──────────────────────────────────────────────────────
-      await run(3, async i => {
-        const f = todo[i]
-        const key = keys[i]
-        if (!alive()) { dead.add(i); return }
-        try {
-          const plain = await fetchSnippet(token, { id: f.id, mimeType: f.mimeType }, needle, 70, signal)
-          // 못 찾았어도 여기서 화면을 비우지 않습니다. 탭 안에 있을 수 있고,
-          // 그건 2판이 압니다.
-          if (plain) { store(key, plain); done([key]) }
-        } catch (e) {
-          dead.add(i)
-          // 멈춘 것은 실패가 아닙니다 — '이 문서에는 없다'로 적어 두면 다음에
-          // 같은 검색어로 물어도 영영 안 찾아봅니다.
-          if (e instanceof DOMException && e.name === 'AbortError') { done([key]); return }
-          if (e instanceof Error && e.message === TOKEN_EXPIRED) set({ token: null, expiry: null })
-          store(key, null)
-          done([key])
-        }
-      }, todo.length)
-
-      // ── 2판: 탭 ────────────────────────────────────────────────────────
-      //
-      // Docs API는 문서 전체를 구조가 붙은 JSON으로 돌려줍니다 — 글자만 십만
-      // 자인 대본이 몇 메가입니다. 그래서 앞의 넷까지만, 그리고 한 번에
-      // 하나씩. 이 판이 늦어져도 화면에는 이미 문장이 서 있습니다.
-      const docs = todo
-        .map((f, i) => ({ f, i }))
-        .filter(({ f, i }) => !dead.has(i) && f.mimeType === 'application/vnd.google-apps.document')
-        .slice(0, 4)
-
-      await run(1, async n => {
-        const { f, i } = docs[n]
-        const key = keys[i]
-        if (!alive()) return
-        try {
-          const tabbed = await docSnippet(token, f, needle, signal)
-          if (tabbed && alive()) store(key, tabbed)
-          else if (!get().snippets[key]) store(key, null)
-        } catch (e) {
-          if (e instanceof DOMException && e.name === 'AbortError') return
-          if (!get().snippets[key]) store(key, null)
-        } finally {
-          done([key])
-        }
-      }, docs.length)
-
-      // 2판을 안 지나간 것들 — 시트, 텍스트, 그리고 넷을 넘긴 문서들.
-      const settled = new Set(docs.map(({ i }) => keys[i]))
-      const rest = keys.filter(k => !settled.has(k))
-      rest.forEach(k => { if (!(k in get().snippets)) store(k, null) })
-      done(rest)
+        await Promise.all(Array.from({ length: Math.min(LANES, todo.length) }, lane))
+      })()
     })()
   },
 
