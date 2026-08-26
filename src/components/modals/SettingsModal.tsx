@@ -983,6 +983,50 @@ function OrgSection({ openNew = false }: { openNew?: boolean }) {
 }
 
 /**
+ * ── 지우는 단추 ──────────────────────────────────────────────────────────────
+ *
+ * **가리키지 않으면 안 보입니다.**
+ *
+ * 스무 줄짜리 명단에 × 스무 개가 나란히 서 있으면, 그게 명단의 무늬가 됩니다.
+ * 무늬가 되면 눌러도 되는 것처럼 보이고, 바로 옆이 자주 누르는 자리(멤버↔게스트
+ * 스위치)라서 한 칸만 빗나가면 사람을 내리는 창이 뜹니다. 확인을 한 번 받으니
+ * 실제로 내려가지는 않지만, **놀라는 것 자체가 비용입니다.**
+ *
+ * 자리는 늘 잡아 둡니다 — 나타날 때 줄이 움찔하면 그 움찔임이 눌러 보라는
+ * 신호가 됩니다. 투명하기만 하고 크기는 그대로입니다.
+ *
+ * 폰에서는 늘 보입니다. hover가 없는 화면에서 hover로만 닿는 단추는 **없는
+ * 단추**입니다. 대신 그쪽은 손가락이 스치기 쉬운 만큼, 확인 창이 유일한
+ * 잠금이 아니게 스위치와의 간격을 벌려 둡니다.
+ */
+function RowRemove({ shown, label, onClick }: {
+  /** 지금 이 줄을 가리키고 있는가. 폰에서는 늘 참입니다. */
+  shown: boolean
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      tabIndex={shown ? 0 : -1}
+      style={{
+        marginLeft: 10, width: 22, height: 22, flexShrink: 0, borderRadius: 'var(--r1)',
+        border: 'none', background: 'transparent', color: 'var(--t3)',
+        cursor: 'pointer', fontFamily: 'var(--font)', fontSize: 13, lineHeight: 1,
+        opacity: shown ? 1 : 0,
+        pointerEvents: shown ? 'auto' : 'none',
+        transition: 'opacity .1s',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-l)'; e.currentTarget.style.color = 'var(--danger)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
+      onFocus={e => { e.currentTarget.style.color = 'var(--danger)' }}
+      onBlur={e => { e.currentTarget.style.color = 'var(--t3)' }}
+    >×</button>
+  )
+}
+
+/**
  * 멤버냐 게스트냐 — **두 값뿐인 축**이라 목록이 아니라 스위치입니다.
  *
  * 값이 둘이면 고르는 데 두 번(열고 고르기) 걸릴 이유가 없고, 무엇보다
@@ -1053,10 +1097,13 @@ function MembersPage() {
       setAdmin: s.setAdmin, setOrgRole: s.setOrgRole, error: s.error,
     })))
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  const isMobile = useMobile()
   const [rows, setRows] = useState<{ email: string; role: string }[] | null>(null)
   const [mail, setMail] = useState('')
   const [adminMail, setAdminMail] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
+  /** 지금 가리키고 있는 줄. 지우는 단추는 그 줄에만 보입니다. */
+  const [over, setOver] = useState<string | null>(null)
 
   const reload = useCallback(() => { void listMembers().then(setRows) }, [listMembers])
   useEffect(reload, [reload])
@@ -1155,7 +1202,12 @@ function MembersPage() {
             const last = isAdm && admins.length <= 1
             const name = getNameByEmail(m.email)
             return (
-              <div key={m.email} style={{ ...ROW, alignItems: 'center' }}>
+              <div
+                key={m.email}
+                onMouseEnter={() => setOver(m.email)}
+                onMouseLeave={() => setOver(o => (o === m.email ? null : o))}
+                style={{ ...ROW, alignItems: 'center' }}
+              >
                 <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {name || m.email}
                   {/* 이름을 모르는 사람은 주소가 이름 자리에 섭니다. 아래에
@@ -1213,7 +1265,9 @@ function MembersPage() {
                 )}
 
                 {isAdmin && !isAdm && !isFounder && !mine && (
-                  <button
+                  <RowRemove
+                    shown={isMobile || over === m.email}
+                    label={`${m.email} 내리기`}
                     onClick={async () => {
                       const ok = await askConfirm({
                         message: `${getNameByEmail(m.email) || m.email} 님을 명단에서 내립니다`,
@@ -1222,15 +1276,7 @@ function MembersPage() {
                       })
                       if (ok) void drop(m.email)
                     }}
-                    aria-label={`${m.email} 내리기`}
-                    style={{
-                      marginLeft: 4, width: 22, height: 22, flexShrink: 0, borderRadius: 'var(--r1)',
-                      border: 'none', background: 'transparent', color: 'var(--t3)',
-                      cursor: 'pointer', fontFamily: 'var(--font)', fontSize: 13, lineHeight: 1,
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-l)'; e.currentTarget.style.color = 'var(--danger)' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
-                  >×</button>
+                  />
                 )}
               </div>
             )
@@ -1455,6 +1501,8 @@ function RoomsSection() {
   const email = useAuthStore(s => s.email)
   const { name, domain, rooms, admins, addRoom, updateRoom, removeRoom, error } = useOrgStore(useShallow(s => ({ name: s.name, domain: s.domain, rooms: s.rooms, admins: s.admins, addRoom: s.addRoom, updateRoom: s.updateRoom, removeRoom: s.removeRoom, error: s.error })))
   const [roomName, setRoomName] = useState('')
+  const isMobile = useMobile()
+  const [over, setOver] = useState<string | null>(null)
   if (!email) return null
   const isAdmin = admins.includes(email.toLowerCase())
 
@@ -1472,7 +1520,12 @@ function RoomsSection() {
         </div>
       )}
       {rooms.map(room => (
-        <div key={room.id} style={{ ...ROW, opacity: room.active === false ? .5 : 1 }}>
+        <div
+          key={room.id}
+          onMouseEnter={() => setOver(room.id)}
+          onMouseLeave={() => setOver(o => (o === room.id ? null : o))}
+          style={{ ...ROW, opacity: room.active === false ? .5 : 1 }}
+        >
           <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE }}>
             {room.name}
             {room.note && <span style={{ display: 'block', ...ROW_SUB }}>{room.note}</span>}
@@ -1483,10 +1536,12 @@ function RoomsSection() {
                   중), 지우는 것은 '이런 방은 없다'(오타로 만든 것). 예약이
                   잡을 때의 방 이름을 들고 있으므로 지워도 지난 예약은 읽힙니다. */}
               <MiniSwitch on={room.active !== false} onClick={() => void updateRoom(room.id, { active: room.active === false })} />
-              <button
-                /* window.confirm은 안 씁니다 — 데스크톱 웹뷰에서 호스트가
-                   대화상자를 안 그려주면 항상 false라, 아무도 못 본 확인창이
-                   이미 거절돼 있습니다. docs/desktop-updates.md의 그 표. */
+              {/* window.confirm은 안 씁니다 — 데스크톱 웹뷰에서 호스트가
+                  대화상자를 안 그려주면 항상 false라, 아무도 못 본 확인창이
+                  이미 거절돼 있습니다. docs/desktop-updates.md의 그 표. */}
+              <RowRemove
+                shown={isMobile || over === room.id}
+                label={`${room.name} 지우기`}
                 onClick={async () => {
                   const ok = await askConfirm({
                     message: `'${room.name}'을 목록에서 지웁니다`,
@@ -1495,15 +1550,7 @@ function RoomsSection() {
                   })
                   if (ok) void removeRoom(room.id)
                 }}
-                aria-label={`${room.name} 지우기`}
-                style={{
-                  marginLeft: 4, width: 22, height: 22, flexShrink: 0, borderRadius: 'var(--r1)',
-                  border: 'none', background: 'transparent', color: 'var(--t3)',
-                  cursor: 'pointer', fontFamily: 'var(--font)', fontSize: 13, lineHeight: 1,
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-l)'; e.currentTarget.style.color = 'var(--danger)' }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
-              >×</button>
+              />
             </>
           ) : room.active === false && <span style={{ fontSize: 11, color: 'var(--t3)' }}>사용 안 함</span>}
         </div>
