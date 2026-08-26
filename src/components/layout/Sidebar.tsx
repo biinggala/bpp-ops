@@ -105,7 +105,7 @@ export function Sidebar() {
   const [profileOpen, setProfileOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   /** 설정을 어느 장으로 열 것인가. 프로필 메뉴가 자리를 지정합니다. */
-  const [settingsPage, setSettingsPage] = useState<'general' | 'org'>('general')
+  const [settingsPage, setSettingsPage] = useState<'general' | 'org-new'>('general')
   /**
    * 사이드바가 무엇을 보여주고 있는가.
    *
@@ -654,7 +654,7 @@ export function Sidebar() {
                   )
                 })}
                 <button
-                  onClick={() => { setProfileOpen(false); setSettingsPage('org'); setSettingsOpen(true) }}
+                  onClick={() => { setProfileOpen(false); setSettingsPage('org-new'); setSettingsOpen(true) }}
                   style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 'var(--r2)', border: 'none', background: 'transparent', fontSize: 12, color: 'var(--ac)', cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left' }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg2)' }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}

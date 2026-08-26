@@ -28,10 +28,10 @@ import { useVisibleProjects } from '../../hooks/useVisibleProjects'
 /**
  * ── 설정 ─────────────────────────────────────────────────────────────────────
  *
- * Everything here belongs to *this machine*, not to the team. Fifty people share
- * the projects; nobody shares a screen, or the room it is in, or the pocket the
- * phone is in — so none of this goes near the database. It is the same line the
- * sidebar's ordering follows.
+ * Two halves, and the split is *whose it is*. The 내 계정 pages belong to this
+ * machine and this account — nobody shares a screen, or the room it is in, or
+ * the pocket the phone is in, so none of that goes near the database. The
+ * 워크스페이스 pages are the opposite: change one and fifty people see it.
  *
  * The notification switches used to live in the bell's popover, which put
  * settings inside an inbox: you went there to clear notices and found a control
@@ -51,16 +51,21 @@ const THEMES: { value: ThemeChoice; label: string; icon: IconName }[] = [
  * 조직 프로젝트까지 여섯 덩어리가 한 줄로 늘어서서, 뭘 고치러 왔든 스크롤을
  * 먼저 해야 했습니다. **한 번에 한 가지만 보이면 그 한 가지가 짧습니다.**
  *
- * 나뉜 기준은 **누구의 것인가**입니다. 앞의 세 장(일반·알림·연동)은 이 기기와
- * 내 계정의 것이고, 뒤의 세 장(조직·회의실·프로젝트)은 회사가 함께 쓰는
- * 것입니다. 같은 창에 있으면서 하나는 나만의 것이고 하나는 전원의 것이면,
- * 모르고 고치는 사람이 나옵니다 — 그래서 줄로 갈라 놓았습니다.
+ * 나뉜 기준은 **누구의 것인가**입니다. 앞의 네 장(일반·알림·연동·휴지통)은 이
+ * 기기와 내 계정의 것이고, 뒤의 네 장(개요·멤버·회의실·프로젝트)은 회사가
+ * 함께 쓰는 것입니다. 같은 창에 있으면서 하나는 나만의 것이고 하나는 전원의
+ * 것이면, 모르고 고치는 사람이 나옵니다 — 그래서 줄로 갈라 놓았습니다.
+ *
+ * 한 장은 한 가지에 답합니다. '개요'는 이 워크스페이스가 무엇인가, '멤버'는
+ * 누가 있는가, '회의실'과 '프로젝트'는 함께 보는 두 목록. 사람 이야기가 개요와
+ * 멤버 두 장에 걸쳐 있던 동안에는, 관리자를 해제하는 자리와 자리를 바꾸는
+ * 자리가 서로 다른 장에 있었습니다.
  *
  * 폰에서는 왼쪽 대신 위에 가로로 놓습니다. 390pt에서 세로 목록에 132px을
  * 내주면 본문이 250px가 되고, 그건 설정 한 줄이 안 들어가는 폭입니다.
  */
 
-type Page = 'general' | 'notify' | 'link' | 'trash' | 'org' | 'rooms' | 'projects'
+type Page = 'general' | 'notify' | 'link' | 'trash' | 'org' | 'members' | 'rooms' | 'projects'
 
 export function SettingsModal({ onClose, start = 'general' }: {
   onClose: () => void
@@ -70,11 +75,16 @@ export function SettingsModal({ onClose, start = 'general' }: {
    * 프로필 메뉴의 '새 워크스페이스'가 이걸 씁니다 — 만드는 자리를 그 메뉴에
    * 옮겨 놓는 대신, 이미 있는 자리를 펴서 보여 줍니다. 같은 일을 하는 화면이
    * 둘이 되면 둘 중 하나는 언젠가 뒤처집니다.
+   *
+   * `'org-new'`는 장이 아니라 **거기서 무엇을 하려는지**입니다. 개요 장의
+   * 만들기 칸은 접혀 있어서, '새 워크스페이스'를 눌러 와도 만들 자리가 안
+   * 보였습니다 — 부른 이유를 들고 와야 그 칸이 펴집니다.
    */
-  start?: Page
+  start?: Page | 'org-new'
 }) {
   const isMobile = useMobile()
-  const [page, setPage] = useState<Page>(start)
+  const [page, setPage] = useState<Page>(start === 'org-new' ? 'org' : start)
+  const [openNew] = useState(start === 'org-new')
   const email = useAuthStore(s => s.email)
   const orgId = useOrgStore(s => s.orgId)
   const joinRequests = useOrgStore(s => s.joinRequests)
@@ -106,8 +116,11 @@ export function SettingsModal({ onClose, start = 'general' }: {
     { id: 'notify', label: '알림', group: '내 계정', note: '언제 무엇으로 알릴지. 기기마다 따로 정합니다 — 노트북에서 켠다고 폰이 켜지지는 않습니다.' },
     { id: 'link', label: '연동', group: '내 계정', note: '밖에서 온 것을 알림함과 찾기에 들이는 통로입니다.' },
     { id: 'trash', label: '휴지통', group: '내 계정', note: "지운 업무가 여기 남습니다. 되살리면 원래 프로젝트로, 원래 이름 그대로 돌아옵니다. '영영 지우기'는 되돌릴 수 없습니다." },
-    { id: 'org', label: '관리', group: '워크스페이스', note: '회의실과, 모두에게 공개한 프로젝트 목록을 함께 두는 단위입니다. 여기서 고치면 모두의 화면이 바뀝니다.' },
+    { id: 'org', label: '개요', group: '워크스페이스', note: orgId
+      ? '이 워크스페이스 자체 — 이름, 들어오는 방법, 없애는 자리. 사람과 회의실은 아래 각각의 장에 있습니다.'
+      : '아직 워크스페이스가 없습니다. 만들면 회의실과 공개 프로젝트 목록, 명단이 생깁니다.' },
     ...(orgId ? [
+      { id: 'members' as Page, label: '멤버', group: '워크스페이스', note: '누가 여기 있고 무엇을 할 수 있는지. 관리자·멤버·게스트를 이 한 자리에서 정합니다.' },
       { id: 'rooms' as Page, label: '회의실', group: '워크스페이스', note: '함께 보는 목록입니다. 예약은 전원이 할 수 있고, 목록을 고치는 것은 관리자입니다.' },
       { id: 'projects' as Page, label: '프로젝트', group: '워크스페이스', badge: pending, note: '이름만 공개됩니다. 업무 내용은 참여한 뒤에 보입니다 — 목록에 오르는 것과 들어가는 것은 다른 일입니다.' },
     ] : []),
@@ -226,7 +239,8 @@ export function SettingsModal({ onClose, start = 'general' }: {
             )}
 
             {page === 'trash' && <TrashSection />}
-            {page === 'org' && <OrgSection />}
+            {page === 'org' && <OrgSection openNew={openNew} />}
+            {page === 'members' && <MembersPage />}
             {page === 'rooms' && <RoomsSection />}
             {page === 'projects' && <><OrgProjects /><MyProjectMembers /></>}
 
@@ -306,14 +320,26 @@ function PageHead({ title, note }: { title: string; note?: string }) {
  * 표가 되고, 표는 '어디까지가 한 덩어리인가'를 말해 주지 않습니다. 여백이
  * 줄을 가르고, 선이 묶음을 가릅니다.
  */
-function Section({ title, note, children }: { title?: string; note?: string; children: React.ReactNode }) {
+function Section({ title, count, note, children }: {
+  title?: string
+  /** 이름 옆의 숫자. 굵기를 빼서 이름과 같은 층으로 읽히지 않게 합니다. */
+  count?: number
+  note?: string
+  children: React.ReactNode
+}) {
   return (
     <div style={{ marginTop: 26 }}>
       {title && (
         <div style={{
-          fontSize: 12, fontWeight: 600, color: 'var(--t2)',
+          display: 'flex', alignItems: 'baseline', gap: 6,
+          fontSize: 13, fontWeight: 600, color: 'var(--t1)',
           paddingBottom: 7, borderBottom: '1px solid var(--bd)',
-        }}>{title}</div>
+        }}>
+          {title}
+          {count !== undefined && (
+            <span style={{ fontWeight: 400, color: 'var(--t3)' }}>{count}</span>
+          )}
+        </div>
       )}
       {note && <div style={{ fontSize: 11.5, color: 'var(--t3)', lineHeight: 1.6, marginTop: title ? 9 : 0 }}>{note}</div>}
       {children}
@@ -429,7 +455,7 @@ const ROW: React.CSSProperties = {
   padding: '12px 0',
 }
 /** 줄의 이름. */
-const ROW_TITLE: React.CSSProperties = { fontSize: 13.5, color: 'var(--t1)', lineHeight: 1.4 }
+const ROW_TITLE: React.CSSProperties = { fontSize: 13, color: 'var(--t1)', lineHeight: 1.4 }
 /** 그 아래 한 줄. */
 const ROW_SUB: React.CSSProperties = { fontSize: 11.5, color: 'var(--t3)', lineHeight: 1.55, marginTop: 3 }
 
@@ -801,21 +827,15 @@ function ChimeRow() {
 
 
 /**
- * ── 조직과 회의실 ────────────────────────────────────────────────────────────
+ * ── 워크스페이스 개요 ───────────────────────────────────────────────────────
  *
- * 여기만 이 창에서 **다른 사람 화면에도 보이는** 설정입니다. 위의 것들은 다
- * 이 기기 것이고, 회의실 목록은 회사가 함께 쓰는 사실입니다. 그래서 칸을
- * 나누고 그렇다고 적어 둡니다 — 같은 창에 있으면서 하나는 나만의 것이고
- * 하나는 전원의 것이면, 모르고 고치는 사람이 나옵니다.
+ * 여기부터는 **다른 사람 화면에도 보이는** 설정입니다. 위의 장들은 다 이 기기
+ * 것입니다.
  *
- * 소속은 이메일 도메인입니다. 초대도 승인도 없습니다.
- */
-/**
- * ── 조직 ─────────────────────────────────────────────────────────────────────
- *
- * 조직 자체와 관리자. 회의실은 옆 장으로 나갔습니다 — 한 장에 있으면 방 목록이
- * 길어질수록 관리자 목록이 스크롤 아래로 밀려서, 관리자가 누군지 보려면 방을
- * 다 지나가야 했습니다.
+ * 이 장에는 워크스페이스 **자체**만 둡니다 — 이름, 들어오는 방법, 하나 더
+ * 만들기, 그리고 없애기. 사람은 '멤버', 방은 '회의실', 공개 목록은
+ * '프로젝트'로 나갔습니다. 한 장에 다 있으면 목록이 길어질수록 정작 이
+ * 워크스페이스가 무엇인지를 말하는 줄이 스크롤 위로 밀립니다.
  */
 /**
  * 워크스페이스를 만드는 자리.
@@ -893,12 +913,12 @@ function MakeWorkspace({ email, myDomain, domainTaken }: {
   )
 }
 
-function OrgSection() {
+function OrgSection({ openNew = false }: { openNew?: boolean }) {
   const email = useAuthStore(s => s.email)
-  const { orgId, name, domain, founder, admins, ready, setAdmin, setOrgRole, error } = useOrgStore(useShallow(s => ({ orgId: s.orgId, name: s.name, domain: s.domain, founder: s.founder, admins: s.admins, ready: s.ready, setAdmin: s.setAdmin, setOrgRole: s.setOrgRole, error: s.error })))
-  const [adminMail, setAdminMail] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [adding, setAdding] = useState(false)
+  const { orgId, name, domain, admins, ready } = useOrgStore(useShallow(s => ({
+    orgId: s.orgId, name: s.name, domain: s.domain, admins: s.admins, ready: s.ready,
+  })))
+  const [adding, setAdding] = useState(openNew)
   const myDomain = email?.split('@')[1] ?? ''
 
   if (!email) return null
@@ -906,7 +926,7 @@ function OrgSection() {
 
   if (!orgId) {
     return (
-      <Section note="만든 사람이 첫 관리자가 됩니다. 만드는 방법은 나중에 바꿀 수 없습니다.">
+      <Section title="새 워크스페이스" note="만든 사람이 첫 관리자가 됩니다. 만드는 방법은 나중에 바꿀 수 없습니다.">
         <MakeWorkspace email={email} myDomain={myDomain} domainTaken={false} />
       </Section>
     )
@@ -916,9 +936,12 @@ function OrgSection() {
 
   return (
     <>
-      <Section note={domain
-        ? '같은 도메인으로 로그인한 사람이 곧 멤버입니다. 초대도 승인도 없습니다.'
-        : '초대로만 들어오는 워크스페이스입니다. 프로젝트에 부르면 멤버가 됩니다.'}>
+      <Section
+        title="지금 있는 곳"
+        note={domain
+          ? '같은 도메인으로 로그인한 사람이 곧 멤버입니다. 초대도 승인도 없습니다.'
+          : '초대로만 들어오는 워크스페이스입니다. 부른 사람만 들어옵니다.'}
+      >
         <div style={ROW}>
           <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE }}>
             {name || myDomain}
@@ -938,7 +961,7 @@ function OrgSection() {
         <button
           onClick={() => setAdding(true)}
           style={{
-            alignSelf: 'flex-start', margin: '2px 0 4px', padding: 0,
+            alignSelf: 'flex-start', margin: '10px 0 0', padding: 0,
             border: 'none', background: 'transparent', cursor: 'pointer',
             fontSize: 12, color: 'var(--t3)', fontFamily: 'var(--font)',
           }}
@@ -953,79 +976,6 @@ function OrgSection() {
           <MakeWorkspace email={email} myDomain={myDomain} domainTaken={!!domain && domain.toLowerCase() === myDomain.toLowerCase()} />
         </Section>
       )}
-
-      {/*
-        관리자가 아닌 사람에게도 **누가 관리자인지** 보여줍니다. 잠긴 버튼만
-        있고 누구에게 말해야 하는지 없으면 그건 막다른 길입니다.
-      */}
-      <Section
-        title="관리자"
-        note={isAdmin
-          ? `${domain ? `${domain} 주소만` : '멤버만'} 관리자가 될 수 있습니다. 회의실 목록에만 미치고, 업무나 프로젝트를 더 볼 수 있게 되지는 않습니다.`
-            + (admins.length <= 1 ? ' 지금은 혼자라 해제할 수 없습니다 — 다른 사람을 먼저 세우세요.' : '')
-          : '회의실을 바꿔야 하면 이분들에게 말하면 됩니다.'}
-      >
-        {admins.map(mail => {
-          // 마지막 한 명이면 아무도 못 내립니다 — 자기 자신도.
-          const last = admins.length <= 1
-          return (
-          <div key={mail} style={ROW}>
-            <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {mail}
-              {mail === email.toLowerCase() && (
-                <span style={{ fontSize: 11, color: 'var(--t3)', marginLeft: 6 }}>나</span>
-              )}
-            </span>
-            {/*
-              ── 마지막 한 명은 못 내립니다 ──────────────────────────────────
-              나 혼자 관리자인데 나를 해제할 수 있었습니다. 그러면 회의실도
-              명단도 아무도 못 고치는 워크스페이스가 남습니다.
-
-              나가기에는 이 잠금을 걸어 뒀는데(위험한 칸) 여기엔 안 걸었습니다.
-              같은 일이 두 자리에 있으면 한 자리만 잠그기 쉽습니다.
-
-              만든 사람은 남이 못 내립니다 — 규칙이 이미 막고 있고, 눌러도
-              안 되는 것을 눌리게 두면 그건 고장으로 보입니다. 본인은
-              내릴 수 있습니다: 다른 관리자가 있을 때고, 언제든 되찾습니다.
-            */}
-            {isAdmin && (last || (mail === founder && mail !== email.toLowerCase()) ? (
-              <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0 }}>
-                {last ? '혼자입니다' : '만든 사람'}
-              </span>
-            ) : (
-              <button
-                /* 표시만 뗍니다. 명단에서는 멤버로 그대로 남습니다 —
-                   관리자를 그만두는 것과 워크스페이스를 나가는 것은 다른
-                   일이고, 내보내는 것은 위 멤버 목록에 있습니다. */
-                onClick={() => void setAdmin(mail, false)}
-                style={{ ...navBtn, padding: '3px 9px', fontSize: 11, borderColor: 'transparent', color: 'var(--danger)' }}
-              >해제</button>
-            ))}
-          </div>
-          )
-        })}
-        {isAdmin && (
-          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-            <input
-              value={adminMail}
-              onChange={e => setAdminMail(e.target.value)}
-              onKeyDown={async e => {
-                if (e.key !== 'Enter' || !adminMail.trim()) return
-                if (await setOrgRole(adminMail, 'admin')) setAdminMail('')
-              }}
-              placeholder={`이메일 (@${domain})`}
-              style={INPUT}
-            />
-            <button
-              onClick={async () => { if (adminMail.trim() && await setOrgRole(adminMail, 'admin')) setAdminMail('') }}
-              style={navBtn}
-            >지정</button>
-          </div>
-        )}
-        {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6, lineHeight: 1.5 }}>{error}</div>}
-      </Section>
-
-      <WorkspaceMembers domain={domain} isAdmin={isAdmin} me={email} admins={admins} owner={founder} />
 
       <DangerZone orgId={orgId} name={name || myDomain} email={email} isAdmin={isAdmin} adminCount={admins.length} />
     </>
@@ -1087,29 +1037,29 @@ function RoleToggle({ value, busy, onChange }: {
  *
  * 명단은 구독하지 않고 이 화면이 열릴 때 한 번 읽습니다. 오십 명짜리 명단을
  * 늘 듣고 있을 이유가 없고, 보는 자리는 여기 하나뿐입니다.
+ *
+ * ── 왜 한 장이 됐나 ─────────────────────────────────────────────────────────
+ * 관리자 목록이 '관리' 장 위쪽에 따로 있고, 그 아래 멤버 칸에도 '관리자'
+ * 묶음이 있었습니다. **같은 사람이 한 화면에 두 번** 서 있었고, 해제는 위에서
+ * 되는데 자리 바꾸기는 아래에서 되니 무엇이 어디 있는지는 눌러 봐야 알았습니다.
+ * 사람 이야기는 사람 장 하나에 둡니다.
  */
-function WorkspaceMembers({ domain, isAdmin, me, admins, owner }: {
-  domain: string; isAdmin: boolean; me: string; admins: string[]; owner: string
-}) {
-  const { listMembers, inviteToOrg, removeFromOrg, setOrgRole, error } = useOrgStore(useShallow(s => ({
-    listMembers: s.listMembers, inviteToOrg: s.inviteToOrg, removeFromOrg: s.removeFromOrg,
-    setOrgRole: s.setOrgRole, error: s.error,
-  })))
+function MembersPage() {
+  const me = useAuthStore(s => s.email)
+  const { orgId, domain, founder, admins, ready, listMembers, inviteToOrg, removeFromOrg, setAdmin, setOrgRole, error } =
+    useOrgStore(useShallow(s => ({
+      orgId: s.orgId, domain: s.domain, founder: s.founder, admins: s.admins, ready: s.ready,
+      listMembers: s.listMembers, inviteToOrg: s.inviteToOrg, removeFromOrg: s.removeFromOrg,
+      setAdmin: s.setAdmin, setOrgRole: s.setOrgRole, error: s.error,
+    })))
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const [rows, setRows] = useState<{ email: string; role: string }[] | null>(null)
   const [mail, setMail] = useState('')
+  const [adminMail, setAdminMail] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
 
   const reload = useCallback(() => { void listMembers().then(setRows) }, [listMembers])
   useEffect(reload, [reload])
-
-  const add = async () => {
-    if (!mail.trim() || busy) return
-    setBusy('add')
-    const ok = await inviteToOrg(mail)
-    setBusy(null)
-    if (ok) { setMail(''); reload() }
-  }
 
   /**
    * ── 세 칸으로 나눕니다 ────────────────────────────────────────────────────
@@ -1118,21 +1068,37 @@ function WorkspaceMembers({ domain, isAdmin, me, admins, owner }: {
    * 누가 어느 쪽인지 세게 됩니다. 물어보는 것이 '이 사람 뭐지'가 아니라
    * '바깥 사람이 누구지'라서, 그 답이 목록의 생김새에 있어야 합니다.
    *
-   * 관리자는 명단의 역할이 아니라 그 위에 얹히는 표시입니다. 그래도 화면에는
-   * 한 줄로 세웁니다 — 사람에게는 '관리자·멤버·게스트' 셋이 한 축입니다.
+   * 관리자는 명단의 역할이 아니라 그 위에 얹히는 표시입니다. 그래서 명단에
+   * 줄이 없는 관리자도 있을 수 있습니다 — 도메인형에서는 로그인만으로
+   * 멤버라 명단에 안 적힐 수 있고, 그 사람이 관리자면 여기서 사라져 버립니다.
+   * 명단에 없으면 주소만으로 세웁니다. **안 온 것을 없는 것으로 읽지 않습니다.**
    */
   const groups = useMemo(() => {
-    const isAdminOf = (mail: string) => admins.includes(mail)
     const all = rows ?? []
+    const byMail = new Map(all.map(m => [m.email, m]))
     return [
-      { key: 'admin', label: '관리자', note: "회의실과 명단, 워크스페이스 설정을 고칩니다. 지정과 해제는 아래 '관리자'에서 합니다.",
-        people: all.filter(m => isAdminOf(m.email)) },
-      { key: 'member', label: '멤버', note: '회의실을 잡고 공개된 프로젝트 목록을 봅니다.',
-        people: all.filter(m => !isAdminOf(m.email) && m.role === 'member') },
-      { key: 'guest', label: '게스트', note: '초대받은 프로젝트만 봅니다. 워크스페이스로는 못 들어옵니다.',
-        people: all.filter(m => !isAdminOf(m.email) && m.role === 'guest') },
+      {
+        key: 'admin', label: '관리자',
+        note: '회의실 목록과 이 명단, 워크스페이스 이름과 삭제를 고칩니다. 남의 업무가 더 보이지는 않습니다.',
+        people: admins.map(mail => byMail.get(mail) ?? { email: mail, role: 'member' }),
+      },
+      {
+        key: 'member', label: '멤버',
+        note: '회의실을 잡고, 워크스페이스에 공개된 프로젝트 목록을 봅니다.',
+        people: all.filter(m => !admins.includes(m.email) && m.role === 'member'),
+      },
+      {
+        key: 'guest', label: '게스트',
+        note: '초대받은 프로젝트만 봅니다. 워크스페이스 목록에는 못 들어옵니다.',
+        people: all.filter(m => !admins.includes(m.email) && m.role === 'guest'),
+      },
     ]
   }, [rows, admins])
+
+  if (!me) return null
+  if (!ready || !orgId) return <div style={{ fontSize: 12, color: 'var(--t3)' }}>불러오는 중…</div>
+
+  const isAdmin = admins.includes(me.toLowerCase())
 
   const change = async (mail: string, role: 'admin' | 'member' | 'guest') => {
     setBusy(mail)
@@ -1148,36 +1114,45 @@ function WorkspaceMembers({ domain, isAdmin, me, admins, owner }: {
     if (ok) reload()
   }
 
+  const add = async () => {
+    if (!mail.trim() || busy) return
+    setBusy('add')
+    const ok = await inviteToOrg(mail)
+    setBusy(null)
+    if (ok) { setMail(''); reload() }
+  }
+
+  const raise = async () => {
+    if (!adminMail.trim() || busy) return
+    setBusy('raise')
+    const ok = await setOrgRole(adminMail, 'admin')
+    setBusy(null)
+    if (ok) { setAdminMail(''); reload() }
+  }
+
   return (
-    <Section
-      title="멤버"
-      note={domain
-        ? `@${domain} 로 로그인하면 자동으로 멤버입니다. 도메인 밖 사람은 프로젝트에 부르면 게스트로 들어옵니다.`
-        : '여기서 부르면 워크스페이스 구성원이 됩니다. 프로젝트에만 부르고 싶으면 사이드바에서 하세요 — 그건 그 프로젝트만 열어 줍니다.'}
-    >
-      {rows === null && <div style={{ ...ROW_SUB, marginTop: 8 }}>불러오는 중…</div>}
+    <>
+      {rows === null && <div style={{ ...ROW_SUB, marginTop: 20 }}>불러오는 중…</div>}
 
       {rows !== null && groups.map(g => (
-        <div key={g.key} style={{ marginTop: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--t2)' }}>{g.label}</span>
-            <span style={{ fontSize: 11, color: 'var(--t3)' }}>{g.people.length}</span>
-          </div>
-          <div style={{ ...ROW_SUB, marginTop: 2 }}>{g.note}</div>
+        <Section key={g.key} title={g.label} count={g.people.length} note={g.note}>
           {g.people.length === 0 && (
-            <div style={{ ...ROW_SUB, marginTop: 6, opacity: .8 }}>없습니다.</div>
+            <div style={{ ...ROW_SUB, marginTop: 10 }}>없습니다.</div>
           )}
           {g.people.map(m => {
             /**
              * 만든 사람은 자리를 못 바꿉니다.
              *
-             * 규칙이 관리자 줄을 지키고 있어서 눌러도 거절당하는데, 눌러도 안
+             * 규칙이 그 줄을 지키고 있어서 눌러도 거절당하는데, 눌러도 안
              * 되는 것을 눌리게 두면 그건 고장으로 보입니다. 화면과 규칙이
              * 같은 말을 해야 합니다.
              */
-            const founder = m.email === owner
+            const isFounder = m.email === founder
             const mine = m.email === me.toLowerCase()
-            const isAdm = admins.includes(m.email)
+            const isAdm = g.key === 'admin'
+            // 마지막 한 명이면 아무도 못 내립니다 — 자기 자신도. 내리는
+            // 순간 회의실도 명단도 아무도 못 고치는 워크스페이스가 남습니다.
+            const last = isAdm && admins.length <= 1
             const name = getNameByEmail(m.email)
             return (
               <div key={m.email} style={{ ...ROW, alignItems: 'center' }}>
@@ -1186,36 +1161,58 @@ function WorkspaceMembers({ domain, isAdmin, me, admins, owner }: {
                   {/* 이름을 모르는 사람은 주소가 이름 자리에 섭니다. 아래에
                       또 적으면 같은 글자가 두 줄이 됩니다 — 아직 이 앱을 안
                       켜 본 사람이 대개 여기고, 외부 협업자가 그렇습니다. */}
-                  {(name || founder || mine) && (
+                  {(name || isFounder || mine) && (
                     <span style={{ display: 'block', ...ROW_SUB }}>
-                      {[name ? m.email : null, founder ? '만든 사람' : null, mine ? '나' : null]
+                      {[name ? m.email : null, isFounder ? '만든 사람' : null, mine ? '나' : null]
                         .filter(Boolean).join(' · ')}
                     </span>
                   )}
                 </span>
+
                 {/*
-                  ── 관리자는 여기서 못 줍니다 ────────────────────────────────
+                  ── 관리자는 토글에 안 섞습니다 ─────────────────────────────
                   하나의 드롭다운에 관리자·멤버·게스트를 늘어놓았었습니다.
                   관리자가 멤버 바로 옆에 있어서 한 칸만 미끄러지면 그 사람이
                   워크스페이스 전체를 고칠 수 있게 됐습니다. 되돌릴 수는
-                  있지만, **되돌리기 전까지 무슨 일이 일어났는지 아무도 모릅니다.**
+                  있지만, **되돌리기 전까지 무슨 일이 있었는지 아무도 모릅니다.**
 
                   게다가 그건 한 축이 아닙니다. 명단에는 member/guest만 있고
-                  관리자는 그 위에 얹히는 별개의 표시입니다 — 스토어 주석에
-                  제가 그렇게 적어 놓고 화면에서는 셋을 한 줄에 세웠습니다.
+                  관리자는 그 위에 얹히는 별개의 표시입니다.
 
                   자주 하는 일(멤버↔게스트)은 한 번에, 드문 일(관리자)은
-                  아래 '관리자' 칸에서 주소를 적어서. 주소를 적는 그 동작이
-                  곧 '이건 다른 일이다'입니다.
+                  칸 아래에서 주소를 적어서. 주소를 적는 그 동작이 곧
+                  '이건 다른 일이다'입니다.
                 */}
-                {isAdmin && !founder && !isAdm && (
+                {isAdmin && isAdm && (
+                  last || (isFounder && !mine) ? (
+                    <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0 }}>
+                      {last ? '혼자입니다' : '만든 사람'}
+                    </span>
+                  ) : (
+                    <button
+                      /* 표시만 뗍니다. 명단에서는 멤버로 그대로 남습니다 —
+                         관리자를 그만두는 것과 워크스페이스를 나가는 것은
+                         다른 일입니다. */
+                      onClick={async () => {
+                        setBusy(m.email)
+                        const ok = await setAdmin(m.email, false)
+                        setBusy(null)
+                        if (ok) reload()
+                      }}
+                      style={{ ...navBtn, padding: '3px 9px', fontSize: 11, borderColor: 'transparent', color: 'var(--danger)' }}
+                    >관리자 해제</button>
+                  )
+                )}
+
+                {isAdmin && !isAdm && !isFounder && (
                   <RoleToggle
                     value={m.role === 'guest' ? 'guest' : 'member'}
                     busy={busy === m.email}
                     onChange={next => void change(m.email, next)}
                   />
                 )}
-                {isAdmin && !founder && !mine && (
+
+                {isAdmin && !isAdm && !isFounder && !mine && (
                   <button
                     onClick={async () => {
                       const ok = await askConfirm({
@@ -1238,23 +1235,57 @@ function WorkspaceMembers({ domain, isAdmin, me, admins, owner }: {
               </div>
             )
           })}
-        </div>
+
+          {/* 세우는 자리는 그 칸 안에 있습니다 — 관리자를 만드는 곳이
+              '관리자' 칸 아래인 편이, 화면 어딘가 다른 곳을 가리키는 것보다
+              한 걸음 짧습니다. */}
+          {isAdmin && g.key === 'admin' && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+              <input
+                value={adminMail}
+                onChange={e => setAdminMail(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) void raise() }}
+                placeholder={domain ? `이메일 (@${domain})` : '이메일 (명단에 있는 사람)'}
+                style={INPUT}
+              />
+              <button onClick={() => void raise()} style={navBtn} disabled={busy === 'raise'}>관리자로</button>
+            </div>
+          )}
+
+          {/* 도메인형에는 초대가 없습니다 — 로그인하는 순간 멤버라 부를 것이
+              없습니다. 그래서 이 칸 자체를 안 그립니다. */}
+          {isAdmin && g.key === 'member' && !domain && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+              <input
+                value={mail}
+                onChange={e => setMail(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) void add() }}
+                placeholder="이메일"
+                style={INPUT}
+              />
+              <button onClick={() => void add()} style={navBtn} disabled={busy === 'add'}>부르기</button>
+            </div>
+          )}
+          {g.key === 'member' && domain && (
+            <div style={{ ...ROW_SUB, marginTop: 10 }}>
+              @{domain} 로 로그인하면 자동으로 멤버가 됩니다. 따로 부를 것이 없습니다.
+            </div>
+          )}
+          {g.key === 'guest' && (
+            <div style={{ ...ROW_SUB, marginTop: 10 }}>
+              게스트는 사이드바에서 프로젝트에 부르면 생깁니다. 그건 그 프로젝트만 열어 줍니다.
+            </div>
+          )}
+        </Section>
       ))}
 
-      {!domain && isAdmin && (
-        <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
-          <input
-            value={mail}
-            onChange={e => setMail(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) void add() }}
-            placeholder="이메일"
-            style={INPUT}
-          />
-          <button onClick={() => void add()} style={navBtn} disabled={busy === 'add'}>부르기</button>
+      {!isAdmin && rows !== null && (
+        <div style={{ ...ROW_SUB, marginTop: 20 }}>
+          자리를 바꾸는 것은 관리자입니다. 필요하면 위 관리자에게 말하면 됩니다.
         </div>
       )}
-      {error && <div style={{ ...ROW_SUB, color: 'var(--danger)', marginTop: 8 }}>{error}</div>}
-    </Section>
+      {error && <div style={{ ...ROW_SUB, color: 'var(--danger)', marginTop: 12 }}>{error}</div>}
+    </>
   )
 }
 
@@ -1335,7 +1366,7 @@ function DangerZone({ orgId, name, email, isAdmin, adminCount }: {
       padding: '14px 14px 16px', display: 'flex', flexDirection: 'column', gap: 4,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--danger)', flex: 1 }}>위험</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--danger)', flex: 1 }}>위험</div>
         {/* 열었으면 닫을 수 있어야 합니다. 펼치는 단추를 만들면서 접는 길을
             안 만들면, 잘못 눌렀을 때 나가는 방법이 설정을 통째로 닫는 것뿐
             입니다 — '어제 못 끝낸 것'에서 똑같이 했던 실수입니다. */}
@@ -1429,8 +1460,10 @@ function RoomsSection() {
 
   return (
     <Section
+      title={name || domain || '회의실'}
+      count={rooms.length}
       note={isAdmin
-        ? `${name || domain} 전체가 함께 보는 목록입니다. 여기서 고치면 모두의 화면이 바뀝니다. 예약은 전원이 할 수 있습니다.`
+        ? '여기서 고치면 모두의 화면이 바뀝니다.'
         : '목록은 관리자만 바꿉니다. 예약은 누구나 할 수 있습니다.'}
     >
       {rooms.length === 0 && (
@@ -1527,7 +1560,7 @@ function MyProjectMembers() {
   if (!live.length) return null
 
   return (
-    <Section title="내 프로젝트 멤버" note="여기서는 보기만 합니다. 넣고 빼는 것은 사이드바에서 프로젝트를 우클릭 → 멤버 관리.">
+    <Section title="내가 있는 프로젝트" count={live.length} note="여기서는 보기만 합니다. 넣고 빼는 것은 사이드바에서 프로젝트를 우클릭 → 멤버 관리.">
       {live.map(p => {
         const members = p.memberEmails ?? []
         const pending = p.pendingEmails ?? []
@@ -1597,10 +1630,14 @@ function OrgProjects() {
   )
 
   return (
-    <Section>
+    <Section
+      title="워크스페이스에 공개된 것"
+      count={orgProjects.length}
+      note="올리고 내리는 것은 그 프로젝트 멤버가 합니다 — 사이드바에서 프로젝트를 우클릭 → '워크스페이스에 공개'. 관리자가 남의 프로젝트를 끌어오지는 못합니다."
+    >
       {orgProjects.length === 0 && (
-        <div style={{ fontSize: 11, color: 'var(--t3)', padding: '2px 0 4px', lineHeight: 1.6 }}>
-          공개된 프로젝트가 없습니다. 사이드바에서 프로젝트를 우클릭 → '워크스페이스에 공개'.
+        <div style={{ ...ROW_SUB, marginTop: 10 }}>
+          아직 공개된 프로젝트가 없습니다.
         </div>
       )}
 
