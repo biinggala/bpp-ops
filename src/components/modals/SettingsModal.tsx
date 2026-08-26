@@ -895,7 +895,7 @@ function MakeWorkspace({ email, myDomain, domainTaken }: {
 
 function OrgSection() {
   const email = useAuthStore(s => s.email)
-  const { orgId, name, domain, founder, admins, ready, setAdmin, error } = useOrgStore(useShallow(s => ({ orgId: s.orgId, name: s.name, domain: s.domain, founder: s.founder, admins: s.admins, ready: s.ready, setAdmin: s.setAdmin, error: s.error })))
+  const { orgId, name, domain, founder, admins, ready, setAdmin, setOrgRole, error } = useOrgStore(useShallow(s => ({ orgId: s.orgId, name: s.name, domain: s.domain, founder: s.founder, admins: s.admins, ready: s.ready, setAdmin: s.setAdmin, setOrgRole: s.setOrgRole, error: s.error })))
   const [adminMail, setAdminMail] = useState('')
   const [busy, setBusy] = useState(false)
   const [adding, setAdding] = useState(false)
@@ -962,9 +962,13 @@ function OrgSection() {
         title="관리자"
         note={isAdmin
           ? `${domain ? `${domain} 주소만` : '멤버만'} 관리자가 될 수 있습니다. 회의실 목록에만 미치고, 업무나 프로젝트를 더 볼 수 있게 되지는 않습니다.`
+            + (admins.length <= 1 ? ' 지금은 혼자라 해제할 수 없습니다 — 다른 사람을 먼저 세우세요.' : '')
           : '회의실을 바꿔야 하면 이분들에게 말하면 됩니다.'}
       >
-        {admins.map(mail => (
+        {admins.map(mail => {
+          // 마지막 한 명이면 아무도 못 내립니다 — 자기 자신도.
+          const last = admins.length <= 1
+          return (
           <div key={mail} style={ROW}>
             <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE, overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {mail}
@@ -972,14 +976,34 @@ function OrgSection() {
                 <span style={{ fontSize: 11, color: 'var(--t3)', marginLeft: 6 }}>나</span>
               )}
             </span>
-            {isAdmin && (
+            {/*
+              ── 마지막 한 명은 못 내립니다 ──────────────────────────────────
+              나 혼자 관리자인데 나를 해제할 수 있었습니다. 그러면 회의실도
+              명단도 아무도 못 고치는 워크스페이스가 남습니다.
+
+              나가기에는 이 잠금을 걸어 뒀는데(위험한 칸) 여기엔 안 걸었습니다.
+              같은 일이 두 자리에 있으면 한 자리만 잠그기 쉽습니다.
+
+              만든 사람은 남이 못 내립니다 — 규칙이 이미 막고 있고, 눌러도
+              안 되는 것을 눌리게 두면 그건 고장으로 보입니다. 본인은
+              내릴 수 있습니다: 다른 관리자가 있을 때고, 언제든 되찾습니다.
+            */}
+            {isAdmin && (last || (mail === founder && mail !== email.toLowerCase()) ? (
+              <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0 }}>
+                {last ? '혼자입니다' : '만든 사람'}
+              </span>
+            ) : (
               <button
+                /* 표시만 뗍니다. 명단에서는 멤버로 그대로 남습니다 —
+                   관리자를 그만두는 것과 워크스페이스를 나가는 것은 다른
+                   일이고, 내보내는 것은 위 멤버 목록에 있습니다. */
                 onClick={() => void setAdmin(mail, false)}
                 style={{ ...navBtn, padding: '3px 9px', fontSize: 11, borderColor: 'transparent', color: 'var(--danger)' }}
               >해제</button>
-            )}
+            ))}
           </div>
-        ))}
+          )
+        })}
         {isAdmin && (
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
             <input
@@ -987,13 +1011,13 @@ function OrgSection() {
               onChange={e => setAdminMail(e.target.value)}
               onKeyDown={async e => {
                 if (e.key !== 'Enter' || !adminMail.trim()) return
-                if (await setAdmin(adminMail, true)) setAdminMail('')
+                if (await setOrgRole(adminMail, 'admin')) setAdminMail('')
               }}
               placeholder={`이메일 (@${domain})`}
               style={INPUT}
             />
             <button
-              onClick={async () => { if (adminMail.trim() && await setAdmin(adminMail, true)) setAdminMail('') }}
+              onClick={async () => { if (adminMail.trim() && await setOrgRole(adminMail, 'admin')) setAdminMail('') }}
               style={navBtn}
             >지정</button>
           </div>
@@ -1005,6 +1029,47 @@ function OrgSection() {
 
       <DangerZone orgId={orgId} name={name || myDomain} email={email} isAdmin={isAdmin} adminCount={admins.length} />
     </>
+  )
+}
+
+/**
+ * 멤버냐 게스트냐 — **두 값뿐인 축**이라 목록이 아니라 스위치입니다.
+ *
+ * 값이 둘이면 고르는 데 두 번(열고 고르기) 걸릴 이유가 없고, 무엇보다
+ * 목록에는 **없는 값이 끼어들 자리**가 있습니다. 관리자가 거기 끼어 있어서
+ * 한 칸 미끄러지면 워크스페이스를 통째로 내주는 일이 됐습니다.
+ */
+function RoleToggle({ value, busy, onChange }: {
+  value: 'member' | 'guest'
+  busy: boolean
+  onChange: (next: 'member' | 'guest') => void
+}) {
+  const options: { key: 'member' | 'guest'; label: string }[] = [
+    { key: 'member', label: '멤버' },
+    { key: 'guest', label: '게스트' },
+  ]
+  return (
+    <div style={{
+      display: 'flex', gap: 2, padding: 2, flexShrink: 0,
+      borderRadius: 'var(--r2)', background: 'var(--bg3)',
+      opacity: busy ? .5 : 1,
+    }}>
+      {options.map(o => (
+        <button
+          key={o.key}
+          onClick={() => { if (!busy && o.key !== value) onChange(o.key) }}
+          style={{
+            padding: '2px 8px', borderRadius: 'var(--r1)', border: 'none',
+            fontSize: 11.5, fontFamily: 'var(--font)',
+            cursor: busy || o.key === value ? 'default' : 'pointer',
+            background: o.key === value ? 'var(--bg)' : 'transparent',
+            color: o.key === value ? 'var(--t1)' : 'var(--t3)',
+            fontWeight: o.key === value ? 600 : 400,
+            boxShadow: o.key === value ? 'var(--sh-sm)' : 'none',
+          }}
+        >{o.label}</button>
+      ))}
+    </div>
   )
 }
 
@@ -1060,7 +1125,7 @@ function WorkspaceMembers({ domain, isAdmin, me, admins, owner }: {
     const isAdminOf = (mail: string) => admins.includes(mail)
     const all = rows ?? []
     return [
-      { key: 'admin', label: '관리자', note: '회의실과 명단, 워크스페이스 설정을 고칩니다.',
+      { key: 'admin', label: '관리자', note: "회의실과 명단, 워크스페이스 설정을 고칩니다. 지정과 해제는 아래 '관리자'에서 합니다.",
         people: all.filter(m => isAdminOf(m.email)) },
       { key: 'member', label: '멤버', note: '회의실을 잡고 공개된 프로젝트 목록을 봅니다.',
         people: all.filter(m => !isAdminOf(m.email) && m.role === 'member') },
@@ -1113,39 +1178,62 @@ function WorkspaceMembers({ domain, isAdmin, me, admins, owner }: {
             const founder = m.email === owner
             const mine = m.email === me.toLowerCase()
             const isAdm = admins.includes(m.email)
+            const name = getNameByEmail(m.email)
             return (
               <div key={m.email} style={{ ...ROW, alignItems: 'center' }}>
                 <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {getNameByEmail(m.email) || m.email}
-                  <span style={{ display: 'block', ...ROW_SUB }}>
-                    {m.email}
-                    {founder && ' · 만든 사람'}
-                    {mine && ' · 나'}
-                  </span>
+                  {name || m.email}
+                  {/* 이름을 모르는 사람은 주소가 이름 자리에 섭니다. 아래에
+                      또 적으면 같은 글자가 두 줄이 됩니다 — 아직 이 앱을 안
+                      켜 본 사람이 대개 여기고, 외부 협업자가 그렇습니다. */}
+                  {(name || founder || mine) && (
+                    <span style={{ display: 'block', ...ROW_SUB }}>
+                      {[name ? m.email : null, founder ? '만든 사람' : null, mine ? '나' : null]
+                        .filter(Boolean).join(' · ')}
+                    </span>
+                  )}
                 </span>
-                {isAdmin && !founder && (
-                  <select
-                    value={isAdm ? 'admin' : m.role === 'guest' ? 'guest' : 'member'}
-                    disabled={busy === m.email}
-                    onChange={e => {
-                      const next = e.target.value
-                      if (next === 'out') void drop(m.email)
-                      else void change(m.email, next as 'admin' | 'member' | 'guest')
+                {/*
+                  ── 관리자는 여기서 못 줍니다 ────────────────────────────────
+                  하나의 드롭다운에 관리자·멤버·게스트를 늘어놓았었습니다.
+                  관리자가 멤버 바로 옆에 있어서 한 칸만 미끄러지면 그 사람이
+                  워크스페이스 전체를 고칠 수 있게 됐습니다. 되돌릴 수는
+                  있지만, **되돌리기 전까지 무슨 일이 일어났는지 아무도 모릅니다.**
+
+                  게다가 그건 한 축이 아닙니다. 명단에는 member/guest만 있고
+                  관리자는 그 위에 얹히는 별개의 표시입니다 — 스토어 주석에
+                  제가 그렇게 적어 놓고 화면에서는 셋을 한 줄에 세웠습니다.
+
+                  자주 하는 일(멤버↔게스트)은 한 번에, 드문 일(관리자)은
+                  아래 '관리자' 칸에서 주소를 적어서. 주소를 적는 그 동작이
+                  곧 '이건 다른 일이다'입니다.
+                */}
+                {isAdmin && !founder && !isAdm && (
+                  <RoleToggle
+                    value={m.role === 'guest' ? 'guest' : 'member'}
+                    busy={busy === m.email}
+                    onChange={next => void change(m.email, next)}
+                  />
+                )}
+                {isAdmin && !founder && !mine && (
+                  <button
+                    onClick={async () => {
+                      const ok = await askConfirm({
+                        message: `${getNameByEmail(m.email) || m.email} 님을 명단에서 내립니다`,
+                        detail: '이 워크스페이스가 안 보이게 됩니다. 다시 들어오려면 새로 불러야 합니다. 참여 중인 프로젝트는 그대로입니다.',
+                        confirmLabel: '내리기',
+                      })
+                      if (ok) void drop(m.email)
                     }}
+                    aria-label={`${m.email} 내리기`}
                     style={{
-                      flexShrink: 0, padding: '3px 6px', borderRadius: 'var(--r1)',
-                      border: '1px solid var(--bd)', background: 'var(--bg2)',
-                      color: 'var(--t1)', fontSize: 11.5, fontFamily: 'var(--font)',
-                      cursor: 'pointer', outline: 'none',
+                      marginLeft: 4, width: 22, height: 22, flexShrink: 0, borderRadius: 'var(--r1)',
+                      border: 'none', background: 'transparent', color: 'var(--t3)',
+                      cursor: 'pointer', fontFamily: 'var(--font)', fontSize: 13, lineHeight: 1,
                     }}
-                  >
-                    <option value="admin">관리자</option>
-                    <option value="member">멤버</option>
-                    <option value="guest">게스트</option>
-                    {/* 내보내기는 되돌리려면 다시 불러야 하는 일이라 마지막에
-                        둡니다. 손이 미끄러져도 그 위 셋 중 하나에 닿습니다. */}
-                    {!mine && <option value="out">명단에서 내리기</option>}
-                  </select>
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-l)'; e.currentTarget.style.color = 'var(--danger)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
+                  >×</button>
                 )}
               </div>
             )
