@@ -88,6 +88,15 @@ interface OrgState {
   orgId: string | null
   name: string
   domain: string
+  /**
+   * 만든 사람의 주소. 점 모양으로 맞춰서 들고 있습니다.
+   *
+   * 저장된 모양이 둘입니다 — 초대형은 `owner`에 콤마로(`a@bpp,co,kr`),
+   * 도메인형은 `createdBy`에 점으로. 규칙은 각각 그 모양으로 비교하고,
+   * 화면은 하나로 봐야 합니다. 여기서 한 번 맞춥니다 — 쓰는 곳마다 하면
+   * 한 곳에서 틀립니다(어제 삭제 규칙에서 그렇게 틀렸습니다).
+   */
+  founder: string
   rooms: Room[]
   /**
    * 조직 설정을 고칠 수 있는 사람들 — 이메일 소문자.
@@ -207,6 +216,15 @@ interface OrgState {
   inviteToOrg: (email: string) => Promise<boolean>
   /** 명단에서 내립니다. 지우지 않고 비석을 세웁니다 — leaveOrg와 같은 이유. */
   removeFromOrg: (email: string) => Promise<boolean>
+  /**
+   * 한 사람의 자리를 바꿉니다. 관리자만.
+   *
+   * **관리자는 명단의 역할이 아니라 그 위에 얹히는 표시입니다.** 명단에는
+   * member/guest만 있고 admins는 따로 있습니다. 화면에서는 세 칸으로
+   * 보이지만 쓰는 자리가 둘이라, 둘을 같이 맞추는 일을 여기서 합니다 —
+   * 화면마다 하면 한 곳에서 빠뜨립니다.
+   */
+  setOrgRole: (email: string, role: 'admin' | 'member' | 'guest') => Promise<boolean>
   /** 관리자가 아무도 없는 조직을 맡습니다. 규칙도 이걸 허용합니다. */
   claimAdmin: (email: string) => Promise<boolean>
   release: (date: string, bookingId: string) => Promise<void>
@@ -282,6 +300,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
   orgId: null,
   name: '',
   domain: '',
+  founder: '',
   teardown: false,
   rooms: [],
   myOrgs: [],
@@ -416,8 +435,9 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     const attach = (orgId: string) => {
       const metaRef = ref(db, P.orgMeta(orgId))
       const metaHandler = onValue(metaRef, s => {
-        const meta = s.val() as { name?: string; domain?: string } | null
-        set({ name: meta?.name ?? '', domain: meta?.domain ?? '' })
+        const meta = s.val() as { name?: string; domain?: string; owner?: string; createdBy?: string } | null
+        const founder = (meta?.owner ?? '').replace(/,/g, '.') || (meta?.createdBy ?? '')
+        set({ name: meta?.name ?? '', domain: meta?.domain ?? '', founder: founder.toLowerCase() })
       })
       const roomsRef = ref(db, P.orgRooms(orgId))
       const roomsHandler = onValue(roomsRef, s => {
@@ -519,7 +539,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
         } else {
           // 오류도 같이 지웁니다. 붙어 있지도 않은 곳의 권한 오류가 화면에
           // 남아 있으면, 읽을 수 없는 것이 무엇인지 아무 말도 안 해 줍니다.
-          set({ orgId: null, name: '', domain: '', rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {}, error: null })
+          set({ orgId: null, name: '', domain: '', founder: '', rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {}, error: null })
         }
       }
       settle()
@@ -588,7 +608,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       for (const fn of Object.values(dateWatchers)) fn()
       for (const key of Object.keys(dateWatchers)) delete dateWatchers[key]
       for (const key of Object.keys(wanted)) delete wanted[key]
-      set({ orgId: null, name: '', domain: '', myOrgs: [], rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {}, ready: false })
+      set({ orgId: null, name: '', domain: '', founder: '', myOrgs: [], rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {}, ready: false })
     }
   },
 
@@ -942,6 +962,37 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       set({ error: e instanceof Error && /permission/i.test(e.message)
         ? '관리자만 명단에서 내릴 수 있습니다.'
         : e instanceof Error ? e.message : '내리지 못했습니다' })
+      return false
+    }
+  },
+
+  setOrgRole: async (email, role) => {
+    const { orgId, domain } = get()
+    const address = email.trim().toLowerCase()
+    if (!orgId || !address) return false
+    try {
+      // 명단이 먼저입니다. 관리자 표시는 명단에 있는 사람에게만 뜻이 있고,
+      // 순서가 반대면 잠깐 '명단에 없는 관리자'가 생깁니다.
+      await fbSet(ref(db, P.orgMember(orgId, address)), {
+        role: role === 'guest' ? 'guest' : 'member',
+        at: Date.now(),
+      })
+      if (role === 'admin') {
+        // 도메인형에서는 그 도메인 주소만 관리자가 됩니다(규칙). setAdmin이
+        // 그 이유를 사람 말로 돌려줍니다.
+        const ok = await get().setAdmin(address, true)
+        if (!ok) return false
+      } else if (get().admins.includes(address)) {
+        await remove(ref(db, P.orgAdmin(orgId, address)))
+      }
+      set({ error: null })
+      return true
+    } catch (e) {
+      set({ error: e instanceof Error && /permission/i.test(e.message)
+        ? domain && role === 'admin'
+          ? `@${domain} 주소만 관리자가 될 수 있습니다.`
+          : '관리자만 자리를 바꿀 수 있습니다.'
+        : e instanceof Error ? e.message : '자리를 바꾸지 못했습니다' })
       return false
     }
   },

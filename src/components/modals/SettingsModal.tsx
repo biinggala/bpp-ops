@@ -23,6 +23,7 @@ import { Icon, type IconName } from '../shared/Icon'
 import { useShallow } from 'zustand/react/shallow'
 import { isComposing } from '../../lib/utils'
 import { useUserProfileStore } from '../../store/userProfileStore'
+import { useVisibleProjects } from '../../hooks/useVisibleProjects'
 
 /**
  * ── 설정 ─────────────────────────────────────────────────────────────────────
@@ -227,7 +228,7 @@ export function SettingsModal({ onClose, start = 'general' }: {
             {page === 'trash' && <TrashSection />}
             {page === 'org' && <OrgSection />}
             {page === 'rooms' && <RoomsSection />}
-            {page === 'projects' && <OrgProjects />}
+            {page === 'projects' && <><OrgProjects /><MyProjectMembers /></>}
 
             {!email && (
               <div style={{ fontSize: 12, color: 'var(--t3)' }}>로그인이 필요합니다</div>
@@ -894,7 +895,7 @@ function MakeWorkspace({ email, myDomain, domainTaken }: {
 
 function OrgSection() {
   const email = useAuthStore(s => s.email)
-  const { orgId, name, domain, admins, ready, setAdmin, error } = useOrgStore(useShallow(s => ({ orgId: s.orgId, name: s.name, domain: s.domain, admins: s.admins, ready: s.ready, setAdmin: s.setAdmin, error: s.error })))
+  const { orgId, name, domain, founder, admins, ready, setAdmin, error } = useOrgStore(useShallow(s => ({ orgId: s.orgId, name: s.name, domain: s.domain, founder: s.founder, admins: s.admins, ready: s.ready, setAdmin: s.setAdmin, error: s.error })))
   const [adminMail, setAdminMail] = useState('')
   const [busy, setBusy] = useState(false)
   const [adding, setAdding] = useState(false)
@@ -1000,7 +1001,7 @@ function OrgSection() {
         {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6, lineHeight: 1.5 }}>{error}</div>}
       </Section>
 
-      <WorkspaceMembers domain={domain} isAdmin={isAdmin} me={email} />
+      <WorkspaceMembers domain={domain} isAdmin={isAdmin} me={email} admins={admins} owner={founder} />
 
       <DangerZone orgId={orgId} name={name || myDomain} email={email} isAdmin={isAdmin} adminCount={admins.length} />
     </>
@@ -1022,64 +1023,138 @@ function OrgSection() {
  * 명단은 구독하지 않고 이 화면이 열릴 때 한 번 읽습니다. 오십 명짜리 명단을
  * 늘 듣고 있을 이유가 없고, 보는 자리는 여기 하나뿐입니다.
  */
-function WorkspaceMembers({ domain, isAdmin, me }: { domain: string; isAdmin: boolean; me: string }) {
-  const { listMembers, inviteToOrg, removeFromOrg, error } = useOrgStore(useShallow(s => ({
-    listMembers: s.listMembers, inviteToOrg: s.inviteToOrg, removeFromOrg: s.removeFromOrg, error: s.error,
+function WorkspaceMembers({ domain, isAdmin, me, admins, owner }: {
+  domain: string; isAdmin: boolean; me: string; admins: string[]; owner: string
+}) {
+  const { listMembers, inviteToOrg, removeFromOrg, setOrgRole, error } = useOrgStore(useShallow(s => ({
+    listMembers: s.listMembers, inviteToOrg: s.inviteToOrg, removeFromOrg: s.removeFromOrg,
+    setOrgRole: s.setOrgRole, error: s.error,
   })))
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const [rows, setRows] = useState<{ email: string; role: string }[] | null>(null)
   const [mail, setMail] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState<string | null>(null)
 
   const reload = useCallback(() => { void listMembers().then(setRows) }, [listMembers])
   useEffect(reload, [reload])
 
-  /**
-   * 도메인형에는 부를 것이 없습니다.
-   *
-   * 같은 도메인으로 로그인하면 그 순간 멤버고, 도메인 밖 사람은 멤버가 될 수
-   * 없습니다 — 도메인이 곧 그 워크스페이스의 벽입니다. 그래도 명단은
-   * 보여 줍니다: 누가 게스트로 들어와 있는지는 알아야 합니다.
-   */
   const add = async () => {
     if (!mail.trim() || busy) return
-    setBusy(true)
+    setBusy('add')
     const ok = await inviteToOrg(mail)
-    setBusy(false)
+    setBusy(null)
     if (ok) { setMail(''); reload() }
+  }
+
+  /**
+   * ── 세 칸으로 나눕니다 ────────────────────────────────────────────────────
+   *
+   * 한 줄에 섞어 놓고 옆에 작은 글씨로 '게스트'라고 적으면, 스무 명쯤에서
+   * 누가 어느 쪽인지 세게 됩니다. 물어보는 것이 '이 사람 뭐지'가 아니라
+   * '바깥 사람이 누구지'라서, 그 답이 목록의 생김새에 있어야 합니다.
+   *
+   * 관리자는 명단의 역할이 아니라 그 위에 얹히는 표시입니다. 그래도 화면에는
+   * 한 줄로 세웁니다 — 사람에게는 '관리자·멤버·게스트' 셋이 한 축입니다.
+   */
+  const groups = useMemo(() => {
+    const isAdminOf = (mail: string) => admins.includes(mail)
+    const all = rows ?? []
+    return [
+      { key: 'admin', label: '관리자', note: '회의실과 명단, 워크스페이스 설정을 고칩니다.',
+        people: all.filter(m => isAdminOf(m.email)) },
+      { key: 'member', label: '멤버', note: '회의실을 잡고 공개된 프로젝트 목록을 봅니다.',
+        people: all.filter(m => !isAdminOf(m.email) && m.role === 'member') },
+      { key: 'guest', label: '게스트', note: '초대받은 프로젝트만 봅니다. 워크스페이스로는 못 들어옵니다.',
+        people: all.filter(m => !isAdminOf(m.email) && m.role === 'guest') },
+    ]
+  }, [rows, admins])
+
+  const change = async (mail: string, role: 'admin' | 'member' | 'guest') => {
+    setBusy(mail)
+    const ok = await setOrgRole(mail, role)
+    setBusy(null)
+    if (ok) reload()
+  }
+
+  const drop = async (mail: string) => {
+    setBusy(mail)
+    const ok = await removeFromOrg(mail)
+    setBusy(null)
+    if (ok) reload()
   }
 
   return (
     <Section
       title="멤버"
       note={domain
-        ? `@${domain} 로 로그인하면 자동으로 멤버입니다. 따로 부를 것이 없습니다. 도메인 밖 사람은 프로젝트에 부르면 게스트로 들어옵니다.`
-        : '여기서 부르면 워크스페이스 구성원이 됩니다 — 회의실과 공개된 프로젝트 목록을 봅니다. 프로젝트에만 부르고 싶으면 사이드바에서 하세요. 그건 그 프로젝트만 열어 줍니다.'}
+        ? `@${domain} 로 로그인하면 자동으로 멤버입니다. 도메인 밖 사람은 프로젝트에 부르면 게스트로 들어옵니다.`
+        : '여기서 부르면 워크스페이스 구성원이 됩니다. 프로젝트에만 부르고 싶으면 사이드바에서 하세요 — 그건 그 프로젝트만 열어 줍니다.'}
     >
       {rows === null && <div style={{ ...ROW_SUB, marginTop: 8 }}>불러오는 중…</div>}
-      {rows?.length === 0 && <div style={{ ...ROW_SUB, marginTop: 8 }}>아직 나 혼자입니다.</div>}
-      {rows?.map(m => (
-        <div key={m.email} style={{ ...ROW, alignItems: 'center' }}>
-          <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {getNameByEmail(m.email) || m.email}
-            <span style={{ display: 'block', ...ROW_SUB }}>
-              {m.email}
-              {/* 게스트는 '아직 구성원이 아니다'가 아니라 '프로젝트만 보는
-                  사람'입니다. 외부 협업자가 대개 여기입니다. */}
-              {m.role === 'guest' && ' · 게스트 (프로젝트만)'}
-              {m.email === me.toLowerCase() && ' · 나'}
-            </span>
-          </span>
-          {isAdmin && m.email !== me.toLowerCase() && (
-            <button
-              onClick={async () => { if (await removeFromOrg(m.email)) reload() }}
-              style={{ ...navBtn, padding: '3px 9px', fontSize: 11, borderColor: 'transparent', color: 'var(--danger)' }}
-            >내리기</button>
+
+      {rows !== null && groups.map(g => (
+        <div key={g.key} style={{ marginTop: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--t2)' }}>{g.label}</span>
+            <span style={{ fontSize: 11, color: 'var(--t3)' }}>{g.people.length}</span>
+          </div>
+          <div style={{ ...ROW_SUB, marginTop: 2 }}>{g.note}</div>
+          {g.people.length === 0 && (
+            <div style={{ ...ROW_SUB, marginTop: 6, opacity: .8 }}>없습니다.</div>
           )}
+          {g.people.map(m => {
+            /**
+             * 만든 사람은 자리를 못 바꿉니다.
+             *
+             * 규칙이 관리자 줄을 지키고 있어서 눌러도 거절당하는데, 눌러도 안
+             * 되는 것을 눌리게 두면 그건 고장으로 보입니다. 화면과 규칙이
+             * 같은 말을 해야 합니다.
+             */
+            const founder = m.email === owner
+            const mine = m.email === me.toLowerCase()
+            const isAdm = admins.includes(m.email)
+            return (
+              <div key={m.email} style={{ ...ROW, alignItems: 'center' }}>
+                <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {getNameByEmail(m.email) || m.email}
+                  <span style={{ display: 'block', ...ROW_SUB }}>
+                    {m.email}
+                    {founder && ' · 만든 사람'}
+                    {mine && ' · 나'}
+                  </span>
+                </span>
+                {isAdmin && !founder && (
+                  <select
+                    value={isAdm ? 'admin' : m.role === 'guest' ? 'guest' : 'member'}
+                    disabled={busy === m.email}
+                    onChange={e => {
+                      const next = e.target.value
+                      if (next === 'out') void drop(m.email)
+                      else void change(m.email, next as 'admin' | 'member' | 'guest')
+                    }}
+                    style={{
+                      flexShrink: 0, padding: '3px 6px', borderRadius: 'var(--r1)',
+                      border: '1px solid var(--bd)', background: 'var(--bg2)',
+                      color: 'var(--t1)', fontSize: 11.5, fontFamily: 'var(--font)',
+                      cursor: 'pointer', outline: 'none',
+                    }}
+                  >
+                    <option value="admin">관리자</option>
+                    <option value="member">멤버</option>
+                    <option value="guest">게스트</option>
+                    {/* 내보내기는 되돌리려면 다시 불러야 하는 일이라 마지막에
+                        둡니다. 손이 미끄러져도 그 위 셋 중 하나에 닿습니다. */}
+                    {!mine && <option value="out">명단에서 내리기</option>}
+                  </select>
+                )}
+              </div>
+            )
+          })}
         </div>
       ))}
-      {!domain && (
-        <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+
+      {!domain && isAdmin && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
           <input
             value={mail}
             onChange={e => setMail(e.target.value)}
@@ -1087,7 +1162,7 @@ function WorkspaceMembers({ domain, isAdmin, me }: { domain: string; isAdmin: bo
             placeholder="이메일"
             style={INPUT}
           />
-          <button onClick={() => void add()} style={navBtn} disabled={busy}>부르기</button>
+          <button onClick={() => void add()} style={navBtn} disabled={busy === 'add'}>부르기</button>
         </div>
       )}
       {error && <div style={{ ...ROW_SUB, color: 'var(--danger)', marginTop: 8 }}>{error}</div>}
@@ -1341,6 +1416,83 @@ function RoomsSection() {
  * 조직에 공개). 조직 관리자가 아닙니다 — 관리자에게 프로젝트 권한을 주지
  * 않기 위해서고, 남의 프로젝트를 끌어오는 일도 없어야 합니다.
  */
+/**
+ * ── 내 프로젝트에 누가 있나 ──────────────────────────────────────────────────
+ *
+ * 지금까지는 프로젝트를 하나씩 우클릭해서 멤버 관리를 열어야 알 수 있었습니다.
+ * 열 개면 열 번입니다. '이 사람 어디어디 있지'나 '나간 사람이 아직 남아
+ * 있나'는 목록을 훑으며 답하는 질문이라, 한 자리에 펼쳐 놓는 편이 맞습니다.
+ *
+ * **보여 주기만 합니다.** 넣고 빼는 것은 사이드바의 멤버 관리에 그대로
+ * 둡니다 — 같은 일을 하는 화면이 둘이 되면 둘 중 하나는 언젠가 뒤처집니다.
+ *
+ * 여기 서는 것은 **내가 멤버인 프로젝트**뿐입니다. 남의 프로젝트 명단은
+ * 애초에 못 읽습니다(규칙). 워크스페이스에 공개된 목록은 위에 따로 있고,
+ * 거긴 이름만 있습니다.
+ */
+function MyProjectMembers() {
+  const projects = useVisibleProjects()
+  const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  const [open, setOpen] = useState<string | null>(null)
+
+  const live = useMemo(() => projects.filter(p => !p.archived), [projects])
+  if (!live.length) return null
+
+  return (
+    <Section title="내 프로젝트 멤버" note="여기서는 보기만 합니다. 넣고 빼는 것은 사이드바에서 프로젝트를 우클릭 → 멤버 관리.">
+      {live.map(p => {
+        const members = p.memberEmails ?? []
+        const pending = p.pendingEmails ?? []
+        const shown = open === p.id
+        return (
+          <div key={p.id} style={ROW}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <button
+                onClick={() => setOpen(shown ? null : p.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 7, width: '100%',
+                  border: 'none', background: 'transparent', padding: 0,
+                  cursor: 'pointer', fontFamily: 'var(--font)', textAlign: 'left',
+                }}
+              >
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+                <span style={{ ...ROW_TITLE, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {p.name}
+                </span>
+                <span style={{ fontSize: 11.5, color: 'var(--t3)', flexShrink: 0 }}>
+                  {members.length}{pending.length ? ` · 대기 ${pending.length}` : ''}
+                </span>
+                <span style={{ fontSize: 8, color: 'var(--t3)', flexShrink: 0, display: 'inline-block', transform: shown ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }}>▶</span>
+              </button>
+              {shown && (
+                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {members.map(m => (
+                    <div key={m} style={{ ...ROW_SUB, marginTop: 0 }}>
+                      {getNameByEmail(m) || m}
+                      {getNameByEmail(m) && <span style={{ opacity: .7 }}> · {m}</span>}
+                    </div>
+                  ))}
+                  {/* 초대만 받고 아직 안 들어온 사람. 명단에 있는 것과 실제로
+                      들어와 있는 것은 다른 상태고, 안 갈라 놓으면 '초대했는데
+                      왜 안 보이지'를 여기서 답할 수 없습니다. */}
+                  {pending.map(m => (
+                    <div key={m} style={{ ...ROW_SUB, marginTop: 0, opacity: .75 }}>
+                      {m} · 수락 대기
+                    </div>
+                  ))}
+                  {!members.length && !pending.length && (
+                    <div style={{ ...ROW_SUB, marginTop: 0 }}>나 혼자입니다.</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </Section>
+  )
+}
+
 function OrgProjects() {
   const email = useAuthStore(s => s.email)
   const { orgId, orgProjects, joinRequests, requestJoin, clearJoinRequest, error } = useOrgStore(useShallow(s => ({ orgId: s.orgId, orgProjects: s.orgProjects, joinRequests: s.joinRequests, requestJoin: s.requestJoin, clearJoinRequest: s.clearJoinRequest, error: s.error })))
