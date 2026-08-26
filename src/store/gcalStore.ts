@@ -4,7 +4,7 @@ import { auth } from '../lib/firebase'
 import { requestGoogleToken, prepareGoogleAuthz, AuthzError, GIS_CONFIGURED } from '../lib/googleAuthz'
 import { isDesktopShell, forgetStoredGrant } from '../lib/desktopAuth'
 import { askConfirm } from '../components/shared/Confirm'
-import { fetchCalendarList, fetchEventsAcross, fetchEventsForTask, searchEvents, setEventTaskLink, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, respondToEvent, type Rsvp, writableCalendars, TASK_LINK_KEY, TIMEBLOCK_KEY, NOTE_LINK_KEY, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent, type EventAttendee } from '../lib/googleCalendar'
+import { fetchCalendarList, fetchEventsAcross, fetchEventsForRange, fetchFreeBusy, fetchEventsForTask, searchEvents, setEventTaskLink, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, respondToEvent, type Rsvp, writableCalendars, TASK_LINK_KEY, TIMEBLOCK_KEY, NOTE_LINK_KEY, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent, type EventAttendee } from '../lib/googleCalendar'
 
 export interface GCalEvent {
   id: string
@@ -33,6 +33,17 @@ export interface GCalEvent {
   isBlock?: boolean
   /** 체크박스 한 줄에서 왔다면, 그 줄로 돌아가는 길 — `날짜|줄id`. */
   noteRef?: string
+  /**
+   * 남의 일정이면 그 사람의 주소.
+   *
+   * 이게 있으면 **읽기 전용**입니다 — 끌 수도, 눌러서 고칠 수도 없습니다.
+   * 내 일정과 같은 배열에 섞지 않는 이유이기도 합니다: 섞으면 고치는 길들이
+   * 전부 '내 것인지' 한 번씩 더 물어봐야 하고, 한 군데만 빠뜨리면 남의
+   * 회의를 옮기게 됩니다.
+   */
+  peekOf?: string
+  /** 한가함/바쁨으로만 받아 온 것. 제목이 없습니다. */
+  busyOnly?: boolean
 }
 
 /**
@@ -76,6 +87,36 @@ export function myAttendance(event: { attendees?: EventAttendee[] }): EventAtten
 }
 
 const ENABLED_KEY = 'gcal_enabled_calendars'
+const PEEK_KEY = 'gcal_peeking'
+
+/** 남의 일정을 그리는 색. 내 캘린더 색들과 안 겹치게 회색 계열 하나로. */
+export const PEEK_COLOR = '#787774'
+
+function loadPeeking(): string[] {
+  try {
+    const raw = localStorage.getItem(PEEK_KEY)
+    return raw ? JSON.parse(raw) as string[] : []
+  } catch { return [] }
+}
+
+/** 한가함/바쁨 한 칸을 일정 하나로. 제목이 없다는 것을 그대로 들고 갑니다. */
+function busyToEvent(email: string, slot: { start: string; end: string }, i: number): GCalEvent {
+  const day = slot.start.slice(0, 10)
+  return {
+    id: `busy:${email}:${slot.start}:${i}`,
+    summary: '바쁨',
+    start: day,
+    end: slot.end.slice(0, 10) || day,
+    allDay: false,
+    htmlLink: '',
+    calendarId: email,
+    calendarColor: PEEK_COLOR,
+    startIso: slot.start,
+    endIso: slot.end,
+    peekOf: email,
+    busyOnly: true,
+  }
+}
 
 /**
  * How far either side of the asked-for range to fetch.
@@ -117,6 +158,19 @@ interface GCalState {
   canWrite: boolean
   /** Calendar new events are added to. */
   targetCalendarId: string | null
+  /**
+   * 지금 같이 들여다보고 있는 사람들 — 주소.
+   *
+   * 이 기기에 남습니다(`enabledCalendarIds`와 같은 자리). 누구 일정을 켜
+   * 두는지는 지금 뭘 하고 있느냐에 붙는 것이지 계정에 붙는 취향이 아닙니다.
+   */
+  peeking: string[]
+  /** 그 사람들의 일정. 내 것과 **섞지 않습니다** — GCalEvent.peekOf 참고. */
+  peekEvents: GCalEvent[]
+  peekLoading: boolean
+  setPeeking: (email: string, on: boolean) => void
+  /** 켜 둔 사람들의 그 기간 일정을 다시 읽습니다. */
+  fetchPeek: (from: string, to: string) => Promise<void>
   /** The span currently held in `events`, and when it was read. */
   loadedFrom: string | null
   loadedTo: string | null
@@ -416,6 +470,9 @@ export const useGCalStore = create<GCalState>((set, get) => ({
   history: [],
   calendars: [],
   enabledCalendarIds: loadEnabled(),
+  peeking: loadPeeking(),
+  peekEvents: [],
+  peekLoading: false,
   canWrite: loadWrite(),
   targetCalendarId: (() => { try { return localStorage.getItem(TARGET_KEY) } catch { return null } })(),
   loadedFrom: null,
@@ -639,6 +696,64 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     } finally {
       undoing = false
     }
+  },
+
+  /**
+   * ── 남의 일정을 켜고 끕니다 ────────────────────────────────────────────────
+   *
+   * 켜면 그 자리에서 지금 보고 있는 기간을 읽어 옵니다. 끄면 그 사람 것만
+   * 빼고 나머지는 그대로 둡니다 — 한 사람을 끌 때마다 전부 다시 읽으면
+   * 켜고 끄는 것이 느려지고, 남의 일정을 보는 일은 대개 켰다 껐다 하는
+   * 일입니다.
+   */
+  setPeeking: (email, on) => {
+    const who = email.toLowerCase().trim()
+    if (!who) return
+    const now = get().peeking
+    const next = on ? [...new Set([...now, who])] : now.filter(e => e !== who)
+    if (next.length === now.length && on) return
+    set({
+      peeking: next,
+      ...(on ? {} : { peekEvents: get().peekEvents.filter(e => e.peekOf !== who) }),
+    })
+    try { localStorage.setItem(PEEK_KEY, JSON.stringify(next)) } catch { /* private mode */ }
+    if (on) void get().fetchPeek(get().loadedFrom ?? '', get().loadedTo ?? '')
+  },
+
+  fetchPeek: async (from, to) => {
+    const { token, peeking } = get()
+    if (!token || !peeking.length || !from || !to) return
+    set({ peekLoading: true })
+    const collected: GCalEvent[] = []
+    /** 상세를 못 읽은 사람들. 이들만 모아 한 번에 한가함/바쁨을 묻습니다. */
+    const opaque: string[] = []
+
+    for (const who of peeking) {
+      try {
+        const raw = await fetchEventsForRange(
+          token, { id: who, summary: who, backgroundColor: PEEK_COLOR }, from, to,
+        )
+        // 읽히긴 했는데 상세가 없는 경우가 있습니다(제목 없는 '바쁨'). 그건
+        // 구글이 이미 가려서 준 것이라 그대로 씁니다.
+        collected.push(...raw
+          .map(toGCalEvent)
+          .filter((e): e is GCalEvent => !!e)
+          .map(e => ({ ...e, calendarColor: PEEK_COLOR, peekOf: who })))
+      } catch (e: unknown) {
+        if (e instanceof Error && e.message === TOKEN_EXPIRED) { set({ peekLoading: false }); return }
+        opaque.push(who)
+      }
+    }
+
+    if (opaque.length) {
+      try {
+        const busy = await fetchFreeBusy(token, opaque, from, to)
+        for (const [who, slots] of Object.entries(busy)) {
+          collected.push(...slots.map((slot, i) => busyToEvent(who, slot, i)))
+        }
+      } catch { /* 못 물어봤으면 그 사람은 안 그립니다 */ }
+    }
+    set({ peekEvents: collected, peekLoading: false })
   },
 
   updateEvent: async (eventId, patch) => {
@@ -874,6 +989,9 @@ export const useGCalStore = create<GCalState>((set, get) => ({
         events.push(ev)
       }
       set({ events, loading: false, loadedFrom: from, loadedTo: to, fetchedAt: Date.now() })
+      // 같이 보고 있는 사람들도 같은 기간으로 따라옵니다. 내 것만 새로
+      // 읽으면 달을 넘길 때 남의 일정만 옛 기간에 남습니다.
+      void get().fetchPeek(from, to)
     } catch (e: unknown) {
       clearTimeout(timer)
       if (e instanceof Error && e.message === TOKEN_EXPIRED) {

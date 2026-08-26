@@ -131,7 +131,7 @@ interface Draft {
  * 들어오는 이유이기도 합니다.
  */
 export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[]; lead?: number; bare?: boolean }) {
-  const { token, events, calendars, createEvent, updateEvent, removeEvent, ensureEvents, respond } = useGCalStore(useShallow(s => ({ token: s.token, events: s.events, calendars: s.calendars, createEvent: s.createEvent, updateEvent: s.updateEvent, removeEvent: s.removeEvent, ensureEvents: s.ensureEvents, respond: s.respond })))
+  const { token, events, peekEvents, calendars, createEvent, updateEvent, removeEvent, ensureEvents, respond } = useGCalStore(useShallow(s => ({ token: s.token, events: s.events, peekEvents: s.peekEvents, calendars: s.calendars, createEvent: s.createEvent, updateEvent: s.updateEvent, removeEvent: s.removeEvent, ensureEvents: s.ensureEvents, respond: s.respond })))
   const tasks = useFilteredTasks()
   /**
    * 블록이 가리키는 업무를 찾는 데는 **거르지 않은** 목록을 씁니다. 내가 시간을
@@ -705,15 +705,22 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
   }
 
   // ── Layout ────────────────────────────────────────────────────────────────
+  /**
+   * 같이 보고 있는 사람들의 일정도 여기 섞입니다 — **그리는 데만.**
+   *
+   * 옮기고 고치는 길들은 `events`만 봅니다(위쪽 전부). 한 배열로 합쳐 두면
+   * 그 길마다 '내 것인가'를 한 번씩 더 물어야 하고, 한 군데만 빠뜨리면 남의
+   * 회의를 옮기게 됩니다. 합치는 자리는 여기 둘뿐입니다.
+   */
   const eventsByDate = useMemo(() => {
     const map = new Map<string, GCalEvent[]>()
-    for (const ev of events) {
+    for (const ev of [...events, ...peekEvents]) {
       if (ev.allDay) continue
       if (!map.has(ev.start)) map.set(ev.start, [])
       map.get(ev.start)!.push(ev)
     }
     return map
-  }, [events])
+  }, [events, peekEvents])
 
   const tasksByDate = useMemo(() => {
     const map = new Map<string, Task[]>()
@@ -729,7 +736,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
   // Google Calendar puts both its all-day events and anything merely due today.
   const allDayByDate = useMemo(() => {
     const map = new Map<string, GCalEvent[]>()
-    for (const ev of events) {
+    for (const ev of [...events, ...peekEvents]) {
       if (!ev.allDay) continue
       for (let d = ev.start; d <= ev.end; d = fmtYMD(addDays(toDate(d), 1))) {
         if (!map.has(d)) map.set(d, [])
@@ -737,7 +744,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
       }
     }
     return map
-  }, [events])
+  }, [events, peekEvents])
 
   /**
    * 고른 일정의 제목 — **효과가 아니라 파생 값입니다.**
@@ -1183,13 +1190,18 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
                   onNoteCheck={next => void toggleNote(p.event.noteRef, next)}
                   provisional={p.event.id === PENDING_ID}
                   onSelect={e => {
+                    // 남의 일정은 읽기만 합니다. 카드를 열면 제목·참석자·방을
+                    // 고치는 칸이 나오고, 그건 이 사람 것이 아닙니다.
+                    if (p.event.peekOf) return
                     // 끌어서 옮긴 뒤에 따라오는 click입니다. 카드는 안 엽니다.
                     if (dragMoved.current) return
                     setCardAt({ x: e.clientX, y: e.clientY })
                     setGuests((p.event.attendees ?? []).map(a => a.email).filter(email => email !== myEmail?.toLowerCase()))
                     setSelected(p.event.id)
                   }}
-                  onMove={(e, mode) => beginMove(e, p.event, date, p.from, p.to, mode)}
+                  // 남의 일정은 잡히지 않습니다. 끌 수 있는 것처럼 보이다가
+                  // 구글이 거절하는 것보다, 처음부터 안 잡히는 편이 낫습니다.
+                  onMove={(e, mode) => { if (!p.event.peekOf) beginMove(e, p.event, date, p.from, p.to, mode) }}
                 />
               ))}
               {date === todayStr && (
@@ -1354,7 +1366,7 @@ function EventBlock({ placed, ghost, selected, task, provisional = false, onStat
        * 일정에 대해 뭔가 하려는 손입니다. 그래서 같은 카드를 엽니다.
        */
       onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onSelect(e) }}
-      title={`${hhmm(from)}–${hhmm(to)}  ${event.summary}`}
+      title={`${hhmm(from)}–${hhmm(to)}  ${event.summary}${event.peekOf ? ` · ${event.peekOf}` : ''}`}
       style={{
         position: 'absolute',
         top: from * PX_PER_MIN,
@@ -1380,7 +1392,8 @@ function EventBlock({ placed, ghost, selected, task, provisional = false, onStat
         padding: roomy ? '3px 6px' : '2px 6px',
         fontSize: 11, lineHeight: 1.35,
         overflow: 'hidden', zIndex: selected ? 5 : 2,
-        cursor: provisional ? 'default' : 'grab',
+        // 남의 일정은 읽기만 하는 것이라 잡히는 손 모양을 안 씁니다.
+        cursor: provisional || event.peekOf ? 'default' : 'grab',
         // 살짝 흐립니다 — 자리는 확정이고 저쪽의 답만 남았다는 뜻입니다.
         opacity: provisional ? .7 : 1,
         display: 'flex', flexDirection: roomy ? 'column' : 'row',

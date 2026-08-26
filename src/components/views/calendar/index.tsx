@@ -5,7 +5,7 @@ import { useTaskStore } from '../../../store/taskStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { haptic } from '../../../lib/haptics'
 import { useProjectStore } from '../../../store/projectStore'
-import { useGCalStore, warmCalendarAuth } from '../../../store/gcalStore'
+import { useGCalStore, warmCalendarAuth, PEEK_COLOR } from '../../../store/gcalStore'
 import { TimelineGrid, GUTTER as HOUR_GUTTER } from '../timeline'
 import { writableCalendars } from '../../../lib/googleCalendar'
 import { useOrgStore } from '../../../store/orgStore'
@@ -17,7 +17,7 @@ import type { GCalEvent } from '../../../store/gcalStore'
 import { awaitingMe } from '../../../store/gcalStore'
 import { useMobile } from '../../../hooks/useMobile'
 import { getCatColor, NOTION } from '../../../types'
-import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade } from '../../../lib/utils'
+import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade, authorizedEmails, isComposing } from '../../../lib/utils'
 import type { Task } from '../../../types'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -119,6 +119,8 @@ function GCalButton() {
                   </label>
                 )
               })}
+              <div style={{ height: 1, background: 'var(--bd)', margin: '4px 0' }} />
+              <PeekPeople />
               <div style={{ height: 1, background: 'var(--bd)', margin: '4px 0' }} />
               <button
                 onClick={() => { setPickerOpen(false); refreshEvents() }}
@@ -222,6 +224,124 @@ function GCalButton() {
         <span style={{ fontSize: 11, color: 'var(--danger)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }} title={error}>
           {error}
         </span>
+      )}
+    </div>
+  )
+}
+
+/**
+ * ── 같이 볼 사람 ─────────────────────────────────────────────────────────────
+ *
+ * 구글 캘린더의 '다른 캘린더 검색'과 같은 자리입니다. 주소를 넣으면 그 사람의
+ * 일정이 내 달력 위에 회색으로 같이 그려집니다 — **읽기만 합니다.**
+ *
+ * 보이는 정도는 그 사람의 공유 설정이 정합니다. 상세를 열어 뒀으면 제목까지,
+ * 아니면 '바쁨'만 옵니다. 우리가 정하는 것이 아니고, 그래서 화면이 둘 중
+ * 어느 쪽인지 말해 줍니다 — '바쁨'만 나오는 것을 보고 그 사람이 정말 종일
+ * 회의 중이라고 읽으면 곤란합니다.
+ *
+ * 아는 사람을 먼저 내놓습니다(같이 일하는 사람들). 목록에 없어도 주소를 다
+ * 적으면 됩니다 — 회사에는 아직 이 앱을 안 켜 본 사람이 있고, 그 사람 일정도
+ * 구글에는 있습니다.
+ */
+function PeekPeople() {
+  const { peeking, setPeeking, peekLoading, peekEvents } = useGCalStore(useShallow(s => ({
+    peeking: s.peeking, setPeeking: s.setPeeking, peekLoading: s.peekLoading, peekEvents: s.peekEvents,
+  })))
+  const myEmail = useAuthStore(s => s.email)
+  const projects = useProjectStore(s => s.projects)
+  const profiles = useUserProfileStore(s => s.profiles)
+  const [query, setQuery] = React.useState('')
+
+  const known = React.useMemo(() => {
+    const mine = myEmail?.toLowerCase()
+    const domain = mine?.split('@')[1] ?? ''
+    const out = new Map<string, string>()
+    for (const mail of authorizedEmails(projects, myEmail)) {
+      if (mail === mine) continue
+      out.set(mail, mail)
+    }
+    // 이름이 있으면 이름으로 찾게 합니다. 주소를 외우고 있는 사람은 없습니다.
+    for (const p of Object.values(profiles)) {
+      const mail = p.email?.toLowerCase()
+      if (!mail || mail === mine) continue
+      if (domain && !mail.endsWith(`@${domain}`)) continue
+      out.set(mail, p.name || mail)
+    }
+    return [...out.entries()].map(([email, name]) => ({ email, name })).sort((a, b) => a.name.localeCompare(b.name, 'ko'))
+  }, [projects, profiles, myEmail])
+
+  const q = query.trim().toLowerCase()
+  const matches = q
+    ? known.filter(k => !peeking.includes(k.email) && (k.email.includes(q) || k.name.toLowerCase().includes(q))).slice(0, 5)
+    : []
+  const typedIsEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(q) && !peeking.includes(q)
+
+  const nameOf = (mail: string) => known.find(k => k.email === mail)?.name ?? mail
+  const busyOnly = (mail: string) => peekEvents.some(e => e.peekOf === mail && e.busyOnly)
+
+  return (
+    <div style={{ padding: '2px 0' }}>
+      <div style={{ padding: '4px 12px 2px', fontSize: 11, fontWeight: 600, color: 'var(--t3)' }}>
+        같이 볼 사람
+      </div>
+      {peeking.map(mail => (
+        <label key={mail} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', fontSize: 13, color: 'var(--t1)', cursor: 'pointer' }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+        >
+          <input type="checkbox" checked onChange={() => setPeeking(mail, false)}
+            style={{ accentColor: 'var(--ac)', width: 13, height: 13, cursor: 'pointer', flexShrink: 0 }} />
+          <span style={{ width: 9, height: 9, borderRadius: 2, background: PEEK_COLOR, flexShrink: 0 }} />
+          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {nameOf(mail)}
+            {/* 제목이 안 보이는 이유를 말해 줍니다. 안 말하면 '바쁨'이 그
+                사람의 일정 제목인 줄 압니다. */}
+            {busyOnly(mail) && (
+              <span style={{ marginLeft: 6, fontSize: 10.5, color: 'var(--t3)' }}>바쁨만</span>
+            )}
+          </span>
+        </label>
+      ))}
+      <div style={{ padding: '4px 12px 6px' }}>
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => {
+            if (e.key !== 'Enter' || isComposing(e)) return
+            const pick = matches[0]?.email ?? (typedIsEmail ? q : null)
+            if (pick) { setPeeking(pick, true); setQuery('') }
+          }}
+          placeholder="이름 또는 이메일"
+          style={{
+            width: '100%', boxSizing: 'border-box', padding: '4px 7px',
+            borderRadius: 'var(--r1)', border: '1px solid var(--bd)',
+            background: 'var(--bg2)', color: 'var(--t1)', fontSize: 12,
+            outline: 'none', fontFamily: 'var(--font)',
+          }}
+        />
+        {peekLoading && <div style={{ fontSize: 10.5, color: 'var(--t3)', marginTop: 4 }}>불러오는 중…</div>}
+      </div>
+      {matches.map(m => (
+        <button
+          key={m.email}
+          onClick={() => { setPeeking(m.email, true); setQuery('') }}
+          style={{
+            width: '100%', textAlign: 'left', padding: '5px 12px', fontSize: 12.5,
+            color: 'var(--t1)', background: 'transparent', border: 'none',
+            cursor: 'pointer', fontFamily: 'var(--font)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+        >
+          {m.name}{m.name !== m.email && <span style={{ color: 'var(--t3)' }}> · {m.email}</span>}
+        </button>
+      ))}
+      {!!q && !matches.length && (
+        <div style={{ padding: '2px 12px 6px', fontSize: 11, color: 'var(--t3)', lineHeight: 1.5 }}>
+          {typedIsEmail ? 'Enter를 누르면 이 주소를 봅니다.' : '이메일 주소 전체를 넣으면 목록에 없는 사람도 볼 수 있습니다.'}
+        </div>
       )}
     </div>
   )
@@ -933,7 +1053,7 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
     const ids = new Set(projects.map(p => p.id))
     return allMilestones.filter(m => ids.has(m.projectId))
   }, [allMilestones, projects])
-  const { token, events: gcalEvents, ensureEvents, updateEvent, calendars } = useGCalStore(useShallow(s => ({ token: s.token, events: s.events, ensureEvents: s.ensureEvents, updateEvent: s.updateEvent, calendars: s.calendars })))
+  const { token, events: gcalEvents, peekEvents, ensureEvents, updateEvent, calendars } = useGCalStore(useShallow(s => ({ token: s.token, events: s.events, peekEvents: s.peekEvents, ensureEvents: s.ensureEvents, updateEvent: s.updateEvent, calendars: s.calendars })))
   const moveBookingToDate = useOrgStore(s => s.moveBookingToDate)
   const myEmail = useAuthStore(s => s.email)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
@@ -949,7 +1069,12 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
     () => new Set(writableCalendars(calendars).map(c => c.id)),
     [calendars],
   )
-  const canMove = useCallback((ev: GCalEvent) => writableIds.has(ev.calendarId), [writableIds])
+  // 남의 일정은 읽기만 합니다. 캘린더 목록에 없으니 writableIds로도 걸리지만,
+  // 그건 우연히 맞는 것이라 이유를 적어 둡니다.
+  const canMove = useCallback(
+    (ev: GCalEvent) => !ev.peekOf && writableIds.has(ev.calendarId),
+    [writableIds],
+  )
 
   // A buffer week above and below the six on screen, so a scroll parked between
   // two weeks has something to show in the gap.
@@ -989,9 +1114,12 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
       if (at) at.push(chip); else map.set(day, [chip])
     }
     gcalEvents.forEach(ev => { if (ev.start) put(ev.start, { kind: 'gcal', ev }) })
+    // 같이 보고 있는 사람들. 내 것 뒤에 섭니다 — 내 하루가 먼저고, 남의
+    // 일정은 그 옆에 참고로 놓이는 것입니다.
+    peekEvents.forEach(ev => { if (ev.start) put(ev.start, { kind: 'gcal', ev }) })
     tasks.forEach(t => { const day = t.due ?? t.start; if (day) put(day, { kind: 'task', t }) })
     return map
-  }, [gcalEvents, tasks])
+  }, [gcalEvents, peekEvents, tasks])
 
   const [dragOver, setDragOver]     = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
@@ -1317,7 +1445,7 @@ const MonthCell = React.memo(function MonthCell({
                 href={ev.htmlLink}
                 target="_blank"
                 rel="noopener noreferrer"
-                title={movable ? `${ev.summary} — 끌어서 날짜 변경` : ev.summary}
+                title={ev.peekOf ? `${ev.peekOf} · ${ev.summary}` : movable ? `${ev.summary} — 끌어서 날짜 변경` : ev.summary}
                 draggable={movable}
                 onDragStart={movable ? (e => {
                   e.stopPropagation()
@@ -1340,9 +1468,14 @@ const MonthCell = React.memo(function MonthCell({
                   cursor: movable ? 'grab' : 'pointer', minWidth: 0, boxSizing: 'border-box',
                   userSelect: 'none',
                   opacity: draggingId === ev.id ? .35 : 1, transition: 'opacity .1s',
-                  ...(awaitingMe(ev)
-                    ? { background: 'transparent', border: `1px dashed ${GCAL_TEXT}` }
-                    : { background: GCAL_BG }),
+                  ...(ev.peekOf
+                    // 남의 것은 내 것과 확실히 달라 보여야 합니다. 내 하루가
+                    // 얼마나 찼는지를 읽는 화면인데 남의 일정이 같은 색으로
+                    // 섞이면 그 셈이 틀립니다.
+                    ? { background: 'transparent', border: `1px solid ${PEEK_COLOR}`, color: PEEK_COLOR, opacity: .85 }
+                    : awaitingMe(ev)
+                      ? { background: 'transparent', border: `1px dashed ${GCAL_TEXT}` }
+                      : { background: GCAL_BG }),
                 }}
                 onClick={e => e.stopPropagation()}
                 onMouseEnter={e => { if (draggingId !== ev.id) e.currentTarget.style.opacity = '.75' }}

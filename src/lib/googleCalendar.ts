@@ -151,6 +151,59 @@ export async function fetchEventsAcross(
     .flatMap(r => r.value)
 }
 
+/**
+ * ── 남의 캘린더 ──────────────────────────────────────────────────────────────
+ *
+ * 구글 워크스페이스 안에서는 두 가지가 가능한데, **어느 쪽이 되는지는 그
+ * 사람의 공유 설정이 정합니다.**
+ *
+ *   상세까지    그 사람이 캘린더를 공유했거나 회사가 도메인 전체에 상세를
+ *              열어 둔 경우. `events.list`가 그대로 됩니다.
+ *   한가함/바쁨  그 외. 제목도 참석자도 안 옵니다 — 언제 찼는지만 옵니다.
+ *              대부분의 회사 기본값이 이쪽입니다.
+ *
+ * 그래서 상세를 먼저 물어보고, 거절당하면 한가함/바쁨으로 내려갑니다. 구글
+ * 캘린더가 하는 것과 같습니다 — 열려 있으면 제목이 보이고 아니면 '바쁨'입니다.
+ *
+ * **새 권한을 안 씁니다.** 캘린더 목록에 남을 끼워 넣는 길(`calendarList.insert`)
+ * 도 있는데 그건 더 넓은 권한이 필요하고, 그러면 오십 명이 전부 다시 허락을
+ * 눌러야 합니다. 읽기 권한만으로 되는 이 길을 씁니다.
+ */
+export interface BusySlot {
+  /** ISO. 구글이 준 그대로. */
+  start: string
+  end: string
+}
+
+export async function fetchFreeBusy(
+  token: string, emails: string[], from: string, to: string, signal?: AbortSignal,
+): Promise<Record<string, BusySlot[]>> {
+  if (!emails.length) return {}
+  const res = await fetch('https://www.googleapis.com/calendar/v3/freeBusy', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      timeMin: `${from}T00:00:00Z`,
+      timeMax: `${to}T23:59:59Z`,
+      items: emails.map(id => ({ id })),
+    }),
+    signal,
+  })
+  if (res.status === 401) throw new Error(TOKEN_EXPIRED)
+  if (!res.ok) throw new Error(`Calendar API ${res.status}`)
+  const data = await res.json() as {
+    calendars?: Record<string, { busy?: BusySlot[]; errors?: { reason: string }[] }>
+  }
+  const out: Record<string, BusySlot[]> = {}
+  for (const [id, entry] of Object.entries(data.calendars ?? {})) {
+    // 못 읽는 사람은 빈 배열이 아니라 **아예 없는 것**으로 둡니다. 둘을 같게
+    // 만들면 '그날 종일 비어 있다'와 '못 물어봤다'가 화면에서 같아 보입니다.
+    if (entry.errors?.length) continue
+    out[id] = entry.busy ?? []
+  }
+  return out
+}
+
 // ── 쓰기 ──────────────────────────────────────────────────────────────────────
 
 export interface NewEvent {
