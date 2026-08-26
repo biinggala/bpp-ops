@@ -713,3 +713,65 @@ test('초대형 만든 사람은 관리자가 비어도 되찾고, 지울 수 �
   })
   await assertSucceeds(remove(ref(authed(ALICE), `orgs/${oid}`)))
 })
+
+// ── 워크스페이스에 부르는 것과 프로젝트에 부르는 것 ──────────────────────────
+//
+// 전에는 같은 손짓이었습니다. 초대형에서 프로젝트에 사람을 부르면 그 사람이
+// 워크스페이스 **멤버**가 됐고, 그래서 프로젝트 초대 링크를 잘못 누른 사람이
+// 회사 명단에 들어왔습니다.
+//
+// 이제 프로젝트 초대는 게스트 자리까지만 만듭니다. 그건 그 프로젝트를 읽기
+// 위해 꼭 필요한 것이고(3단계 벽), 그 이상은 아닙니다. 워크스페이스 멤버로
+// 부르는 것은 설정에 따로 있습니다.
+//
+// 규칙 자체는 둘 다 예전부터 허용합니다 — 갈라놓은 것은 화면 쪽입니다.
+// 여기서는 그 두 문이 각각 열려 있는지, 그리고 게스트가 멤버의 자리까지는
+// 못 가는지를 못 박습니다.
+
+test('초대형에서 멤버가 남을 멤버로 부를 수 있다', async () => {
+  const oid = 'inv1'
+  await org(oid, { name: 'W', owner: key(ALICE.email) }, { [ALICE.email]: { role: 'member', at: 1 } })
+  await assertSucceeds(set(ref(authed(ALICE), `orgs/${oid}/members/${key(BOB.email)}`), { role: 'member', at: 2 }))
+})
+
+test('초대형에서 멤버가 남을 게스트로도 부를 수 있다', async () => {
+  // 프로젝트에 부를 때 쓰는 문입니다.
+  const oid = 'inv2'
+  await org(oid, { name: 'W', owner: key(ALICE.email) }, { [ALICE.email]: { role: 'member', at: 1 } })
+  await assertSucceeds(set(ref(authed(ALICE), `orgs/${oid}/members/${key(MALLORY.email)}`), { role: 'guest', at: 2 }))
+})
+
+test('게스트는 스스로 멤버가 못 된다', async () => {
+  // 여기가 열려 있으면 갈라 놓은 것이 아무 소용이 없습니다 — 프로젝트로
+  // 들어온 사람이 자기를 승급시키면 그만입니다.
+  const oid = 'inv3'
+  await org(oid, { name: 'W', owner: key(ALICE.email) }, {
+    [ALICE.email]: { role: 'member', at: 1 },
+    [MALLORY.email]: { role: 'guest', at: 1 },
+  })
+  await assertFails(set(ref(authed(MALLORY), `orgs/${oid}/members/${key(MALLORY.email)}`), { role: 'member', at: 2 }))
+})
+
+test('게스트는 남을 못 부른다', async () => {
+  const oid = 'inv4'
+  await org(oid, { name: 'W', owner: key(ALICE.email) }, {
+    [ALICE.email]: { role: 'member', at: 1 },
+    [MALLORY.email]: { role: 'guest', at: 1 },
+  })
+  await assertFails(set(ref(authed(MALLORY), `orgs/${oid}/members/${key(BOB.email)}`), { role: 'member', at: 2 }))
+  await assertFails(set(ref(authed(MALLORY), `orgs/${oid}/members/${key(BOB.email)}`), { role: 'guest', at: 2 }))
+})
+
+test('명단에서 남을 내리는 것은 관리자만', async () => {
+  const oid = 'inv5'
+  await org(oid, { name: 'W', owner: key(ALICE.email) }, {
+    [ALICE.email]: { role: 'member', at: 1 },
+    [BOB.email]: { role: 'member', at: 1 },
+  })
+  // 밥은 멤버지만 관리자가 아닙니다.
+  await assertFails(set(ref(authed(BOB), `orgs/${oid}/members/${key(ALICE.email)}`), { role: 'removed', at: 2 }))
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), `orgs/${oid}/admins/${key(ALICE.email)}`), true)
+  })
+  await assertSucceeds(set(ref(authed(ALICE), `orgs/${oid}/members/${key(BOB.email)}`), { role: 'removed', at: 2 }))
+})

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { setTheme, themeChoice, type ThemeChoice } from '../../lib/theme'
 import { haptic } from '../../lib/haptics'
 import { useMobile } from '../../hooks/useMobile'
@@ -22,6 +22,7 @@ import { showTestNotice } from '../layout/NoticeToast'
 import { Icon, type IconName } from '../shared/Icon'
 import { useShallow } from 'zustand/react/shallow'
 import { isComposing } from '../../lib/utils'
+import { useUserProfileStore } from '../../store/userProfileStore'
 
 /**
  * ── 설정 ─────────────────────────────────────────────────────────────────────
@@ -999,8 +1000,98 @@ function OrgSection() {
         {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6, lineHeight: 1.5 }}>{error}</div>}
       </Section>
 
+      <WorkspaceMembers domain={domain} isAdmin={isAdmin} me={email} />
+
       <DangerZone orgId={orgId} name={name || myDomain} email={email} isAdmin={isAdmin} adminCount={admins.length} />
     </>
+  )
+}
+
+/**
+ * ── 워크스페이스 멤버 ───────────────────────────────────────────────────────
+ *
+ * **프로젝트 초대와 다른 일입니다.** 프로젝트에 부르는 것은 그 프로젝트를
+ * 열어 주는 것이고(게스트), 여기서 부르는 것은 워크스페이스 구성원으로
+ * 세우는 것입니다 — 회의실을 잡고, 공개된 프로젝트 목록을 보고, 전환 목록에
+ * 그곳이 뜹니다.
+ *
+ * 전에는 둘이 한 손짓이었습니다. 프로젝트에 부르면 워크스페이스 멤버가
+ * 됐고, 그래서 **프로젝트 초대 링크를 잘못 누른 사람이 회사 명단에**
+ * 들어왔습니다. 지금은 프로젝트 초대가 게스트 자리까지만 만듭니다.
+ *
+ * 명단은 구독하지 않고 이 화면이 열릴 때 한 번 읽습니다. 오십 명짜리 명단을
+ * 늘 듣고 있을 이유가 없고, 보는 자리는 여기 하나뿐입니다.
+ */
+function WorkspaceMembers({ domain, isAdmin, me }: { domain: string; isAdmin: boolean; me: string }) {
+  const { listMembers, inviteToOrg, removeFromOrg, error } = useOrgStore(useShallow(s => ({
+    listMembers: s.listMembers, inviteToOrg: s.inviteToOrg, removeFromOrg: s.removeFromOrg, error: s.error,
+  })))
+  const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  const [rows, setRows] = useState<{ email: string; role: string }[] | null>(null)
+  const [mail, setMail] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const reload = useCallback(() => { void listMembers().then(setRows) }, [listMembers])
+  useEffect(reload, [reload])
+
+  /**
+   * 도메인형에는 부를 것이 없습니다.
+   *
+   * 같은 도메인으로 로그인하면 그 순간 멤버고, 도메인 밖 사람은 멤버가 될 수
+   * 없습니다 — 도메인이 곧 그 워크스페이스의 벽입니다. 그래도 명단은
+   * 보여 줍니다: 누가 게스트로 들어와 있는지는 알아야 합니다.
+   */
+  const add = async () => {
+    if (!mail.trim() || busy) return
+    setBusy(true)
+    const ok = await inviteToOrg(mail)
+    setBusy(false)
+    if (ok) { setMail(''); reload() }
+  }
+
+  return (
+    <Section
+      title="멤버"
+      note={domain
+        ? `@${domain} 로 로그인하면 자동으로 멤버입니다. 따로 부를 것이 없습니다. 도메인 밖 사람은 프로젝트에 부르면 게스트로 들어옵니다.`
+        : '여기서 부르면 워크스페이스 구성원이 됩니다 — 회의실과 공개된 프로젝트 목록을 봅니다. 프로젝트에만 부르고 싶으면 사이드바에서 하세요. 그건 그 프로젝트만 열어 줍니다.'}
+    >
+      {rows === null && <div style={{ ...ROW_SUB, marginTop: 8 }}>불러오는 중…</div>}
+      {rows?.length === 0 && <div style={{ ...ROW_SUB, marginTop: 8 }}>아직 나 혼자입니다.</div>}
+      {rows?.map(m => (
+        <div key={m.email} style={{ ...ROW, alignItems: 'center' }}>
+          <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {getNameByEmail(m.email) || m.email}
+            <span style={{ display: 'block', ...ROW_SUB }}>
+              {m.email}
+              {/* 게스트는 '아직 구성원이 아니다'가 아니라 '프로젝트만 보는
+                  사람'입니다. 외부 협업자가 대개 여기입니다. */}
+              {m.role === 'guest' && ' · 게스트 (프로젝트만)'}
+              {m.email === me.toLowerCase() && ' · 나'}
+            </span>
+          </span>
+          {isAdmin && m.email !== me.toLowerCase() && (
+            <button
+              onClick={async () => { if (await removeFromOrg(m.email)) reload() }}
+              style={{ ...navBtn, padding: '3px 9px', fontSize: 11, borderColor: 'transparent', color: 'var(--danger)' }}
+            >내리기</button>
+          )}
+        </div>
+      ))}
+      {!domain && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+          <input
+            value={mail}
+            onChange={e => setMail(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) void add() }}
+            placeholder="이메일"
+            style={INPUT}
+          />
+          <button onClick={() => void add()} style={navBtn} disabled={busy}>부르기</button>
+        </div>
+      )}
+      {error && <div style={{ ...ROW_SUB, color: 'var(--danger)', marginTop: 8 }}>{error}</div>}
+    </Section>
   )
 }
 

@@ -197,11 +197,28 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
      * 덜 주는 쪽이 되돌리기 쉽습니다.
      */
     const known = !!orgId && org.ready && org.orgId === orgId
-    const role = !known
-      ? 'guest'
-      : org.domain
-        ? (isOrgDomain(normalized, org.domain) ? null : 'guest')
-        : 'member'
+    /**
+     * ── 프로젝트에 부르는 것은 워크스페이스에 부르는 것이 아닙니다 ──────────
+     *
+     * 초대형 워크스페이스에서는 여기서 **멤버로** 올렸습니다. 프로젝트 하나에
+     * 부르는 손짓이 그 사람을 회의실과 공개 목록까지 여는 워크스페이스
+     * 구성원으로 만든 것입니다.
+     *
+     * 게다가 길에 따라 결과가 달랐습니다 — 주소를 넣어 부르면 멤버, 초대
+     * 링크를 눌러 들어오면 게스트(claimGuestSeats). 사람은 그 둘을 같은
+     * 일로 생각합니다. 링크를 잘못 눌러 워크스페이스 명단에 들어가는 것은
+     * 더 나쁩니다.
+     *
+     * 그래서 프로젝트 초대는 언제나 **게스트 자리**까지만 만듭니다. 그건
+     * 그 프로젝트를 읽기 위해 꼭 필요한 것이고(3단계 벽), 그 이상은 아닙니다.
+     * 워크스페이스 멤버로 부르는 것은 설정 > 관리에 따로 있습니다.
+     *
+     * 도메인형에서 우리 도메인 사람은 그대로 아무것도 안 씁니다 — 그 사람은
+     * 도메인으로 이미 멤버라, 게스트 줄을 만들면 **강등입니다.**
+     */
+    const role = known && org.domain && isOrgDomain(normalized, org.domain)
+      ? null
+      : 'guest'
     if (orgId && role) {
       fbUpdate(ref(db, P.orgMember(orgId, normalized)), {
         role,

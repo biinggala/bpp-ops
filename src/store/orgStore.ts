@@ -189,6 +189,24 @@ interface OrgState {
    * 안 했습니다.
    */
   deleteOrg: (oid: string, email: string, uid: string) => Promise<{ ok: boolean; remaining: number; error?: string }>
+  /**
+   * 워크스페이스 명단. 설정 화면이 열릴 때 **한 번 읽습니다.**
+   *
+   * 구독하지 않습니다 — 오십 명짜리 명단을 늘 듣고 있을 이유가 없고, 이걸
+   * 보는 자리는 설정 한 곳뿐입니다.
+   */
+  listMembers: () => Promise<{ email: string; role: string; at?: number }[]>
+  /**
+   * 워크스페이스에 사람을 부릅니다. **프로젝트 초대와 별개입니다.**
+   *
+   * 프로젝트에 부르는 것은 그 프로젝트를 열어 주는 일이고(게스트), 이건
+   * 워크스페이스 구성원으로 세우는 일입니다 — 회의실을 잡고 공개 목록을
+   * 보고 전환 목록에 그곳이 뜹니다. 두 가지를 한 손짓에 묶으면 프로젝트
+   * 링크를 잘못 누른 사람이 회사 명단에 들어옵니다.
+   */
+  inviteToOrg: (email: string) => Promise<boolean>
+  /** 명단에서 내립니다. 지우지 않고 비석을 세웁니다 — leaveOrg와 같은 이유. */
+  removeFromOrg: (email: string) => Promise<boolean>
   /** 관리자가 아무도 없는 조직을 맡습니다. 규칙도 이걸 허용합니다. */
   claimAdmin: (email: string) => Promise<boolean>
   release: (date: string, bookingId: string) => Promise<void>
@@ -874,6 +892,57 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     } catch (e) {
       set({ teardown: false })
       return { ok: false, remaining: 0, error: e instanceof Error ? e.message : '워크스페이스를 지우지 못했습니다' }
+    }
+  },
+
+  listMembers: async () => {
+    const { orgId } = get()
+    if (!orgId) return []
+    const snap = await fbGet(ref(db, P.orgMembers(orgId))).catch(() => null)
+    const raw = (snap?.val() ?? {}) as Record<string, { role?: string; at?: number }>
+    return Object.entries(raw)
+      .map(([key, v]) => ({ email: key.replace(/,/g, '.'), role: v?.role ?? '', at: v?.at }))
+      .filter(m => m.role === 'member' || m.role === 'guest')
+      .sort((a, b) => (a.role === b.role ? a.email.localeCompare(b.email) : a.role === 'member' ? -1 : 1))
+  },
+
+  inviteToOrg: async (email) => {
+    const { orgId, domain } = get()
+    const address = email.trim().toLowerCase()
+    if (!orgId || !address) return false
+    if (domain) {
+      // 도메인형에는 초대가 없습니다. 같은 도메인이면 로그인하는 순간
+      // 멤버고, 밖의 사람은 멤버가 될 수 없습니다 — 도메인이 곧 벽입니다.
+      set({ error: `@${domain} 로 로그인하면 자동으로 들어옵니다. 따로 부를 것이 없습니다.` })
+      return false
+    }
+    try {
+      await fbUpdate(ref(db, P.orgMember(orgId, address)), { role: 'member', at: Date.now() })
+      set({ error: null })
+      return true
+    } catch (e) {
+      // 이미 명단에 있으면 규칙이 거절합니다. 게스트를 멤버로 올리는 것은
+      // 관리자만 할 수 있고, 그 이유를 사람에게 말해 줍니다.
+      set({ error: e instanceof Error && /permission/i.test(e.message)
+        ? '이미 명단에 있거나, 올릴 권한이 없습니다. 관리자에게 부탁하세요.'
+        : e instanceof Error ? e.message : '부르지 못했습니다' })
+      return false
+    }
+  },
+
+  removeFromOrg: async (email) => {
+    const { orgId } = get()
+    const address = email.trim().toLowerCase()
+    if (!orgId || !address) return false
+    try {
+      await fbSet(ref(db, P.orgMember(orgId, address)), { role: 'removed', at: Date.now() })
+      set({ error: null })
+      return true
+    } catch (e) {
+      set({ error: e instanceof Error && /permission/i.test(e.message)
+        ? '관리자만 명단에서 내릴 수 있습니다.'
+        : e instanceof Error ? e.message : '내리지 못했습니다' })
+      return false
     }
   },
 
