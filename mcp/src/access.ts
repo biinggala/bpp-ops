@@ -20,6 +20,46 @@ export function canAccessProject(p: Project, email: string): boolean {
 }
 
 /**
+ * ── 담당자로 지정할 수 있는 사람 ─────────────────────────────────────────────
+ *
+ * 이 검사가 없었습니다. 커넥터로 업무를 만들면서 아무 주소나 담당자로 적을
+ * 수 있었고, 그러면 **그 사람은 그 업무를 못 봅니다** — 프로젝트 멤버가
+ * 아니니까요. 화면에는 그 사람 이름이 붙어 있는데 본인은 초대받은 적도
+ * 없습니다. 아무에게도 안 맡겨진 일이 맡겨진 것처럼 보입니다.
+ *
+ * `create_project`의 설명에 이미 답이 적혀 있었습니다 — '누가 프로젝트를 볼
+ * 수 있는지는 사람이 직접 정할 일'. 담당자도 같은 문입니다. 여기서 몰래
+ * 멤버로 넣어 주지 않고 **거절합니다.**
+ *
+ * 초대만 받고 아직 안 들어온 사람(`pendingEmails`)은 됩니다. 사람이 이미
+ * 부른 사람이고, 들어오는 순간 그 업무가 보입니다.
+ */
+export function assignableEmails(p: Project | undefined): Set<string> {
+  const out = new Set<string>()
+  for (const m of p?.memberEmails ?? []) out.add(m.toLowerCase().trim())
+  for (const m of p?.pendingEmails ?? []) out.add(m.toLowerCase().trim())
+  if (p?.creatorEmail) out.add(p.creatorEmail.toLowerCase().trim())
+  return out
+}
+
+/**
+ * 담당자로 못 세우는 주소들. 비어 있으면 통과입니다.
+ *
+ * **프로젝트가 없는 업무는 나만 담당자가 될 수 있습니다.** 남을 적어 봐야
+ * 그 사람은 개인 업무를 못 봅니다(`personalTasks/{내 계정}`에 삽니다).
+ */
+export function unassignable(
+  assignee: string | undefined,
+  project: Project | undefined,
+  caller: string,
+): string[] {
+  const wanted = parseAssignees(assignee).map(assigneeKeyToEmail).filter(Boolean)
+  if (!wanted.length) return []
+  const allowed = project ? assignableEmails(project) : new Set([caller.toLowerCase().trim()])
+  return [...new Set(wanted.filter(w => !allowed.has(w)))]
+}
+
+/**
  * 담당자 토큰을 정규화합니다. 소문자로 내리는 것이 전부입니다.
  *
  * 두 글자 별칭('HC')을 이메일로 바꾸는 표가 여기 있었습니다. 회사가 도메인을

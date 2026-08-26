@@ -4,6 +4,7 @@ import {
   accessibleProjectIds,
   assigneeKeyToEmail,
   canAccessProject,
+  unassignable,
   isAssignedTo,
   isTaskVisible,
   parseAssignees,
@@ -342,13 +343,14 @@ export function registerTools(server: McpServer, ctx: Ctx) {
     'create_task',
     {
       title: '업무 추가',
-      description: 'Creates a task. The target project must be one the caller belongs to.',
+      description:
+        'Creates a task. The target project must be one the caller belongs to, and every assignee must already be a member of it — assigning a stranger is refused rather than silently granting them access. A task with no project can only be assigned to the caller.',
       inputSchema: {
         name: z.string().min(1),
         project_id: z.string().optional(),
         milestone_id: z.string().optional(),
         parent_id: z.string().optional().describe('create as a subtask of this task'),
-        assignee: z.string().optional().describe('comma-separated emails'),
+        assignee: z.string().optional().describe('comma-separated emails; each must already be a member of the target project — invite them in the app first'),
         status: z.enum(STATUSES as [Status, ...Status[]]).optional(),
         priority: z.enum(PRIORITIES as [Priority, ...Priority[]]).optional(),
         due: z.string().optional().describe('YYYY-MM-DD'),
@@ -363,6 +365,25 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       const ids = accessibleProjectIds(projects, ctx.email)
       if (args.project_id && !ids.has(args.project_id)) {
         throw new Error('project not found or not accessible')
+      }
+      /**
+       * 담당자는 그 프로젝트 사람만.
+       *
+       * 몰래 멤버로 넣어 주지 않고 거절합니다 — 누가 프로젝트를 볼 수 있는지는
+       * 사람이 앱에서 정할 일이고, create_project의 설명이 이미 그렇게
+       * 말하고 있습니다.
+       */
+      const strangers = unassignable(
+        args.assignee,
+        args.project_id ? projects.find(p => p.id === args.project_id) : undefined,
+        ctx.email,
+      )
+      if (strangers.length) {
+        throw new Error(
+          args.project_id
+            ? `not a member of this project: ${strangers.join(', ')} — invite them in the app first, then assign`
+            : `a task with no project can only be assigned to you: ${strangers.join(', ')} would never see it`,
+        )
       }
 
       const created = await mutateTasks(tasks => {
@@ -423,7 +444,8 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       },
     },
     async (args) => {
-      const ids = accessibleProjectIds(await readProjects(ctx.email), ctx.email)
+      const projects = await readProjects(ctx.email)
+      const ids = accessibleProjectIds(projects, ctx.email)
       if (args.project_id && !ids.has(args.project_id)) {
         throw new Error('target project not found or not accessible')
       }
@@ -432,6 +454,25 @@ export function registerTools(server: McpServer, ctx: Ctx) {
         const i = tasks.findIndex(t => t.id === args.task_id)
         if (i < 0 || !isTaskVisible(tasks[i], ctx.email, ids)) {
           throw new Error('task not found or not accessible')
+        }
+      /**
+       * 담당자는 그 프로젝트 사람만.
+       *
+       * 몰래 멤버로 넣어 주지 않고 거절합니다 — 누가 프로젝트를 볼 수 있는지는
+       * 사람이 앱에서 정할 일이고, create_project의 설명이 이미 그렇게
+       * 말하고 있습니다.
+       */
+        if (args.assignee !== undefined) {
+          // 옮기는 중이면 **가는 곳**의 명단을 봅니다. 지금 있는 곳이 아니라.
+          const pid = args.project_id !== undefined ? args.project_id : tasks[i].projectId
+          const strangers = unassignable(args.assignee, pid ? projects.find(p => p.id === pid) : undefined, ctx.email)
+          if (strangers.length) {
+            throw new Error(
+              pid
+                ? `not a member of that project: ${strangers.join(', ')} — invite them in the app first, then assign`
+                : `a task with no project can only be assigned to you: ${strangers.join(', ')} would never see it`,
+            )
+          }
         }
         const patch: Partial<Task> = {}
         if (args.name !== undefined) patch.name = args.name
@@ -672,7 +713,8 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       },
     },
     async (args) => {
-      const ids = accessibleProjectIds(await readProjects(ctx.email), ctx.email)
+      const projects = await readProjects(ctx.email)
+      const ids = accessibleProjectIds(projects, ctx.email)
       if (args.project_id && !ids.has(args.project_id)) {
         throw new Error('target project not found or not accessible')
       }
@@ -688,7 +730,16 @@ export function registerTools(server: McpServer, ctx: Ctx) {
           let out: Task = { ...t }
           if (args.status !== undefined) out.status = args.status
           if (args.priority !== undefined) out.priority = args.priority
-          if (args.assignee !== undefined) out.assignee = args.assignee
+          if (args.assignee !== undefined) {
+            // 여러 업무가 서로 다른 프로젝트에 있을 수 있습니다. 한 줄씩
+            // 그 업무가 갈 곳의 명단으로 봅니다 — 못 맡기는 것만 건너뛰고
+            // 나머지는 그대로 갑니다. 하나 때문에 전부 멈추면, 스무 개를
+            // 옮기려던 사람이 어느 하나 때문에 아무것도 못 합니다.
+            const pid = args.project_id !== undefined ? args.project_id : t.projectId
+            const strangers = unassignable(args.assignee, pid ? projects.find(p => p.id === pid) : undefined, ctx.email)
+            if (strangers.length) { skipped.push(t.id); return t }
+            out.assignee = args.assignee
+          }
           if (args.due !== undefined) out.due = args.due
           if (args.shift_days) {
             if (out.due) out.due = shiftYmd(out.due, args.shift_days)
