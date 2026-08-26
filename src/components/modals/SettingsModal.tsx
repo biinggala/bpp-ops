@@ -87,18 +87,29 @@ export function SettingsModal({ onClose, start = 'general' }: {
     return () => window.removeEventListener('keydown', esc)
   }, [onClose])
 
-  /** 조직이 없으면 조직 장 하나만 보입니다 — 만들기 전에는 방도 목록도 없습니다. */
-  const pages: { id: Page; label: string; badge?: number }[] = [
-    { id: 'general', label: '일반' },
-    { id: 'notify', label: '알림' },
-    { id: 'link', label: '연동' },
-    { id: 'trash', label: '휴지통' },
-    { id: 'org', label: '워크스페이스' },
+  /**
+   * ── 왼쪽 목록 ──────────────────────────────────────────────────────────────
+   *
+   * **내 것과 우리 것을 갈라 놓습니다.** 여덟 줄이 한 덩어리로 서 있으면
+   * '이걸 바꾸면 나만 바뀌나, 모두 바뀌나'를 매번 눌러 봐야 압니다. 그 답이
+   * 목록의 생김새에 있어야 합니다.
+   *
+   * 장마다 이름 옆에 한 줄이 붙습니다. 오른쪽 맨 위에 그 장이 무엇에 답하는
+   * 화면인지 적기 위해서입니다 — 제목만 있으면 '알림'이 무엇을 말하는지는
+   * 눌러서 알아내야 합니다.
+   */
+  const pages: { id: Page; label: string; note: string; group: string; badge?: number }[] = [
+    { id: 'general', label: '일반', group: '내 계정', note: '이 기기에서 보이는 것들. 다른 사람 화면은 안 바뀝니다.' },
+    { id: 'notify', label: '알림', group: '내 계정', note: '언제 무엇으로 알릴지. 기기마다 따로 정합니다 — 노트북에서 켠다고 폰이 켜지지는 않습니다.' },
+    { id: 'link', label: '연동', group: '내 계정', note: '밖에서 온 소식을 알림함과 찾기에 들이는 통로입니다. 이 기기가 아니라 계정에 붙습니다.' },
+    { id: 'trash', label: '휴지통', group: '내 계정', note: "지운 업무가 여기 남습니다. 되살리면 원래 프로젝트로, 원래 이름 그대로 돌아옵니다. '영영 지우기'는 되돌릴 수 없습니다." },
+    { id: 'org', label: '관리', group: '워크스페이스', note: '회의실과, 모두에게 공개한 프로젝트 목록을 함께 두는 단위입니다. 여기서 고치면 모두의 화면이 바뀝니다.' },
     ...(orgId ? [
-      { id: 'rooms' as Page, label: '회의실' },
-      { id: 'projects' as Page, label: '프로젝트', badge: pending },
+      { id: 'rooms' as Page, label: '회의실', group: '워크스페이스', note: '함께 보는 목록입니다. 예약은 전원이 할 수 있고, 목록을 고치는 것은 관리자입니다.' },
+      { id: 'projects' as Page, label: '프로젝트', group: '워크스페이스', badge: pending, note: '이름만 공개됩니다. 업무 내용은 참여한 뒤에 보입니다 — 목록에 오르는 것과 들어가는 것은 다른 일입니다.' },
     ] : []),
   ]
+  const here = pages.find(p => p.id === page)
 
   return (
     <div
@@ -112,8 +123,8 @@ export function SettingsModal({ onClose, start = 'general' }: {
         onClick={e => e.stopPropagation()}
         style={{
           background: 'var(--bg)', borderRadius: 'var(--r3)', boxShadow: 'var(--sh-lg)',
-          border: '1px solid var(--bd)', width: '100%', maxWidth: isMobile ? 520 : 640,
-          height: isMobile ? '88vh' : 520, maxHeight: '90vh',
+          border: '1px solid var(--bd)', width: '100%', maxWidth: isMobile ? 520 : 720,
+          height: isMobile ? '88vh' : 560, maxHeight: '90vh',
           display: 'flex', flexDirection: 'column', overflow: 'hidden', boxSizing: 'border-box',
         }}
       >
@@ -137,27 +148,38 @@ export function SettingsModal({ onClose, start = 'general' }: {
             flexShrink: 0,
             display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: 1,
             padding: isMobile ? '8px 10px' : '10px 8px',
-            width: isMobile ? 'auto' : 140,
+            width: isMobile ? 'auto' : 176,
+            background: isMobile ? 'transparent' : 'var(--bg2)',
             borderRight: isMobile ? 'none' : '1px solid var(--bd)',
             borderBottom: isMobile ? '1px solid var(--bd)' : 'none',
             overflowX: isMobile ? 'auto' : 'visible',
           }}>
-            {pages.map(p => (
-              <PageTab
-                key={p.id}
-                label={p.label}
-                badge={p.badge}
-                on={page === p.id}
-                wide={!isMobile}
-                onClick={() => setPage(p.id)}
-              />
+            {pages.map((p, i) => (
+              <React.Fragment key={p.id}>
+                {/* 폰에서는 가로로 흐르는 한 줄이라 묶음 이름을 못 세웁니다 —
+                    세로 목록에서만 갈라집니다. */}
+                {!isMobile && p.group !== pages[i - 1]?.group && (
+                  <div style={{
+                    fontSize: 11, fontWeight: 600, color: 'var(--t3)',
+                    padding: '0 9px', margin: i === 0 ? '0 0 4px' : '14px 0 4px',
+                  }}>{p.group}</div>
+                )}
+                <PageTab
+                  label={p.label}
+                  badge={p.badge}
+                  on={page === p.id}
+                  wide={!isMobile}
+                  onClick={() => setPage(p.id)}
+                />
+              </React.Fragment>
             ))}
           </div>
 
-          <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '16px 18px 20px' }}>
+          <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: isMobile ? '18px 16px 24px' : '26px 28px 28px' }}>
+            {here && <PageHead title={here.label} note={here.note} />}
             {page === 'general' && (
               <>
-                <Section title="화면 밝기" note="이 기기에서만 적용됩니다. 다른 사람 화면은 바뀌지 않습니다.">
+                <Section title="화면 밝기">
                   <ThemeChoiceRow />
                 </Section>
                 <Section title="안내" note="한 번 보고 닫으면 다시 안 뜹니다. 여기서 언제든 다시 열 수 있습니다.">
@@ -172,7 +194,7 @@ export function SettingsModal({ onClose, start = 'general' }: {
             )}
 
             {page === 'notify' && (
-              <Section title="알림" note="켜 두는 것이 기본입니다. 기기마다 따로 정합니다 — 노트북에서 켠다고 폰이 켜지지는 않습니다.">
+              <Section note="켜 두는 것이 기본입니다.">
                 <PushRow />
                 <ChimeRow />
                 <FileWatchRow />
@@ -180,7 +202,7 @@ export function SettingsModal({ onClose, start = 'general' }: {
             )}
 
             {page === 'link' && (
-              <Section title="연동" note="받은 알림에 밖에서 온 소식을 들이는 통로입니다. 이 기기가 아니라 계정에 붙습니다.">
+              <Section>
                 <MailLinkRow />
                 <NotionLinkRow />
                 <ConnectorRow />
@@ -241,11 +263,43 @@ function PageTab({ label, badge, on, wide, onClick }: {
   )
 }
 
-function Section({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
+/**
+ * ── 한 장의 머리 ────────────────────────────────────────────────────────────
+ *
+ * 왼쪽에서 고른 것의 이름이 오른쪽 맨 위에 한 번 더 서고, 그 아래 한 줄이
+ * 무엇에 답하는 화면인지 말합니다.
+ *
+ * 전에는 이 자리가 없어서 묶음 제목이 장 제목 노릇을 했습니다. 그래서 장이
+ * 하나짜리인 곳('알림')에서는 같은 말이 왼쪽과 오른쪽에 두 번 서고, 여러
+ * 묶음이 있는 곳('일반')에서는 장 이름이 아예 없었습니다. 같은 자리가
+ * 화면마다 다른 것을 뜻하면 위계가 아니라 그때그때입니다.
+ */
+function PageHead({ title, note }: { title: string; note?: string }) {
   return (
-    <div style={{ marginBottom: 22 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--t2)', marginBottom: note ? 3 : 10 }}>{title}</div>
-      {note && <div style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1.6, marginBottom: 10 }}>{note}</div>}
+    <div style={{ marginBottom: 4 }}>
+      <div style={{ fontSize: 19, fontWeight: 600, color: 'var(--t1)', letterSpacing: '-.01em' }}>{title}</div>
+      {note && <div style={{ fontSize: 12.5, color: 'var(--t3)', lineHeight: 1.6, marginTop: 5 }}>{note}</div>}
+    </div>
+  )
+}
+
+/**
+ * 한 장 안의 묶음.
+ *
+ * 이름 아래 실선 하나. 줄과 줄 사이에는 선을 안 긋습니다 — 줄마다 선이 있으면
+ * 표가 되고, 표는 '어디까지가 한 덩어리인가'를 말해 주지 않습니다. 여백이
+ * 줄을 가르고, 선이 묶음을 가릅니다.
+ */
+function Section({ title, note, children }: { title?: string; note?: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginTop: 26 }}>
+      {title && (
+        <div style={{
+          fontSize: 12, fontWeight: 600, color: 'var(--t2)',
+          paddingBottom: 7, borderBottom: '1px solid var(--bd)',
+        }}>{title}</div>
+      )}
+      {note && <div style={{ fontSize: 11.5, color: 'var(--t3)', lineHeight: 1.6, marginTop: title ? 9 : 0 }}>{note}</div>}
       {children}
     </div>
   )
@@ -277,9 +331,9 @@ function ReplayRows({ onOpen }: { onOpen: () => void }) {
 function ReplayRow({ title, sub, onClick }: { title: string; sub: string; onClick: () => void }) {
   return (
     <div style={ROW}>
-      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+      <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE }}>
         {title}
-        <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>{sub}</span>
+        <span style={{ display: 'block', ...ROW_SUB }}>{sub}</span>
       </span>
       <button
         onClick={onClick}
@@ -347,10 +401,21 @@ function MiniSwitch({ on, busy, onClick }: { on: boolean; busy?: boolean; onClic
   )
 }
 
+/**
+ * 줄 하나.
+ *
+ * 왼쪽에 이름과 그 아래 설명, 오른쪽에 그걸 바꾸는 것. 열한 군데가 각자
+ * 그리고 있어서 글자 크기가 조금씩 달랐습니다 — 같은 자리가 화면마다 다르면
+ * 눈이 매번 다시 재야 합니다.
+ */
 const ROW: React.CSSProperties = {
-  display: 'flex', alignItems: 'flex-start', gap: 10,
-  padding: '10px 0', borderTop: '1px solid var(--bd)',
+  display: 'flex', alignItems: 'flex-start', gap: 14,
+  padding: '12px 0',
 }
+/** 줄의 이름. */
+const ROW_TITLE: React.CSSProperties = { fontSize: 13.5, color: 'var(--t1)', lineHeight: 1.4 }
+/** 그 아래 한 줄. */
+const ROW_SUB: React.CSSProperties = { fontSize: 11.5, color: 'var(--t3)', lineHeight: 1.55, marginTop: 3 }
 
 /**
  * 이 기기에서 푸시 받기.
@@ -433,7 +498,7 @@ function PushRow() {
   if (!support.ok) {
     return (
       <div style={ROW}>
-        <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: 'var(--t3)', lineHeight: 1.55 }}>
+        <span style={{ flex: 1, minWidth: 0, ...ROW_SUB, marginTop: 0 }}>
           {support.reason}
           {detail}
         </span>
@@ -457,9 +522,9 @@ function PushRow() {
 
   return (
     <div style={ROW}>
-      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+      <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE }}>
         이 기기에서 푸시 받기
-        <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
+        <span style={{ display: 'block', ...ROW_SUB }}>
           앱이 닫혀 있어도 알림이 옵니다
         </span>
         {detail}
@@ -487,8 +552,8 @@ function ConnectorRow() {
   return (
     <div style={ROW}>
       <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 13, color: 'var(--t1)' }}>Claude 커넥터</span>
-        <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2, lineHeight: 1.6 }}>
+        <span style={{ display: 'block', ...ROW_TITLE }}>Claude 커넥터</span>
+        <span style={{ display: 'block', ...ROW_SUB }}>
           Claude 설정 › 커넥터에서 이 주소를 넣으면 대화 중에 업무를 읽고 만들 수 있습니다.
         </span>
         {/* 주소 자체를 보여 줍니다. 복사 버튼만 두면 무엇이 복사됐는지
@@ -537,9 +602,9 @@ function MailLinkRow() {
 
   return (
     <div style={ROW}>
-      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+      <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE }}>
         메일
-        <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
+        <span style={{ display: 'block', ...ROW_SUB }}>
           {on
             ? '나에게 물어 왔고 아직 답 안 한 대화만 가져옵니다'
             : '읽기 권한만 받습니다. 메일을 보내거나 지우지 않습니다.'}
@@ -591,9 +656,9 @@ function NotionLinkRow() {
 
   return (
     <div style={ROW}>
-      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+      <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE }}>
         노션
-        <span style={{ display: 'block', fontSize: 11, color: error ? 'var(--danger)' : 'var(--t3)', marginTop: 2 }}>
+        <span style={{ display: 'block', ...ROW_SUB, ...(error ? { color: 'var(--danger)' } : null) }}>
           {note}
         </span>
       </span>
@@ -622,9 +687,9 @@ function FileWatchRow() {
   const connected = useDriveStore(s => !!s.token || s.wasConnected)
   return (
     <div style={ROW}>
-      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+      <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE }}>
         첨부 파일 변경 알림
-        <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
+        <span style={{ display: 'block', ...ROW_SUB }}>
           {connected
             ? '내 업무에 붙인 드라이브 파일을 이 기기에서 확인합니다'
             : '드라이브를 연동해야 확인할 수 있습니다'}
@@ -645,9 +710,9 @@ function ChimeRow() {
   const [on, setOn] = useState(chimeEnabled())
   return (
     <div style={ROW}>
-      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+      <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE }}>
         알림 소리
-        <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
+        <span style={{ display: 'block', ...ROW_SUB }}>
           앱이 열려 있을 때 배너와 함께
         </span>
       </span>
@@ -771,7 +836,7 @@ function OrgSection() {
 
   if (!orgId) {
     return (
-      <Section title="워크스페이스" note="회의실과, 모두에게 공개한 프로젝트 목록을 함께 두는 단위입니다. 만든 사람이 첫 관리자가 됩니다. 만드는 방법은 나중에 바꿀 수 없습니다.">
+      <Section note="만든 사람이 첫 관리자가 됩니다. 만드는 방법은 나중에 바꿀 수 없습니다.">
         <MakeWorkspace email={email} myDomain={myDomain} domainTaken={false} />
       </Section>
     )
@@ -781,13 +846,13 @@ function OrgSection() {
 
   return (
     <>
-      <Section title="워크스페이스" note={domain
+      <Section note={domain
         ? '같은 도메인으로 로그인한 사람이 곧 멤버입니다. 초대도 승인도 없습니다.'
         : '초대로만 들어오는 워크스페이스입니다. 프로젝트에 부르면 멤버가 됩니다.'}>
         <div style={ROW}>
-          <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+          <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE }}>
             {name || myDomain}
-            <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>
+            <span style={{ display: 'block', ...ROW_SUB }}>
               {domain ? `@${domain}` : '초대로만'}
             </span>
           </span>
@@ -831,7 +896,7 @@ function OrgSection() {
       >
         {admins.map(mail => (
           <div key={mail} style={ROW}>
-            <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE, overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {mail}
               {mail === email.toLowerCase() && (
                 <span style={{ fontSize: 11, color: 'var(--t3)', marginLeft: 6 }}>나</span>
@@ -947,15 +1012,28 @@ function DangerZone({ orgId, name, email, isAdmin, adminCount }: {
       marginTop: 14, border: '1px solid var(--danger)', borderRadius: 'var(--r2)',
       padding: '14px 14px 16px', display: 'flex', flexDirection: 'column', gap: 4,
     }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--danger)' }}>위험</div>
-      <div style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1.6, marginBottom: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--danger)', flex: 1 }}>위험</div>
+        {/* 열었으면 닫을 수 있어야 합니다. 펼치는 단추를 만들면서 접는 길을
+            안 만들면, 잘못 눌렀을 때 나가는 방법이 설정을 통째로 닫는 것뿐
+            입니다 — '어제 못 끝낸 것'에서 똑같이 했던 실수입니다. */}
+        <button
+          onClick={() => { setOpen(false); setTyped(''); setProblem(null) }}
+          aria-label="접기"
+          style={{
+            border: 'none', background: 'transparent', padding: '0 2px',
+            cursor: 'pointer', fontSize: 13, color: 'var(--t3)', fontFamily: 'var(--font)',
+          }}
+        >×</button>
+      </div>
+      <div style={{ ...ROW_SUB, marginTop: 2, marginBottom: 4 }}>
         아래 둘은 되돌릴 수 없습니다.
       </div>
 
       <div style={{ ...ROW, alignItems: 'center' }}>
-        <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+        <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE }}>
           이 워크스페이스에서 나가기
-          <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2, lineHeight: 1.5 }}>
+          <span style={{ display: 'block', ...ROW_SUB }}>
             {lastAdmin
               ? '관리자가 나 혼자입니다. 다른 사람을 관리자로 세운 뒤에 나갈 수 있습니다.'
               : '여기 프로젝트가 안 보이게 됩니다. 남의 것은 그대로입니다.'}
@@ -975,9 +1053,9 @@ function DangerZone({ orgId, name, email, isAdmin, adminCount }: {
 
       {isAdmin && (
         <div style={{ ...ROW, flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
-          <span style={{ fontSize: 13, color: 'var(--t1)' }}>
+          <span style={ROW_TITLE}>
             워크스페이스 삭제
-            <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2, lineHeight: 1.5 }}>
+            <span style={{ display: 'block', ...ROW_SUB }}>
               모두에게서 사라집니다. 회의실과 예약, 공개 목록이 같이 없어집니다.
               {' '}<b style={{ color: 'var(--t2)' }}>프로젝트가 하나라도 남아 있으면 지울 수 없습니다</b> —
               워크스페이스가 없어지면 그 프로젝트를 아무도 못 읽게 되기 때문입니다.
@@ -1007,7 +1085,7 @@ function DangerZone({ orgId, name, email, isAdmin, adminCount }: {
       )}
 
       {problem && (
-        <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 8, lineHeight: 1.6 }}>{problem}</div>
+        <div style={{ ...ROW_SUB, color: 'var(--danger)', marginTop: 8 }}>{problem}</div>
       )}
     </div>
   )
@@ -1029,7 +1107,6 @@ function RoomsSection() {
 
   return (
     <Section
-      title="회의실"
       note={isAdmin
         ? `${name || domain} 전체가 함께 보는 목록입니다. 여기서 고치면 모두의 화면이 바뀝니다. 예약은 전원이 할 수 있습니다.`
         : '목록은 관리자만 바꿉니다. 예약은 누구나 할 수 있습니다.'}
@@ -1041,9 +1118,9 @@ function RoomsSection() {
       )}
       {rooms.map(room => (
         <div key={room.id} style={{ ...ROW, opacity: room.active === false ? .5 : 1 }}>
-          <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--t1)' }}>
+          <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE }}>
             {room.name}
-            {room.note && <span style={{ display: 'block', fontSize: 11, color: 'var(--t3)', marginTop: 2 }}>{room.note}</span>}
+            {room.note && <span style={{ display: 'block', ...ROW_SUB }}>{room.note}</span>}
           </span>
           {isAdmin ? (
             <>
@@ -1121,10 +1198,7 @@ function OrgProjects() {
   )
 
   return (
-    <Section
-      title="워크스페이스 프로젝트"
-      note="이름만 공개됩니다. 업무 내용은 참여한 뒤에 보입니다 — 목록에 오르는 것과 들어가는 것은 다른 일입니다."
-    >
+    <Section>
       {orgProjects.length === 0 && (
         <div style={{ fontSize: 11, color: 'var(--t3)', padding: '2px 0 4px', lineHeight: 1.6 }}>
           공개된 프로젝트가 없습니다. 사이드바에서 프로젝트를 우클릭 → '워크스페이스에 공개'.
@@ -1140,7 +1214,7 @@ function OrgProjects() {
             <div style={ROW}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 7, flex: 1, minWidth: 0 }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: project.color ?? 'var(--bd2)', flexShrink: 0 }} />
-                <span style={{ fontSize: 13, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ ...ROW_TITLE, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {project.name}
                 </span>
               </span>
@@ -1235,10 +1309,7 @@ function TrashSection() {
   if (loading && !items.length) return <div style={{ fontSize: 12, color: 'var(--t3)' }}>불러오는 중…</div>
 
   return (
-    <Section
-      title="휴지통"
-      note="지운 업무가 여기 남습니다. 되살리면 원래 프로젝트로, 원래 이름 그대로 돌아옵니다. '영영 지우기'는 되돌릴 수 없습니다."
-    >
+    <Section>
       {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginBottom: 8 }}>{error}</div>}
       {!items.length && (
         <div style={{ fontSize: 12, color: 'var(--t3)' }}>비어 있습니다.</div>
