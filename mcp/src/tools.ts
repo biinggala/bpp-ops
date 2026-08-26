@@ -10,7 +10,7 @@ import {
   parseAssignees,
 } from './access.js'
 import {
-  createProject, mutateMilestones, mutateTasks, newId, newInviteCode,
+  mutateMilestones, mutateTasks, newId,
   readMilestones, readProjects, readTasks, readUserProfiles, writeProjectMeta,
   readDailyNote, readDailyNoteDates, writeDailyNote,
 } from './store.js'
@@ -79,7 +79,8 @@ export function registerTools(server: McpServer, ctx: Ctx) {
     'list_projects',
     {
       title: '프로젝트 목록',
-      description: 'Projects the caller is a member of. Archived ones are excluded unless include_archived is set.',
+      description:
+        'Projects the caller is a member of. Archived ones are excluded unless include_archived is set. There is no tool for creating one — if none of these fits, do not invent a project. Say so and let the person make it in the app, or create the task without project_id so it lands in their own personal list.',
       inputSchema: { include_archived: z.boolean().optional() },
       annotations: { readOnlyHint: true },
     },
@@ -347,7 +348,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
         'Creates a task. The target project must be one the caller belongs to, and every assignee must already be a member of it — assigning a stranger is refused rather than silently granting them access. A task with no project can only be assigned to the caller.',
       inputSchema: {
         name: z.string().min(1),
-        project_id: z.string().optional(),
+        project_id: z.string().optional().describe('omit for a personal task, visible only to the caller; never guess a project the person did not name'),
         milestone_id: z.string().optional(),
         parent_id: z.string().optional().describe('create as a subtask of this task'),
         assignee: z.string().optional().describe('comma-separated emails; each must already be a member of the target project — invite them in the app first'),
@@ -370,8 +371,8 @@ export function registerTools(server: McpServer, ctx: Ctx) {
        * 담당자는 그 프로젝트 사람만.
        *
        * 몰래 멤버로 넣어 주지 않고 거절합니다 — 누가 프로젝트를 볼 수 있는지는
-       * 사람이 앱에서 정할 일이고, create_project의 설명이 이미 그렇게
-       * 말하고 있습니다.
+       * 사람이 앱에서 정할 일입니다 — 프로젝트를 만드는 도구를 뺀 것과
+       * 같은 이유입니다.
        */
       const strangers = unassignable(
         args.assignee,
@@ -459,8 +460,8 @@ export function registerTools(server: McpServer, ctx: Ctx) {
        * 담당자는 그 프로젝트 사람만.
        *
        * 몰래 멤버로 넣어 주지 않고 거절합니다 — 누가 프로젝트를 볼 수 있는지는
-       * 사람이 앱에서 정할 일이고, create_project의 설명이 이미 그렇게
-       * 말하고 있습니다.
+       * 사람이 앱에서 정할 일입니다 — 프로젝트를 만드는 도구를 뺀 것과
+       * 같은 이유입니다.
        */
         if (args.assignee !== undefined) {
           // 옮기는 중이면 **가는 곳**의 명단을 봅니다. 지금 있는 곳이 아니라.
@@ -631,33 +632,29 @@ export function registerTools(server: McpServer, ctx: Ctx) {
 
   // ── Projects ──────────────────────────────────────────────────────────────
 
-  server.registerTool(
-    'create_project',
-    {
-      title: '프로젝트 추가',
-      description:
-        'Creates a project with the caller as its first member. Membership changes after that are left to the app: who can see a project is the one thing here worth a human deciding in person.',
-      inputSchema: {
-        name: z.string().min(1),
-        color: z.string().optional().describe('#RRGGBB'),
-        due_date: YMD.optional(),
-        client_name: z.string().optional(),
-      },
-    },
-    async (args) => {
-      const created = await createProject({
-        id: newId(),
-        name: args.name.trim(),
-        color: args.color ?? '#2383E2',
-        inviteCode: newInviteCode(),
-        memberEmails: [ctx.email.toLowerCase()],
-        creatorEmail: ctx.email.toLowerCase(),
-        ...(args.due_date ? { dueDate: args.due_date } : {}),
-        ...(args.client_name ? { clientName: args.client_name } : {}),
-      }, ctx.email)
-      return text({ created: { id: created.id, name: created.name } })
-    }
-  )
+  /*
+   * ── 프로젝트를 만드는 도구는 여기 없습니다 ──────────────────────────────────
+   *
+   * 있었고, 뺐습니다.
+   *
+   * 블랙페이퍼가 노션을 협업 도구로 쓰다 접은 주된 이유가 **각자 자기
+   * 데이터베이스를 만들어서 정보가 안 모인 것**이었습니다. 같은 일이 여기서
+   * 더 조용히 일어납니다 — 커넥터로 만든 프로젝트는 멤버가 만든 사람
+   * 하나뿐이라 **아무도 못 봅니다.** 못 보면 '그거 이미 있는데요'라고
+   * 말해 줄 수도 없습니다. 노션에서는 적어도 보였습니다.
+   *
+   * 그리고 이름이 안 닮아도 중복입니다 — '로고 시안'과 'BI 개편'이 같은
+   * 일일 수 있습니다. 그래서 비슷한 이름을 막는 식으로는 안 풀립니다.
+   * 판단하는 사람이 그 일이 어디에 속하는지 아는 사람이어야 합니다.
+   *
+   * 업무를 더하는 것과는 무게가 다릅니다. 업무는 이미 합의된 그릇 안에
+   * 들어가고, 틀리면 옮기면 됩니다. 프로젝트는 **오십 명이 '여기 무슨 일이
+   * 있나'를 읽는 목록**에 한 줄을 더하는 일이고, 그 한 줄이 썩는 것은 몇 달
+   * 뒤에나 보입니다.
+   *
+   * 바로 아래 update_project는 남깁니다. 이미 있고 이미 보이는 것을 고치는
+   * 일이라 다릅니다.
+   */
 
   server.registerTool(
     'update_project',

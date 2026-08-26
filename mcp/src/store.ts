@@ -2,7 +2,6 @@ import { applicationDefault, cert, getApps, initializeApp, type ServiceAccount }
 import { getDatabase, type Database } from 'firebase-admin/database'
 import type { Milestone, Project, Task } from './types.js'
 import { readableAssignee } from './access.js'
-import { randomBytes } from 'node:crypto'
 
 /**
  * Data access for the per-project layout described in docs/data-model.md.
@@ -247,20 +246,6 @@ export function newId(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
 }
 
-/**
- * 초대 코드. **id와 같은 난수를 쓰면 안 됩니다.**
- *
- * 앱 쪽에서 고친 것과 같은 자리입니다(src/lib/utils.ts). 이건 프로젝트에
- * 들어오는 유일한 열쇠라, 맞히면 초대받은 적 없는 프로젝트를 통째로 읽고
- * 씁니다. Math.random()은 출력 몇 개로 상태를 되찾을 수 있고, 바로 옆에서
- * 뽑은 프로젝트 id는 워크스페이스 공개 목록을 통해 남에게 보입니다.
- */
-const CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'
-
-export function newInviteCode(): string {
-  return Array.from(randomBytes(16), b => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('')
-}
-
 // ── Milestones ────────────────────────────────────────────────────────────────
 
 /**
@@ -307,32 +292,6 @@ export async function writeProjectMeta(projectId: string, patch: Partial<Project
   const updates: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(clean)) updates[`projects/${projectId}/meta/${k}`] = v
   await initDb().ref().update(updates)
-}
-
-/**
- * Creates a project owned by `creatorEmail`.
- *
- * Three things have to land together or the project exists but nobody can see
- * it: meta, the creator's uid under members (which is what the database rules
- * actually check), and the userIndex entry the app follows to know which
- * projects to subscribe to. Writing them in one update keeps that from being
- * half-true.
- */
-export async function createProject(
-  meta: Omit<Project, 'id'> & { id: string; inviteCode: string },
-  creatorEmail: string,
-): Promise<Project> {
-  const uid = await uidForEmail(creatorEmail)
-  if (!uid) throw new Error('no account matches the caller, so the project would be invisible to them')
-  const { id, ...rest } = meta
-  await initDb().ref().update({
-    [`projects/${id}`]: {
-      meta: stripUndefined({ id, ...rest }),
-      members: { [uid]: meta.inviteCode },
-    },
-    [`userIndex/${uid}/projects/${id}`]: true,
-  })
-  return { id, ...rest } as Project
 }
 
 /* ── 데일리 노트 ─────────────────────────────────────────────────────────── */
