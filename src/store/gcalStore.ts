@@ -146,7 +146,7 @@ interface GCalState {
   /** 되돌릴 수 있는 시간 변경들. 가장 최근 것이 뒤에 있습니다. */
   history: CalUndo[]
   undoLast: () => Promise<void>
-  updateEvent: (eventId: string, patch: { summary?: string; location?: string; description?: string; startDateTime?: string; endDateTime?: string; attendees?: string[] }) => Promise<boolean>
+  updateEvent: (eventId: string, patch: { summary?: string; location?: string; description?: string; startDateTime?: string; endDateTime?: string; startDate?: string; endDate?: string; attendees?: string[] }) => Promise<boolean>
   /** 초대에 수락·미정·거절로 답합니다. */
   respond: (eventId: string, response: Rsvp) => Promise<boolean>
   removeEvent: (eventId: string) => Promise<void>
@@ -236,6 +236,14 @@ export type CalUndo =
   /** 옮기기·길이 조절을 되돌립니다. 값은 그 전의 시각. */
   | { at: number; kind: 'time'; eventId: string; startDateTime: string; endDateTime: string }
   /**
+   * 종일 일정을 되돌립니다. 값은 그 전의 날짜.
+   *
+   * 시각으로 되돌리면 안 됩니다 — 구글은 종일 일정을 날짜로만 받고, 시각
+   * 모양을 보내면 종일이 아닌 일정으로 바뀝니다. 되돌리려다 종류를
+   * 바꿔 놓는 셈입니다.
+   */
+  | { at: number; kind: 'time'; eventId: string; startDate: string; endDate: string }
+  /**
    * 방금 만든 타임블록을 되돌립니다 — 지웁니다.
    *
    * 타임블록만입니다. 회의는 사람을 부르는 일이라 초대 메일이 이미 나가 있고,
@@ -243,6 +251,21 @@ export type CalUndo =
    * 되돌리기가 아니라 통보라, 지우는 버튼으로 분명히 해야 하는 일입니다.
    */
   | { at: number; kind: 'create'; eventId: string }
+
+/**
+ * 구글의 '안 포함하는' 종일 끝 날짜를 우리가 쓰는 '포함하는' 날짜로.
+ *
+ * toGCalEvent가 읽을 때 하는 것과 같은 일입니다. 화면을 먼저 바꾸는 자리에서도
+ * 같은 변환이 필요해서 이름을 붙여 꺼냈습니다.
+ */
+function inclusiveEnd(start: string, exclusiveEnd: string): string {
+  if (exclusiveEnd <= start) return start
+  const d = new Date(exclusiveEnd + 'T00:00:00')
+  d.setDate(d.getDate() - 1)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const out = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  return out < start ? start : out
+}
 
 /** 구글이 준 ISO를 이 컴퓨터의 벽시계 문자열로. 쓰기 API가 받는 모양입니다. */
 function wallClock(iso: string): string {
@@ -606,6 +629,9 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     undoing = true
     try {
       if (op.kind === 'create') await get().removeEvent(op.eventId)
+      else if ('startDate' in op) await get().updateEvent(op.eventId, {
+        startDate: op.startDate, endDate: op.endDate,
+      })
       else await get().updateEvent(op.eventId, {
         startDateTime: op.startDateTime,
         endDateTime: op.endDateTime,
@@ -627,6 +653,15 @@ export const useGCalStore = create<GCalState>((set, get) => ({
      * 것까지 ⌘Z에 걸리면, 시간을 되돌리려고 누른 손이 방금 쓴 문장을
      * 지웁니다 — 그건 편집기가 할 일이고 여기서 할 일이 아닙니다.
      */
+    if (!undoing && (patch.startDate || patch.endDate) && existing.allDay) {
+      // 종일 일정의 '그 전'은 날짜입니다. 되돌릴 때도 날짜로 보내야 구글이
+      // 종일인 채로 둡니다.
+      const stack = [...get().history, {
+        at: Date.now(), kind: 'time' as const, eventId,
+        startDate: existing.start, endDate: existing.end,
+      }]
+      set({ history: stack.slice(-MAX_CAL_HISTORY) })
+    }
     if (!undoing && (patch.startDateTime || patch.endDateTime) && existing.startIso && existing.endIso) {
       const stack = [...get().history, {
         at: Date.now(),
@@ -649,7 +684,13 @@ export const useGCalStore = create<GCalState>((set, get) => ({
         attendees: patch.attendees ? patch.attendees.map(email => ({ email })) : e.attendees,
         startIso: patch.startDateTime ?? e.startIso,
         endIso: patch.endDateTime ?? e.endIso,
-        start: (patch.startDateTime ?? e.startIso ?? `${e.start}T00:00:00`).slice(0, 10),
+        // 종일 일정에는 시각이 없습니다. 날짜 칸만 옮깁니다 — 여기서 시각
+        // 모양을 섞으면 화면이 잠깐 다른 종류의 일정처럼 그려집니다.
+        start: patch.startDate ?? (patch.startDateTime ?? e.startIso ?? `${e.start}T00:00:00`).slice(0, 10),
+        // 들어온 endDate는 구글 모양(안 포함)이고 우리가 들고 있는 end는
+        // 포함하는 날짜입니다. 읽어 올 때 하는 그 변환을 여기서도 합니다 —
+        // 안 하면 다시 불러오기 전까지 하루 길게 그려집니다.
+        end: patch.endDate ? inclusiveEnd(patch.startDate ?? e.start, patch.endDate) : e.end,
       } : e),
     })
 

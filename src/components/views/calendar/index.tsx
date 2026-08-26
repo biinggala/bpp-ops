@@ -8,6 +8,10 @@ import { useProjectStore } from '../../../store/projectStore'
 import { useGCalStore, warmCalendarAuth } from '../../../store/gcalStore'
 import { TimelineGrid, GUTTER as HOUR_GUTTER } from '../timeline'
 import { writableCalendars } from '../../../lib/googleCalendar'
+import { useOrgStore } from '../../../store/orgStore'
+import { useAuthStore } from '../../../store/authStore'
+import { useUserProfileStore } from '../../../store/userProfileStore'
+import { useToast } from '../../shared/Toast'
 import type { CalRange } from '../../../types'
 import type { GCalEvent } from '../../../store/gcalStore'
 import { awaitingMe } from '../../../store/gcalStore'
@@ -929,7 +933,23 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
     const ids = new Set(projects.map(p => p.id))
     return allMilestones.filter(m => ids.has(m.projectId))
   }, [allMilestones, projects])
-  const { token, events: gcalEvents, ensureEvents } = useGCalStore(useShallow(s => ({ token: s.token, events: s.events, ensureEvents: s.ensureEvents })))
+  const { token, events: gcalEvents, ensureEvents, updateEvent, calendars } = useGCalStore(useShallow(s => ({ token: s.token, events: s.events, ensureEvents: s.ensureEvents, updateEvent: s.updateEvent, calendars: s.calendars })))
+  const moveBookingToDate = useOrgStore(s => s.moveBookingToDate)
+  const myEmail = useAuthStore(s => s.email)
+  const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  /**
+   * 끌 수 있는 일정인가 — 내가 쓸 수 있는 캘린더의 것만.
+   *
+   * 남의 캘린더를 읽기만 하는 경우가 흔합니다(팀 공유 캘린더, 초대받은 회의).
+   * 그걸 끌게 두면 구글이 거절할 때까지는 옮겨진 것처럼 보이고, 되돌아가는
+   * 것을 보고서야 안 된다는 걸 압니다. 못 하는 일은 처음부터 안 잡히는
+   * 편이 낫습니다.
+   */
+  const writableIds = useMemo(
+    () => new Set(writableCalendars(calendars).map(c => c.id)),
+    [calendars],
+  )
+  const canMove = useCallback((ev: GCalEvent) => writableIds.has(ev.calendarId), [writableIds])
 
   // A buffer week above and below the six on screen, so a scroll parked between
   // two weeks has something to show in the gap.
@@ -976,6 +996,78 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
   const [dragOver, setDragOver]     = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
 
+  /**
+   * ── 일정을 다른 날로 ──────────────────────────────────────────────────────
+   *
+   * 시각은 그대로 두고 날짜만 옮깁니다. 3시 회의를 목요일로 끌면 목요일
+   * 3시입니다 — 달의 한 칸은 하루라, 그 안에서 몇 시인지는 이 화면이 묻지
+   * 않은 것입니다. 묻지 않은 것을 바꾸지 않습니다.
+   *
+   * 며칠짜리 일정은 **길이를 지킵니다.** 시작을 옮긴 만큼 끝도 같이 갑니다.
+   */
+  const moveEvent = useCallback(async (eventId: string, from: string, to: string) => {
+    if (from === to) return
+    const ev = useGCalStore.getState().events.find(e => e.id === eventId)
+    if (!ev) return
+    const offset = dayDiff(parseDate(from), parseDate(to))
+    const shift = (ymd: string) => fmt(addDays(parseDate(ymd), offset))
+    /**
+     * 시각 있는 일정의 새 시각.
+     *
+     * 문자열에서 날짜만 갈아 끼우면 구글이 준 시간대 꼬리표(`+09:00`)가 그대로
+     * 따라옵니다. 이 앱의 나머지가 보내는 모양은 **꼬리표 없는 벽시계 + 시간대
+     * 이름**이라(localIso), 섞으면 보는 사람의 시간대와 일정의 시간대가 다를 때
+     * 어긋납니다.
+     *
+     * 화면에 3시로 보이는 것을 끌었으면 옮긴 날도 3시입니다. 그게 사람이
+     * 방금 한 일이고, 날짜에 더하는 것이라 서머타임 경계도 알아서 맞습니다.
+     */
+    const shiftIso = (iso: string | undefined, fallbackDay: string) => {
+      if (!iso) return `${shift(fallbackDay)}T00:00:00`
+      const d = new Date(iso)
+      d.setDate(d.getDate() + offset)
+      const pad = (n: number) => String(n).padStart(2, '0')
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+        + `T${pad(d.getHours())}:${pad(d.getMinutes())}:00`
+    }
+
+    const ok = ev.allDay
+      /**
+       * 끝 날짜에 하루를 더합니다.
+       *
+       * 구글에서 종일 일정의 end는 **안 포함하는** 값입니다 — 8월 26일
+       * 하루짜리의 end가 8월 27일입니다. 우리는 읽어 올 때 하루를 빼서
+       * 포함하는 값으로 바꿔 뒀고(gcalStore의 toGCalEvent), 돌려보낼 때는
+       * 다시 더해야 합니다. 안 더하면 옮길 때마다 하루씩 짧아집니다.
+       */
+      ? await updateEvent(eventId, {
+          startDate: shift(ev.start),
+          endDate: fmt(addDays(parseDate(shift(ev.end)), 1)),
+        })
+      : await updateEvent(eventId, {
+          startDateTime: shiftIso(ev.startIso, ev.start),
+          endDateTime: shiftIso(ev.endIso, ev.end),
+        })
+    if (!ok) return
+
+    /**
+     * 회의실 예약도 따라갑니다.
+     *
+     * 안 따라가면 예약은 옛 날짜에 남습니다 — 목요일로 미룬 회의의 방이
+     * 화요일에 잡혀 있고, 목요일에는 남이 그 방을 잡을 수 있습니다. 화면에는
+     * 아무 문제가 없어 보이고, 회의 시간에 방에 가면 다른 팀이 있습니다.
+     *
+     * 옮긴 날에 이미 남의 예약이 있으면 일정만 가고 방은 남습니다. 그때는
+     * 조용히 넘기지 않고 말해 줍니다 — 방이 없어진 것을 회의 당일에 알면
+     * 그때는 늦습니다.
+     */
+    if (!myEmail) return
+    const { moved, roomName } = await moveBookingToDate(from, to, eventId, myEmail, getNameByEmail(myEmail))
+    if (moved === 'busy') {
+      useToast.getState().show(`${roomName ?? '회의실'} 예약은 못 옮겼습니다 — 그날 이미 잡혀 있습니다`)
+    }
+  }, [updateEvent, moveBookingToDate, myEmail, getNameByEmail])
+
   const todayStr = fmt(new Date())
 
   const cells: { date: Date; isCurrentMonth: boolean }[] = []
@@ -994,6 +1086,25 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
       updateMilestone(milestoneId, { dueDate: dropDay })
       setDragOver(null)
       setDraggingId(null)
+      return
+    }
+
+    /**
+     * ── 구글 일정 옮기기 ──────────────────────────────────────────────────
+     *
+     * 시각은 그대로 두고 **날짜만** 옮깁니다. 3시 회의를 목요일로 끌면
+     * 목요일 3시입니다 — 달의 한 칸은 하루라, 그 안에서 몇 시인지는 이
+     * 화면이 묻지 않은 것입니다. 묻지 않은 것을 바꾸면 안 됩니다.
+     *
+     * 종일 일정은 날짜로만 삽니다. 시각 모양으로 고치려 하면 구글이 종일이
+     * 아닌 일정으로 바꿔 버립니다 — 옮기려다 종류를 바꾸는 셈입니다.
+     */
+    const eventId = e.dataTransfer.getData('eventId')
+    const eventFrom = e.dataTransfer.getData('fromDate')
+    if (eventId && eventFrom) {
+      setDragOver(null)
+      setDraggingId(null)
+      void moveEvent(eventId, eventFrom, dropDay)
       return
     }
 
@@ -1019,7 +1130,7 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
       updateTask(id, cp)
     })
     setDragOver(null)
-  }, [tasks, allTasks, updateTask, updateMilestone])
+  }, [tasks, allTasks, updateTask, updateMilestone, moveEvent])
 
   const onDragOverDay   = useCallback((day: string) => setDragOver(day), [])
   const onDragLeaveDay  = useCallback(() => setDragOver(null), [])
@@ -1079,6 +1190,7 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
                 chips={chipsByDate.get(dateStr)}
                 milestones={milestoneByDate[dateStr]}
                 draggingId={draggingId}
+                canMove={canMove}
                 onDragOverDay={onDragOverDay}
                 onDragLeaveDay={onDragLeaveDay}
                 onDropDay={handleDrop}
@@ -1105,7 +1217,7 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
  */
 const MonthCell = React.memo(function MonthCell({
   day, dayOfMonth, column, isCurrentMonth, isToday, isDragTarget,
-  chips, milestones, draggingId,
+  chips, milestones, draggingId, canMove,
   onDragOverDay, onDragLeaveDay, onDropDay, onPlanDay, onOpenTask,
   onTaskDragStart, onTaskDragEnd,
 }: {
@@ -1118,6 +1230,8 @@ const MonthCell = React.memo(function MonthCell({
   chips?: Chip[]
   milestones?: { id: string; name: string; color: string }[]
   draggingId: string | null
+  /** 이 일정을 끌 수 있나 — 내가 쓸 수 있는 캘린더의 것만. */
+  canMove: (ev: GCalEvent) => boolean
   onDragOverDay: (day: string) => void
   onDragLeaveDay: () => void
   onDropDay: (e: React.DragEvent, day: string) => void
@@ -1196,13 +1310,26 @@ const MonthCell = React.memo(function MonthCell({
         {visible.map((chip, ci) => {
           if (chip.kind === 'gcal') {
             const ev = chip.ev
+            const movable = canMove(ev)
             return (
               <a
                 key={ev.id}
                 href={ev.htmlLink}
                 target="_blank"
                 rel="noopener noreferrer"
-                title={ev.summary}
+                title={movable ? `${ev.summary} — 끌어서 날짜 변경` : ev.summary}
+                draggable={movable}
+                onDragStart={movable ? (e => {
+                  e.stopPropagation()
+                  // 링크는 브라우저가 알아서 '주소 끌기'로 만듭니다. 그 위에
+                  // 우리 것을 덮어써야 놓는 쪽이 무엇을 받았는지 압니다.
+                  e.dataTransfer.clearData()
+                  e.dataTransfer.setData('eventId', ev.id)
+                  e.dataTransfer.setData('fromDate', day)
+                  e.dataTransfer.effectAllowed = 'move'
+                  onTaskDragStart(ev.id)
+                }) : undefined}
+                onDragEnd={movable ? onTaskDragEnd : undefined}
                 /* 아직 수락 안 한 초대는 칠하지 않고 점선으로. 달의 한 칸에
                    칩이 넷 놓일 때, 확정된 것만 칠해져 있어야 그날이 실제로
                    얼마나 찼는지 보입니다. */
@@ -1210,14 +1337,16 @@ const MonthCell = React.memo(function MonthCell({
                   fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3,
                   color: GCAL_TEXT, overflow: 'hidden', textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap', textDecoration: 'none', display: 'block',
-                  cursor: 'pointer', minWidth: 0, boxSizing: 'border-box',
+                  cursor: movable ? 'grab' : 'pointer', minWidth: 0, boxSizing: 'border-box',
+                  userSelect: 'none',
+                  opacity: draggingId === ev.id ? .35 : 1, transition: 'opacity .1s',
                   ...(awaitingMe(ev)
                     ? { background: 'transparent', border: `1px dashed ${GCAL_TEXT}` }
                     : { background: GCAL_BG }),
                 }}
                 onClick={e => e.stopPropagation()}
-                onMouseEnter={e => e.currentTarget.style.opacity = '.75'}
-                onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                onMouseEnter={e => { if (draggingId !== ev.id) e.currentTarget.style.opacity = '.75' }}
+                onMouseLeave={e => { if (draggingId !== ev.id) e.currentTarget.style.opacity = '1' }}
               >
                 {ev.startTime ? `${ev.startTime} ` : ''}{ev.summary}
               </a>

@@ -192,6 +192,19 @@ interface OrgState {
   /** 관리자가 아무도 없는 조직을 맡습니다. 규칙도 이걸 허용합니다. */
   claimAdmin: (email: string) => Promise<boolean>
   release: (date: string, bookingId: string) => Promise<void>
+  /**
+   * 회의를 다른 **날짜**로 옮길 때 그 방 예약도 같이 옮깁니다.
+   *
+   * 안 따라가면 예약은 옛 날짜에 남습니다 — 목요일로 미룬 회의의 방이
+   * 화요일에 잡혀 있고, 목요일에는 남이 그 방을 잡을 수 있습니다. 화면에는
+   * 아무 문제가 없어 보이고, 회의 시간에 방에 가면 다른 팀이 있습니다.
+   *
+   * 구독하지 않고 **그때 한 번 읽습니다.** 달력은 한 달을 그리는데 그 서른
+   * 몇 날의 예약을 늘 듣고 있을 이유가 없습니다 — 필요한 순간은 놓는 그
+   * 한 번뿐입니다.
+   */
+  moveBookingToDate: (fromDate: string, toDate: string, eventId: string, by: string, byName?: string)
+    => Promise<{ moved: 'yes' | 'none' | 'busy'; roomName?: string }>
   /** 일정을 지우거나 회의실을 바꿀 때. 그 일정에 붙은 예약을 다 풉니다. */
   releaseForEvent: (date: string, eventId: string) => Promise<void>
   /**
@@ -956,6 +969,32 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     if (!orgId) return
     await remove(ref(db, P.orgBooking(orgId, date, bookingId)))
       .catch(e => set({ error: e instanceof Error ? e.message : '예약을 풀지 못했습니다' }))
+  },
+
+  moveBookingToDate: async (fromDate, toDate, eventId, by, byName) => {
+    const { orgId } = get()
+    if (!orgId || fromDate === toDate) return { moved: 'none' }
+    type Row = Booking & { id: string }
+    const read = async (date: string): Promise<Row[]> => {
+      const snap = await fbGet(ref(db, P.orgBookings(orgId, date))).catch(() => null)
+      return list<Booking>(snap?.val() ?? null)
+    }
+    const held = (await read(fromDate)).find(b => b.eventId === eventId)
+    if (!held) return { moved: 'none' }
+    const roomName = held.roomName ?? get().rooms.find(r => r.id === held.roomId)?.name
+
+    // 가는 날에 그 방이 이미 차 있으면 **옮기지 않고 말해 줍니다.** 조용히
+    // 풀면 방 없는 회의가 되고, 억지로 겹치면 두 팀이 같은 방에 갑니다.
+    const taken = (await read(toDate)).some(b => b.roomId === held.roomId && b.eventId !== eventId && overlaps(b, held))
+    if (taken) return { moved: 'busy', roomName }
+
+    const ok = await get().book({
+      date: toDate, roomId: held.roomId, from: held.from, to: held.to,
+      title: held.title, eventId, by, byName,
+    })
+    if (!ok) return { moved: 'busy', roomName }
+    await get().release(fromDate, held.id)
+    return { moved: 'yes', roomName }
   },
 
   releaseForEvent: async (date, eventId) => {

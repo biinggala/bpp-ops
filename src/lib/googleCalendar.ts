@@ -251,6 +251,19 @@ export interface EventPatch {
   description?: string
   startDateTime?: string
   endDateTime?: string
+  /**
+   * 종일 일정의 날짜. `startDateTime`과 **같이 보내면 안 됩니다** — 구글은
+   * 하나만 받습니다.
+   *
+   * 종일 일정은 시간이 아니라 날짜로 삽니다. 시간 있는 일정의 모양으로
+   * 고치려 하면 구글이 거절합니다. 달력에서 끌어 옮기는 것은 종일 쪽이
+   * 오히려 흔해서(휴가, 출장, 마감일) 이 칸이 필요합니다.
+   *
+   * **끝 날짜는 하루 뒤입니다.** 구글에서 종일 일정의 end는 안 포함하는
+   * 값이라, 8월 26일 하루짜리는 end가 8월 27일입니다.
+   */
+  startDate?: string
+  endDate?: string
   timeZone?: string
   attendees?: string[]
 }
@@ -266,6 +279,10 @@ export async function updateCalendarEvent(
   if (patch.description !== undefined) body.description = patch.description
   if (patch.startDateTime) body.start = { dateTime: patch.startDateTime, timeZone }
   if (patch.endDateTime) body.end = { dateTime: patch.endDateTime, timeZone }
+  // 종일 쪽. dateTime과 섞어 보내지 않습니다 — 부르는 쪽이 둘 중 하나만
+  // 채웁니다(EventPatch 주석).
+  if (patch.startDate) body.start = { date: patch.startDate }
+  if (patch.endDate) body.end = { date: patch.endDate }
   if (patch.attendees) body.attendees = patch.attendees.map(email => ({ email }))
 
   const res = await fetch(
