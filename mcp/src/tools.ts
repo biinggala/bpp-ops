@@ -656,18 +656,30 @@ export function registerTools(server: McpServer, ctx: Ctx) {
    * 일이라 다릅니다.
    */
 
+  /*
+   * ── 보관하고 되돌리는 것도 여기 없습니다 ──────────────────────────────────
+   *
+   * 프로젝트 만드는 도구를 뺀 것과 같은 이유입니다. 보관은 그 프로젝트를
+   * **모두의 사이드바에서 내리고**, 전체 업무·내 할 일·통계에서 빼는 일입니다.
+   * 한 사람이 자기 화면을 정리하는 것이 아니라 오십 명이 읽는 목록을
+   * 바꾸는 것이고, 그건 그 일이 정말 끝났는지 아는 사람이 정해야 합니다.
+   *
+   * 이름·색·마감·선반은 남깁니다. 그것들은 이미 있고 이미 보이는 것을 고치는
+   * 일이고, 틀리면 눈에 보이니 누구든 되돌립니다. 보관은 **안 보이게 되는
+   * 것이라 틀린 것도 안 보입니다.**
+   */
   server.registerTool(
     'update_project',
     {
       title: '프로젝트 수정',
-      description: 'Renames a project, sets its colour, deadline or sidebar group, or archives it. Membership is not editable here.',
+      description:
+        'Renames a project, sets its colour, deadline or sidebar group. Membership is not editable here, and neither is archiving — putting a project away or bringing it back is done in the app.',
       inputSchema: {
         project_id: z.string(),
         name: z.string().optional(),
         color: z.string().optional(),
         due_date: YMD.optional(),
         client_name: z.string().optional(),
-        archived: z.boolean().optional(),
         // The sidebar shelf this project sits on, shared by everyone who can
         // see it. An empty string takes it off its shelf.
         group: z.string().optional(),
@@ -681,7 +693,6 @@ export function registerTools(server: McpServer, ctx: Ctx) {
         ...(args.color !== undefined ? { color: args.color } : {}),
         ...(args.due_date !== undefined ? { dueDate: args.due_date } : {}),
         ...(args.client_name !== undefined ? { clientName: args.client_name } : {}),
-        ...(args.archived !== undefined ? { archived: args.archived } : {}),
         ...(args.group !== undefined ? { group: args.group || null } : {}),
       })
       return text({ updated: args.project_id })
