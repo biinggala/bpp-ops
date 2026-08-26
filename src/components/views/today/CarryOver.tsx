@@ -104,10 +104,9 @@ export function CarryOver({ editor }: { editor: Editor | null }) {
   const [done, setDone] = useState(false)
 
   const today = fmtYMD(new Date())
-  const dismissKey = `bpp_carry_${today}`
 
   useEffect(() => {
-    if (!email || localStorage.getItem(dismissKey)) return
+    if (!email) return
     let cancelled = false
     void (async () => {
       // 가장 가까운 '노트가 있는 날' 하나만 봅니다. 주말을 건너뛰되, 지난
@@ -165,11 +164,6 @@ export function CarryOver({ editor }: { editor: Editor | null }) {
 
   if (done || !items.length) return null
 
-  const dismiss = () => {
-    localStorage.setItem(dismissKey, '1')
-    setDone(true)
-  }
-
   const bring = () => {
     if (!editor || editor.isDestroyed || !chosen.length) return
     const todos = chosen.filter(it => it.kind === 'todo')
@@ -182,12 +176,28 @@ export function CarryOver({ editor }: { editor: Editor | null }) {
     }
     html += refs.map(it => `<div data-task-ref data-task-id="${it.taskId}"></div>`).join('')
     editor.chain().focus('end').insertContent(html).run()
-    localStorage.setItem(dismissKey, '1')
+    // 넣고 나면 노트에 글이 생겨서 부모가 이 줄을 아예 안 그립니다. 그
+    // 상태가 한 박자 늦게 오므로 여기서 먼저 접습니다.
     setDone(true)
   }
 
   const label = `${dayLabelFor(source!.date)} 못 끝낸 것 ${items.length}개`
 
+  /**
+   * ── 닫는 단추가 없습니다 ────────────────────────────────────────────────
+   *
+   * 있었는데 뺐습니다. 이 줄은 **오늘 노트가 비어 있을 때만** 섭니다 — 한
+   * 글자만 적어도, 가져오기만 해도 사라집니다. 나가는 길이 이미 둘인데
+   * 세 번째를 옆에 붙여 두면, 한 줄에 할 수 있는 일이 두 가지가 되고 그
+   * 둘은 서로 반대입니다.
+   *
+   * 그리고 그 단추는 약속을 못 지켰습니다. 닫은 기록이 이 기기에만 남아서
+   * 노트북에서 닫아도 폰에서 다시 떴습니다.
+   *
+   * 무엇보다, 이 줄이 있는 이유가 **미뤄지는 일이 미뤄진다는 사실을 보이게
+   * 하는 것**입니다(맨 위 주석). 그걸 한 번에 숨기는 단추는 그 이유와
+   * 반대로 갑니다. 오늘 안 할 거면 그냥 두면 됩니다 — 회색 한 줄입니다.
+   */
   if (!open) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 0 8px' }}>
@@ -199,8 +209,6 @@ export function CarryOver({ editor }: { editor: Editor | null }) {
         >
           {label} · 가져오기
         </button>
-        <button onClick={dismiss} aria-label="닫기"
-          style={{ border: 'none', background: 'transparent', padding: '0 4px', cursor: 'pointer', fontSize: 12, color: 'var(--t3)' }}>×</button>
       </div>
     )
   }
@@ -212,7 +220,10 @@ export function CarryOver({ editor }: { editor: Editor | null }) {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
         <span style={{ flex: 1, fontSize: 12, color: 'var(--t2)' }}>{label}</span>
-        <button onClick={dismiss} aria-label="닫기"
+        {/* 펼친 것을 도로 접습니다. 여기서는 '오늘 안 보기'가 아니라
+            '아까 그 한 줄로 돌아가기'입니다 — 펼친 것을 되돌리는 것뿐이니
+            보이는 대로 행동해야 합니다. */}
+        <button onClick={() => setOpen(false)} aria-label="접기"
           style={{ border: 'none', background: 'transparent', padding: '0 2px', cursor: 'pointer', fontSize: 12, color: 'var(--t3)' }}>×</button>
       </div>
       {items.map(it => (
