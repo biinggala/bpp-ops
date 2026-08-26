@@ -7,6 +7,7 @@ import { disablePush, enablePush, pushEnabledHere, pushSupport, showLocalNotice 
 import { chimeEnabled, playChime, setChimeEnabled } from '../../lib/chime'
 import { fileWatchEnabled, setFileWatchEnabled } from '../../lib/driveWatch'
 import { useDriveStore } from '../../store/driveStore'
+import { useGCalStore } from '../../store/gcalStore'
 import { useMailStore } from '../../store/mailStore'
 import { useNotionStore } from '../../store/notionStore'
 import { PUBLIC_DOMAINS, useOrgStore, pendingJoinCount } from '../../store/orgStore'
@@ -101,7 +102,7 @@ export function SettingsModal({ onClose, start = 'general' }: {
   const pages: { id: Page; label: string; note: string; group: string; badge?: number }[] = [
     { id: 'general', label: '일반', group: '내 계정', note: '이 기기에서 보이는 것들. 다른 사람 화면은 안 바뀝니다.' },
     { id: 'notify', label: '알림', group: '내 계정', note: '언제 무엇으로 알릴지. 기기마다 따로 정합니다 — 노트북에서 켠다고 폰이 켜지지는 않습니다.' },
-    { id: 'link', label: '연동', group: '내 계정', note: '밖에서 온 소식을 알림함과 찾기에 들이는 통로입니다. 이 기기가 아니라 계정에 붙습니다.' },
+    { id: 'link', label: '연동', group: '내 계정', note: '밖에서 온 것을 알림함과 찾기에 들이는 통로입니다.' },
     { id: 'trash', label: '휴지통', group: '내 계정', note: "지운 업무가 여기 남습니다. 되살리면 원래 프로젝트로, 원래 이름 그대로 돌아옵니다. '영영 지우기'는 되돌릴 수 없습니다." },
     { id: 'org', label: '관리', group: '워크스페이스', note: '회의실과, 모두에게 공개한 프로젝트 목록을 함께 두는 단위입니다. 여기서 고치면 모두의 화면이 바뀝니다.' },
     ...(orgId ? [
@@ -202,11 +203,24 @@ export function SettingsModal({ onClose, start = 'general' }: {
             )}
 
             {page === 'link' && (
-              <Section>
-                <MailLinkRow />
-                <NotionLinkRow />
-                <ConnectorRow />
-              </Section>
+              <>
+                <Section title="계정에 붙습니다" note="한 번 해 두면 폰에서도 그대로입니다.">
+                  <MailLinkRow />
+                  <NotionLinkRow />
+                  <ConnectorRow />
+                </Section>
+                {/*
+                  ── 왜 갈라 놓나 ──────────────────────────────────────────
+                  구글 것은 **열쇠가 이 브라우저에 삽니다.** 노트북에서 켜도
+                  폰에서는 폰에서 한 번 더 눌러야 실제로 됩니다. 위의 것들과
+                  섞어 놓으면 한 번 켜면 어디서나 된다고 읽히고, 폰에서 안
+                  되는 것이 고장으로 보입니다.
+                */}
+                <Section title="이 기기에 붙습니다" note="열쇠가 이 브라우저에 살아서, 폰에서는 폰에서 한 번 더 눌러야 합니다.">
+                  <GoogleLinkRow which="calendar" />
+                  <GoogleLinkRow which="drive" />
+                </Section>
+              </>
             )}
 
             {page === 'trash' && <TrashSection />}
@@ -631,6 +645,60 @@ function MailLinkRow() {
  * 그래서 눌러 놓고 여기 돌아오면 스위치가 저절로 켜져 있습니다 — DB의 한
  * 줄을 보고 있기 때문입니다.
  */
+/**
+ * ── 구글 캘린더 · 구글 드라이브 ─────────────────────────────────────────────
+ *
+ * 여기 없었습니다. 켜는 자리가 **처음 안내 화면에만** 있었고, 거기 마지막
+ * 줄이 '나중에 설정에서도 할 수 있습니다'라고 말하고 있었습니다 — 지킬 수
+ * 없는 말이었습니다. 안내를 한 번 넘기고 나면 다시 켤 데가 없었습니다.
+ *
+ * **켜졌는지를 `token`만으로 판단하지 않습니다.** 토큰은 한 시간이면
+ * 만료되는데, 한 번 켠 사람은 앱이 조용히 다시 받아 옵니다. 토큰만 보면
+ * 설정을 한 시간 뒤에 열 때마다 '꺼짐'으로 보이고, 그건 참이 아닙니다.
+ * 끊는 것은 `disconnect`가 그 기록까지 지웁니다.
+ */
+function GoogleLinkRow({ which }: { which: 'calendar' | 'drive' }) {
+  const drive = useDriveStore(useShallow(s => ({
+    token: s.token, was: s.wasConnected, connecting: s.connecting, error: s.error,
+    connect: s.connect, disconnect: s.disconnect,
+  })))
+  // 캘린더 쪽은 '연결 중'이라는 이름의 값이 없습니다. 조용히 다시 붙는 중과
+  // 목록을 읽는 중 둘을 합쳐서 씁니다 — 처음 안내 화면이 쓰던 것과 같습니다.
+  const cal = useGCalStore(useShallow(s => ({
+    token: s.token, was: s.wasConnected, connecting: s.loading || s.autoRefreshing, error: s.error,
+    connect: s.connect, disconnect: s.disconnect,
+  })))
+  const it = which === 'drive' ? drive : cal
+  const on = !!it.token || it.was
+
+  const label = which === 'drive' ? '구글 드라이브' : '구글 캘린더'
+  const sub = it.error ? it.error
+    : it.connecting ? '구글 창에서 허용하면 여기가 켜집니다'
+    : on
+      ? which === 'drive'
+        ? '문서를 업무에 붙이고, 찾기에서 같이 찾습니다'
+        : '일정이 하루 화면에 보이고, 회의실을 여기서 잡습니다'
+      : which === 'drive'
+        ? '내 드라이브만 읽습니다. 공유 상태는 그대로입니다.'
+        : '읽기만 합니다. 쓰기는 회의실을 잡을 때 따로 묻습니다.'
+
+  return (
+    <div style={ROW}>
+      <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE }}>
+        {label}
+        <span style={{ display: 'block', ...ROW_SUB, ...(it.error ? { color: 'var(--danger)' } : null) }}>
+          {sub}
+        </span>
+      </span>
+      <MiniSwitch
+        on={on}
+        busy={it.connecting}
+        onClick={() => { if (on) it.disconnect(); else void it.connect() }}
+      />
+    </div>
+  )
+}
+
 function NotionLinkRow() {
   const available = useNotionStore(s => s.available)
   const checkAvailable = useNotionStore(s => s.checkAvailable)
