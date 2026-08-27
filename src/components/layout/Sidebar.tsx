@@ -87,7 +87,7 @@ export function Sidebar() {
   const { projects, addProject, updateProject, deleteProject, addMember, removeMember } = useProjectStore(useShallow(s => ({ projects: s.projects, addProject: s.addProject, updateProject: s.updateProject, deleteProject: s.deleteProject, addMember: s.addMember, removeMember: s.removeMember })))
   const deleteMilestonesForProject = useMilestoneStore(s => s.deleteMilestonesForProject)
   const { displayName, email, photoURL, signOutUser } = useAuthStore(useShallow(s => ({ displayName: s.displayName, email: s.email, photoURL: s.photoURL, signOutUser: s.signOutUser })))
-  const { orgName, myOrgs } = useOrgStore(useShallow(s => ({ orgName: s.name, myOrgs: s.myOrgs })))
+  const { orgName, myOrgs, isGuest } = useOrgStore(useShallow(s => ({ orgName: s.name, myOrgs: s.myOrgs, isGuest: s.isGuest })))
   const setActiveOrg = usePrefsStore(s => s.setActiveOrg)
 
   // Project state
@@ -614,6 +614,10 @@ export function Sidebar() {
                         background: tint, color: '#fff', fontSize: 10, fontWeight: 700,
                       }}>{o.name.trim()[0]?.toUpperCase() ?? 'W'}</span>
                       <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: on ? 600 : 400 }}>{o.name}</span>
+                      {/* 게스트로 들어가 있는 곳이라고 적습니다. 안 적으면 내
+                          회사와 남의 회사가 같은 줄로 보이고, 거기 서서
+                          회의실을 찾다가 없는 이유를 못 찾습니다. */}
+                      {o.guest && <span style={{ flexShrink: 0, fontSize: 10, color: 'var(--t3)' }}>게스트</span>}
                       {on && <span style={{ flexShrink: 0, color: 'var(--ac)', fontSize: 11 }}>✓</span>}
                     </button>
                   )
@@ -738,6 +742,9 @@ export function Sidebar() {
             촬영이 잡혔을 때 여는 곳입니다. 굵은 줄이 셋이면 굵기가 아무
             말도 안 하게 됩니다.
           */}
+          {/* 게스트에게는 이 줄이 없습니다. 회의실도 장비도 못 읽으므로
+              눌러 봐야 빈 화면이고, 눌러도 안 되는 것을 눌리게 두지 않습니다. */}
+          {!isGuest && (
           <NavItem
             active={screen === 'res'}
             onClick={() => { setScreen('res'); closeSidebar() }}
@@ -745,6 +752,7 @@ export function Sidebar() {
           >
             회의실 · 장비
           </NavItem>
+          )}
 
           {/*
             여기서 한 번 끊깁니다.

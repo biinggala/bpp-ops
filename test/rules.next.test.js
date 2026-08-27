@@ -948,3 +948,53 @@ test('장비에 종류를 적고, 같이 잡은 것끼리 묶습니다', async (
   await assertSucceeds(set(ref(db, `orgs/${oid}/gearBookings/b1`), { ...GEAR_ROW(BOB), group: 'trip1' }))
   await assertSucceeds(set(ref(db, `orgs/${oid}/gearBookings/b2`), { ...GEAR_ROW(BOB), gearId: 'light1', group: 'trip1' }))
 })
+
+/**
+ * ── 게스트는 이름만 봅니다 ───────────────────────────────────────────────────
+ *
+ * 게스트는 워크스페이스 노드를 못 읽습니다. 그래서 화면에서 그 자리가 아예
+ * 없었고, 초대받은 사람은 자기가 어디에 초대된 건지 알 방법이 없었습니다 —
+ * 프로젝트 하나가 출처 없이 떠 있었습니다.
+ *
+ * 이름 하나만 엽니다. `meta` 통째로 열면 owner 주소와 도메인까지 같이 나가고,
+ * 그건 물어본 적 없는 것입니다. 회의실·장비·명단·공개 목록은 그대로 닫혀
+ * 있습니다 — 여는 것은 이름 한 줄이지 자리가 아닙니다.
+ */
+test('게스트는 워크스페이스 이름만 읽는다', async () => {
+  const oid = 'gv1'
+  await org(oid, { name: '블랙페이퍼', domain: 'bpp.co.kr', owner: 'alice@bpp,co,kr' }, {
+    [ALICE.email]: { role: 'member', at: 1 },
+    [MALLORY.email]: { role: 'guest', at: 1 },
+  })
+  await asAdmin(oid, ALICE)
+  await assertSucceeds(set(ref(authed(ALICE), `orgs/${oid}/rooms/r1`), { name: '대회의실' }))
+
+  const guest = authed(MALLORY)
+  await assertSucceeds(get(ref(guest, `orgs/${oid}/meta/name`)))
+  // 나머지는 그대로 닫혀 있습니다.
+  await assertFails(get(ref(guest, `orgs/${oid}/meta`)))
+  await assertFails(get(ref(guest, `orgs/${oid}/meta/owner`)))
+  await assertFails(get(ref(guest, `orgs/${oid}/rooms`)))
+  await assertFails(get(ref(guest, `orgs/${oid}/members`)))
+  await assertFails(get(ref(guest, `orgs/${oid}/projects`)))
+  await assertFails(get(ref(guest, `orgs/${oid}`)))
+  // 이름을 고치지도 못합니다.
+  await assertFails(set(ref(guest, `orgs/${oid}/meta`), { name: '내 회사' }))
+})
+
+test('명단에 없는 바깥 사람은 이름도 못 읽는다', async () => {
+  const oid = 'gv2'
+  await org(oid, { name: '블랙페이퍼', domain: 'bpp.co.kr' }, { [ALICE.email]: { role: 'member', at: 1 } })
+  // 게스트 자리조차 없는 사람. 워크스페이스 이름은 '우리가 누구인지'라서,
+  // 아무 관계도 없는 사람에게까지 열 이유가 없습니다.
+  await assertFails(get(ref(authed(MALLORY), `orgs/${oid}/meta/name`)))
+})
+
+test('내보낸 사람은 이름도 다시 못 읽는다', async () => {
+  const oid = 'gv3'
+  await org(oid, { name: '블랙페이퍼', domain: 'bpp.co.kr' }, {
+    [ALICE.email]: { role: 'member', at: 1 },
+    [MALLORY.email]: { role: 'removed', at: 2 },
+  })
+  await assertFails(get(ref(authed(MALLORY), `orgs/${oid}/meta/name`)))
+})

@@ -90,6 +90,8 @@ export function SettingsModal({ onClose, start = 'general' }: {
   const [openNew] = useState(start === 'org-new')
   const email = useAuthStore(s => s.email)
   const orgId = useOrgStore(s => s.orgId)
+  const isGuest = useOrgStore(s => s.isGuest)
+  const orgName = useOrgStore(s => s.name)
   const joinRequests = useOrgStore(s => s.joinRequests)
   const myProjects = useProjectStore(s => s.projects)
   const pending = useMemo(
@@ -119,10 +121,14 @@ export function SettingsModal({ onClose, start = 'general' }: {
     { id: 'notify', label: '알림', group: '내 계정', note: '언제 무엇으로 알릴지. 기기마다 따로 정합니다 — 노트북에서 켠다고 폰이 켜지지는 않습니다.' },
     { id: 'link', label: '연동', group: '내 계정', note: '밖에서 온 것을 알림함과 찾기에 들이는 통로입니다.' },
     { id: 'trash', label: '휴지통', group: '내 계정', note: "지운 업무가 여기 남습니다. 되살리면 원래 프로젝트로, 원래 이름 그대로 돌아옵니다. '영영 지우기'는 되돌릴 수 없습니다." },
-    { id: 'org', label: '개요', group: '워크스페이스', note: orgId
+    { id: 'org', label: '개요', group: '워크스페이스', note: isGuest
+      ? `${orgName || '이 워크스페이스'}에 게스트로 들어와 있습니다. 초대받은 프로젝트만 보이고, 회의실·장비·명단은 안 열립니다. 내 워크스페이스는 따로 만들 수 있습니다.`
+      : orgId
       ? '이 워크스페이스 자체 — 이름, 들어오는 방법, 없애는 자리. 사람과 회의실은 아래 각각의 장에 있습니다.'
       : '아직 워크스페이스가 없습니다. 만들면 회의실과 공개 프로젝트 목록, 명단이 생깁니다.' },
-    ...(orgId ? [
+    // 게스트에게는 워크스페이스 장들이 없습니다. 명단도 회의실도 장비도 공개
+    // 목록도 못 읽으므로, 열어 두면 빈 화면 넷과 권한 오류 넷이 남습니다.
+    ...(orgId && !isGuest ? [
       { id: 'members' as Page, label: '멤버', group: '워크스페이스', note: '누가 여기 있고 무엇을 할 수 있는지. 관리자·멤버·게스트를 이 한 자리에서 정합니다.' },
       { id: 'rooms' as Page, label: '회의실', group: '워크스페이스', note: '함께 보는 목록입니다. 예약은 전원이 할 수 있고, 목록을 고치는 것은 관리자입니다.' },
       { id: 'gear' as Page, label: '장비', group: '워크스페이스', note: '카메라·렌즈처럼 빌려 나가는 것들. 목록은 관리자가, 예약은 전원이 합니다 — 먼저 잡는 사람이 임자입니다.' },
@@ -920,14 +926,40 @@ function MakeWorkspace({ email, myDomain, domainTaken }: {
 
 function OrgSection({ openNew = false }: { openNew?: boolean }) {
   const email = useAuthStore(s => s.email)
-  const { orgId, name, domain, admins, ready } = useOrgStore(useShallow(s => ({
-    orgId: s.orgId, name: s.name, domain: s.domain, admins: s.admins, ready: s.ready,
+  const { orgId, name, domain, admins, ready, isGuest } = useOrgStore(useShallow(s => ({
+    orgId: s.orgId, name: s.name, domain: s.domain, admins: s.admins, ready: s.ready, isGuest: s.isGuest,
   })))
   const [adding, setAdding] = useState(openNew)
   const myDomain = email?.split('@')[1] ?? ''
 
   if (!email) return null
   if (!ready) return <div style={{ fontSize: 12, color: 'var(--t3)' }}>불러오는 중…</div>
+
+  /**
+   * 게스트에게는 이 워크스페이스에 대해 **할 수 있는 일이 없습니다.**
+   *
+   * 이름을 못 고치고, 사람을 못 부르고, 지울 수도 없습니다. 그래서 그 칸들을
+   * 안 그리고 대신 지금 상태를 한 줄로 말합니다 — 여기서 무엇을 볼 수 있고
+   * 무엇이 안 열리는지. 그러고 나서 만들 자리를 냅니다: 남의 회사에 손님으로
+   * 있는 것과 내 워크스페이스를 갖는 것은 다른 일입니다.
+   */
+  if (isGuest) {
+    return (
+      <>
+        <Section title={name || '이 워크스페이스'} note="초대받아 들어와 있습니다.">
+          <div style={{ ...ROW_SUB, marginTop: 2, lineHeight: 1.8 }}>
+            보이는 것은 <b style={{ color: 'var(--t2)' }}>초대받은 프로젝트</b>뿐입니다.
+            회의실·장비·명단과 공개 프로젝트 목록은 이 워크스페이스 사람들 것이라 안 열립니다.
+            <br />
+            더 봐야 할 것이 있으면 부른 사람에게 말하면 됩니다 — 자리를 올리는 것은 그쪽 관리자가 합니다.
+          </div>
+        </Section>
+        <Section title="내 워크스페이스" note="손님으로 있는 곳과는 별개입니다. 만들면 내가 첫 관리자입니다.">
+          <MakeWorkspace email={email} myDomain={myDomain} domainTaken={false} />
+        </Section>
+      </>
+    )
+  }
 
   if (!orgId) {
     return (
