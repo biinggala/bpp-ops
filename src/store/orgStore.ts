@@ -247,7 +247,14 @@ interface OrgState {
    * 구독하지 않습니다 — 오십 명짜리 명단을 늘 듣고 있을 이유가 없고, 이걸
    * 보는 자리는 설정 한 곳뿐입니다.
    */
-  listMembers: () => Promise<{ email: string; role: string; at?: number }[]>
+  /**
+   * 워크스페이스 명단.
+   *
+   * `by`는 **누가 들였는가**입니다. 게스트 줄에 이게 없으면 '이 사람 왜 여기
+   * 있지'를 화면에서 답할 방법이 없어서, 관리자는 모르는 주소 여섯 개를 보고
+   * 지워야 하나 말아야 하나만 고민하게 됩니다.
+   */
+  listMembers: () => Promise<{ email: string; role: string; at?: number; by?: string }[]>
   /**
    * 워크스페이스에 사람을 부릅니다. **프로젝트 초대와 별개입니다.**
    *
@@ -1025,9 +1032,9 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     const { orgId } = get()
     if (!orgId) return []
     const snap = await fbGet(ref(db, P.orgMembers(orgId))).catch(() => null)
-    const raw = (snap?.val() ?? {}) as Record<string, { role?: string; at?: number }>
+    const raw = (snap?.val() ?? {}) as Record<string, { role?: string; at?: number; by?: string }>
     return Object.entries(raw)
-      .map(([key, v]) => ({ email: key.replace(/,/g, '.'), role: v?.role ?? '', at: v?.at }))
+      .map(([key, v]) => ({ email: key.replace(/,/g, '.'), role: v?.role ?? '', at: v?.at, by: v?.by }))
       .filter(m => m.role === 'member' || m.role === 'guest')
       .sort((a, b) => (a.role === b.role ? a.email.localeCompare(b.email) : a.role === 'member' ? -1 : 1))
   },
