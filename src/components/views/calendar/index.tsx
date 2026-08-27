@@ -1772,6 +1772,8 @@ const MonthCell = React.memo(function MonthCell({
   const hasMilestone = !!milestones?.length
   /** 몰린 마일스톤을 펼쳐 보는 자리. 누른 지점에 섭니다. */
   const [showAll, setShowAll] = useState<{ x: number; y: number } | null>(null)
+  /** 그 목록에서 무언가를 끌고 있는가 — 아래 '판'을 비켜 주려고 씁니다. */
+  const [dragOut, setDragOut] = useState(false)
   const isWeekend = column === 0 || column === 6
 
   // 마일스톤이 한 줄 차지하면 일정은 한 줄 덜 들어갑니다.
@@ -1859,7 +1861,12 @@ const MonthCell = React.memo(function MonthCell({
           더 눌러야 알게 됩니다.
         */}
         {hasMilestone && (
-          <div style={{ display: 'flex', gap: 3, alignItems: 'center', flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          /*
+            `flex: 1`이 남아 있었습니다. 날짜 줄에 있을 때는 '남는 가로를 다
+            먹어라'였는데, 세로로 쌓는 목록으로 내려오니 **남는 세로를 다
+            먹고** 그 안에서 알약이 가운데 섰습니다. 위에 붙어야 합니다.
+          */
+          <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexShrink: 0, minWidth: 0, overflow: 'hidden' }}>
             {milestones!.length > 1 ? (
               <button
                 onClick={e => { e.stopPropagation(); setShowAll({ x: e.clientX, y: e.clientY }) }}
@@ -1929,6 +1936,10 @@ const MonthCell = React.memo(function MonthCell({
                   fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3,
                   color: GCAL_TEXT, overflow: 'hidden', textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap', textDecoration: 'none', display: 'block',
+                  // 자리가 모자라면 줄은 **잘려야지 눌리면 안 됩니다.** 기본값
+                  // (flex-shrink: 1)으로 두었더니 일정이 많은 날만 줄 높이가
+                  // 찌그러져서, 같은 일정이 날마다 다른 크기로 보였습니다.
+                  flexShrink: 0,
                   cursor: movable ? 'grab' : 'pointer', minWidth: 0, boxSizing: 'border-box',
                   userSelect: 'none',
                   opacity: draggingId === ev.id ? .35 : 1, transition: 'opacity .1s',
@@ -1959,7 +1970,7 @@ const MonthCell = React.memo(function MonthCell({
               onDragStart={e => { e.dataTransfer.setData('taskId', t.id); e.dataTransfer.setData('fromDate', day); e.dataTransfer.effectAllowed = 'move'; onTaskDragStart(t.id) }}
               onDragEnd={onTaskDragEnd}
               onClick={e => { e.stopPropagation(); onOpenTask(t.id) }}
-              style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3, background: color.bg, color: color.text, cursor: 'grab', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: isBeingDragged ? .35 : 1, transition: 'opacity .1s', userSelect: 'none', minWidth: 0 }}
+              style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3, background: color.bg, color: color.text, cursor: 'grab', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: isBeingDragged ? .35 : 1, transition: 'opacity .1s', userSelect: 'none', minWidth: 0, flexShrink: 0 }}
               onMouseEnter={e => { if (!isBeingDragged) e.currentTarget.style.opacity = '.75' }}
               onMouseLeave={e => { if (!isBeingDragged) e.currentTarget.style.opacity = '1' }}
             >
@@ -2009,8 +2020,16 @@ const MonthCell = React.memo(function MonthCell({
       */}
       {showAll && createPortal(
         <>
+          {/*
+            ── 끌 때는 판이 비켜섭니다 ──────────────────────────────────────
+            바깥을 눌러 닫으라고 화면 전체에 판을 하나 깔아 두었습니다. 그런데
+            그 판은 **끄는 동안에도** 화면을 덮고 있어서, 끌고 간 날짜 칸이
+            드롭을 아예 못 받았습니다 — 손은 옮겼는데 아무 일도 안 일어납니다.
+            판을 안 깔면 바깥 클릭이 칸까지 내려가 엉뚱한 창이 열리므로, 판은
+            두되 끄는 동안만 통과시킵니다.
+          */}
           <div
-            style={{ position: 'fixed', inset: 0, zIndex: 8900 }}
+            style={{ position: 'fixed', inset: 0, zIndex: 8900, pointerEvents: dragOut ? 'none' : 'auto' }}
             onClick={e => { e.stopPropagation(); setShowAll(null) }}
           />
           <div
@@ -2036,13 +2055,14 @@ const MonthCell = React.memo(function MonthCell({
                   e.dataTransfer.setData('milestoneId', ms.id)
                   e.dataTransfer.effectAllowed = 'move'
                   onTaskDragStart(ms.id)
+                  setDragOut(true)
                 }}
                 /*
                   창은 **끝날 때** 닫습니다. `dragstart`에서 닫았더니 끌던 줄이
                   그 자리에서 사라졌고, 브라우저는 없어진 것을 계속 끌지
                   않습니다 — 손은 움직이는데 아무 데도 안 놓였습니다.
                 */
-                onDragEnd={() => { onTaskDragEnd(); setShowAll(null) }}
+                onDragEnd={() => { onTaskDragEnd(); setDragOut(false); setShowAll(null) }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6,
                   padding: '5px 7px', borderRadius: 'var(--r1)',
@@ -2097,6 +2117,7 @@ const CELL_ROW_H = 17
 /** 마일스톤 알약. 접힌 것과 펼친 것이 같은 모양이어야 같은 것으로 읽힙니다. */
 const MS_CHIP: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600,
+  flexShrink: 0,
   color: NOTION.purple.text, background: NOTION.purple.bg, borderRadius: 4, padding: '1px 5px',
   minWidth: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
 }
