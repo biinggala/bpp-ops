@@ -54,6 +54,13 @@ export interface Project {
   memberEmails?: string[]
   pendingEmails?: string[]
   creatorEmail?: string
+  /**
+   * 이 프로젝트가 속한 워크스페이스. 한 번 정해지면 안 바뀝니다.
+   *
+   * 읽을 때 한 겹 더 봐야 하는 근거입니다 — 프로젝트 멤버라도 그 워크스페이스
+   * 명단에서 내려간 사람은 못 읽습니다(access.ts의 orgAllows).
+   */
+  orgId?: string
   archived?: boolean
   driveFolderUrl?: string
   /** Materials belonging to the project rather than to any one task. */

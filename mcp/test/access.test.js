@@ -78,3 +78,34 @@ test('multi-assignee fields match on any member', () => {
   assert.equal(isAssignedTo(t, ME), true)
   assert.equal(isAssignedTo(t, 'nobody@bpp.co.kr'), false)
 })
+
+// ── 워크스페이스 명단도 봅니다 ────────────────────────────────────────────────
+//
+// 프로젝트 멤버십 위에 한 겹 더 있습니다. 이 서버는 관리자 SDK라 규칙을 안
+// 지나가므로, 그 겹을 여기서 다시 세워야 합니다.
+import { orgAllows } from '../dist/access.js'
+
+test('명단에 살아 있으면 통과 — 게스트도', () => {
+  assert.equal(orgAllows('member', 'bpp.co.kr', 'a@bpp.co.kr'), true)
+  assert.equal(orgAllows('guest', 'bpp.co.kr', 'out@gmail.com'), true)
+})
+
+test('내보낸 사람은 커넥터로도 못 읽습니다', () => {
+  // 웹은 닫히는데 커넥터는 열려 있으면, 벽을 세운 곳이 하나뿐인 것입니다.
+  assert.equal(orgAllows('removed', 'bpp.co.kr', 'a@bpp.co.kr'), false)
+  // 도메인이 맞아도 막힙니다 — 비석이 도메인을 이깁니다.
+  assert.equal(orgAllows('removed', 'bpp.co.kr', 'gone@bpp.co.kr'), false)
+})
+
+test('뜻을 모르는 값에는 문을 안 엽니다', () => {
+  assert.equal(orgAllows('owner', 'bpp.co.kr', 'a@bpp.co.kr'), false)
+})
+
+test('줄이 없으면 도메인이 답합니다', () => {
+  // 회사 계정의 첫 로그인. 명단에 아직 행이 없습니다.
+  assert.equal(orgAllows(undefined, 'bpp.co.kr', 'new@bpp.co.kr'), true)
+  assert.equal(orgAllows(undefined, 'bpp.co.kr', 'out@gmail.com'), false)
+  // 도메인이 없는 워크스페이스(초대형)에서는 줄이 없으면 아무것도 아닙니다.
+  assert.equal(orgAllows(undefined, undefined, 'a@bpp.co.kr'), false)
+  assert.equal(orgAllows(null, '', 'a@bpp.co.kr'), false)
+})
