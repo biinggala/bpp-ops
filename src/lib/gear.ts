@@ -41,6 +41,14 @@ export interface GearBooking extends GearRange {
   gearName?: string
   by: string
   byName?: string
+  /**
+   * 같이 잡은 것들이 나눠 갖는 표.
+   *
+   * 촬영 한 번에 카메라·조명·삼각대가 같이 나갑니다. 저장은 장비마다 한
+   * 줄이지만(겹침을 재는 단위가 장비 하나라서), 사람이 보는 단위는 '그 촬영'
+   * 하나입니다. 이 표가 그 둘을 잇습니다.
+   */
+  group?: string
   /** 소속팀 id와 그때의 이름. 이름은 사본입니다 — 팀이 사라져도 읽힙니다. */
   team?: string
   teamName?: string
@@ -152,4 +160,49 @@ export function gearRangeError(r: GearRange): string | null {
   const span = gearSpan(r)
   if (span.end <= span.start) return '끝나는 시각이 시작보다 빨라요.'
   return null
+}
+
+/**
+ * ── 종류로 묶기 ──────────────────────────────────────────────────────────────
+ *
+ * 카메라 넷, 렌즈 여섯, 조명 여덟이 한 줄로 늘어서면 목록이 아니라 벽입니다.
+ * 빌리러 온 사람은 늘 종류를 먼저 정하고("조명 뭐 있지") 그 안에서 고릅니다.
+ *
+ * **종류 목록을 따로 관리하지 않습니다.** 장비에 적힌 값에서 그때그때 뽑아
+ * 냅니다. 관리하는 목록을 하나 더 두면 두 가지가 생깁니다 — 아무것도 없는
+ * 빈 종류와, 지워진 종류를 가리키는 장비. 뽑아내면 둘 다 있을 수 없습니다.
+ *
+ * 종류의 순서는 **그 안에서 제일 먼저 만들어진 장비**를 따릅니다. 가나다순은
+ * 예측은 되지만 뜻이 없고(조명이 카메라보다 앞설 이유가 없습니다), 만든 순서는
+ * 대개 중요한 것부터입니다. 종류 없는 것들은 맨 아래 한 묶음으로 갑니다 —
+ * 아직 정리 안 된 것들이라 위에 있으면 눈이 거기서 걸립니다.
+ */
+export interface GearLike {
+  name: string
+  kind?: string
+  order?: number
+}
+
+/** 종류가 안 적힌 것들이 서는 자리. 화면에도 이 이름으로 뜹니다. */
+export const NO_KIND = '종류 없음'
+
+export function groupGear<T extends GearLike>(gear: T[]): { kind: string; items: T[] }[] {
+  const buckets = new Map<string, { kind: string; rank: number; items: T[] }>()
+  gear.forEach((item, i) => {
+    const kind = item.kind?.trim() || NO_KIND
+    // 자리는 목록에 놓인 차례로 정합니다 — 부르는 쪽이 이미 order로 정렬해
+    // 두었고, order가 없는 옛 장비도 여기서는 뒤로 갑니다.
+    const rank = kind === NO_KIND ? Number.MAX_SAFE_INTEGER : i
+    const found = buckets.get(kind)
+    if (found) found.items.push(item)
+    else buckets.set(kind, { kind, rank, items: [item] })
+  })
+  return [...buckets.values()]
+    .sort((a, b) => a.rank - b.rank)
+    .map(({ kind, items }) => ({ kind, items }))
+}
+
+/** 지금까지 쓴 종류들. 새 장비를 더할 때 고르라고 보여 줍니다. */
+export function gearKinds(gear: GearLike[]): string[] {
+  return groupGear(gear).map(g => g.kind).filter(k => k !== NO_KIND)
 }

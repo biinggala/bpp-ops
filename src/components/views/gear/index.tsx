@@ -5,8 +5,11 @@ import { useOrgStore } from '../../../store/orgStore'
 import { useGearStore, teamOfEmail } from '../../../store/gearStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
 import { addDays, fmtYMD, isComposing } from '../../../lib/utils'
-import { dayNo, gearClash, gearRangeError, gearWhen, hhmm, type GearBooking, type GearRange } from '../../../lib/gear'
-import { TimeRange } from '../../shared/TimePick'
+import {
+  DAY, dayNo, dayYMD, gearClash, gearRangeError, gearWhen, groupGear, hhmm,
+  type GearBooking, type GearRange,
+} from '../../../lib/gear'
+import { TimeMenu } from '../../shared/TimePick'
 import { DateField } from '../../shared/DatePicker'
 import { askConfirm } from '../../shared/Confirm'
 import { useMobile } from '../../../hooks/useMobile'
@@ -29,6 +32,8 @@ import { useMobile } from '../../../hooks/useMobile'
 const COL = 46
 const ROW_H = 30
 const NAME_W = 132
+/** 종류 머리줄. 장비 줄보다 낮습니다 — 이름표지 항목이 아닙니다. */
+const KIND_H = 20
 /** 한 화면에 보이는 날 수. 2주면 '다음 주 촬영'까지 들어옵니다. */
 const SPAN = 14
 
@@ -48,9 +53,9 @@ export function GearView() {
   const email = useAuthStore(s => s.email)
   const orgId = useOrgStore(s => s.orgId)
   const admins = useOrgStore(s => s.admins)
-  const { ready, gear, teams, teamOf, bookings, error, clearError, release } = useGearStore(useShallow(s => ({
+  const { ready, gear, teams, teamOf, bookings, error, clearError, release, releaseGroup } = useGearStore(useShallow(s => ({
     ready: s.ready, gear: s.gear, teams: s.teams, teamOf: s.teamOf, bookings: s.bookings,
-    error: s.error, clearError: s.clearError, release: s.release,
+    error: s.error, clearError: s.clearError, release: s.release, releaseGroup: s.releaseGroup,
   })))
   const [anchor, setAnchor] = useState(() => fmtYMD(new Date()))
   const [picked, setPicked] = useState<GearBooking | null>(null)
@@ -69,6 +74,7 @@ export function GearView() {
     [bookings, teamFilter],
   )
   const live = useMemo(() => gear.filter(g => g.active !== false), [gear])
+  const rows = useMemo(() => groupGear(gear), [gear])
 
   if (!orgId) {
     return <Blank>워크스페이스에 들어가면 장비를 함께 씁니다. 설정 → 개요에서 만들 수 있습니다.</Blank>
@@ -154,7 +160,28 @@ export function GearView() {
             })}
           </div>
 
-          {gear.map(item => {
+          {/* 종류로 묶어 세웁니다. 카메라 넷·렌즈 여섯·조명 여덟이 한 줄로
+              늘어서면 격자가 아니라 벽입니다. 빌리러 온 사람은 늘 종류를
+              먼저 정하고("조명 뭐 있지") 그 안에서 고릅니다. */}
+          {rows.map(group => (
+          <div key={group.kind}>
+          {rows.length > 1 && (
+            <div style={{
+              display: 'flex', height: KIND_H, alignItems: 'center',
+              background: 'var(--bg2)', borderBottom: '1px solid var(--bd2)',
+            }}>
+              <div style={{
+                width: NAME_W, flexShrink: 0, padding: '0 10px',
+                position: 'sticky', left: 0, background: 'var(--bg2)', zIndex: 1,
+                fontSize: 10.5, fontWeight: 600, color: 'var(--t2)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{group.kind}</div>
+              {/* 빈 칸이지만 자리를 잡습니다. 없으면 이 줄만 격자보다 짧아서,
+                  옆으로 굴렸을 때 종류 띠가 중간에 끊깁니다. */}
+              <div style={{ width: SPAN * COL, flexShrink: 0 }} />
+            </div>
+          )}
+          {group.items.map(item => {
             const mine = shown.filter(b => b.gearId === item.id)
             return (
               <div key={item.id} style={{
@@ -237,24 +264,36 @@ export function GearView() {
               </div>
             )
           })}
+          </div>
+          ))}
         </div>
       </div>
 
-      {picked && (
-        <BookingCard
-          booking={picked}
-          canRelease={!!email && (picked.by === email.toLowerCase() || isAdmin)}
-          onClose={() => setPicked(null)}
-          onRelease={async () => {
-            const ok = await askConfirm({
-              message: `'${picked.gearName || '장비'}' 예약을 풉니다`,
-              detail: `${gearWhen(picked)} · ${picked.reason}`,
-              confirmLabel: '풀기',
-            })
-            if (ok && await release(picked.id)) setPicked(null)
-          }}
-        />
-      )}
+      {picked && (() => {
+        // 같이 잡은 것들. group이 없는 옛 예약은 자기 자신뿐입니다 —
+        // **안 붙은 것을 없는 것으로 읽지 않습니다.**
+        const siblings = picked.group ? bookings.filter(b => b.group === picked.group) : [picked]
+        return (
+          <BookingCard
+            booking={picked}
+            siblings={siblings}
+            canRelease={!!email && (picked.by === email.toLowerCase() || isAdmin)}
+            onClose={() => setPicked(null)}
+            onRelease={async () => {
+              const ok = await askConfirm({
+                message: siblings.length > 1
+                  ? `장비 ${siblings.length}개의 예약을 함께 풉니다`
+                  : `'${picked.gearName || '장비'}' 예약을 풉니다`,
+                detail: `${gearWhen(picked)} · ${picked.reason}`,
+                confirmLabel: '풀기',
+              })
+              if (!ok) return
+              const done = picked.group ? await releaseGroup(picked.group) : await release(picked.id)
+              if (done) setPicked(null)
+            }}
+          />
+        )
+      })()}
 
       {adding && (
         <BookForm
@@ -283,26 +322,45 @@ function Step({ label, onClick, children }: { label: string; onClick: () => void
   )
 }
 
-/** 막대를 누르면 뜨는 한 장. 왜 빌렸는지가 여기 있습니다. */
-function BookingCard({ booking, canRelease, onClose, onRelease }: {
+/**
+ * 막대를 누르면 뜨는 한 장.
+ *
+ * **예약 한 건을 통째로** 보여 줍니다. 저장은 장비마다 한 줄이지만 사람이
+ * 한 번에 정한 것은 '그 촬영' 하나고, 카메라 줄을 눌렀는데 카메라 얘기만
+ * 나오면 같이 나간 조명 셋은 어디서 확인하는지 알 수 없습니다.
+ */
+function BookingCard({ booking, siblings, canRelease, onClose, onRelease }: {
   booking: GearBooking
+  siblings: GearBooking[]
   canRelease: boolean
   onClose: () => void
   onRelease: () => void
 }) {
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  const gear = useGearStore(s => s.gear)
+  const kindOf = (b: GearBooking) => gear.find(g => g.id === b.gearId)?.kind
+
   return (
-    <Sheet onClose={onClose} title={booking.gearName || '장비'}>
-      <Field label="언제">{gearWhen(booking)}{booking.long && ' · 장기'}</Field>
+    <Sheet onClose={onClose} title={booking.long ? '장기 대여' : '장비 예약'}>
+      <Field label="언제">{gearWhen(booking)}</Field>
+      <Field label={`장비 ${siblings.length}개`}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
+          {siblings.map(b => (
+            <GearChip key={b.id} kind={kindOf(b)} name={b.gearName || '장비'} on={b.id === booking.id} />
+          ))}
+        </div>
+      </Field>
       <Field label="누가">
         {getNameByEmail(booking.by) || booking.byName || booking.by}
         {booking.teamName && <span style={{ color: 'var(--t3)' }}> · {booking.teamName}</span>}
       </Field>
-      <Field label="사용 사유">{booking.reason}</Field>
-      {booking.extra && <Field label="기타">{booking.extra}</Field>}
+      <Field label="사용 내용">{booking.reason}</Field>
+      {booking.extra && <Field label="기타 예약">{booking.extra}</Field>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 14 }}>
         {canRelease && (
-          <button onClick={onRelease} style={{ ...BTN, color: 'var(--danger)' }}>예약 풀기</button>
+          <button onClick={onRelease} style={{ ...BTN, color: 'var(--danger)' }}>
+            예약 풀기{siblings.length > 1 ? ` (${siblings.length}개)` : ''}
+          </button>
         )}
         <button onClick={onClose} style={BTN}>닫기</button>
       </div>
@@ -310,12 +368,55 @@ function BookingCard({ booking, canRelease, onClose, onRelease }: {
   )
 }
 
+/** 장비 한 개. 종류가 앞에 붙습니다 — 'FX3'보다 '카메라 · FX3'가 빠릅니다. */
+function GearChip({ kind, name, on, onRemove }: {
+  kind?: string
+  name: string
+  on?: boolean
+  onRemove?: () => void
+}) {
+  return (
+    <span
+      className={onRemove ? 'bpp-row' : undefined}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '2px 7px', borderRadius: 'var(--r1)', fontSize: 11,
+        border: `1px solid ${on ? 'var(--accent)' : 'var(--bd)'}`,
+        background: on ? 'var(--bg3)' : 'var(--bg2)',
+        color: 'var(--t1)', maxWidth: '100%',
+      }}
+    >
+      {kind && <span style={{ color: 'var(--t3)' }}>{kind} ·</span>}
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+      {onRemove && (
+        <button
+          className="bpp-rowx"
+          aria-label={`${name} 빼기`}
+          onClick={onRemove}
+          style={{
+            width: 14, height: 14, flexShrink: 0, marginLeft: 1, padding: 0,
+            border: 'none', background: 'transparent', color: 'var(--t3)',
+            cursor: 'pointer', fontFamily: 'var(--font)', fontSize: 12, lineHeight: 1,
+          }}
+        >×</button>
+      )}
+    </span>
+  )
+}
+
 /**
  * ── 예약 ─────────────────────────────────────────────────────────────────────
  *
- * 두 가지를 한 폼에 둡니다. 시간을 정하는 예약과, 날짜만 정하는 장기 예약.
- * 화면을 둘로 가르지 않은 이유는 고르는 것이 **같은 장비, 같은 사유**이고
- * 다른 것은 '언제'뿐이기 때문입니다.
+ * **장비를 담습니다.** 촬영을 나가면 카메라 하나, 렌즈 둘, 조명 셋, 삼각대가
+ * 같은 날 같은 이유로 같이 나갑니다. 한 개씩 잡게 하면 같은 폼을 일곱 번
+ * 채우게 되고, 여섯 번째쯤에서 사유가 달라집니다.
+ *
+ * 고르는 것은 **종류 → 장비** 두 걸음입니다. 스무 개가 한 목록에 있으면
+ * 조명을 찾는 데 스무 줄을 읽어야 하는데, 사람은 이미 '조명 뭐 있지'로
+ * 시작합니다.
+ *
+ * 시간 예약과 장기 대여를 한 폼에 둡니다 — 고르는 것이 같은 장비, 같은
+ * 내용이고 다른 것은 '언제'뿐입니다.
  */
 function BookForm({ gearId, date, myTeam, onClose }: {
   gearId: string
@@ -330,11 +431,16 @@ function BookForm({ gearId, date, myTeam, onClose }: {
     gear: s.gear, teams: s.teams, bookings: s.bookings, book: s.book,
   })))
 
-  const [item, setItem] = useState(gearId)
+  const live = useMemo(() => gear.filter(g => g.active !== false), [gear])
+  const groups = useMemo(() => groupGear(live), [live])
+
+  const [cart, setCart] = useState<string[]>(gearId ? [gearId] : [])
+  const [kind, setKind] = useState(() => groups.find(g => g.items.some(i => i.id === gearId))?.kind ?? groups[0]?.kind ?? '')
   const [long, setLong] = useState(false)
   const [from, setFrom] = useState(date)
   const [to, setTo] = useState(date)
   const [startMin, setStartMin] = useState(600)
+  /** 시작으로부터 몇 분. 1440을 넘으면 다음 날로 넘어간 것입니다. */
   const [minutes, setMinutes] = useState(120)
   const [team, setTeam] = useState(myTeam)
   const [reason, setReason] = useState('')
@@ -345,19 +451,32 @@ function BookForm({ gearId, date, myTeam, onClose }: {
   // 빨간 글씨로 알려 주는 것보다, 애초에 그 상태가 없는 편이 낫습니다.
   useEffect(() => { if (to < from) setTo(from) }, [from, to])
 
+  /*
+    시각 예약이 자정을 넘을 수 있습니다 — 야간 촬영은 16시에 나가 새벽 1시에
+    돌아옵니다. 끝 시각이 하루를 넘으면 반납일이 다음 날이 됩니다.
+  */
+  const endAbs = startMin + minutes
   const range: GearRange = long
-    ? { from, to, fromMin: 0, toMin: 1440, long: true }
-    : { from, to: from, fromMin: startMin, toMin: startMin + minutes }
+    ? { from, to, fromMin: 0, toMin: DAY, long: true }
+    : endAbs > DAY
+      ? { from, to: dayYMD(dayNo(from) + 1), fromMin: startMin, toMin: endAbs - DAY }
+      : { from, to: from, fromMin: startMin, toMin: endAbs }
 
   const bad = gearRangeError(range)
-  const held = bad ? null : gearClash(bookings, item, range)
-  const stop = bad ?? (held ? `이미 ${held.teamName ? held.teamName + ' ' : ''}${held.byName || held.by} 님이 잡아 두었습니다 — ${gearWhen(held)}` : null)
+  const held = bad ? null : cart
+    .map(id => ({ id, clash: gearClash(bookings, id, range) }))
+    .find(c => c.clash)
+  const stop = bad
+    ?? (!cart.length ? '장비를 담아 주세요.' : null)
+    ?? (held?.clash
+      ? `'${gear.find(g => g.id === held.id)?.name ?? '장비'}'은(는) 이미 ${held.clash.teamName ? held.clash.teamName + ' ' : ''}${held.clash.byName || held.clash.by} 님이 잡아 두었습니다 — ${gearWhen(held.clash)}`
+      : null)
 
   const save = async () => {
     if (!email || busy || stop || !reason.trim()) return
     setBusy(true)
     const ok = await book({
-      gearId: item, ...range,
+      gearIds: cart, ...range,
       by: email, ...(myName ? { byName: myName } : {}),
       ...(team ? { team } : {}),
       reason, ...(extra.trim() ? { extra } : {}),
@@ -366,24 +485,100 @@ function BookForm({ gearId, date, myTeam, onClose }: {
     if (ok) onClose()
   }
 
+  const inKind = groups.find(g => g.kind === kind)?.items ?? []
+
   return (
-    <Sheet onClose={onClose} title="장비 예약">
-      <Row label="장비">
-        <select value={item} onChange={e => setItem(e.target.value)} style={FIELD}>
-          {gear.filter(g => g.active !== false).map(g => (
-            <option key={g.id} value={g.id}>{g.name}{g.note ? ` (${g.note})` : ''}</option>
-          ))}
+    <Sheet onClose={onClose} title="장비 예약하기">
+      <Row label="소속">
+        <select value={team} onChange={e => setTeam(e.target.value)} style={FIELD}>
+          <option value="">소속 없음</option>
+          {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
       </Row>
 
-      <Row label="종류">
-        <div style={{ display: 'flex', gap: 4 }}>
-          {/* '장기 예약'은 촬영 프로젝트에 따라 며칠씩 빌려 가는 것입니다.
-              시각을 안 묻습니다 — 물어도 아무도 그 시각에 안 맞춥니다. */}
-          <Chip on={!long} onClick={() => setLong(false)}>시간 예약</Chip>
-          <Chip on={long} onClick={() => { setLong(true); if (to < from) setTo(from) }}>장기 예약</Chip>
+      <Row label="예약 장비">
+        <div style={{ display: 'flex', gap: 6 }}>
+          <select value={kind} onChange={e => setKind(e.target.value)} style={{ ...FIELD, flex: 1 }}>
+            {groups.map(g => <option key={g.kind} value={g.kind}>{g.kind}</option>)}
+          </select>
+          {/*
+            고르는 즉시 담깁니다. '고르기 → 담기'로 두 번 누르게 했더니
+            고르고 안 담은 상태가 생기고, 그 상태의 화면은 담긴 것처럼
+            보입니다. 값은 늘 비워 두어서 같은 장비를 다시 못 고르는 일이
+            없게 합니다.
+          */}
+          <select
+            value=""
+            onChange={e => {
+              if (e.target.value) setCart(c => c.includes(e.target.value) ? c : [...c, e.target.value])
+            }}
+            style={{ ...FIELD, flex: 1 }}
+          >
+            <option value="">장비 선택</option>
+            {inKind.map(g => (
+              <option key={g.id} value={g.id} disabled={cart.includes(g.id)}>
+                {g.name}{g.note ? ` (${g.note})` : ''}{cart.includes(g.id) ? ' · 담김' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div style={{ fontSize: 10.5, color: 'var(--t3)', marginTop: 4 }}>
+          장비를 고르면 바로 아래 목록에 담깁니다.
         </div>
       </Row>
+
+      <div style={{
+        background: 'var(--bg2)', borderRadius: 'var(--r2)', padding: '8px 10px',
+        margin: '2px 0 10px',
+      }}>
+        <div style={{ fontSize: 11, color: 'var(--t3)', marginBottom: 6 }}>담은 장비 {cart.length}개</div>
+        {cart.length === 0 ? (
+          <div style={{ fontSize: 11.5, color: 'var(--t3)' }}>아직 담긴 장비가 없습니다</div>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {cart.map(id => {
+              const item = gear.find(g => g.id === id)
+              return (
+                <GearChip
+                  key={id}
+                  kind={item?.kind}
+                  name={item?.name ?? '(없는 장비)'}
+                  onRemove={() => setCart(c => c.filter(x => x !== id))}
+                />
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      <Row label="사용 내용">
+        <input
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) void save() }}
+          placeholder="사용 내용을 입력하세요"
+          style={FIELD}
+        />
+      </Row>
+
+      <Row label="기타 예약">
+        <input
+          value={extra}
+          onChange={e => setExtra(e.target.value)}
+          placeholder="예) 배터리, 악세서리 등 외부 반출의 경우 작성"
+          style={FIELD}
+        />
+      </Row>
+
+      {/* 장기 대여는 촬영 프로젝트에 따라 며칠씩 빌려 가는 것입니다. 시각을
+          안 묻습니다 — 물어도 아무도 그 시각에 안 맞춥니다. */}
+      <label style={{
+        display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0 8px',
+        fontSize: 12, color: 'var(--t1)', cursor: 'pointer',
+      }}>
+        <input type="checkbox" checked={long} onChange={e => setLong(e.target.checked)} />
+        장기 대여
+      </label>
 
       {long ? (
         <>
@@ -403,41 +598,14 @@ function BookForm({ gearId, date, myTeam, onClose }: {
             <DateField value={from} format="full" onChange={v => { setFrom(v); setTo(v) }} style={FIELD} />
           </Row>
           <Row label="시간">
-            <TimeRange
+            <NightRange
               startMin={startMin}
               minutes={minutes}
-              onChange={(s, m) => { setStartMin(s); setMinutes(m) }}
+              onChange={(st, mi) => { setStartMin(st); setMinutes(mi) }}
             />
           </Row>
         </>
       )}
-
-      <Row label="소속팀">
-        <select value={team} onChange={e => setTeam(e.target.value)} style={FIELD}>
-          <option value="">없음</option>
-          {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-      </Row>
-
-      <Row label="사용 사유">
-        <input
-          value={reason}
-          onChange={e => setReason(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) void save() }}
-          placeholder="예: 브랜드필름 본 촬영"
-          style={FIELD}
-          autoFocus
-        />
-      </Row>
-
-      <Row label="기타">
-        <input
-          value={extra}
-          onChange={e => setExtra(e.target.value)}
-          placeholder="배터리 2개, 외부 반출 등"
-          style={FIELD}
-        />
-      </Row>
 
       {stop && <div style={{ fontSize: 11.5, color: 'var(--danger)', marginTop: 8, lineHeight: 1.6 }}>{stop}</div>}
 
@@ -450,9 +618,54 @@ function BookForm({ gearId, date, myTeam, onClose }: {
             ...BTN, background: 'var(--accent)', color: '#fff', borderColor: 'transparent',
             opacity: busy || stop || !reason.trim() ? .5 : 1,
           }}
-        >잡기</button>
+        >장비 예약 신청</button>
       </div>
     </Sheet>
+  )
+}
+
+/**
+ * 시작 → 끝. 회의실의 것과 같은 목록인데 **자정을 넘깁니다.**
+ *
+ * 야간 촬영은 16시에 나가 새벽 1시에 돌아옵니다. 끝 목록이 24:00에서 끊기면
+ * 그 예약을 아예 못 적고, 사람은 '장기 대여'로 이틀을 통째로 잡아 버립니다 —
+ * 그러면 다음 날 낮에 아무도 그 카메라를 못 씁니다.
+ */
+function NightRange({ startMin, minutes, onChange }: {
+  startMin: number
+  minutes: number
+  onChange: (startMin: number, minutes: number) => void
+}) {
+  const starts = useMemo(() => {
+    const out: { at: number; label: string }[] = []
+    for (let m = 0; m < DAY; m += 15) out.push({ at: m, label: hhmm(m) })
+    return out
+  }, [])
+  const ends = useMemo(() => {
+    const out: { at: number; label: string; sub?: string }[] = []
+    // 최대 24시간. 그보다 길면 장기 대여로 잡는 것이 맞습니다.
+    for (let m = startMin + 15; m <= startMin + DAY; m += 15) {
+      out.push(m > DAY
+        ? { at: m, label: hhmm(m - DAY), sub: '익일' }
+        : { at: m, label: m === DAY ? '24:00' : hhmm(m) })
+    }
+    return out
+  }, [startMin])
+
+  const end = startMin + minutes
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <TimeMenu
+        value={startMin}
+        options={starts}
+        onPick={at => onChange(at, Math.max(15, Math.min(end - at, DAY)))}
+      />
+      <span style={{ color: 'var(--t3)', fontSize: 12 }}>→</span>
+      <TimeMenu value={end} options={ends} onPick={at => onChange(startMin, at - startMin)} />
+      <span style={{ fontSize: 11, color: 'var(--t3)', whiteSpace: 'nowrap' }}>
+        {minutes % 60 ? `${Math.floor(minutes / 60)}시간 ${minutes % 60}분` : `${minutes / 60}시간`}
+      </span>
+    </div>
   )
 }
 

@@ -11,6 +11,7 @@ import { useGCalStore } from '../../store/gcalStore'
 import { useMailStore } from '../../store/mailStore'
 import { useNotionStore } from '../../store/notionStore'
 import { useGearStore } from '../../store/gearStore'
+import { gearKinds, groupGear } from '../../lib/gear'
 import { PUBLIC_DOMAINS, useOrgStore, pendingJoinCount } from '../../store/orgStore'
 import { roomRuleNote } from '../../lib/roomRule'
 import { useTrashStore } from '../../store/trashStore'
@@ -1515,13 +1516,18 @@ function GearSection() {
     error: s.error, clearError: s.clearError,
   })))
   const [draft, setDraft] = useState('')
+  const [draftKind, setDraftKind] = useState('')
+  const groups = useMemo(() => groupGear(gear), [gear])
+  const kinds = useMemo(() => gearKinds(gear), [gear])
   if (!email) return null
   const isAdmin = admins.includes(email.toLowerCase())
 
   const add = () => {
     if (!draft.trim()) return
-    void addGear(draft)
+    void addGear(draft, undefined, draftKind)
     setDraft('')
+    // 종류는 안 지웁니다. 장비는 대개 한 종류를 여러 개 몰아서 넣습니다 —
+    // 조명 여섯 개를 넣는 동안 여섯 번 다시 고르게 하지 않습니다.
   }
 
   return (
@@ -1538,41 +1544,63 @@ function GearSection() {
             아직 등록된 장비가 없습니다
           </div>
         )}
-        {gear.map(item => (
-          <div key={item.id} className="bpp-row" style={{ ...ROW, opacity: item.active === false ? .5 : 1 }}>
-            <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE }}>
-              {item.name}
-              {item.note && <span style={{ display: 'block', ...ROW_SUB }}>{item.note}</span>}
-            </span>
-            {isAdmin ? (
-              <>
-                {/* 수리 중인 카메라는 없는 것이 아니라 지금 못 쓰는 것입니다.
-                    끄면 예약 목록에서 사라지고, 지난 예약은 그대로 남습니다. */}
-                <MiniSwitch on={item.active !== false} onClick={() => void updateGear(item.id, { active: item.active === false })} />
-                <RowRemove
-                  label={`${item.name} 지우기`}
-                  onClick={async () => {
-                    const ok = await askConfirm({
-                      message: `'${item.name}'을 목록에서 지웁니다`,
-                      detail: '지난 예약은 그대로 남습니다. 수리 중이라면 지우지 말고 스위치를 끄세요.',
-                      confirmLabel: '지우기',
-                    })
-                    if (ok) void removeGear(item.id)
-                  }}
-                />
-              </>
-            ) : item.active === false && <span style={{ fontSize: 11, color: 'var(--t3)' }}>사용 안 함</span>}
+        {/* 종류로 묶어 세웁니다. 카메라 넷·렌즈 여섯·조명 여덟이 한 줄로
+            늘어서면 목록이 아니라 벽입니다. 묶음이 하나뿐이면 머리글을
+            안 답니다 — 하나짜리 묶음의 이름은 아무것도 안 가릅니다. */}
+        {groups.map(g => (
+          <div key={g.kind}>
+            {groups.length > 1 && (
+              <div style={{
+                fontSize: 11, fontWeight: 600, color: 'var(--t3)',
+                margin: '12px 0 2px', display: 'flex', alignItems: 'center', gap: 5,
+              }}>
+                {g.kind}
+                <span style={{ fontWeight: 400 }}>{g.items.length}</span>
+              </div>
+            )}
+            {g.items.map(item => (
+              <div key={item.id} className="bpp-row" style={{ ...ROW, opacity: item.active === false ? .5 : 1 }}>
+                <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE }}>
+                  {item.name}
+                  {item.note && <span style={{ display: 'block', ...ROW_SUB }}>{item.note}</span>}
+                </span>
+                {isAdmin ? (
+                  <>
+                    <KindPick
+                      value={item.kind ?? ''}
+                      kinds={kinds}
+                      onChange={k => void updateGear(item.id, { kind: k || null })}
+                    />
+                    {/* 수리 중인 카메라는 없는 것이 아니라 지금 못 쓰는 것입니다.
+                        끄면 예약 목록에서 사라지고, 지난 예약은 그대로 남습니다. */}
+                    <MiniSwitch on={item.active !== false} onClick={() => void updateGear(item.id, { active: item.active === false })} />
+                    <RowRemove
+                      label={`${item.name} 지우기`}
+                      onClick={async () => {
+                        const ok = await askConfirm({
+                          message: `'${item.name}'을 목록에서 지웁니다`,
+                          detail: '지난 예약은 그대로 남습니다. 수리 중이라면 지우지 말고 스위치를 끄세요.',
+                          confirmLabel: '지우기',
+                        })
+                        if (ok) void removeGear(item.id)
+                      }}
+                    />
+                  </>
+                ) : item.active === false && <span style={{ fontSize: 11, color: 'var(--t3)' }}>사용 안 함</span>}
+              </div>
+            ))}
           </div>
         ))}
         {isAdmin && (
-          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
             <input
               value={draft}
               onChange={e => setDraft(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) add() }}
               placeholder="장비 이름 (예: A7S3 1번기)"
-              style={INPUT}
+              style={{ ...INPUT, flex: 1 }}
             />
+            <KindPick value={draftKind} kinds={kinds} onChange={setDraftKind} placeholder="종류" />
             <button onClick={add} style={navBtn}>추가</button>
           </div>
         )}
@@ -1675,6 +1703,67 @@ function TeamsSection({ isAdmin }: { isAdmin: boolean }) {
         </div>
       )}
     </Section>
+  )
+}
+
+/**
+ * ── 종류 고르기 ──────────────────────────────────────────────────────────────
+ *
+ * 이미 쓴 종류들 + '새 종류…'. 목록만 두면 첫 종류를 못 만들고, 글자 칸만
+ * 두면 '조명'과 '조 명'이 다른 묶음이 됩니다. 대부분은 고르는 일이고 가끔이
+ * 만드는 일이라, 고르는 쪽이 기본이고 만드는 것은 한 칸 더 들어갑니다.
+ */
+function KindPick({ value, kinds, onChange, placeholder = '종류 없음' }: {
+  value: string
+  kinds: string[]
+  onChange: (kind: string) => void
+  placeholder?: string
+}) {
+  const [typing, setTyping] = useState(false)
+  const [draft, setDraft] = useState('')
+
+  if (typing) {
+    const done = () => {
+      onChange(draft.trim())
+      setDraft('')
+      setTyping(false)
+    }
+    return (
+      <input
+        autoFocus
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={done}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && !isComposing(e)) done()
+          if (e.key === 'Escape') { setDraft(''); setTyping(false) }
+        }}
+        placeholder="새 종류"
+        style={{ ...INPUT, width: 96, flexShrink: 0, padding: '3px 6px', fontSize: 11.5 }}
+      />
+    )
+  }
+
+  return (
+    <select
+      value={value}
+      onChange={e => {
+        if (e.target.value === '\u0000new') { setTyping(true); return }
+        onChange(e.target.value)
+      }}
+      style={{
+        ...navBtn, padding: '3px 6px', fontSize: 11.5, flexShrink: 0,
+        maxWidth: 104, color: value ? 'var(--t1)' : 'var(--t3)',
+      }}
+    >
+      <option value="">{placeholder}</option>
+      {/* 지금 값이 목록에 없으면(다른 사람이 방금 지웠거나 옛 값) 그것도
+          세웁니다. 안 세우면 고른 적 없는 값으로 보입니다. */}
+      {(kinds.includes(value) || !value ? kinds : [...kinds, value]).map(k => (
+        <option key={k} value={k}>{k}</option>
+      ))}
+      <option value={'\u0000new'}>새 종류…</option>
+    </select>
   )
 }
 
