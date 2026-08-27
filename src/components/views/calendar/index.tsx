@@ -1804,7 +1804,16 @@ const MonthCell = React.memo(function MonthCell({
             fontSize: 12, fontWeight: isToday ? 700 : 400,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             minWidth: 22, height: 22, borderRadius: '50%',
-            background: isToday ? 'var(--ac)' : 'transparent',
+            /*
+              오늘이 아닐 때는 배경을 **여기서 안 정합니다.**
+
+              인라인 스타일은 클래스 규칙을 이깁니다. `background: transparent`를
+              적어 두었더니 `.bpp-daynum:hover`가 늘 졌고, 그래서 동그라미가
+              한 번도 안 떴습니다 — 규칙은 있는데 화면에는 없는 상태였습니다.
+              같은 값을 두 곳에서 정하면 어느 쪽이 이기는지를 매번 기억해야
+              하니, 배경은 CSS 한 곳에만 둡니다.
+            */
+            ...(isToday ? { background: 'var(--ac)' } : {}),
             color: isToday ? '#fff' : !isCurrentMonth ? 'var(--t3)' : 'var(--t2)',
           }}
         >
