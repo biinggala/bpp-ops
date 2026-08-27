@@ -590,7 +590,9 @@ export const useOrgStore = create<OrgState>((set, get) => ({
         const rooms = list<Room>(s.val())
           .filter(r => r.name)
           .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name))
-        set({ rooms })
+        // 읽혔으면 '못 읽는다'는 말은 더 이상 참이 아닙니다. 안 지우면 한 번의
+        // 실패가 영영 붙어 있습니다 — 회의실이 다 보이는 화면 위에요.
+        set({ rooms, ...(get().error ? { error: null } : {}) })
       }, e => {
         // 내가 시켜서 못 읽게 된 것이면 아무 말도 안 합니다 — 나가기·삭제가
         // 그 자리입니다. 그 외에는 알려야 합니다: 조용히 빈 목록이 되면

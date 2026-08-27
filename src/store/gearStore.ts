@@ -125,6 +125,24 @@ export const useGearStore = create<GearState>((set, get) => ({
 
   subscribe: (orgId) => {
     orgIdNow = orgId
+    /**
+     * ── 오류는 **지금** 못 읽는다는 말입니다 ────────────────────────────────
+     *
+     * 실패할 때 적어 놓기만 하고 성공할 때 안 지웠습니다. 그래서 한 번
+     * 실패하면 그 문구가 영영 붙어 있었습니다 — 목록은 멀쩡히 읽혀서 화면에
+     * 장비가 다 서 있는데, 그 위에 '멤버만 볼 수 있습니다'가 그대로요.
+     *
+     * 실패하는 순간이 실제로 있습니다. 워크스페이스를 바꾸는 동안에는 옛
+     * 곳의 리스너가 아직 살아 있고, 게스트로 서 있던 곳을 떠나는 그 한
+     * 프레임에 거절이 한 번 옵니다. 그 한 번이 그대로 눌러앉았습니다.
+     *
+     * 읽기가 성공하면 그 말은 거짓이 됩니다. 그러니 지웁니다. 붙는 곳(새로
+     * 구독을 거는 이 자리)에서도 한 번 지웁니다 — 옛 곳에 대한 불평이 새
+     * 곳의 화면에 남아 있을 이유가 없습니다.
+     */
+    set({ error: null })
+    /** 읽혔으면 '못 읽는다'는 말은 더 이상 참이 아닙니다. */
+    const read = () => { if (get().error) set({ error: null }) }
     const gearRef = ref(db, P.orgGear(orgId))
     const gearHandler = onValue(gearRef, s => {
       set({
@@ -133,6 +151,7 @@ export const useGearStore = create<GearState>((set, get) => ({
           .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
         ready: true,
       })
+      read()
     }, e => set({ gear: [], ready: true, error: readError('장비 목록', e) }))
 
     const teamsRef = ref(db, P.orgTeams(orgId))
@@ -166,6 +185,7 @@ export const useGearStore = create<GearState>((set, get) => ({
           .filter(b => b.gearId && b.from && b.to)
           .sort((a, b) => a.from.localeCompare(b.from) || a.fromMin - b.fromMin),
       })
+      read()
     }, e => set({ bookings: [], error: readError('장비 예약', e) }))
 
     return () => {
@@ -174,7 +194,7 @@ export const useGearStore = create<GearState>((set, get) => ({
       off(teamOfRef, 'value', teamOfHandler)
       off(bookRef, 'value', bookHandler)
       orgIdNow = null
-      set({ ready: false, gear: [], teams: [], teamOf: {}, bookings: [] })
+      set({ ready: false, gear: [], teams: [], teamOf: {}, bookings: [], error: null })
     }
   },
 
