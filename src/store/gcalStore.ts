@@ -102,6 +102,22 @@ const EVENTS_KEY = 'gcal_events_cache'
  */
 const CACHE_MAX = 1_500_000
 
+/**
+ * 새 일정이 들어갈 캘린더.
+ *
+ * 고른 적이 없으면 기본 캘린더, 그것도 없으면 쓸 수 있는 첫 번째. 이 셈을
+ * 세 군데서 따로 하고 있었고(만들 때, 화면의 고르는 칸, 그리고 새로 붙은
+ * 검사), 하나만 달라져도 '넣는 곳'과 '넣었다고 말하는 곳'이 갈립니다.
+ */
+export function targetCalendarOf(
+  s: { calendars: GoogleCalendar[]; targetCalendarId: string | null },
+): string | null {
+  return s.targetCalendarId
+    ?? s.calendars.find(c => c.primary)?.id
+    ?? writableCalendars(s.calendars)[0]?.id
+    ?? null
+}
+
 /** 남의 일정을 그리는 색. 내 캘린더 색들과 안 겹치게 회색 계열 하나로. */
 export const PEEK_COLOR = '#787774'
 
@@ -242,7 +258,7 @@ interface GCalState {
   setTargetCalendar: (id: string) => void
   /** Creates an event, asking for write permission the first time. */
   /** 만들어진 일정의 id(캘린더id:일정id). 실패하면 null. */
-  createEvent: (input: { summary: string; location?: string; description?: string; startDateTime: string; endDateTime: string; attendees?: string[]; taskId?: string; transparency?: 'opaque' | 'transparent'; timeblock?: boolean; noteRef?: string }) => Promise<string | null>
+  createEvent: (input: { summary: string; location?: string; description?: string; startDateTime?: string; endDateTime?: string; allDayDate?: string; attendees?: string[]; taskId?: string; transparency?: 'opaque' | 'transparent'; timeblock?: boolean; noteRef?: string }) => Promise<string | null>
   /** The events linked to a task, as this person's calendars have them. */
   eventsForTask: (taskId: string) => Promise<GCalEvent[]>
   /** Events to choose from when attaching one that already exists. */
@@ -663,9 +679,23 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     }
   },
 
+  /**
+   * ── 넣는 곳은 보이는 곳입니다 ──────────────────────────────────────────────
+   *
+   * 목록에 체크가 둘입니다 — '여기에 추가'와 '이 캘린더 보기'. 둘이 어긋날 수
+   * 있었고, 어긋나면 **끌어다 놓은 일정이 사라졌습니다.** 만드는 순간에는
+   * 그렸다가(방금 만든 것을 손에 들고 있으니), 다음 번에 읽을 때 그 캘린더는
+   * 읽지 않으니 조용히 없어집니다. 만든 사람에게는 안 만들어진 것과 같아
+   * 보이고, 실제로는 구글에 남아 있습니다.
+   *
+   * 그래서 규칙을 하나로 만듭니다: **넣는 곳으로 고르면 보이게 됩니다.** 그
+   * 반대편(보기를 끄는 쪽)은 setCalendarEnabled가 지킵니다.
+   */
   setTargetCalendar: (id) => {
     localStorage.setItem(TARGET_KEY, id)
     set({ targetCalendarId: id })
+    const seen = get().enabledCalendarIds ?? get().calendars.map(c => c.id)
+    if (!seen.includes(id)) get().setCalendarEnabled(id, true)
   },
 
   /**
@@ -675,11 +705,9 @@ export const useGCalStore = create<GCalState>((set, get) => ({
    * a consent screen is warranted — and it needs the click that triggered it, so
    * this must be called straight from the interaction.
    */
-  createEvent: async ({ summary, location, description, startDateTime, endDateTime, attendees, taskId, transparency, timeblock, noteRef }) => {
-    const { calendars, targetCalendarId } = get()
-    const target = targetCalendarId
-      ?? calendars.find(c => c.primary)?.id
-      ?? writableCalendars(calendars)[0]?.id
+  createEvent: async ({ summary, location, description, startDateTime, endDateTime, allDayDate, attendees, taskId, transparency, timeblock, noteRef }) => {
+    const { calendars } = get()
+    const target = targetCalendarOf(get())
     if (!target) {
       set({ error: '일정을 만들 수 있는 캘린더가 없습니다' })
       return null
@@ -689,7 +717,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     if (!token) return null
 
     try {
-      const created = await createCalendarEvent(token, { calendarId: target, summary, location, description, startDateTime, endDateTime, attendees, taskId, transparency, timeblock, noteRef })
+      const created = await createCalendarEvent(token, { calendarId: target, summary, location, description, startDateTime, endDateTime, allDayDate, attendees, taskId, transparency, timeblock, noteRef })
       const colour = calendars.find(c => c.id === target)?.backgroundColor ?? '#4285f4'
       const ev = toGCalEvent({ ...created, calendarId: target, calendarColor: colour })
       // Show it straight away; the next fetch will confirm it.
@@ -961,6 +989,10 @@ export const useGCalStore = create<GCalState>((set, get) => ({
   },
 
   setCalendarEnabled: (id, on) => {
+    // 넣는 곳은 못 숨깁니다 — 숨기면 다음에 넣는 일정이 사라집니다.
+    // 화면에서도 그 체크는 눌리지 않게 해 두었습니다(눌러도 안 되는 것을
+    // 눌리게 두지 않습니다). 여기 검사는 그 규칙의 마지막 문입니다.
+    if (!on && id === targetCalendarOf(get())) return
     const current = get().enabledCalendarIds ?? get().calendars.map(c => c.id)
     const next = on ? [...new Set([...current, id])] : current.filter(x => x !== id)
     localStorage.setItem(ENABLED_KEY, JSON.stringify(next))

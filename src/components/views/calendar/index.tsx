@@ -5,7 +5,8 @@ import { useTaskStore } from '../../../store/taskStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { haptic } from '../../../lib/haptics'
 import { useProjectStore } from '../../../store/projectStore'
-import { useGCalStore, warmCalendarAuth, PEEK_COLOR } from '../../../store/gcalStore'
+import { useGCalStore, warmCalendarAuth, targetCalendarOf, PEEK_COLOR } from '../../../store/gcalStore'
+import { ActionMenu } from '../../shared/ContextMenu'
 import { TimelineGrid, GUTTER as HOUR_GUTTER } from '../timeline'
 import { writableCalendars } from '../../../lib/googleCalendar'
 import { useOrgStore } from '../../../store/orgStore'
@@ -45,8 +46,9 @@ const MOB_STATUS: Record<string, { bg: string; color: string }> = {
 // ── GCal connect button ───────────────────────────────────────────────────────
 
 function GCalButton() {
-  const { token, loading, autoRefreshing, wasConnected, error, calendars, enabledCalendarIds, connect, disconnect, autoReconnect, fetchCalendars, setCalendarEnabled, refreshEvents } = useGCalStore(useShallow(s => ({ token: s.token, loading: s.loading, autoRefreshing: s.autoRefreshing, wasConnected: s.wasConnected, error: s.error, calendars: s.calendars, enabledCalendarIds: s.enabledCalendarIds, connect: s.connect, disconnect: s.disconnect, autoReconnect: s.autoReconnect, fetchCalendars: s.fetchCalendars, setCalendarEnabled: s.setCalendarEnabled, refreshEvents: s.refreshEvents })))
+  const { token, loading, autoRefreshing, wasConnected, error, calendars, enabledCalendarIds, targetCalendarId, connect, disconnect, autoReconnect, fetchCalendars, setCalendarEnabled, refreshEvents } = useGCalStore(useShallow(s => ({ token: s.token, loading: s.loading, autoRefreshing: s.autoRefreshing, wasConnected: s.wasConnected, error: s.error, calendars: s.calendars, enabledCalendarIds: s.enabledCalendarIds, targetCalendarId: s.targetCalendarId, connect: s.connect, disconnect: s.disconnect, autoReconnect: s.autoReconnect, fetchCalendars: s.fetchCalendars, setCalendarEnabled: s.setCalendarEnabled, refreshEvents: s.refreshEvents })))
   const [pickerOpen, setPickerOpen] = React.useState(false)
+  const target = targetCalendarOf({ calendars, targetCalendarId })
 
   // The calendar list is what makes shared team calendars reachable at all, so
   // it is read as soon as there is a token to read it with.
@@ -107,15 +109,27 @@ function GCalButton() {
               )}
               {calendars.map(c => {
                 const on = (enabledCalendarIds ?? []).includes(c.id)
+                /*
+                  ── 넣는 곳은 못 숨깁니다 ──────────────────────────────────
+                  둘이 어긋나면 끌어다 놓은 일정이 만드는 순간엔 보였다가
+                  다음에 읽을 때 조용히 사라집니다 — 안 만들어진 것처럼
+                  보이는데 구글에는 남아 있습니다. 눌러도 안 되는 것을
+                  눌리게 두지 않고, 왜 안 되는지 옆에 적습니다.
+                */
+                const isTarget = c.id === target
                 return (
-                  <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', fontSize: 13, color: 'var(--t1)', cursor: 'pointer' }}
+                  <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', fontSize: 13, color: 'var(--t1)', cursor: isTarget ? 'default' : 'pointer' }}
+                    title={isTarget ? '새 일정이 여기로 갑니다. 넣는 곳은 숨길 수 없습니다.' : undefined}
                     onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                   >
-                    <input type="checkbox" checked={on} onChange={() => setCalendarEnabled(c.id, !on)}
-                      style={{ accentColor: 'var(--ac)', width: 13, height: 13, cursor: 'pointer', flexShrink: 0 }} />
+                    <input type="checkbox" checked={on} disabled={isTarget} onChange={() => setCalendarEnabled(c.id, !on)}
+                      style={{ accentColor: 'var(--ac)', width: 13, height: 13, cursor: isTarget ? 'default' : 'pointer', flexShrink: 0, opacity: isTarget ? .55 : 1 }} />
                     <span style={{ width: 9, height: 9, borderRadius: 2, background: c.backgroundColor, flexShrink: 0 }} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.summary}</span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.summary}</span>
+                    {isTarget && (
+                      <span style={{ flexShrink: 0, fontSize: 10.5, color: 'var(--t3)' }}>여기에 추가</span>
+                    )}
                   </label>
                 )
               })}
@@ -945,7 +959,7 @@ function DesktopCalendar() {
         })()
 
   const writable = writableCalendars(calendars)
-  const target = targetCalendarId ?? calendars.find(c => c.primary)?.id ?? writable[0]?.id ?? ''
+  const target = targetCalendarOf({ calendars, targetCalendarId }) ?? ''
 
   // Coming back to the tab is the moment someone expects to see what changed in
   // Google meanwhile. The cached window is only re-read if it has gone stale.
@@ -1277,6 +1291,36 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
   const onTaskDragStart = useCallback((taskId: string) => setDraggingId(taskId), [])
   const onTaskDragEnd   = useCallback(() => { setDraggingId(null); setDragOver(null) }, [])
 
+  /**
+   * ── 날짜 칸을 누르면 무엇이 생기나 ────────────────────────────────────────
+   *
+   * 전에는 곧장 새 업무 창이 열렸습니다. 그런데 달력에서 날짜를 누르는 사람이
+   * 늘 업무를 만들려는 것은 아닙니다 — 회의를 잡으려는 손도 같은 자리를
+   * 누릅니다. 둘 중 하나로 정해 두면 나머지 절반은 매번 창을 닫고 다른 데로
+   * 가야 합니다.
+   *
+   * 그래서 **무엇을 만들지 먼저 묻습니다.** 두 줄짜리 메뉴 한 번이 잘못 열린
+   * 창을 닫는 것보다 짧습니다.
+   */
+  const [menu, setMenu] = useState<{ x: number; y: number; day: string } | null>(null)
+  const [quick, setQuick] = useState<{ x: number; y: number; day: string } | null>(null)
+  const onPickDay = useCallback((day: string, x: number, y: number) => setMenu({ x, y, day }), [])
+
+  /**
+   * 날짜 숫자를 누르면 그 날부터 3일.
+   *
+   * 월 화면의 칸 하나에는 다섯 줄밖에 안 들어갑니다. '그 날 뭐가 있나'를
+   * 물으려면 결국 다른 화면으로 가야 하는데, 지금까지는 3일 뷰로 바꾸고
+   * 화살표로 그 날짜까지 걸어가야 했습니다. 구글 캘린더에서 숫자를 누르면
+   * 그 날이 열리는 것과 같은 자리입니다.
+   */
+  const setCalRange = useUiStore(s => s.setCalRange)
+  const setCalAnchor = useUiStore(s => s.setCalAnchor)
+  const onOpenDay = useCallback((day: string) => {
+    setCalAnchor(day)
+    setCalRange(3)
+  }, [setCalAnchor, setCalRange])
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       {/* Day-of-week labels */}
@@ -1322,7 +1366,8 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
                 onDragOverDay={onDragOverDay}
                 onDragLeaveDay={onDragLeaveDay}
                 onDropDay={handleDrop}
-                onPlanDay={onPlanDay}
+                onPickDay={onPickDay}
+                onOpenDay={onOpenDay}
                 onOpenTask={openTaskDetail}
                 onTaskDragStart={onTaskDragStart}
                 onTaskDragEnd={onTaskDragEnd}
@@ -1331,7 +1376,102 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
           })}
         </div>
       </div>
+
+      {menu && (
+        <ActionMenu
+          x={menu.x} y={menu.y}
+          actions={[
+            { label: '업무 추가', icon: 'plus', onSelect: () => onPlanDay(menu.day) },
+            { label: '일정 추가', icon: 'calendar', onSelect: () => setQuick({ x: menu.x, y: menu.y, day: menu.day }) },
+          ]}
+          onClose={() => setMenu(null)}
+        />
+      )}
+
+      {quick && (
+        <QuickEvent
+          x={quick.x} y={quick.y} day={quick.day}
+          onClose={() => setQuick(null)}
+        />
+      )}
     </div>
+  )
+}
+
+/**
+ * ── 날짜 칸에서 만드는 일정 ──────────────────────────────────────────────────
+ *
+ * **종일입니다.** 월 화면의 칸에는 시각이 없습니다 — 칸 하나가 곧 하루입니다.
+ * 거기서 만드는 일정에 우리가 시각을 정해 붙이면(늘 오후 2시 같은 식으로)
+ * 아무도 안 정한 시간이 캘린더에 사실처럼 적히고, 그걸 본 사람은 그 시간에
+ * 뭔가 있는 줄 압니다. 구글 캘린더도 이 자리에서는 종일로 만듭니다.
+ *
+ * 시각이 필요하면 날짜 숫자를 눌러 3일 화면으로 가서 끌면 됩니다 — 거기는
+ * 시간 축이 있고, 끄는 동작이 곧 시각입니다.
+ */
+function QuickEvent({ x, y, day, onClose }: {
+  x: number; y: number; day: string; onClose: () => void
+}) {
+  const createEvent = useGCalStore(s => s.createEvent)
+  const [title, setTitle] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async () => {
+    const summary = title.trim()
+    if (!summary || busy) return
+    setBusy(true)
+    // 만드는 데 실패하면 스토어가 error를 세우고, 캘린더 단추가 그걸 말합니다.
+    // 여기서 창을 닫아 버리면 방금 친 제목이 같이 사라집니다.
+    const id = await createEvent({ summary, allDayDate: day })
+    setBusy(false)
+    if (id) onClose()
+  }
+
+  const d = toDate(day)
+  return (
+    <>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 8998 }} onClick={onClose} />
+      <div
+        style={{
+          position: 'fixed', left: Math.min(x, window.innerWidth - 260), top: Math.min(y, window.innerHeight - 130),
+          zIndex: 8999, width: 244, background: 'var(--bg)', border: '1px solid var(--bd)',
+          borderRadius: 'var(--r3)', boxShadow: 'var(--sh-lg)', padding: 12,
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ fontSize: 11, color: 'var(--t3)', marginBottom: 6 }}>
+          {`${d.getMonth() + 1}월 ${d.getDate()}일 · 종일`}
+        </div>
+        <input
+          autoFocus
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Escape') { e.stopPropagation(); onClose() }
+            if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); void submit() }
+          }}
+          placeholder="일정 제목"
+          style={{
+            width: '100%', boxSizing: 'border-box', padding: '6px 8px', marginBottom: 8,
+            borderRadius: 'var(--r1)', border: '1px solid var(--bd)', background: 'var(--bg2)',
+            color: 'var(--t1)', fontSize: 13, outline: 'none', fontFamily: 'var(--font)',
+          }}
+        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            onClick={() => void submit()}
+            disabled={!title.trim() || busy}
+            style={{
+              padding: '5px 12px', fontSize: 12, fontWeight: 600, borderRadius: 'var(--r1)',
+              border: 'none', background: 'var(--ac)', color: '#fff', fontFamily: 'var(--font)',
+              cursor: title.trim() && !busy ? 'pointer' : 'default',
+              opacity: title.trim() && !busy ? 1 : .5,
+            }}
+          >{busy ? '만드는 중…' : '만들기'}</button>
+          <span style={{ fontSize: 11, color: 'var(--t3)' }}>시간을 정하려면 날짜 숫자를 누르세요</span>
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -1346,7 +1486,7 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
 const MonthCell = React.memo(function MonthCell({
   day, dayOfMonth, column, isCurrentMonth, isToday, isDragTarget,
   chips, milestones, draggingId, canMove,
-  onDragOverDay, onDragLeaveDay, onDropDay, onPlanDay, onOpenTask,
+  onDragOverDay, onDragLeaveDay, onDropDay, onPickDay, onOpenDay, onOpenTask,
   onTaskDragStart, onTaskDragEnd,
 }: {
   day: string
@@ -1363,7 +1503,10 @@ const MonthCell = React.memo(function MonthCell({
   onDragOverDay: (day: string) => void
   onDragLeaveDay: () => void
   onDropDay: (e: React.DragEvent, day: string) => void
-  onPlanDay: (day: string) => void
+  /** 빈 자리를 누른 곳. 무엇을 만들지 묻는 메뉴가 거기 섭니다. */
+  onPickDay: (day: string, x: number, y: number) => void
+  /** 날짜 숫자를 누른 것 — 그 날부터 3일 화면으로. */
+  onOpenDay: (day: string) => void
   onOpenTask: (id: string) => void
   onTaskDragStart: (taskId: string) => void
   onTaskDragEnd: () => void
@@ -1382,7 +1525,7 @@ const MonthCell = React.memo(function MonthCell({
       onDragOver={e => { e.preventDefault(); onDragOverDay(day) }}
       onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) onDragLeaveDay() }}
       onDrop={e => onDropDay(e, day)}
-      onClick={() => onPlanDay(day)}
+      onClick={e => onPickDay(day, e.clientX, e.clientY)}
       style={{
         cursor: 'pointer',
         borderRight: column === 6 ? 'none' : '1px solid var(--bd)',
@@ -1428,9 +1571,24 @@ const MonthCell = React.memo(function MonthCell({
             ))}
           </div>
         )}
-        <span style={{ fontSize: 12, fontWeight: isToday ? 700 : 400, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: isToday ? 22 : 'auto', height: isToday ? 22 : 'auto', borderRadius: isToday ? '50%' : 0, background: isToday ? 'var(--ac)' : 'transparent', color: isToday ? '#fff' : !isCurrentMonth ? 'var(--t3)' : 'var(--t2)' }}>
+        {/* 숫자는 '이 날을 열기'입니다. 칸의 나머지는 '여기에 만들기'고요 —
+            같은 칸에 두 가지 뜻이 있으니 숫자 쪽이 눌리는 것처럼 보여야
+            합니다(손이 오면 동그라미가 뜹니다). */}
+        <button
+          onClick={e => { e.stopPropagation(); onOpenDay(day) }}
+          title="이 날부터 3일 보기"
+          className={isToday ? 'bpp-daynum on' : 'bpp-daynum'}
+          style={{
+            border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'var(--font)',
+            fontSize: 12, fontWeight: isToday ? 700 : 400,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            minWidth: 22, height: 22, borderRadius: '50%',
+            background: isToday ? 'var(--ac)' : 'transparent',
+            color: isToday ? '#fff' : !isCurrentMonth ? 'var(--t3)' : 'var(--t2)',
+          }}
+        >
           {dayOfMonth}
-        </span>
+        </button>
       </div>
 
       {/* Events */}
@@ -1503,8 +1661,19 @@ const MonthCell = React.memo(function MonthCell({
             </div>
           )
         })}
+        {/* '더 보기'는 만드는 것이 아니라 보는 것입니다 — 칸을 누른 것으로
+            치면 무엇을 만들지 묻는 메뉴가 뜹니다. 그 날로 보냅니다. */}
         {overflow > 0 && (
-          <div style={{ fontSize: 10, color: 'var(--t3)', padding: '0 6px' }}>+{overflow}개 더</div>
+          <button
+            onClick={e => { e.stopPropagation(); onOpenDay(day) }}
+            style={{
+              border: 'none', background: 'transparent', textAlign: 'left',
+              fontSize: 10, color: 'var(--t3)', padding: '0 6px',
+              cursor: 'pointer', fontFamily: 'var(--font)',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--t1)' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--t3)' }}
+          >+{overflow}개 더</button>
         )}
       </div>
     </div>

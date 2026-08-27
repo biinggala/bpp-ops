@@ -508,3 +508,32 @@ input, select, textarea, button {
     font-size: 16px !important;
   }
 }
+
+/* ── 시간 축에 놓인 체크박스 줄 ───────────────────────────────────────────────
+   업무 줄(TaskRef)은 시간이 붙으면 오른쪽 끝에 `09:00–10:00`이 섭니다. 같은
+   손짓으로 놓는 체크박스 줄만 아무 표시가 없어서, 한쪽은 되고 한쪽은 안 되는
+   것처럼 보였습니다. 같은 자리, 같은 크기, 같은 색입니다.
+
+   글자는 문서가 아니라 데코레이션이 실어 옵니다(BlockTime) — 시간은 구글
+   일정에 살고, 노트에 적어 넣으면 두 곳이 같은 사실을 들고 있다가 어긋납니다.
+
+   li가 이미 flex라서 ::after가 그대로 마지막 칸이 됩니다. */
+.ProseMirror ul[data-type="taskList"] li[data-at]::after {
+  content: attr(data-at);
+  flex-shrink: 0;
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.7;
+  color: var(--ac);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.ProseMirror ul[data-type="taskList"] li[data-checked="true"][data-at]::after {
+  opacity: .5;
+}
+
+/* 월 화면의 날짜 숫자는 누르면 그 날로 갑니다. 칸의 나머지는 '여기에 만들기'라
+   뜻이 둘이고, 눌리는 쪽은 눌리는 것처럼 보여야 합니다. */
+.bpp-daynum:not(.on):hover { background: var(--bg3); }
+.bpp-daynum:focus-visible { outline: 2px solid var(--ac); outline-offset: 1px; }

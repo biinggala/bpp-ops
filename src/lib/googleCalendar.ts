@@ -213,9 +213,12 @@ export interface NewEvent {
   location?: string
   /** 아젠다와 회의록 링크. joinAgenda가 만드는 문자열입니다. */
   description?: string
-  /** Local wall-clock ISO without a zone, e.g. "2026-08-18T14:00:00". */
-  startDateTime: string
-  endDateTime: string
+  /**
+   * Local wall-clock ISO without a zone, e.g. "2026-08-18T14:00:00".
+   * `allDayDate`를 주면 안 씁니다.
+   */
+  startDateTime?: string
+  endDateTime?: string
   timeZone?: string
   /** Addresses to invite. Google emails each of them.  */
   attendees?: string[]
@@ -234,6 +237,14 @@ export interface NewEvent {
   timeblock?: boolean
   /** 이 블록이 온 체크박스 줄 — `날짜|줄id`. NOTE_LINK_KEY 참고. */
   noteRef?: string
+  /**
+   * 종일 일정. `YYYY-MM-DD` 하루.
+   *
+   * 월 화면의 날짜 칸에는 시각이 없습니다 — 칸 하나가 곧 하루입니다. 거기서
+   * 만드는 일정에 억지로 시각을 붙이면(예: 늘 오후 2시) 아무도 안 정한 시간이
+   * 캘린더에 사실처럼 적힙니다. 구글 캘린더도 그 자리에서는 종일로 만듭니다.
+   */
+  allDayDate?: string
 }
 
 /**
@@ -253,6 +264,14 @@ function sendUpdatesParam(attendees: string[] | undefined): string {
  * so an event dragged onto 2pm reads as 2pm to everyone in that zone regardless
  * of where it was created.
  */
+/** `YYYY-MM-DD`의 다음 날. 종일 일정의 배타적 끝에 씁니다. */
+function nextDay(date: string): string {
+  const d = new Date(`${date}T00:00:00`)
+  d.setDate(d.getDate() + 1)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
 export async function createCalendarEvent(token: string, event: NewEvent): Promise<RawCalendarEvent> {
   const timeZone = event.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
   const res = await fetch(
@@ -264,8 +283,17 @@ export async function createCalendarEvent(token: string, event: NewEvent): Promi
         summary: event.summary,
         ...(event.location ? { location: event.location } : {}),
         ...(event.description ? { description: event.description } : {}),
-        start: { dateTime: event.startDateTime, timeZone },
-        end: { dateTime: event.endDateTime, timeZone },
+        ...(event.allDayDate
+          /*
+            구글의 종일 일정은 **끝 날짜가 배타적**입니다 — 8월 19일 하루는
+            end가 8월 20일입니다. 같은 날을 적으면 길이가 0인 일정이 되어
+            어떤 화면에서는 아예 안 보입니다.
+          */
+          ? { start: { date: event.allDayDate }, end: { date: nextDay(event.allDayDate) } }
+          : {
+              start: { dateTime: event.startDateTime, timeZone },
+              end: { dateTime: event.endDateTime, timeZone },
+            }),
         ...(event.attendees?.length ? { attendees: event.attendees.map(email => ({ email })) } : {}),
         ...(event.taskId || event.timeblock || event.noteRef
           ? {

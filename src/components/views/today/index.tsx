@@ -19,6 +19,8 @@ import { MarkdownTasks } from './markdown'
 import { DayTimeline } from './DayTimeline'
 import { CarryOver, noteHasContent } from './CarryOver'
 import { BlockTools } from './BlockTools'
+import { BlockTime } from './BlockTime'
+import { useGCalStore } from '../../../store/gcalStore'
 import { LoadingChips } from '../../shared/Loading'
 import type { Task } from '../../../types'
 import { useShallow } from 'zustand/react/shallow'
@@ -102,6 +104,10 @@ export function TodayView() {
    */
   const mobileRef = useRef(isMobile)
   mobileRef.current = isMobile
+  /* 편집기는 한 번만 만들어집니다. 날짜는 바뀌므로 ref로 건네줍니다 —
+     안내문(hintRef)이 이미 같은 길을 씁니다. */
+  const dateRef = useRef(date)
+  dateRef.current = date
   const [dropping, setDropping] = useState(false)
   const noteRef = useRef<HTMLDivElement>(null)
 
@@ -158,6 +164,8 @@ export function TodayView() {
       TaskRef,
       FileRef,
       MarkdownTasks,
+      // 시간 축에 놓인 체크박스 줄에 그 시간을 붙입니다(그릴 때만).
+      BlockTime.configure({ dateRef }),
     ],
     content: '',
     editorProps: {
@@ -288,6 +296,25 @@ export function TodayView() {
     // 안쪽 타이머도 같이 거둡니다. 날짜를 넘기는 순간이 이 280ms 안이면
     // 이미 없는 편집기를 건드리게 됩니다.
     return () => { clearInterval(timer); if (swap !== null) clearTimeout(swap) }
+  }, [editor])
+
+  /**
+   * 시간이 바뀌면 줄의 시각도 다시 그립니다.
+   *
+   * 데코레이션은 편집기 상태가 움직일 때만 다시 셉니다. 그런데 시각은 편집기
+   * 밖(구글 캘린더)에 살아서, 캘린더에서 블록을 옮기면 노트는 아무것도 모른 채
+   * 옛 시각을 들고 있었습니다. 아무것도 안 고치는 빈 거래를 한 번 보내 다시
+   * 세게 합니다 — 문서가 안 바뀌니 저장도 되돌리기 기록도 안 생깁니다.
+   */
+  useEffect(() => {
+    if (!editor) return
+    let last = useGCalStore.getState().events
+    return useGCalStore.subscribe(s => {
+      if (s.events === last) return
+      last = s.events
+      if (editor.isDestroyed) return
+      editor.view.dispatch(editor.state.tr.setMeta('addToHistory', false))
+    })
   }, [editor])
 
   const shift = (days: number) => setDate(d => fmtYMD(addDays(toDate(d), days)))
