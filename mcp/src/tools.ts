@@ -14,7 +14,7 @@ import {
   readMilestones, readProjects, readTasks, readUserProfiles, writeProjectMeta,
   readDailyNote, readDailyNoteDates, writeDailyNote,
 } from './store.js'
-import { checklistHtml, noteToMarkdown, paragraphHtml, taskRefHtml } from './note.js'
+import { checklistHtml, noteMarkdownFor, paragraphHtml, taskRefHtml } from './note.js'
 import { PRIORITIES, STATUSES, type Milestone, type Priority, type Status, type Task, type TaskLink } from './types.js'
 
 const YMD = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD')
@@ -933,8 +933,10 @@ export function registerTools(server: McpServer, ctx: Ctx) {
     },
     async (args) => {
       const date = args.date ?? today()
-      const [html, tasks] = await Promise.all([readDailyNote(ctx.email, date), readTasks(ctx.email)])
-      const markdown = noteToMarkdown(html, tasks)
+      const [html, tasks, projects] = await Promise.all([
+        readDailyNote(ctx.email, date), readTasks(ctx.email), readProjects(ctx.email),
+      ])
+      const markdown = noteMarkdownFor(html, tasks, ctx.email, accessibleProjectIds(projects, ctx.email))
       return text({ date, empty: !markdown, markdown })
     }
   )
@@ -993,7 +995,7 @@ export function registerTools(server: McpServer, ctx: Ctx) {
       return text({
         date,
         appended: { tasks: ids.length, todos: todos.length, notes: notes.length },
-        markdown: noteToMarkdown(before + added, tasks),
+        markdown: noteMarkdownFor(before + added, tasks, ctx.email, accessible),
       })
     }
   )
