@@ -173,9 +173,12 @@ export function TimeRange({ startMin, minutes, onChange }: {
     return out
   }, [])
   const ends = React.useMemo(() => {
-    const out: { at: number; label: string; sub: string }[] = []
+    // 길이는 옆에 이미 적혀 있습니다. 줄마다 또 적었더니 '1시간 15분'이
+    // 좁은 칸에서 세 줄로 접혀서, 시각을 고르는 목록이 시각보다 길이로
+    // 읽혔습니다.
+    const out: { at: number; label: string }[] = []
     for (let m = startMin + SNAP; m <= 24 * 60; m += SNAP) {
-      out.push({ at: m, label: m === 24 * 60 ? '24:00' : hhmm(m), sub: durationLabel(m - startMin) })
+      out.push({ at: m, label: m === 24 * 60 ? '24:00' : hhmm(m) })
     }
     return out
   }, [startMin])
@@ -203,26 +206,68 @@ export function TimeRange({ startMin, minutes, onChange }: {
 }
 
 /**
- * 그 날 찬 자리와 지금 고른 자리.
+ * ── 그 날 찬 자리와 지금 고른 자리 ───────────────────────────────────────────
  *
- * 읽기만 합니다 — 여기서는 아무것도 안 끌립니다. 끌 수 있는 것처럼 보이면
- * 끌어 보게 되고, 안 되면 그건 고장으로 보입니다.
+ * 파란 칸을 끌면 15분씩 움직입니다. 목록으로 고르는 것과 같은 일을 하지만,
+ * **찬 자리를 피해 놓는 일**에는 이쪽이 훨씬 짧습니다 — 회색 사이의 빈 곳으로
+ * 밀어 넣으면 되고, 그게 눈이 이미 하고 있던 판단입니다.
+ *
+ * 길이는 안 바뀝니다. 끄는 동안 양쪽이 다 움직이면 어디에 놓이는지 읽기가
+ * 어렵고, 길이는 바로 위 목록과 아래 알약이 이미 정확하게 정합니다.
+ *
+ * 띠는 6시부터 24시까지만 그립니다. 그보다 이른 시각은 끌어서 못 가는데,
+ * 그건 목록이 답합니다 — 새벽 회의를 끌어서 잡는 사람은 없습니다.
  */
-export function BusyStrip({ dayEvents, startMin, minutes }: {
+export function BusyStrip({ dayEvents, startMin, minutes, onChange }: {
   dayEvents: GCalEvent[]
   startMin: number
   minutes: number
+  /** 없으면 읽기만 합니다. */
+  onChange?: (startMin: number) => void
 }) {
+  const track = React.useRef<HTMLDivElement>(null)
+  const [dragging, setDragging] = React.useState(false)
   const span = (STRIP_TO - STRIP_FROM) * 60
   const pct = (min: number) => Math.max(0, Math.min(100, ((min - STRIP_FROM * 60) / span) * 100))
   const timed = dayEvents.filter(ev => !ev.allDay && ev.startIso && ev.endIso)
 
+  const minuteAt = (clientX: number): number => {
+    const r = track.current?.getBoundingClientRect()
+    if (!r || !r.width) return startMin
+    const raw = STRIP_FROM * 60 + ((clientX - r.left) / r.width) * span
+    return Math.round(raw / SNAP) * SNAP
+  }
+
+  const grab = (e: React.PointerEvent) => {
+    if (!onChange) return
+    e.preventDefault()
+    // 잡은 지점과 시작 사이의 거리를 들고 갑니다. 안 그러면 칸이 손가락
+    // 아래로 순간이동해서, 놓으려던 자리가 아니라 잡은 자리가 됩니다.
+    const offset = startMin - minuteAt(e.clientX)
+    setDragging(true)
+    const move = (ev: PointerEvent) => {
+      const next = minuteAt(ev.clientX) + offset
+      onChange(Math.max(0, Math.min(24 * 60 - minutes, next)))
+    }
+    const up = () => {
+      setDragging(false)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
   return (
     <div>
-      <div style={{
-        position: 'relative', height: 16, borderRadius: 3,
-        background: 'var(--bg3)', overflow: 'hidden',
-      }}>
+      <div
+        ref={track}
+        style={{
+          position: 'relative', height: 16, borderRadius: 3,
+          background: 'var(--bg3)', overflow: 'hidden',
+          touchAction: onChange ? 'none' : undefined,
+        }}
+      >
         {timed.map(ev => {
           const from = pct(minutesOfIso(ev.startIso!))
           const to = pct(minutesOfIso(ev.endIso!))
@@ -241,11 +286,16 @@ export function BusyStrip({ dayEvents, startMin, minutes }: {
         })}
         {/* 고른 자리. 남의 자리 위에 올라앉아야 겹친 것이 보입니다. */}
         <div
+          onPointerDown={grab}
+          title={onChange ? `${hhmm(startMin)}–${hhmm(startMin + minutes)} — 끌어서 옮기기` : undefined}
           style={{
             position: 'absolute', top: 0, bottom: 0,
             left: `${pct(startMin)}%`,
             width: `${Math.max(1.5, pct(startMin + minutes) - pct(startMin))}%`,
             background: 'var(--ac)', borderRadius: 2,
+            cursor: onChange ? (dragging ? 'grabbing' : 'grab') : 'default',
+            // 끄는 동안은 그림자로 손에 들려 있다고 말해 줍니다.
+            boxShadow: dragging ? '0 1px 6px rgba(35,131,226,.5)' : 'none',
           }}
         />
       </div>

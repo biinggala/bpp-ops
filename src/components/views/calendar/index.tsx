@@ -1613,7 +1613,10 @@ function QuickEvent({ x, y, day, onClose }: {
               onChange={(s2, m) => { setStartMin(s2); setMinutes(m) }}
             />
             <div style={{ marginTop: 8 }}>
-              <BusyStrip dayEvents={dayEvents} startMin={startMin} minutes={minutes} />
+              <BusyStrip
+                dayEvents={dayEvents} startMin={startMin} minutes={minutes}
+                onChange={setStartMin}
+              />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 8 }}>
               {[30, 60, 90].map(m => (

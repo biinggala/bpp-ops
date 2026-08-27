@@ -214,14 +214,30 @@ export function TaskModal() {
               />
             </PropCell>
 
-            {projectMilestones.length > 0 && (
+            {/*
+              ── 마일스톤 칸은 프로젝트를 고른 뒤에 섭니다 ────────────────────
+              마일스톤은 프로젝트에 속하니 그 전에는 고를 것이 없습니다.
+              그런데 마일스톤이 하나도 없는 프로젝트에서는 **칸 자체를 안
+              그렸습니다** — 캘린더에서 날짜를 눌러 온 사람에게는 마일스톤을
+              붙이는 길이 아예 없는 것처럼 보였습니다.
+
+              없으면 없다고 말합니다. 빈 것과 없는 것은 다른 말이고, 그 차이가
+              '내가 잘못 찾고 있나'와 '여긴 아직 안 만들었구나'를 가릅니다.
+            */}
+            {form.projectId && (
               <PropCell label="마일스톤">
-                <OptionPicker
-                  value={form.milestoneId}
-                  empty="없음"
-                  options={projectMilestones.map(m => ({ value: m.id, label: m.name, sub: m.dueDate }))}
-                  onChange={v => upd('milestoneId', v)}
-                />
+                {projectMilestones.length > 0 ? (
+                  <OptionPicker
+                    value={form.milestoneId}
+                    empty="없음"
+                    options={projectMilestones.map(m => ({ value: m.id, label: m.name, sub: m.dueDate }))}
+                    onChange={v => upd('milestoneId', v)}
+                  />
+                ) : (
+                  <span style={{ fontSize: 12.5, color: 'var(--t3)' }}>
+                    이 프로젝트에는 아직 없습니다
+                  </span>
+                )}
               </PropCell>
             )}
 

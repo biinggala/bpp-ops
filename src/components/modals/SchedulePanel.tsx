@@ -380,7 +380,10 @@ function NewEventBody({ task, day, dayEvents, candidates, onCreate }: {
         onChange={(s, m) => { setStartMin(s); setMinutes(m) }}
       />
 
-      <BusyStrip dayEvents={dayEvents} startMin={startMin} minutes={minutes} />
+      <BusyStrip
+        dayEvents={dayEvents} startMin={startMin} minutes={minutes}
+        onChange={setStartMin}
+      />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
         {[30, 60, 90].map(m => (
