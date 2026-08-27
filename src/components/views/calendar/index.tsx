@@ -7,6 +7,7 @@ import { haptic } from '../../../lib/haptics'
 import { useProjectStore } from '../../../store/projectStore'
 import { useGCalStore, warmCalendarAuth, targetCalendarOf, PEEK_COLOR } from '../../../store/gcalStore'
 import { ActionMenu } from '../../shared/ContextMenu'
+import { DayTimeGrid, hhmm, localIso, durationLabel } from '../../shared/DayTimeGrid'
 import { TimelineGrid, GUTTER as HOUR_GUTTER } from '../timeline'
 import { writableCalendars } from '../../../lib/googleCalendar'
 import { useOrgStore } from '../../../store/orgStore'
@@ -1401,55 +1402,73 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
 /**
  * ── 날짜 칸에서 만드는 일정 ──────────────────────────────────────────────────
  *
- * **종일입니다.** 월 화면의 칸에는 시각이 없습니다 — 칸 하나가 곧 하루입니다.
- * 거기서 만드는 일정에 우리가 시각을 정해 붙이면(늘 오후 2시 같은 식으로)
- * 아무도 안 정한 시간이 캘린더에 사실처럼 적히고, 그걸 본 사람은 그 시간에
- * 뭔가 있는 줄 압니다. 구글 캘린더도 이 자리에서는 종일로 만듭니다.
+ * 월 화면의 칸에는 시각이 없습니다. 그렇다고 종일로만 만들게 두면, 회의를
+ * 잡으려고 날짜를 누른 사람은 만들어 놓고 다시 3일 화면으로 가서 끌어 옮겨야
+ * 합니다 — 두 번 만드는 셈입니다.
  *
- * 시각이 필요하면 날짜 숫자를 눌러 3일 화면으로 가서 끌면 됩니다 — 거기는
- * 시간 축이 있고, 끄는 동작이 곧 시각입니다.
+ * 그래서 **여기서 시간까지 정합니다.** 시각을 고르는 방법은 업무의 일정
+ * 패널과 같은 격자입니다(DayTimeGrid) — 그 날 이미 잡힌 것이 같이 그려져
+ * 있어서, '이 자리가 비었나'를 묻지 않고 보고 고릅니다.
+ *
+ * 종일은 한 번 눌러 갈 수 있습니다. 하루짜리 표시(휴가, 마감일)에는 시각이
+ * 없는 편이 맞고, 우리가 정해 붙이면 아무도 안 정한 시간이 캘린더에 사실처럼
+ * 적힙니다.
  */
 function QuickEvent({ x, y, day, onClose }: {
   x: number; y: number; day: string; onClose: () => void
 }) {
   const createEvent = useGCalStore(s => s.createEvent)
+  const events = useGCalStore(s => s.events)
   const [title, setTitle] = useState('')
+  const [allDay, setAllDay] = useState(false)
+  const [startMin, setStartMin] = useState(14 * 60)
+  const [minutes, setMinutes] = useState(60)
   const [busy, setBusy] = useState(false)
+
+  // 남의 일정은 빼고 내 것만. 격자는 '내 하루가 얼마나 찼나'를 그립니다.
+  const dayEvents = useMemo(
+    () => events.filter(ev => !ev.peekOf && (ev.startIso ?? ev.start).slice(0, 10) === day),
+    [events, day],
+  )
 
   const submit = async () => {
     const summary = title.trim()
     if (!summary || busy) return
     setBusy(true)
-    // 만드는 데 실패하면 스토어가 error를 세우고, 캘린더 단추가 그걸 말합니다.
-    // 여기서 창을 닫아 버리면 방금 친 제목이 같이 사라집니다.
-    const id = await createEvent({ summary, allDayDate: day })
+    // 실패하면 스토어가 error를 세우고 캘린더 단추가 그걸 말합니다. 여기서
+    // 창을 닫아 버리면 방금 친 제목이 같이 사라집니다.
+    const id = await createEvent(allDay
+      ? { summary, allDayDate: day }
+      : {
+          summary,
+          startDateTime: localIso(day, startMin),
+          endDateTime: localIso(day, startMin + minutes),
+        })
     setBusy(false)
     if (id) onClose()
   }
 
   const d = toDate(day)
+  const W = allDay ? 250 : 296
   return (
     <>
       <div style={{ position: 'fixed', inset: 0, zIndex: 8998 }} onClick={onClose} />
       <div
         style={{
-          position: 'fixed', left: Math.min(x, window.innerWidth - 260), top: Math.min(y, window.innerHeight - 130),
-          zIndex: 8999, width: 244, background: 'var(--bg)', border: '1px solid var(--bd)',
+          position: 'fixed',
+          left: Math.max(8, Math.min(x, window.innerWidth - W - 8)),
+          top: Math.max(8, Math.min(y, window.innerHeight - (allDay ? 130 : 380))),
+          zIndex: 8999, width: W, background: 'var(--bg)', border: '1px solid var(--bd)',
           borderRadius: 'var(--r3)', boxShadow: 'var(--sh-lg)', padding: 12,
         }}
         onClick={e => e.stopPropagation()}
+        onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }}
       >
-        <div style={{ fontSize: 11, color: 'var(--t3)', marginBottom: 6 }}>
-          {`${d.getMonth() + 1}월 ${d.getDate()}일 · 종일`}
-        </div>
         <input
           autoFocus
           value={title}
           onChange={e => setTitle(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Escape') { e.stopPropagation(); onClose() }
-            if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); void submit() }
-          }}
+          onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); void submit() } }}
           placeholder="일정 제목"
           style={{
             width: '100%', boxSizing: 'border-box', padding: '6px 8px', marginBottom: 8,
@@ -1457,7 +1476,64 @@ function QuickEvent({ x, y, day, onClose }: {
             color: 'var(--t1)', fontSize: 13, outline: 'none', fontFamily: 'var(--font)',
           }}
         />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--t2)', flex: 1, minWidth: 0 }}>
+            {`${d.getMonth() + 1}월 ${d.getDate()}일`}
+            {!allDay && (
+              <span style={{ color: 'var(--t3)' }}>
+                {` · ${hhmm(startMin)}–${hhmm(startMin + minutes)} · ${durationLabel(minutes)}`}
+              </span>
+            )}
+          </span>
+          {/*
+            두 값뿐인 축이라 목록이 아니라 스위치입니다. 시간이 있는 일정과
+            종일은 정말로 둘 중 하나고, 그 사이에 낄 값이 없습니다.
+          */}
+          <div style={{ display: 'flex', gap: 2, padding: 2, flexShrink: 0, borderRadius: 'var(--r2)', background: 'var(--bg3)' }}>
+            {([['시간', false], ['종일', true]] as const).map(([label, on]) => (
+              <button
+                key={label}
+                onClick={() => setAllDay(on)}
+                style={{
+                  padding: '2px 8px', borderRadius: 'var(--r1)', border: 'none',
+                  fontSize: 11.5, fontFamily: 'var(--font)',
+                  cursor: allDay === on ? 'default' : 'pointer',
+                  background: allDay === on ? 'var(--bg)' : 'transparent',
+                  color: allDay === on ? 'var(--t1)' : 'var(--t3)',
+                  fontWeight: allDay === on ? 600 : 400,
+                  boxShadow: allDay === on ? 'var(--sh-sm)' : 'none',
+                }}
+              >{label}</button>
+            ))}
+          </div>
+        </div>
+
+        {!allDay && (
+          <>
+            <DayTimeGrid
+              day={day} dayEvents={dayEvents}
+              startMin={startMin} minutes={minutes}
+              onChange={(s2, m) => { setStartMin(s2); setMinutes(m) }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, margin: '8px 0 2px' }}>
+              {[30, 60, 90].map(m => (
+                <button
+                  key={m}
+                  onClick={() => setMinutes(m)}
+                  style={{
+                    padding: '2px 8px', fontSize: 11, borderRadius: 'var(--r1)', background: 'transparent',
+                    border: `1px solid ${minutes === m ? 'var(--ac)' : 'var(--bd)'}`,
+                    color: minutes === m ? 'var(--ac)' : 'var(--t3)',
+                    cursor: 'pointer', fontFamily: 'var(--font)',
+                  }}
+                >{m < 60 ? `${m}분` : `${m / 60}시간`}</button>
+              ))}
+            </div>
+          </>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
           <button
             onClick={() => void submit()}
             disabled={!title.trim() || busy}
@@ -1468,7 +1544,12 @@ function QuickEvent({ x, y, day, onClose }: {
               opacity: title.trim() && !busy ? 1 : .5,
             }}
           >{busy ? '만드는 중…' : '만들기'}</button>
-          <span style={{ fontSize: 11, color: 'var(--t3)' }}>시간을 정하려면 날짜 숫자를 누르세요</span>
+          <span style={{ fontSize: 11, color: 'var(--t3)' }}>
+            {/* 참석자·회의실 칸은 이 카드에 없습니다. 월 화면에서 일정을
+                누르면 구글로 나가고, 그 카드는 3일·주 화면에만 있습니다 —
+                여기 없는 것을 여기 있는 것처럼 말하지 않습니다. */}
+            {allDay ? '시각 없이 하루로' : '참석자·회의실은 3일·주 화면에서'}
+          </span>
         </div>
       </div>
     </>
