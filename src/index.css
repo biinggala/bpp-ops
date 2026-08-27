@@ -21,6 +21,13 @@
   --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color-scheme: light;
 
+  /* ── 노트 줄의 끝자락 ──────────────────────────────────────────────────
+     업무·파일 줄은 맨 끝에 ×를 답니다. 체크박스 줄은 안 답니다. 그래서
+     시간(09:00–10:00)이 줄 종류에 따라 ×의 폭만큼 어긋나 섰습니다.
+     여기서 한 번 정하고, ×가 없는 줄은 같은 폭을 여백으로 비웁니다. */
+  --note-x: 16px;
+  --note-gap: 8px;
+
   /* Text */
   --t1: #37352f;                  /* Notion default ink */
   --t2: rgba(55,53,47,.65);
@@ -537,3 +544,12 @@ input, select, textarea, button {
    뜻이 둘이고, 눌리는 쪽은 눌리는 것처럼 보여야 합니다. */
 .bpp-daynum:not(.on):hover { background: var(--bg3); }
 .bpp-daynum:focus-visible { outline: 2px solid var(--ac); outline-offset: 1px; }
+
+/* ── 체크박스 줄의 끝자락 ─────────────────────────────────────────────────────
+   ×가 없는 줄이라 그 폭만큼 비워 둡니다. 그래야 시간이 업무 줄의 시간과 같은
+   자리에서 끝납니다 — 줄 종류가 달라도 목록은 한 덩어리로 읽혀야 합니다. */
+   맨 바깥 줄에만 줍니다. 안쪽 목록은 이미 바깥 줄의 여백 안에 들어 있어서,
+   또 주면 한 단 들어갈 때마다 시간이 왼쪽으로 밀립니다. */
+.ProseMirror > ul[data-type="taskList"] > li {
+  padding-right: calc(var(--note-x) + var(--note-gap));
+}

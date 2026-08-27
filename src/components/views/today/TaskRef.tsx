@@ -11,6 +11,7 @@ import { haptic } from '../../../lib/haptics'
 import { daysFrom } from '../../../lib/utils'
 import { StatusPick } from '../../shared/StatusPick'
 import type { Status } from '../../../types'
+import { ROW, REMOVE } from './noteRow'
 
 /**
  * ── 노트 안의 업무 ───────────────────────────────────────────────────────────
@@ -309,19 +310,9 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
   )
 }
 
-const ROW: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 8,
-  padding: '3px 6px', margin: '1px -6px', borderRadius: 'var(--r2)',
-}
 
 const BOX: React.CSSProperties = {
   width: 16, height: 16, flexShrink: 0, borderRadius: '50%',
   border: '2px solid var(--bd2)', display: 'inline-block',
 }
 
-const REMOVE: React.CSSProperties = {
-  marginLeft: 'auto', flexShrink: 0,
-  background: 'transparent', border: 'none', cursor: 'pointer',
-  color: 'var(--t3)', fontSize: 14, lineHeight: 1, padding: '0 2px',
-  fontFamily: 'var(--font)',
-}
