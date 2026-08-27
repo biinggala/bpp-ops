@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useGCalStore, type GCalEvent } from '../../store/gcalStore'
+import { useShallow } from 'zustand/react/shallow'
+import { usePeekPreview } from '../../hooks/usePeekPreview'
 import { useAuthStore } from '../../store/authStore'
 import { ActionMenu } from '../shared/ContextMenu'
 import { openExternal } from '../../lib/desktopLinks'
@@ -366,11 +368,36 @@ function NewEventBody({ task, day, dayEvents, candidates, onCreate }: {
   const toggle = (email: string) =>
     setInvited(prev => prev.includes(email) ? prev.filter(e => e !== email) : [...prev, email])
 
-  const clash = dayEvents.some(ev => {
+  /**
+   * ── 부른 사람의 그날도 같이 그립니다 ───────────────────────────────────────
+   *
+   * 이 격자가 답하는 질문은 '이 자리가 비었나'입니다. 내 것만 그려 놓으면 내가
+   * 비었다는 것만 답하고, 정작 부르려는 사람이 그 시간에 회의 중인지는 초대
+   * 메일이 나간 뒤에 알게 됩니다. 하루짜리 화면이라 그날만 읽습니다.
+   */
+  const { peekEvents, peekSeen } = useGCalStore(useShallow(st => ({
+    peekEvents: st.peekEvents, peekSeen: st.peekSeen,
+  })))
+  usePeekPreview(invited, day, day)
+
+  const theirs = useMemo(
+    () => peekEvents.filter(ev =>
+      invited.includes(ev.peekOf ?? '') && (ev.startIso ?? ev.start).slice(0, 10) === day),
+    [peekEvents, invited, day],
+  )
+  const shownEvents = useMemo(() => [...dayEvents, ...theirs], [dayEvents, theirs])
+
+  const overlaps = (list: GCalEvent[]) => list.some(ev => {
     if (ev.allDay || !ev.startIso || !ev.endIso) return false
     const s = minutesOfIso(ev.startIso), e = minutesOfIso(ev.endIso)
     return startMin < e && s < startMin + minutes
   })
+  // 내 것과 남의 것을 따로 셉니다 — 같은 '겹침'이 아닙니다. 내 겹침은 내가
+  // 정하면 그만이고, 남의 겹침은 그 사람에게 물어야 하는 일입니다.
+  const clash = overlaps(dayEvents)
+  const theirClash = overlaps(theirs)
+  /** 부른 사람 중 달력이 열려 있어 실제로 확인된 사람 수. */
+  const checked = invited.filter(e => peekSeen.includes(e)).length
 
   const submit = async () => {
     const title = summary.trim()
@@ -396,7 +423,7 @@ function NewEventBody({ task, day, dayEvents, candidates, onCreate }: {
       />
 
       <DayTimeGrid
-        day={day} dayEvents={dayEvents}
+        day={day} dayEvents={shownEvents}
         startMin={startMin} minutes={minutes}
         onChange={(s, m) => { setStartMin(s); setMinutes(m) }}
       />
@@ -411,7 +438,8 @@ function NewEventBody({ task, day, dayEvents, candidates, onCreate }: {
             style={{ ...CHIP, padding: '1px 7px', fontSize: 11, borderColor: minutes === m ? 'var(--ac)' : 'var(--bd)', color: minutes === m ? 'var(--ac)' : 'var(--t3)' }}
           >{m < 60 ? `${m}분` : `${m / 60}시간`}</button>
         ))}
-        {clash && <span style={{ fontSize: 11, color: '#D9730D' }}>겹치는 일정 있음</span>}
+        {clash && <span style={{ fontSize: 11, color: '#D9730D' }}>내 일정과 겹침</span>}
+        {theirClash && <span style={{ fontSize: 11, color: '#D9730D' }}>부른 사람과 겹침</span>}
       </div>
 
       {candidates.length > 0 && (
@@ -430,6 +458,18 @@ function NewEventBody({ task, day, dayEvents, candidates, onCreate }: {
               >{on ? '✓ ' : ''}{email.split('@')[0]}</button>
             )
           })}
+        </div>
+      )}
+
+      {/* 회색이 무엇인지, 그리고 **몇 명 것인지**. 못 읽은 사람의 빈 하루를
+          '한가하다'로 읽으면 그 사람은 초대장을 받고 나서야 압니다. */}
+      {invited.length > 0 && (
+        <div style={{ fontSize: 11, color: 'var(--t3)', lineHeight: 1.5 }}>
+          {checked === 0
+            ? '부른 분들의 일정은 볼 수 없습니다 — 공유가 닫혀 있습니다.'
+            : checked === invited.length
+              ? '회색은 부른 분들의 일정입니다.'
+              : `${checked}명의 일정만 보입니다. 나머지는 공유가 닫혀 있습니다.`}
         </div>
       )}
 

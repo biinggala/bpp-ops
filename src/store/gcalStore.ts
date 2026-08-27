@@ -88,6 +88,19 @@ export function myAttendance(event: { attendees?: EventAttendee[] }): EventAtten
 
 const ENABLED_KEY = 'gcal_enabled_calendars'
 const PEEK_KEY = 'gcal_peeking'
+/** 지난번에 읽어 둔 캘린더 목록. 켤 때 한 번 덜 물어보려고 남깁니다. */
+const CAL_KEY = 'gcal_calendars'
+/** 지난번에 읽어 둔 일정 창. 켜자마자 그리고, 그리는 동안 다시 읽습니다. */
+const EVENTS_KEY = 'gcal_events_cache'
+/**
+ * 이 이상은 안 담습니다.
+ *
+ * localStorage는 대개 5MB이고, 그건 이 앱 전체가 쓰는 공간입니다. 일정에는
+ * 설명과 참석자가 붙어 있어서 넉 달치가 수백 KB에서 몇 MB까지 갑니다. 넘치면
+ * **다른 저장이 조용히 실패합니다** — 캐시 하나 때문에 설정이 안 남는 것은
+ * 남는 것이 없느니만 못합니다. 넘치면 그냥 안 담습니다.
+ */
+const CACHE_MAX = 1_500_000
 
 /** 남의 일정을 그리는 색. 내 캘린더 색들과 안 겹치게 회색 계열 하나로. */
 export const PEEK_COLOR = '#787774'
@@ -97,6 +110,43 @@ function loadPeeking(): string[] {
     const raw = localStorage.getItem(PEEK_KEY)
     return raw ? JSON.parse(raw) as string[] : []
   } catch { return [] }
+}
+
+function loadCalendars(): GoogleCalendar[] {
+  try {
+    const raw = localStorage.getItem(CAL_KEY)
+    const list = raw ? JSON.parse(raw) as GoogleCalendar[] : []
+    return Array.isArray(list) ? list.filter(c => c && typeof c.id === 'string') : []
+  } catch { return [] }
+}
+
+/**
+ * ── 켜자마자 보이는 달력 ─────────────────────────────────────────────────────
+ *
+ * 전에는 앱을 열면 달력이 빈 채로 있었습니다. 토큰을 되살리고, 캘린더 목록을
+ * 묻고, 그 다음에야 일정을 물어서, 세 번 왕복이 끝날 때까지 아무것도 없었습니다.
+ * 그 몇 초 동안 화면은 '일정이 없다'고 말하고 있었고, 그건 사실이 아니었습니다.
+ *
+ * 그래서 지난번에 읽은 창을 그대로 담아 뒀다가 켜는 순간 그립니다. 담긴 것은
+ * **낡은 것으로 취급합니다** — `fetchedAt`을 0으로 두어서, 그리는 즉시 다시
+ * 읽습니다. 보이는 것과 맞는 것 사이에 몇 초가 있는 건 구글 캘린더도 같습니다.
+ */
+function loadCache(): { events: GCalEvent[]; from: string | null; to: string | null } {
+  try {
+    const raw = localStorage.getItem(EVENTS_KEY)
+    if (!raw) return { events: [], from: null, to: null }
+    const box = JSON.parse(raw) as { from?: string; to?: string; events?: GCalEvent[] }
+    if (!box?.from || !box?.to || !Array.isArray(box.events)) return { events: [], from: null, to: null }
+    return { events: box.events.filter(e => e && typeof e.id === 'string'), from: box.from, to: box.to }
+  } catch { return { events: [], from: null, to: null } }
+}
+
+function saveCache(from: string, to: string, events: GCalEvent[]) {
+  try {
+    const raw = JSON.stringify({ from, to, events })
+    if (raw.length > CACHE_MAX) { localStorage.removeItem(EVENTS_KEY); return }
+    localStorage.setItem(EVENTS_KEY, raw)
+  } catch { /* 꽉 찼거나 시크릿 창. 캐시는 없어도 되는 것입니다. */ }
 }
 
 /** 한가함/바쁨 한 칸을 일정 하나로. 제목이 없다는 것을 그대로 들고 갑니다. */
@@ -167,10 +217,34 @@ interface GCalState {
   peeking: string[]
   /** 그 사람들의 일정. 내 것과 **섞지 않습니다** — GCalEvent.peekOf 참고. */
   peekEvents: GCalEvent[]
+  /**
+   * 물어봤을 때 **답이 온** 사람들.
+   *
+   * 일정 목록으로는 이걸 알 수 없습니다. 그날 아무 일정이 없는 사람과 달력이
+   * 닫혀 있어 못 읽은 사람이 똑같이 '일정 0개'로 보입니다 — 둘은 완전히 다른
+   * 사실이고, 회의를 잡는 사람에게는 정반대의 뜻입니다.
+   */
+  peekSeen: string[]
   peekLoading: boolean
   setPeeking: (email: string, on: boolean) => void
-  /** 켜 둔 사람들의 그 기간 일정을 다시 읽습니다. */
-  fetchPeek: (from: string, to: string) => Promise<void>
+  /**
+   * ── 지금 초대 중인 사람들 ─────────────────────────────────────────────────
+   *
+   * `peeking`과 **다른 목록입니다.** 저쪽은 내가 켜 둔 것이라 껐다 켜기 전까지
+   * 남고, 이쪽은 열려 있는 카드에 붙습니다 — 카드를 닫으면 같이 사라집니다.
+   *
+   * 회의를 잡으면서 부를 사람을 넣는 순간 그 사람이 그 시간에 비었는지 알고
+   * 싶은 것이지, 그 사람 달력을 앞으로 계속 켜 두고 싶은 것이 아닙니다. 둘을
+   * 한 목록으로 만들면 회의 하나 잡을 때마다 켜 둔 사람이 늘어납니다.
+   */
+  preview: string[]
+  /** 미리 볼 기간. 카드가 놓인 날들만입니다 — 넉 달치를 사람마다 읽지 않습니다. */
+  previewRange: { from: string; to: string } | null
+  setPreview: (emails: string[], from?: string, to?: string) => void
+  /** 켜 둔 사람들의 그 기간 일정을 다시 읽습니다. `only`를 주면 그 사람만. */
+  fetchPeek: (from: string, to: string, only?: string[]) => Promise<void>
+  /** 읽는 중에 들어온 요청. 지금 것이 끝나면 이어서 읽습니다. */
+  queued: { from: string; to: string } | null
   /** The span currently held in `events`, and when it was read. */
   loadedFrom: string | null
   loadedTo: string | null
@@ -463,20 +537,45 @@ async function ensureWriteToken(get: () => GCalState, set: Setter): Promise<stri
   }
 }
 
+/**
+ * 읽는 동안 적어 둔 요청 하나를 이어서 읽습니다.
+ *
+ * 적어 둔 것이 이미 실린 창 안이면 아무것도 안 합니다 — 방금 읽어 온 것이
+ * 그 달을 덮고 있는데 또 읽으면 같은 답을 두 번 받습니다.
+ */
+function runQueued(
+  get: () => GCalState,
+  set: (partial: Partial<GCalState>) => void,
+) {
+  const { queued, loadedFrom, loadedTo } = get()
+  if (!queued) return
+  set({ queued: null })
+  const covered = !!loadedFrom && !!loadedTo && loadedFrom <= queued.from && queued.to <= loadedTo
+  if (covered) return
+  void get().fetchEvents(shiftDate(queued.from, -PAD_DAYS), shiftDate(queued.to, PAD_DAYS))
+}
+
+const CACHED = loadCache()
+
 export const useGCalStore = create<GCalState>((set, get) => ({
   ...loadStored(),
   autoRefreshing: false,
-  events: [],
+  events: CACHED.events,
   history: [],
-  calendars: [],
+  calendars: loadCalendars(),
   enabledCalendarIds: loadEnabled(),
   peeking: loadPeeking(),
   peekEvents: [],
+  peekSeen: [],
   peekLoading: false,
+  preview: [],
+  previewRange: null,
+  queued: null,
   canWrite: loadWrite(),
   targetCalendarId: (() => { try { return localStorage.getItem(TARGET_KEY) } catch { return null } })(),
-  loadedFrom: null,
-  loadedTo: null,
+  loadedFrom: CACHED.from,
+  loadedTo: CACHED.to,
+  // 담긴 창은 늘 낡은 것입니다. 0이라 `ensureEvents`가 즉시 다시 읽습니다.
   fetchedAt: 0,
   loading: false,
   error: null,
@@ -543,7 +642,8 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     localStorage.removeItem('gcal_connected')
     localStorage.removeItem(ENABLED_KEY)
     localStorage.removeItem(WRITE_KEY)
-    set({ token: null, expiry: null, wasConnected: false, events: [], calendars: [], enabledCalendarIds: null, canWrite: false, error: null, loadedFrom: null, loadedTo: null, fetchedAt: 0 })
+    try { localStorage.removeItem(CAL_KEY); localStorage.removeItem(EVENTS_KEY) } catch { /* 시크릿 창 */ }
+    set({ token: null, expiry: null, wasConnected: false, events: [], calendars: [], enabledCalendarIds: null, canWrite: false, error: null, loadedFrom: null, loadedTo: null, fetchedAt: 0, peekEvents: [], peekSeen: [], preview: [], previewRange: null, queued: null })
   },
 
   /**
@@ -714,46 +814,131 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     if (next.length === now.length && on) return
     set({
       peeking: next,
-      ...(on ? {} : { peekEvents: get().peekEvents.filter(e => e.peekOf !== who) }),
+      // 끄는 사람이 지금 초대 중인 사람이기도 하면 그림은 그대로 둡니다 —
+      // 카드가 아직 열려 있고, 거기서 필요해서 그려 둔 것입니다.
+      ...(on || get().preview.includes(who)
+        ? {}
+        : {
+            peekEvents: get().peekEvents.filter(e => e.peekOf !== who),
+            peekSeen: get().peekSeen.filter(e => e !== who),
+          }),
     })
     try { localStorage.setItem(PEEK_KEY, JSON.stringify(next)) } catch { /* private mode */ }
-    if (on) void get().fetchPeek(get().loadedFrom ?? '', get().loadedTo ?? '')
+    // 켤 때 그 사람만 읽습니다. 전부 다시 읽으면 한 명 켜는 데 켜 둔 사람 수만큼
+    // 기다립니다.
+    if (on) void get().fetchPeek(get().loadedFrom ?? '', get().loadedTo ?? '', [who])
   },
 
-  fetchPeek: async (from, to) => {
-    const { token, peeking } = get()
-    if (!token || !peeking.length || !from || !to) return
-    set({ peekLoading: true })
-    const collected: GCalEvent[] = []
-    /** 상세를 못 읽은 사람들. 이들만 모아 한 번에 한가함/바쁨을 묻습니다. */
-    const opaque: string[] = []
+  setPreview: (emails, from, to) => {
+    const who = [...new Set(emails.map(e => e.toLowerCase().trim()).filter(Boolean))]
+    const { preview, peeking, previewRange, loadedFrom, loadedTo } = get()
+    const range = from && to ? { from, to } : previewRange
+    const same = who.length === preview.length && who.every(e => preview.includes(e))
+    if (same && range?.from === previewRange?.from && range?.to === previewRange?.to) return
 
-    for (const who of peeking) {
-      try {
-        const raw = await fetchEventsForRange(
-          token, { id: who, summary: who, backgroundColor: PEEK_COLOR }, from, to,
-        )
-        // 읽히긴 했는데 상세가 없는 경우가 있습니다(제목 없는 '바쁨'). 그건
-        // 구글이 이미 가려서 준 것이라 그대로 씁니다.
-        collected.push(...raw
-          .map(toGCalEvent)
-          .filter((e): e is GCalEvent => !!e)
-          .map(e => ({ ...e, calendarColor: PEEK_COLOR, peekOf: who })))
-      } catch (e: unknown) {
-        if (e instanceof Error && e.message === TOKEN_EXPIRED) { set({ peekLoading: false }); return }
-        opaque.push(who)
-      }
+    // 빠진 사람은 그림에서도 뺍니다 — 켜 둔 사람이면 그대로 둡니다.
+    const gone = preview.filter(e => !who.includes(e) && !peeking.includes(e))
+    set({
+      preview: who,
+      previewRange: who.length ? range ?? null : null,
+      ...(gone.length ? {
+        peekEvents: get().peekEvents.filter(e => !gone.includes(e.peekOf ?? '')),
+        peekSeen: get().peekSeen.filter(e => !gone.includes(e)),
+      } : {}),
+    })
+
+    // 새로 들어온 사람만 읽습니다. 이미 켜 둔 사람은 이미 그려져 있습니다.
+    const fresh = who.filter(e => !preview.includes(e) && !peeking.includes(e))
+    if (fresh.length && range) void get().fetchPeek(loadedFrom ?? '', loadedTo ?? '', fresh)
+  },
+
+  /**
+   * ── 남의 일정 읽기 ─────────────────────────────────────────────────────────
+   *
+   * **한꺼번에 묻습니다.** 전에는 한 사람씩 차례로 기다렸습니다 — 다섯 명이면
+   * 왕복 다섯 번을 줄 세운 것이라, 한 번이 0.4초면 2초였습니다. 서로 아무
+   * 상관이 없는 다섯 개의 질문인데 말입니다.
+   *
+   * 사람마다 보는 기간이 다를 수 있습니다. 켜 둔 사람은 달력에 실린 창 전체를,
+   * 지금 초대 중인 사람은 카드가 놓인 날들만 봅니다 — 회의 하나 잡자고 넉 달치를
+   * 사람 수만큼 읽을 이유가 없습니다.
+   */
+  fetchPeek: async (from, to, only) => {
+    const { token, peeking, preview, previewRange } = get()
+    if (!token) return
+
+    const jobs: { who: string; from: string; to: string }[] = []
+    const add = (who: string, f: string, t: string) => {
+      if (!f || !t) return
+      if (only && !only.includes(who)) return
+      if (jobs.some(j => j.who === who)) return
+      jobs.push({ who, from: f, to: t })
+    }
+    for (const who of peeking) add(who, from, to)
+    if (previewRange) for (const who of preview) add(who, previewRange.from, previewRange.to)
+
+    if (!jobs.length) {
+      // 아무도 안 보고 있으면 그림도 비웁니다. 다만 '그 사람만' 읽으라고
+      // 불린 것이면 나머지는 남의 몫이라 건드리지 않습니다.
+      if (!only && get().peekEvents.length) set({ peekEvents: [], peekSeen: [] })
+      return
     }
 
-    if (opaque.length) {
+    set({ peekLoading: true })
+    const settled = await Promise.allSettled(jobs.map(j =>
+      fetchEventsForRange(token, { id: j.who, summary: j.who, backgroundColor: PEEK_COLOR }, j.from, j.to),
+    ))
+    if (settled.some(r => r.status === 'rejected' && (r.reason as Error)?.message === TOKEN_EXPIRED)) {
+      set({ peekLoading: false })
+      return
+    }
+
+    const collected: GCalEvent[] = []
+    /** 답이 온 사람들. 일정이 하나도 없어도 여기 듭니다. */
+    const answered = new Set<string>()
+    /** 상세를 못 읽은 사람들. 같은 기간끼리 묶어 한 번에 한가함/바쁨을 묻습니다. */
+    const opaque = new Map<string, string[]>()
+    settled.forEach((r, i) => {
+      const job = jobs[i]
+      if (r.status === 'fulfilled') {
+        answered.add(job.who)
+        // 읽히긴 했는데 상세가 없는 경우가 있습니다(제목 없는 '바쁨'). 그건
+        // 구글이 이미 가려서 준 것이라 그대로 씁니다.
+        collected.push(...r.value
+          .map(toGCalEvent)
+          .filter((e): e is GCalEvent => !!e)
+          .map(e => ({ ...e, calendarColor: PEEK_COLOR, peekOf: job.who })))
+        return
+      }
+      const key = `${job.from}|${job.to}`
+      opaque.set(key, [...(opaque.get(key) ?? []), job.who])
+    })
+
+    await Promise.all([...opaque.entries()].map(async ([key, people]) => {
+      const [f, t] = key.split('|')
       try {
-        const busy = await fetchFreeBusy(token, opaque, from, to)
+        const busy = await fetchFreeBusy(token, people, f, t)
         for (const [who, slots] of Object.entries(busy)) {
+          // 키가 왔다는 것이 곧 답이 왔다는 뜻입니다 — 빈 배열이어도.
+          // 못 읽은 사람은 애초에 키가 안 옵니다(fetchFreeBusy 참고).
+          answered.add(who)
           collected.push(...slots.map((slot, i) => busyToEvent(who, slot, i)))
         }
       } catch { /* 못 물어봤으면 그 사람은 안 그립니다 */ }
-    }
-    set({ peekEvents: collected, peekLoading: false })
+    }))
+
+    // '그 사람만' 읽었으면 그 사람 것만 갈아 끼웁니다. 통째로 바꾸면 방금
+    // 읽어 온 남의 것이 사라집니다.
+    const ran = new Set(jobs.map(j => j.who))
+    set({
+      peekEvents: only
+        ? [...get().peekEvents.filter(e => !ran.has(e.peekOf ?? '')), ...collected]
+        : collected,
+      peekSeen: only
+        ? [...new Set([...get().peekSeen.filter(e => !ran.has(e)), ...answered])]
+        : [...answered],
+      peekLoading: false,
+    })
   },
 
   updateEvent: async (eventId, patch) => {
@@ -842,6 +1027,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       // team calendars, which is where anything meant for everyone lives.
       const enabled = get().enabledCalendarIds ?? calendars.map(c => c.id)
       localStorage.setItem(ENABLED_KEY, JSON.stringify(enabled))
+      try { localStorage.setItem(CAL_KEY, JSON.stringify(calendars)) } catch { /* 시크릿 창 */ }
       set({ calendars, enabledCalendarIds: enabled, error: null })
     } catch (e: unknown) {
       if (e instanceof Error && e.message === TOKEN_EXPIRED) {
@@ -871,11 +1057,22 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     if (on && loadedFrom && loadedTo) get().fetchEvents(loadedFrom, loadedTo)
   },
 
+  /**
+   * ── 읽는 중에 달을 넘기면 ──────────────────────────────────────────────────
+   *
+   * 전에는 그냥 돌아섰습니다(`if (loading) return`). 그래서 아직 읽는 중에 달을
+   * 넘기면 **그 달은 영영 안 읽혔습니다** — 다른 것이 한 번 더 부를 때까지 빈
+   * 화면이었고, 사람에게는 그게 '느린 것'이 아니라 '안 되는 것'입니다.
+   *
+   * 지금은 적어 두고, 읽던 것이 끝나면 이어서 읽습니다. 적어 두는 자리는
+   * 하나뿐이라 빨리 여러 번 넘겨도 마지막 하나만 남습니다 — 지나온 달을
+   * 줄줄이 다시 읽을 이유가 없습니다.
+   */
   ensureEvents: async (from, to) => {
     const { loadedFrom, loadedTo, fetchedAt, loading } = get()
-    if (loading) return
     const covered = !!loadedFrom && !!loadedTo && loadedFrom <= from && to <= loadedTo
     if (covered && Date.now() - fetchedAt < STALE_MS) return
+    if (loading) { set({ queued: { from, to } }); return }
     await get().fetchEvents(shiftDate(from, -PAD_DAYS), shiftDate(to, PAD_DAYS))
   },
 
@@ -966,13 +1163,21 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       ;({ token, expiry } = get())
       if (!token) return
     }
-    if (!get().calendars.length) {
+    /**
+     * 담아 둔 목록이 있으면 그것으로 곧장 시작합니다 — 목록을 묻고 답을
+     * 기다렸다가 일정을 묻는 왕복 두 번이 한 번이 됩니다. 목록은 일정을 읽는
+     * 동안 뒤에서 새로 읽어 둡니다. 캘린더가 하나 늘거나 줄어도 다음 번엔
+     * 맞습니다.
+     */
+    const cached = get().calendars.length > 0
+    if (!cached) {
       await get().fetchCalendars()
       if (!get().calendars.length) return
     }
 
     const active = get().calendars.filter(c => (get().enabledCalendarIds ?? []).includes(c.id))
     if (!active.length) { set({ events: [], loading: false, loadedFrom: from, loadedTo: to, fetchedAt: Date.now() }); return }
+    if (cached) void get().fetchCalendars()
 
     set({ loading: true, error: null })
     const abort = new AbortController()
@@ -989,9 +1194,11 @@ export const useGCalStore = create<GCalState>((set, get) => ({
         events.push(ev)
       }
       set({ events, loading: false, loadedFrom: from, loadedTo: to, fetchedAt: Date.now() })
+      saveCache(from, to, events)
       // 같이 보고 있는 사람들도 같은 기간으로 따라옵니다. 내 것만 새로
       // 읽으면 달을 넘길 때 남의 일정만 옛 기간에 남습니다.
       void get().fetchPeek(from, to)
+      runQueued(get, set)
     } catch (e: unknown) {
       clearTimeout(timer)
       if (e instanceof Error && e.message === TOKEN_EXPIRED) {
@@ -1004,6 +1211,9 @@ export const useGCalStore = create<GCalState>((set, get) => ({
         ? '요청 시간 초과. 네트워크를 확인해 주세요.'
         : (e instanceof Error ? e.message : '이벤트 로드 오류')
       set({ loading: false, error: msg })
+      // 실패해도 기다리던 요청은 보내 줍니다. 한 번 실패했다고 그 뒤에
+      // 누른 달까지 같이 사라지면, 사람에게는 앱이 멈춘 것으로 보입니다.
+      runQueued(get, set)
     }
   },
 }))
