@@ -1700,7 +1700,7 @@ export function AttendeeList({ teammates, chosen, nameOf, onToggle, responses }:
           />
           {/* 여섯 줄까지. 더 있으면 스크롤이 그렇다고 말합니다 — 이름을 더
               치면 좁혀진다는 것도 같이. */}
-          <div style={{ maxHeight: ROW_H * 6, overflowY: 'auto', marginTop: 4 }}>
+          <div data-scrolls style={{ maxHeight: ROW_H * 6, overflowY: 'auto', marginTop: 4 }}>
             {picks.length === 0 && (
               <div style={{ fontSize: 11, color: 'var(--t3)', padding: '4px 2px', lineHeight: 1.5 }}>
                 {needle
@@ -1895,6 +1895,7 @@ function BlockCard({ at, heading, event, task, onStatus, noteChecked, onNoteChec
           boxShadow: 'var(--sh-lg)', padding: 12,
           overflowY: 'auto', boxSizing: 'border-box',
         }}
+        data-scrolls
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
           <span style={{ fontSize: 11, color: 'var(--t3)', fontVariantNumeric: 'tabular-nums' }}>{heading}</span>
@@ -2064,6 +2065,7 @@ function EventCard({
           boxShadow: 'var(--sh-lg)', padding: 12,
           overflowY: 'auto', boxSizing: 'border-box',
         }}
+        data-scrolls
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
           <span style={{ fontSize: 11, color: 'var(--t3)' }}>{heading}</span>

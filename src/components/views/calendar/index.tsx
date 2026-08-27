@@ -101,7 +101,7 @@ function GCalButton() {
               position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 8999,
               background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
               boxShadow: 'var(--sh-md)', minWidth: 230, maxHeight: 320, overflowY: 'auto', padding: '4px 0',
-            }}>
+            }} data-scrolls>
               {error && (
                 <div style={{ padding: '6px 12px', fontSize: 11, color: 'var(--danger)', lineHeight: 1.5 }}>{error}</div>
               )}
@@ -762,6 +762,19 @@ function useWheelSlide(
     }
 
     const handle = (e: WheelEvent) => {
+      /**
+       * ── 스스로 구르는 것 위에서는 비켜섭니다 ─────────────────────────────
+       *
+       * 이 손잡이는 격자 전체에 걸려 있고, 격자 위에 뜬 카드도 DOM으로는 그
+       * 안입니다. 그래서 일정 카드 안에서 굴리면 **카드가 아니라 달이**
+       * 넘어갔습니다 — 카드는 잘린 채로 있고 뒤의 달력만 움직였습니다.
+       *
+       * 계산해서 알아내지 않습니다(굴릴 때마다 스타일을 읽으면 그게 곧
+       * 끊김입니다). 스스로 구르는 것에 표를 달아 두고, 그 표가 보이면
+       * 이 손잡이는 아무것도 안 합니다.
+       */
+      if ((e.target as Element | null)?.closest?.('[data-scrolls]')) return
+
       // Lines and pages, as some mice and older browsers report them.
       const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1
       const delta  = (axis === 'y' ? e.deltaY : e.deltaX) * scale
@@ -1547,6 +1560,7 @@ function QuickEvent({ x, y, day, onClose }: {
           borderRadius: 'var(--r3)', boxShadow: 'var(--sh-lg)', padding: 12,
           overflowY: 'auto', boxSizing: 'border-box',
         }}
+        data-scrolls
         onClick={e => e.stopPropagation()}
         onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }}
       >

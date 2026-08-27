@@ -113,6 +113,7 @@ function TimeMenu({ value, options, onPick, width = 92 }: {
           <div style={{ position: 'fixed', inset: 0, zIndex: 9200 }} onClick={() => setOpen(false)} />
           <div
             ref={list}
+            data-scrolls
             style={{
               position: 'fixed', left: box.left, top: box.top, width,
               zIndex: 9201, maxHeight: 192, overflowY: 'auto', padding: 4,
