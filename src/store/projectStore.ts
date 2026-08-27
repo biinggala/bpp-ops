@@ -102,6 +102,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           if (!orgId) return
           return fbUpdate(ref(db, P.orgOwns(orgId)), { [id]: true })
         })
+        .then(() => {
+          // 워크스페이스 안의 프로젝트는 목록에 있습니다 — 따로 올리는
+          // 동작이 없습니다. 오르는 것은 이름뿐이고, 업무는 그대로
+          // 프로젝트 멤버만 봅니다.
+          if (!orgId) return
+          return useOrgStore.getState().listProject(project).then(() => undefined)
+        })
         .catch(e => console.warn('[project create]', e))
     }
     return project
@@ -123,7 +130,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
    * 통째로 사라집니다 — 그래서 만든 사람과 워크스페이스 관리자만 할 수 있고,
    * 규칙이 그걸 지킵니다.
    *
-   * 순서가 있습니다. 워크스페이스 공개 목록에서 **먼저** 내립니다 — 그 목록을
+   * 순서가 있습니다. 워크스페이스 목록에서 **먼저** 내립니다 — 그 목록을
    * 고치려면 내가 이 프로젝트의 멤버여야 하는데, 프로젝트를 먼저 지우면
    * 확인할 명단이 없어져서 이름만 목록에 남습니다. 없는 프로젝트에 참여를
    * 요청하는 화면이 그렇게 생깁니다.
@@ -136,8 +143,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
     void (async () => {
       if (project?.orgId) {
+        // 참여 요청도 같이 치웁니다. 목록에 없는 프로젝트에 대한 요청은
+        // 아무도 볼 데가 없는 채로 남습니다 — 승인할 사람이 그 프로젝트
+        // 멤버인데, 그 프로젝트가 없어졌으니까요.
+        await fbRemove(ref(db, `${P.orgJoinRequests(project.orgId)}/${id}`)).catch(() => {})
         await fbRemove(ref(db, P.orgProject(project.orgId, id)))
-          .catch(e => console.warn('[project delete] 공개 목록', e))
+          .catch(e => console.warn('[project delete] 워크스페이스 목록', e))
       }
       try {
         await fbRemove(ref(db, P.project(id)))

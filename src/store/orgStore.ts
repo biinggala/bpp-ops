@@ -42,7 +42,7 @@ export interface Room {
   active?: boolean
 }
 
-/** 조직에 공개된 프로젝트 한 줄. 이름은 베껴 둔 사본입니다. */
+/** 워크스페이스 목록의 프로젝트 한 줄. 이름은 베껴 둔 사본입니다. */
 export interface OrgProject {
   id: string
   name: string
@@ -106,7 +106,7 @@ interface OrgState {
    * 언젠가 어긋납니다.
    */
   admins: string[]
-  /** 조직에 공개된 프로젝트들. 이름만입니다 — 업무는 안 딸려 옵니다. */
+  /** 이 워크스페이스의 프로젝트들. 이름만입니다 — 업무는 안 딸려 옵니다. */
   orgProjects: OrgProject[]
   /** 들어오고 싶다는 요청들. 승인은 그 프로젝트 멤버가 합니다. */
   joinRequests: JoinRequest[]
@@ -169,7 +169,18 @@ interface OrgState {
   setAdmin: (email: string, on: boolean) => Promise<boolean>
 
   /** 프로젝트를 조직 목록에 올리거나 내립니다. 그 프로젝트 멤버만. */
-  setProjectShared: (project: { id: string; name: string; color?: string; orgId?: string }, on: boolean) => Promise<boolean>
+  /**
+   * ── 워크스페이스 안의 프로젝트는 목록에 있습니다 ──────────────────────────
+   *
+   * 전에는 만든 뒤에 우클릭해서 따로 '공개'해야 했습니다. 그러면 올리는 걸
+   * 잊은 프로젝트는 아무에게도 안 보이고, **정보가 안 모이는 것**이 바로
+   * 노션을 접었던 이유였습니다.
+   *
+   * 그래서 만드는 순간 올라갑니다. 내리는 길은 없앴습니다 — 목록에 오르는
+   * 것은 **이름뿐**이고(업무는 프로젝트 멤버만 봅니다), 이름까지 감춰야 하는
+   * 일이라면 그건 프로젝트가 아니라 그 프로젝트 안의 업무여야 합니다.
+   */
+  listProject: (project: { id: string; name: string; color?: string; orgId?: string }) => Promise<boolean>
   /** 이름이 바뀌면 사본도 맞춥니다. 목록에 없으면 아무 일도 안 합니다. */
   syncProjectName: (projectId: string, name: string) => void
   /** 참여를 요청합니다. */
@@ -748,44 +759,32 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       .catch(e => set({ error: e instanceof Error ? e.message : '회의실 수정 실패' }))
   },
 
-  setProjectShared: async (project, on) => {
-    const { orgId, admins: _a } = get()
+  listProject: async (project) => {
+    const { orgId } = get()
     if (!orgId) return false
     /**
-     * **자기 워크스페이스에만 공개합니다.**
+     * **그 프로젝트의 워크스페이스에만 올립니다.**
      *
-     * 여기서 쓰던 `orgId`는 '지금 서 있는 곳'입니다. 워크스페이스가 하나일
-     * 때는 그게 곧 그 프로젝트의 곳이었는데, 둘이 되는 순간 아닙니다 —
-     * B에 서서 블랙페이퍼 프로젝트를 공개하면 그 **이름이 B의 공개 목록에**
-     * 올라갑니다. 내용은 여전히 프로젝트 멤버만 보지만, 이름도 말을 합니다.
+     * `orgId`는 '지금 서 있는 곳'입니다. 워크스페이스가 둘이 되는 순간 그게
+     * 곧 그 프로젝트의 곳은 아닙니다 — B에 서서 블랙페이퍼 프로젝트를 올리면
+     * 그 **이름이 B의 목록에** 오릅니다. 내용은 여전히 프로젝트 멤버만 보지만,
+     * 이름도 말을 합니다.
      *
-     * 옮겨 붙이는 대신 거절합니다. 어느 목록에 올리는지 안 보이는 채로
-     * 올라가는 것보다, 그쪽으로 가서 누르는 편이 무슨 일이 일어나는지
-     * 분명합니다. (소속이 없는 프로젝트는 지금 서 있는 곳에 올립니다 —
-     * 올릴 다른 곳이 없습니다.)
+     * 소속이 아직 안 적힌 옛 프로젝트는 지금 서 있는 곳에 올립니다 — 올릴
+     * 다른 곳이 없고, 소속 도장도 같은 기준으로 찍힙니다(roster.stampProjects).
      */
-    if (project.orgId && project.orgId !== orgId) {
-      set({ error: '다른 워크스페이스의 프로젝트입니다. 그쪽으로 전환한 뒤에 공개해 주세요.' })
-      return false
-    }
+    if (project.orgId && project.orgId !== orgId) return false
     try {
-      if (on) {
-        await fbSet(ref(db, P.orgProject(orgId, project.id)), {
-          name: project.name,
-          ...(project.color ? { color: project.color } : {}),
-          by: useAuthStore.getState().email?.toLowerCase() ?? '',
-          at: Date.now(),
-        })
-      } else {
-        // 내릴 때 요청도 같이 치웁니다. 목록에 없는 프로젝트에 대한 요청은
-        // 아무도 볼 데가 없는 채로 남습니다.
-        await remove(ref(db, `${P.orgJoinRequests(orgId)}/${project.id}`)).catch(() => {})
-        await remove(ref(db, P.orgProject(orgId, project.id)))
-      }
-      set({ error: null })
+      await fbSet(ref(db, P.orgProject(orgId, project.id)), {
+        name: project.name,
+        ...(project.color ? { color: project.color } : {}),
+        by: useAuthStore.getState().email?.toLowerCase() ?? '',
+        at: Date.now(),
+      })
       return true
-    } catch (e) {
-      set({ error: e instanceof Error ? e.message : '조직 목록을 바꾸지 못했습니다' })
+    } catch {
+      // 조용히 지나갑니다. 이건 사람이 누른 동작이 아니라 뒤에서 맞추는
+      // 일이고, 다음에 지나갈 때 또 시도합니다.
       return false
     }
   },

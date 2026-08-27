@@ -14,6 +14,7 @@ import { useNotionStore } from '../store/notionStore'
 import { Welcome } from '../components/modals/Welcome'
 import { parseInviteToken, PENDING_TASK_KEY } from '../lib/paths'
 import { claimGuestSeats, claimInvitedOrgs, stampProjects, syncRoster } from '../lib/roster'
+import { projectsToList } from '../lib/orgListing'
 import { useMobile } from '../hooks/useMobile'
 import type { Project } from '../types'
 import { Sidebar } from '../components/layout/Sidebar'
@@ -179,6 +180,34 @@ export function AppPage() {
       projects: projects.map(p => ({ id: p.id, orgId: p.orgId, creatorEmail: p.creatorEmail })),
     })
   }, [orgId, orgDomain, ready, unstamped])
+
+  /**
+   * ── 목록에 아직 없는 프로젝트를 올립니다 ──────────────────────────────────
+   *
+   * 워크스페이스 안의 프로젝트는 목록에 있습니다. 이 규칙이 생기기 전에
+   * 만들어진 것들은 올린 적이 없어서 아무에게도 안 보이는데, 만든 사람
+   * 화면에는 멀쩡히 있으니 빠졌다는 것조차 안 보입니다.
+   *
+   * 소속 도장과 같은 방식입니다 — 멤버가 지나가면서 채웁니다. 한 번 채우면
+   * `orgProjects`가 늘어나 다음 렌더에서는 빈 목록이 되어 멈춥니다.
+   */
+  const orgProjects = useOrgStore(s => s.orgProjects)
+  const listProject = useOrgStore(s => s.listProject)
+  const unlisted = useMemo(
+    () => (orgId ? projectsToList(projects, orgId, orgProjects) : []),
+    [projects, orgId, orgProjects],
+  )
+  const unlistedKey = unlisted.join(' ')
+  useEffect(() => {
+    if (!orgId || !ready || !unlistedKey) return
+    const byId = new Map(projects.map(p => [p.id, p]))
+    for (const id of unlistedKey.split(' ')) {
+      const p = byId.get(id)
+      if (p) void listProject({ id: p.id, name: p.name, color: p.color, orgId: p.orgId })
+    }
+    // projects는 매 렌더 새 배열입니다 — 위 목록(unlistedKey)이 곧 그 요약입니다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId, ready, unlistedKey, listProject])
 
   /**
    * ── 남의 회사에서는 게스트 자리에 스스로 앉습니다 ─────────────────────────

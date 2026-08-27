@@ -121,11 +121,8 @@ export function Sidebar() {
   const [width, setWidth] = useState(loadWidth)
   const { unread, external } = useNoticeInbox()
   const orgId = useOrgStore(s => s.orgId)
-  const setProjectShared = useOrgStore(s => s.setProjectShared)
-  const orgProjects = useOrgStore(s => s.orgProjects)
   const orgAdmins = useOrgStore(s => s.admins)
   const joinRequests = useOrgStore(s => s.joinRequests)
-  const sharedProjectIds = useMemo(() => new Set(orgProjects.map(p => p.id)), [orgProjects])
   const pendingJoins = useMemo(
     () => pendingJoinCount(joinRequests, new Set(projects.map(p => p.id))),
     [joinRequests, projects],
@@ -214,38 +211,6 @@ export function Sidebar() {
     }
     return m
   }, [accessibleTasks, today])
-
-  /**
-   * ── 조직에 공개 ────────────────────────────────────────────────────────────
-   *
-   * **만든 사람이 아니라 멤버**의 일입니다. 규칙도 그렇게 쓰여 있습니다
-   * (`projects/$pid/members/$uid`를 검사합니다). 그래서 만든 사람이든 아니든
-   * 같은 자리에 있습니다.
-   *
-   * 자리는 마지막 묶음, **삭제·나가기 바로 위**입니다. 되돌리기 쉬운 것들
-   * (이름·멤버·그룹·아카이브)과 프로젝트의 존재를 건드리는 것들 사이가
-   * 그 경계고, '조직에서 내리기'는 뒤쪽에 가깝습니다 — 남들 화면에서 프로젝트
-   * 하나가 사라지는 일이니까요.
-   *
-   * 조직 관리자에게 주는 힘이 아닙니다. 관리자에게 프로젝트 권한을 주면 접근
-   * 축이 두 개가 되고, 그건 이 기능 전체가 피하려던 것입니다.
-   */
-  const orgShareItem = (id: string) => {
-    if (!orgId) return null
-    const shared = sharedProjectIds.has(id)
-    return (
-      <ContextMenuItem
-        icon={shared ? 'unlink' : 'users'}
-        onClick={() => {
-          const project = projects.find(p => p.id === id)
-          if (project) void setProjectShared(project, !shared)
-          setContextMenu(null)
-        }}
-      >
-        {shared ? '워크스페이스 목록에서 내리기' : '워크스페이스에 공개'}
-      </ContextMenuItem>
-    )
-  }
 
   /**
    * 초대 링크.
@@ -1039,13 +1004,11 @@ export function Sidebar() {
                 {contextMenu.archived ? '아카이브 해제' : '아카이브'}
               </ContextMenuItem>
               <div style={{ height: 1, background: 'var(--bd)', margin: '4px -4px' }} />
-              {orgShareItem(contextMenu.id)}
               {deleteItem(contextMenu.id, contextMenu.name)}
             </>
           ) : (
             <>
               {inviteLinkItem(contextMenu.id)}
-              {orgShareItem(contextMenu.id)}
               <ContextMenuItem icon="exit" danger onClick={() => handleLeaveProject(contextMenu.id)}>
                 나가기
               </ContextMenuItem>
