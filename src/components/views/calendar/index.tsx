@@ -1317,6 +1317,33 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
    * 그래서 **무엇을 만들지 먼저 묻습니다.** 두 줄짜리 메뉴 한 번이 잘못 열린
    * 창을 닫는 것보다 짧습니다.
    */
+  /**
+   * ── 한 칸에 몇 줄이 들어가나 ───────────────────────────────────────────────
+   *
+   * 다섯 줄로 못 박아 두었습니다. 그런데 칸 높이는 창 높이를 여섯으로 나눈
+   * 값이라 창을 줄이면 같이 줄고, 그러면 다섯 줄이 안 들어갑니다 — 아래가
+   * 그냥 **잘렸습니다.** 'n개 더보기'는 다섯 개를 넘을 때만 뜨니까, 넷이
+   * 있는데 셋만 보이는 칸에서는 아무 말도 안 했습니다.
+   *
+   * 칸마다 재지 않습니다. 쉰여섯 칸이 다 같은 높이라(격자가 그렇게 나눕니다)
+   * 격자를 한 번 재면 답이 나옵니다.
+   */
+  const trackRef = useRef<HTMLDivElement>(null)
+  const [rowsFit, setRowsFit] = useState(5)
+  useEffect(() => {
+    const el = trackRef.current
+    if (!el) return
+    const measure = () => {
+      // 격자는 여덟 줄짜리고 위아래 한 줄씩은 스크롤용 여분입니다.
+      const perCell = el.clientHeight / 8
+      setRowsFit(Math.max(1, Math.floor((perCell - CELL_HEAD_H) / CELL_ROW_H)))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   const [menu, setMenu] = useState<{ x: number; y: number; day: string } | null>(null)
   const [quick, setQuick] = useState<{ x: number; y: number; day: string } | null>(null)
   const onPickDay = useCallback((day: string, x: number, y: number) => setMenu({ x, y, day }), [])
@@ -1357,12 +1384,15 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
             below its content's own width, so one long entry used to widen its
             column and squeeze the rest. Paired with minWidth: 0 down the tree,
             the seven columns stay identical at any window size. */}
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
-          gridTemplateRows: 'repeat(8, 1fr)', height: `${(8 / 6) * 100}%`,
-          transform: 'translateY(calc(-12.5% + var(--slide, 0px)))',
-          willChange: 'transform',
-        }}>
+        <div
+          ref={trackRef}
+          style={{
+            display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+            gridTemplateRows: 'repeat(8, 1fr)', height: `${(8 / 6) * 100}%`,
+            transform: 'translateY(calc(-12.5% + var(--slide, 0px)))',
+            willChange: 'transform',
+          }}
+        >
           {cells.map(({ date, isCurrentMonth }, i) => {
             const dateStr = fmt(date)
             return (
@@ -1376,6 +1406,7 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
                 isDragTarget={dragOver === dateStr}
                 chips={chipsByDate.get(dateStr)}
                 milestones={milestoneByDate[dateStr]}
+                rowsFit={rowsFit}
                 draggingId={draggingId}
                 canMove={canMove}
                 onDragOverDay={onDragOverDay}
@@ -1709,7 +1740,7 @@ function QuickEvent({ x, y, day, onClose }: {
  */
 const MonthCell = React.memo(function MonthCell({
   day, dayOfMonth, column, isCurrentMonth, isToday, isDragTarget,
-  chips, milestones, draggingId, canMove,
+  chips, milestones, rowsFit, draggingId, canMove,
   onDragOverDay, onDragLeaveDay, onDropDay, onPickDay, onOpenDay, onOpenTask,
   onTaskDragStart, onTaskDragEnd,
 }: {
@@ -1721,6 +1752,8 @@ const MonthCell = React.memo(function MonthCell({
   isDragTarget: boolean
   chips?: Chip[]
   milestones?: { id: string; name: string; color: string }[]
+  /** 이 칸에 들어가는 줄 수. 창 높이에 따라 달라집니다 — MonthGrid가 잽니다. */
+  rowsFit: number
   draggingId: string | null
   /** 이 일정을 끌 수 있나 — 내가 쓸 수 있는 캘린더의 것만. */
   canMove: (ev: GCalEvent) => boolean
@@ -1741,9 +1774,8 @@ const MonthCell = React.memo(function MonthCell({
   const [showAll, setShowAll] = useState<{ x: number; y: number } | null>(null)
   const isWeekend = column === 0 || column === 6
 
-  // 마일스톤이 한 줄 차지하면 일정은 한 줄 덜 들어갑니다. 칸 높이는
-  // 그대로인데 줄만 늘면 아래가 잘립니다.
-  const LIMIT = hasMilestone ? 4 : 5
+  // 마일스톤이 한 줄 차지하면 일정은 한 줄 덜 들어갑니다.
+  const LIMIT = Math.max(1, rowsFit - (hasMilestone ? 1 : 0))
   const visible = all.length <= LIMIT ? all : all.slice(0, LIMIT - 1)
   const overflow = all.length - visible.length
 
@@ -1805,8 +1837,16 @@ const MonthCell = React.memo(function MonthCell({
         </button>
       </div>
 
-      {/* Events */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 3px 4px', minWidth: 0 }}>
+      {/*
+        ── 줄들은 잘리고, '더보기'는 안 잘립니다 ──────────────────────────────
+        재서 넣지만 글자 크기나 줄바꿈 때문에 한 줄이 삐져나올 수 있습니다.
+        그때 잘려야 하는 것은 일정이지 '몇 개가 더 있다'는 말이 아닙니다 —
+        그게 잘리면 못 본 것이 있다는 사실 자체가 사라집니다.
+
+        그래서 줄들만 남는 높이 안에서 잘리고(flex: 1 + hidden), 더보기 줄은
+        그 아래 제 자리를 따로 갖습니다.
+      */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 3px 4px', minWidth: 0, flex: 1, minHeight: 0, overflow: 'hidden' }}>
         {/*
           ── 마일스톤이 몰린 날 ──────────────────────────────────────────────
           한 줄에 나란히 세워 두었습니다. 하나일 때는 이름이 다 보이는데,
@@ -1927,30 +1967,35 @@ const MonthCell = React.memo(function MonthCell({
             </div>
           )
         })}
-        {/*
-          ── 못 보여준 것이 몇 개인지 ──────────────────────────────────────────
-          칸에는 다섯 줄까지만 들어갑니다. 나머지가 있다는 것을 10px 회색
-          글자로만 말하고 있었더니, 줄들 사이에 섞여서 '아래에 더 있다'가
-          아니라 '흐린 일정 하나'로 읽혔습니다.
-
-          위의 줄들과 다른 것이니 다르게 생겨야 합니다 — 옅은 판을 깔아
-          누르는 것으로 보이게 합니다. 누르면 그 날로 갑니다: 더 보는 일이지
-          만드는 일이 아니라서, 칸을 누른 것으로 치면 안 됩니다.
-        */}
-        {overflow > 0 && (
-          <button
-            onClick={e => { e.stopPropagation(); onOpenDay(day) }}
-            style={{
-              border: 'none', background: 'var(--bg3)', textAlign: 'left',
-              fontSize: 10.5, color: 'var(--t2)', padding: '2px 6px',
-              borderRadius: 3, cursor: 'pointer', fontFamily: 'var(--font)',
-              margin: '1px 0 0',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg4)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg3)' }}
-          >{overflow}개 더보기</button>
-        )}
       </div>
+
+        {/*
+        ── 못 보여준 것이 몇 개인지 ──────────────────────────────────────────
+        나머지가 있다는 것을 10px 회색 글자로만 말하고 있었더니, 줄들 사이에
+        섞여서 '아래에 더 있다'가 아니라 '흐린 일정 하나'로 읽혔습니다.
+
+        위의 줄들과 다른 것이니 다르게 생겨야 합니다 — 옅은 판을 깔아
+        누르는 것으로 보이게 합니다. 누르면 그 날로 갑니다: 더 보는 일이지
+        만드는 일이 아니라서, 칸을 누른 것으로 치면 안 됩니다.
+
+        칸의 바닥에 삽니다. 줄 목록 안에 있으면 목록이 잘릴 때 같이 잘리고,
+        그러면 못 본 것이 있다는 사실 자체가 사라집니다.
+      */}
+      {overflow > 0 && (
+        <button
+          onClick={e => { e.stopPropagation(); onOpenDay(day) }}
+          style={{
+            border: 'none', background: 'var(--bg3)', textAlign: 'left',
+            fontSize: 10.5, color: 'var(--t2)', padding: '2px 6px',
+            borderRadius: 3, cursor: 'pointer', fontFamily: 'var(--font)',
+            // 줄들과 같은 왼쪽 선에 맞춥니다 — 목록 밖으로 나와서 그 여백을
+            // 이제 스스로 가져야 합니다.
+            margin: '0 3px 4px', flexShrink: 0, alignSelf: 'flex-start',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg4)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg3)' }}
+        >{overflow}개 더보기</button>
+      )}
 
       {/*
         ── 판을 떠나서 뜹니다 ────────────────────────────────────────────────
@@ -2035,6 +2080,19 @@ function StackedDiamonds() {
     </svg>
   )
 }
+
+/**
+ * 칸의 치수.
+ *
+ * 날짜 줄(위 여백 5 + 아래 3 + 동그라미 22)과 줄 하나의 높이입니다. 재는
+ * 대신 적어 둡니다 — 쉰여섯 칸 안의 줄을 다 재면 그게 매 프레임의 값이고,
+ * 여기서 필요한 건 '몇 줄이 들어가나' 하나뿐입니다.
+ *
+ * 넉넉하게 잡습니다. 모자라게 잡으면 한 줄이 잘리는데, 그건 지금 고치고 있는
+ * 바로 그 증상입니다.
+ */
+const CELL_HEAD_H = 32
+const CELL_ROW_H = 17
 
 /** 마일스톤 알약. 접힌 것과 펼친 것이 같은 모양이어야 같은 것으로 읽힙니다. */
 const MS_CHIP: React.CSSProperties = {
