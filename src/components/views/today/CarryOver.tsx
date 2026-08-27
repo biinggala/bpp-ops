@@ -22,6 +22,7 @@ import { useAuthStore } from '../../../store/authStore'
 import { useTaskStore } from '../../../store/taskStore'
 import { useVisibleProjects } from '../../../hooks/useVisibleProjects'
 import { fmtYMD } from '../../../lib/utils'
+import { checklistHtml, taskRefHtml } from '../../../lib/noteHtml'
 
 /** 며칠 전까지 거슬러 볼 것인가. 주말과 연휴를 건너뛸 만큼. */
 const LOOK_BACK = 7
@@ -49,10 +50,6 @@ export function noteHasContent(html: string): boolean {
   const doc = new DOMParser().parseFromString(html, 'text/html')
   if (doc.querySelector('[data-task-ref], [data-drive-id], li')) return true
   return (doc.body.textContent ?? '').trim().length > 0
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
 }
 
 /**
@@ -168,13 +165,10 @@ export function CarryOver({ editor }: { editor: Editor | null }) {
     if (!editor || editor.isDestroyed || !chosen.length) return
     const todos = chosen.filter(it => it.kind === 'todo')
     const refs = chosen.filter(it => it.kind === 'task')
-    let html = ''
-    if (todos.length) {
-      html += `<ul data-type="taskList">${todos
-        .map(it => `<li data-checked="false"><p>${escapeHtml(it.label)}</p></li>`)
-        .join('')}</ul>`
-    }
-    html += refs.map(it => `<div data-task-ref data-task-id="${it.taskId}"></div>`).join('')
+    // 글자를 여기서 짜지 않습니다 — lib/noteHtml 맨 위 주석 참고. data-type이
+    // 빠진 채로 넣으면 프로즈미러가 던지고, 단추는 안 눌린 것처럼 보입니다.
+    const html = checklistHtml(todos.map(it => it.label))
+      + taskRefHtml(refs.map(it => it.taskId!))
     editor.chain().focus('end').insertContent(html).run()
     // 넣고 나면 노트에 글이 생겨서 부모가 이 줄을 아예 안 그립니다. 그
     // 상태가 한 박자 늦게 오므로 여기서 먼저 접습니다.

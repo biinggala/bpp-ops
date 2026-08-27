@@ -61,11 +61,20 @@ export function noteToMarkdown(html: string, tasks: Task[]): string {
     .trim()
 }
 
-/** 자유 체크리스트 한 줄. 노트에만 살고 태스크가 되지 않습니다. */
+/**
+ * 자유 체크리스트 한 줄. 노트에만 살고 태스크가 되지 않습니다.
+ *
+ * **`data-type`이 붙어야 체크박스 줄입니다.** 웹 편집기는 `data-checked`가
+ * 아니라 `li[data-type="taskItem"]`으로 그 줄을 알아봅니다. 그게 없으면
+ * 여기서 적어 넣은 할 일이 화면에서는 체크박스가 아니라 그냥 불릿으로
+ * 보이고(빈 체크박스가 하나 딸려 옵니다), 어제 못 끝낸 것을 세는 쪽도
+ * 그 줄을 못 셉니다. 저장은 됐는데 화면에서만 다른 것이 되는 자리라
+ * 아무도 모릅니다.
+ */
 export function checklistHtml(lines: string[]): string {
   if (!lines.length) return ''
   const items = lines
-    .map(l => `<li data-checked="false"><p>${escape(l.trim())}</p></li>`)
+    .map(l => `<li data-type="taskItem" data-checked="false"><p>${escape(l.trim())}</p></li>`)
     .join('')
   return `<ul data-type="taskList">${items}</ul>`
 }
