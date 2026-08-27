@@ -1008,13 +1008,12 @@ function RowRemove({ label, onClick }: {
       className="bpp-rowx"
       style={{
         marginLeft: 10, width: 22, height: 22, flexShrink: 0, borderRadius: 'var(--r1)',
-        border: 'none', background: 'transparent', color: 'var(--t3)',
+        border: 'none',
         cursor: 'pointer', fontFamily: 'var(--font)', fontSize: 13, lineHeight: 1,
       }}
-      onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-l)'; e.currentTarget.style.color = 'var(--danger)' }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}
-      onFocus={e => { e.currentTarget.style.color = 'var(--danger)' }}
-      onBlur={e => { e.currentTarget.style.color = 'var(--t3)' }}
+      /* 배경도 글자색도 여기서 안 정합니다 — index.css의 .bpp-rowx가 정합니다.
+         자바스크립트로 칠하고 있었는데, 목록이 다시 그려지는 사이에 손이
+         빠져나가면 mouseleave가 안 와서 손도 안 댄 ×가 빨갛게 남았습니다. */
     >×</button>
   )
 }

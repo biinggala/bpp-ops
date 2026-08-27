@@ -432,11 +432,31 @@ input, select, textarea, button {
    물어야 하는 것은 폭이 아니라 '이 기기에 hover가 있나'입니다.
 
    자리는 늘 잡아 둡니다(opacity만 0) — 나타날 때 줄이 흔들리지 않습니다. */
-@media (hover: hover) {
-  .bpp-rowx { opacity: 0; transition: opacity .1s; }
-  .bpp-noterow:hover .bpp-rowx,
-  .bpp-row:hover .bpp-rowx,
-  .bpp-rowx:focus-visible { opacity: 1; }
+.bpp-rowx {
+  opacity: 0;
+  transition: opacity .1s;
+  /* 색도 여기 있습니다. 인라인으로 칠해 두면 아래 :hover가 늘 집니다 —
+     인라인은 클래스를 이깁니다. */
+  background: transparent;
+  color: var(--t3);
+}
+.bpp-noterow:hover .bpp-rowx,
+.bpp-row:hover .bpp-rowx,
+.bpp-rowx:hover,
+.bpp-rowx:focus-visible { opacity: 1; }
+.bpp-rowx:hover, .bpp-rowx:focus-visible { background: var(--danger-l); color: var(--danger); }
+
+/* 손가락에는 hover가 없습니다 — 거기서는 늘 보여야 누를 수 있습니다.
+
+   전에는 `@media (hover: hover)` 안에 숨기는 규칙을 통째로 넣어 두었습니다.
+   그 한 물음에 아니라고 답하는 환경이 있었고(웹뷰), 그러면 숨기는 규칙 자체가
+   없는 것이 되어 ×가 **늘** 서 있었습니다 — 마우스는 멀쩡히 움직이는데요.
+
+   그래서 뒤집고, 둘을 함께 묻습니다. 진짜 손가락은 둘 다 맞고(hover 없음 ·
+   굵은 포인터), 마우스는 둘 다 틀립니다. 하나를 잘못 답해도 기본값인
+   '숨김'이 남습니다 — 틀렸을 때 규칙을 지키는 쪽으로 틀립니다. */
+@media (hover: none) and (pointer: coarse) {
+  .bpp-rowx { opacity: 1; }
 }
 
 /* Placeholder */

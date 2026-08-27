@@ -97,7 +97,8 @@ export function GearView() {
         display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
         padding: isMobile ? '10px 12px' : '12px 18px', borderBottom: '1px solid var(--bd)', flexShrink: 0,
       }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--t1)' }}>장비</div>
+        {/* 제목은 위 툴바가 답니다 — 캘린더 화면과 같습니다. 한 화면에 같은
+            이름이 두 번 서면 둘 중 하나는 소음입니다. */}
         <div style={{ display: 'flex', gap: 2 }}>
           <Step label="이전 주" onClick={() => setAnchor(fmtYMD(addDays(new Date(anchor.replace(/-/g, '/')), -7)))}>‹</Step>
           <button
@@ -121,7 +122,7 @@ export function GearView() {
         )}
         <button
           onClick={() => setAdding({ gearId: live[0]?.id ?? gear[0].id, date: today })}
-          style={{ ...BTN, background: 'var(--accent)', color: '#fff', borderColor: 'transparent', padding: '4px 12px' }}
+          style={{ ...BTN, background: 'var(--ac)', color: '#fff', borderColor: 'transparent', padding: '4px 12px' }}
         >예약하기</button>
       </div>
 
@@ -150,7 +151,7 @@ export function GearView() {
                 <div key={d} style={{
                   width: COL, flexShrink: 0, textAlign: 'center', padding: '6px 0 5px',
                   fontSize: 10.5, lineHeight: 1.35,
-                  color: d === today ? 'var(--accent)' : wd === 0 ? 'var(--danger)' : 'var(--t3)',
+                  color: d === today ? 'var(--ac)' : wd === 0 ? 'var(--danger)' : 'var(--t3)',
                   fontWeight: d === today ? 600 : 400,
                 }}>
                   <div>{WEEK[wd]}</div>
@@ -381,7 +382,7 @@ function GearChip({ kind, name, on, onRemove }: {
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 5,
         padding: '2px 7px', borderRadius: 'var(--r1)', fontSize: 11,
-        border: `1px solid ${on ? 'var(--accent)' : 'var(--bd)'}`,
+        border: `1px solid ${on ? 'var(--ac)' : 'var(--bd)'}`,
         background: on ? 'var(--bg3)' : 'var(--bg2)',
         color: 'var(--t1)', maxWidth: '100%',
       }}
@@ -395,7 +396,7 @@ function GearChip({ kind, name, on, onRemove }: {
           onClick={onRemove}
           style={{
             width: 14, height: 14, flexShrink: 0, marginLeft: 1, padding: 0,
-            border: 'none', background: 'transparent', color: 'var(--t3)',
+            border: 'none',
             cursor: 'pointer', fontFamily: 'var(--font)', fontSize: 12, lineHeight: 1,
           }}
         >×</button>
@@ -615,7 +616,7 @@ function BookForm({ gearId, date, myTeam, onClose }: {
           onClick={() => void save()}
           disabled={busy || !!stop || !reason.trim()}
           style={{
-            ...BTN, background: 'var(--accent)', color: '#fff', borderColor: 'transparent',
+            ...BTN, background: 'var(--ac)', color: '#fff', borderColor: 'transparent',
             opacity: busy || stop || !reason.trim() ? .5 : 1,
           }}
         >장비 예약 신청</button>
@@ -729,7 +730,7 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
       onClick={onClick}
       style={{
         ...BTN, padding: '3px 10px',
-        background: on ? 'var(--accent)' : 'var(--bg)',
+        background: on ? 'var(--ac)' : 'var(--bg)',
         color: on ? '#fff' : 'var(--t2)',
         borderColor: on ? 'transparent' : 'var(--bd)',
       }}
