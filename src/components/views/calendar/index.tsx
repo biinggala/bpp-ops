@@ -1507,17 +1507,45 @@ function QuickEvent({ x, y, day, onClose }: {
   }
 
   const d = toDate(day)
+
+  /**
+   * ── 카드가 창을 안 넘습니다 ───────────────────────────────────────────────
+   *
+   * 높이를 손으로 적어 뒀었습니다(`330`). 그런데 카드 높이는 그날 회의실이
+   * 몇 개인지, 부른 사람이 몇 명인지에 따라 매번 다릅니다 — 적어 둔 숫자는
+   * 만든 날의 카드 높이일 뿐이라, 칸이 하나 늘면 그만큼 화면 밖으로
+   * 밀려납니다. 같은 실수를 세 번째 하고 있습니다.
+   *
+   * 재지도 않습니다. 재면 첫 프레임은 잰 값이 없는 채로 그려져서 자리가 한 번
+   * '타닥' 하고 바뀝니다. 대신 **남은 공간을 카드의 최대 높이로 줍니다** —
+   * 아래로 열면 아래 남은 만큼, 위로 열면 위 남은 만큼. 내용이 그보다 길면
+   * 카드가 제 안에서 스크롤할 뿐 자리는 안 움직입니다. 타임라인 카드가
+   * 같은 방식입니다.
+   */
   const W = allDay ? 268 : 306
+  const M = 8
+  const MIN_H = 220
+  const place = (() => {
+    const left = Math.max(M, Math.min(x, window.innerWidth - W - M))
+    const top = Math.max(M, y)
+    const below = window.innerHeight - top - M
+    if (below >= MIN_H) return { left, top, maxHeight: below }
+    const above = y - M
+    // 위로 열 때는 top이 아니라 bottom으로 붙입니다. top으로 붙이면 내용이
+    // 늘 때 아래로 자라서 다시 창을 넘습니다.
+    if (above > below) return { left, bottom: window.innerHeight - y, maxHeight: above }
+    return { left, top, maxHeight: Math.max(below, 160) }
+  })()
+
   return (
     <>
       <div style={{ position: 'fixed', inset: 0, zIndex: 8998 }} onClick={onClose} />
       <div
         style={{
-          position: 'fixed',
-          left: Math.max(8, Math.min(x, window.innerWidth - W - 8)),
-          top: Math.max(8, Math.min(y, window.innerHeight - (allDay ? 210 : 330))),
+          position: 'fixed', ...place,
           zIndex: 8999, width: W, background: 'var(--bg)', border: '1px solid var(--bd)',
           borderRadius: 'var(--r3)', boxShadow: 'var(--sh-lg)', padding: 12,
+          overflowY: 'auto', boxSizing: 'border-box',
         }}
         onClick={e => e.stopPropagation()}
         onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }}
@@ -1617,7 +1645,19 @@ function QuickEvent({ x, y, day, onClose }: {
           />
         </div>
 
-        {!allDay && <RoomRow slot={slot} booking={null} onPick={setRoom} />}
+        {/*
+          아직 안 잡은 방을 예약인 척 넘깁니다. RoomRow는 '지금 고른 방'을
+          예약에서 읽는데, 여기서는 저장하기 전이라 예약이 없습니다 — null을
+          주면 골라도 아무 표시가 안 나서 안 골라진 것처럼 보였습니다.
+          타임라인의 새 일정 카드도 같은 방식으로 넘깁니다.
+        */}
+        {!allDay && (
+          <RoomRow
+            slot={slot}
+            booking={room ? { id: '', roomId: room, from: startMin, to: startMin + minutes, by: '', at: 0 } : null}
+            onPick={setRoom}
+          />
+        )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
           <button
