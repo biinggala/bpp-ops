@@ -6,7 +6,7 @@ import { useGearStore, teamOfEmail } from '../../../store/gearStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
 import { addDays, fmtYMD, isComposing } from '../../../lib/utils'
 import {
-  DAY, dayNo, dayYMD, gearClash, gearRangeError, gearWhen, groupGear, hhmm,
+  DAY, busyCount, dayNo, dayYMD, gearClash, gearRangeError, gearWhen, groupGear, hhmm,
   type GearBooking, type GearRange,
 } from '../../../lib/gear'
 import { TimeMenu } from '../../shared/TimePick'
@@ -33,9 +33,9 @@ import { useMobile } from '../../../hooks/useMobile'
 
 const COL = 46
 const ROW_H = 30
-const NAME_W = 132
-/** 종류 머리줄. 장비 줄보다 낮습니다 — 이름표지 항목이 아닙니다. */
-const KIND_H = 20
+const NAME_W = 176
+/** 종류 줄. 접혀 있을 때는 이게 곧 그 묶음의 요약입니다. */
+const KIND_H = 26
 /** 한 화면에 보이는 날 수. 2주면 '다음 주 촬영'까지 들어옵니다. */
 const SPAN = 14
 
@@ -335,7 +335,47 @@ function GearBoard({ tabs }: { tabs: React.ReactNode }) {
     [bookings, teamFilter],
   )
   const live = useMemo(() => gear.filter(g => g.active !== false), [gear])
-  const rows = useMemo(() => groupGear(gear), [gear])
+  const [q, setQ] = useState('')
+  const found = useMemo(() => {
+    const needle = q.trim().toLowerCase()
+    if (!needle) return gear
+    return gear.filter(g =>
+      g.name.toLowerCase().includes(needle) ||
+      (g.note ?? '').toLowerCase().includes(needle) ||
+      (g.kind ?? '').toLowerCase().includes(needle))
+  }, [gear, q])
+  const rows = useMemo(() => groupGear(found), [found])
+
+  /**
+   * ── 접힙니다 ──────────────────────────────────────────────────────────────
+   *
+   * 장비가 서른 개면 한 대에 한 줄씩 주는 순간 화면이 벽이 됩니다. 게다가
+   * 대부분의 칸은 늘 비어 있고, 그 빈 칸들이 화면을 다 차지합니다.
+   *
+   * 그리고 묻는 것이 대개 그게 아닙니다. 송수신기가 넉 대 있으면 궁금한 건
+   * 'UWP_D21 4번기가 비었나'가 아니라 **'송수신기 두 대 빌릴 수 있나'**
+   * 입니다. 접힌 줄이 그 답을 바로 줍니다 — 날짜마다 몇 대가 나가 있는지.
+   *
+   * 한 화면에 들어가는 만큼이면(열 대 이하) 펴 둡니다. 접는 것은 넘칠 때
+   * 필요한 것이지, 적은 목록까지 한 번 더 누르게 할 이유가 없습니다.
+   */
+  const [open, setOpen] = useState<Set<string>>(() => new Set())
+  const [primed, setPrimed] = useState(false)
+  useEffect(() => {
+    if (primed || gear.length === 0) return
+    setPrimed(true)
+    if (gear.length <= 10) setOpen(new Set(groupGear(gear).map(g => g.kind)))
+  }, [gear, primed])
+  // 찾는 동안에는 다 펴 둡니다 — 찾은 것이 접힌 줄 뒤에 숨어 있으면 못 찾은
+  // 것과 같습니다.
+  const searching = q.trim().length > 0
+  const isOpen = (kind: string) => searching || open.has(kind)
+  const toggle = (kind: string) => setOpen(prev => {
+    const next = new Set(prev)
+    if (next.has(kind)) next.delete(kind); else next.add(kind)
+    return next
+  })
+  const allOpen = rows.length > 0 && rows.every(g => isOpen(g.kind))
 
   if (!orgId) {
     return <BlankPage tabs={tabs}>워크스페이스에 들어가면 장비를 함께 씁니다. 설정 → 개요에서 만들 수 있습니다.</BlankPage>
@@ -370,6 +410,23 @@ function GearBoard({ tabs }: { tabs: React.ReactNode }) {
           >오늘</button>
           <Step label="다음 주" onClick={() => setAnchor(fmtYMD(addDays(new Date(anchor.replace(/-/g, '/')), 7)))}>›</Step>
         </div>
+
+        {/* 서른 개짜리 목록에서 'FX3'을 눈으로 찾게 하지 않습니다. 이름·메모·
+            종류를 같이 봅니다 — 사람은 '송수신기'로도 찾고 'UWP'로도 찾습니다. */}
+        <input
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          placeholder="장비 찾기"
+          style={{
+            ...BTN, width: 108, padding: '4px 8px', cursor: 'text',
+            color: 'var(--t1)', background: 'var(--bg2)',
+          }}
+        />
+        <button
+          onClick={() => setOpen(allOpen ? new Set() : new Set(rows.map(g => g.kind)))}
+          disabled={searching}
+          style={{ ...BTN, opacity: searching ? .5 : 1 }}
+        >{allOpen ? '모두 접기' : '모두 펼치기'}</button>
 
         <div style={{ flex: 1 }} />
 
@@ -427,25 +484,68 @@ function GearBoard({ tabs }: { tabs: React.ReactNode }) {
           {/* 종류로 묶어 세웁니다. 카메라 넷·렌즈 여섯·조명 여덟이 한 줄로
               늘어서면 격자가 아니라 벽입니다. 빌리러 온 사람은 늘 종류를
               먼저 정하고("조명 뭐 있지") 그 안에서 고릅니다. */}
-          {rows.map(group => (
-          <div key={group.kind}>
-          {rows.length > 1 && (
-            <div style={{
-              display: 'flex', height: KIND_H, alignItems: 'center',
-              background: 'var(--bg2)', borderBottom: '1px solid var(--bd2)',
-            }}>
-              <div style={{
-                width: NAME_W, flexShrink: 0, padding: '0 10px',
-                position: 'sticky', left: 0, background: 'var(--bg2)', zIndex: 1,
-                fontSize: 10.5, fontWeight: 600, color: 'var(--t2)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>{group.kind}</div>
-              {/* 빈 칸이지만 자리를 잡습니다. 없으면 이 줄만 격자보다 짧아서,
-                  옆으로 굴렸을 때 종류 띠가 중간에 끊깁니다. */}
-              <div style={{ width: SPAN * COL, flexShrink: 0 }} />
+          {rows.length === 0 && (
+            <div style={{ padding: '20px 12px', fontSize: 12, color: 'var(--t3)' }}>
+              '{q}'와 맞는 장비가 없습니다.
             </div>
           )}
-          {group.items.map(item => {
+          {rows.map(group => {
+          const openHere = isOpen(group.kind)
+          const ids = group.items.map(g => g.id)
+          const total = group.items.length
+          return (
+          <div key={group.kind}>
+            {/*
+              접힌 줄이 곧 요약입니다. 날짜마다 '몇 대가 나가 있나'를 칠하고,
+              펴면 그 아래에 대별 줄이 섭니다.
+            */}
+            <div style={{ display: 'flex', height: KIND_H, background: 'var(--bg2)', borderBottom: '1px solid var(--bd2)' }}>
+              <button
+                onClick={() => toggle(group.kind)}
+                disabled={searching}
+                style={{
+                  width: NAME_W, flexShrink: 0, padding: '0 10px', height: KIND_H,
+                  position: 'sticky', left: 0, background: 'var(--bg2)', zIndex: 1,
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  border: 'none', borderRight: '1px solid var(--bd)',
+                  fontSize: 11, fontWeight: 600, color: 'var(--t2)',
+                  fontFamily: 'var(--font)', cursor: searching ? 'default' : 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                <span style={{
+                  display: 'inline-block', width: 8, flexShrink: 0, color: 'var(--t3)',
+                  transform: openHere ? 'rotate(90deg)' : 'none', transition: 'transform .12s',
+                }}>▸</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.kind}</span>
+                <span style={{ fontWeight: 400, color: 'var(--t3)', flexShrink: 0 }}>{total}</span>
+              </button>
+              <div style={{ position: 'relative', height: KIND_H, width: SPAN * COL, flexShrink: 0 }}>
+                {days.map((d, i) => {
+                  const busy = busyCount(shown, ids, d)
+                  const ratio = total ? busy / total : 0
+                  return (
+                    <div
+                      key={d}
+                      title={busy ? `${d} · ${total}대 중 ${busy}대 나감` : `${d} · 다 있습니다`}
+                      style={{
+                        position: 'absolute', left: i * COL, top: 0, width: COL, height: KIND_H,
+                        borderRight: '1px solid var(--bd2)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 10, fontVariantNumeric: 'tabular-nums',
+                        // 나간 만큼 진해집니다. 다 나간 날은 한눈에 검붉고, 여유
+                        // 있는 날은 거의 안 보입니다 — 눈이 멈춰야 하는 곳에만
+                        // 멈추게 합니다.
+                        background: busy === 0 ? 'transparent' : `hsl(212 72% ${92 - ratio * 26}%)`,
+                        color: ratio > .7 ? '#fff' : 'hsl(212 55% 30%)',
+                        fontWeight: ratio === 1 ? 600 : 400,
+                      }}
+                    >{busy || ''}</div>
+                  )
+                })}
+              </div>
+            </div>
+          {openHere && group.items.map(item => {
             const mine = shown.filter(b => b.gearId === item.id)
             return (
               <div key={item.id} style={{
@@ -529,7 +629,7 @@ function GearBoard({ tabs }: { tabs: React.ReactNode }) {
             )
           })}
           </div>
-          ))}
+          )})}
         </div>
       </div>
 

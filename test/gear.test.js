@@ -86,3 +86,20 @@ test('앞뒤 공백은 같은 종류입니다', () => {
   // 손으로 적는 값이라 '조명'과 '조명 '이 다른 묶음이 되면 목록이 둘로 쪼개집니다.
   assert.equal(groupGear([G('a', '조명'), G('b', ' 조명 ')]).length, 1)
 })
+
+test('그 날 몇 대가 나가 있나', async () => {
+  const { busyCount } = await import('../.test-build/lib/gear.js')
+  const held = [
+    { id: '1', gearId: 'mic1', ...L('2026-08-27', '2026-08-29'), by: 'a', reason: 'x', at: 1 },
+    { id: '2', gearId: 'mic2', ...T('2026-08-28', 600, '2026-08-28', 720), by: 'b', reason: 'x', at: 1 },
+    // 같은 날 같은 장비에 예약이 둘 — 연달아 두 팀이 씁니다. 그래도 한 대입니다.
+    { id: '3', gearId: 'mic2', ...T('2026-08-28', 780, '2026-08-28', 900), by: 'c', reason: 'x', at: 1 },
+  ]
+  const ids = ['mic1', 'mic2', 'mic3', 'mic4']
+  assert.equal(busyCount(held, ids, '2026-08-27'), 1)
+  assert.equal(busyCount(held, ids, '2026-08-28'), 2)
+  assert.equal(busyCount(held, ids, '2026-08-29'), 1)
+  assert.equal(busyCount(held, ids, '2026-08-30'), 0)
+  // 다른 묶음의 장비는 안 셉니다.
+  assert.equal(busyCount(held, ['mic3'], '2026-08-28'), 0)
+})
