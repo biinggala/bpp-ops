@@ -40,6 +40,19 @@ export interface Activity {
   by: string
   at: number
   changes?: ActivityChange[]
+  /**
+   * 그때의 업무 이름. **만들기·지우기·되살리기에만** 붙습니다.
+   *
+   * 셋 다 업무 하나를 통째로 두고 일어난 일이라 이름이 그 문장의 일부입니다 —
+   * "'브랜드필름 편집' 업무를 만들었습니다". 고침(changed)에는 안 붙습니다:
+   * 그 줄을 읽는 사람은 이미 그 업무를 열어 놓고 있고, 바뀐 값은 아래에
+   * 따로 적힙니다.
+   *
+   * **그때의 이름입니다.** 나중에 이름을 바꿔도 이 값은 안 바뀝니다 — 바꾼
+   * 것은 그 자체로 '이름' 줄이 되어 아래에 남고, 여기에 지금 이름을 적으면
+   * 그 두 줄이 서로 모순됩니다.
+   */
+  title?: string
 }
 
 /** The fields worth a line, in the order a row is read. */
@@ -173,8 +186,12 @@ function write(task: Task, entry: Omit<Activity, 'id' | 'by' | 'at'>) {
   // 만들기·지우기는 한 번뿐이라 뭉칠 일이 없습니다. 다음 변경이 그것과
   // 합쳐지지 않도록 기억만 지웁니다.
   lastWrite.delete(slot)
-  fbSet(push(ref(db, path)), { ...entry, by: myName(), at })
-    .catch(e => console.warn('[activity]', e))
+  fbSet(push(ref(db, path)), {
+    ...entry,
+    by: myName(),
+    at,
+    ...(task.name ? { title: task.name } : {}),
+  }).catch(e => console.warn('[activity]', e))
 }
 
 export function logCreated(task: Task) {

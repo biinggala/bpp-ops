@@ -11,6 +11,39 @@
 
 import { type Project, type Task } from './types.js'
 
+/**
+ * ── 워크스페이스 명단도 봅니다 ───────────────────────────────────────────────
+ *
+ * 프로젝트 멤버십은 이 서버가 이미 지킵니다. 그런데 웹 쪽 규칙에는 그 위에 한
+ * 겹이 더 있습니다 — 프로젝트에 소속이 적혀 있으면, 읽으려면 **그 워크스페이스
+ * 명단에서도 살아 있어야** 합니다:
+ *
+ *     프로젝트 멤버 AND (소속 없음 OR 명단이 member·guest OR (줄이 없고 도메인 일치))
+ *
+ * 이 한 겹이 '내보내기'를 실제로 작동하게 만듭니다. 명단에서 내리면 줄을
+ * 지우는 게 아니라 `removed`로 덮는데, 그 순간 그 회사 프로젝트가 전부
+ * 닫힙니다 — 그 사람이 아직 프로젝트 멤버로 남아 있어도요.
+ *
+ * **이 서버에는 그 겹이 없었습니다.** 관리자 SDK는 규칙을 안 지나가므로 여기서
+ * 다시 세워야 하는데, 프로젝트 멤버십만 세워 두었습니다. 그래서 내보낸 사람이
+ * 커넥터를 붙여 둔 채였다면 웹은 닫히는데 커넥터는 계속 열려 있었습니다.
+ * 벽을 한 곳에서만 세우면 다른 곳이 문입니다.
+ */
+export function orgAllows(
+  role: string | undefined | null,
+  domain: string | undefined | null,
+  email: string,
+): boolean {
+  if (role === 'member' || role === 'guest') return true
+  // 'removed'는 물론이고, 모르는 값도 거절합니다 — 뜻을 모르는 자리에
+  // 문을 열어 주지 않습니다.
+  if (role) return false
+  // 줄이 아예 없는 사람은 도메인이 답합니다. 회사 계정의 첫 로그인이 그
+  // 자리고, 규칙도 똑같이 봅니다.
+  const d = (domain ?? '').toLowerCase().trim()
+  return !!d && email.toLowerCase().trim().endsWith('@' + d)
+}
+
 export function canAccessProject(p: Project, email: string): boolean {
   const e = email.toLowerCase()
   if (!e) return false

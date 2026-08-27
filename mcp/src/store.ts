@@ -1,7 +1,8 @@
 import { applicationDefault, cert, getApps, initializeApp, type ServiceAccount } from 'firebase-admin/app'
 import { getDatabase, type Database } from 'firebase-admin/database'
 import type { Milestone, Project, Task } from './types.js'
-import { readableAssignee } from './access.js'
+import { readableAssignee, orgAllows } from './access.js'
+import { emailKey } from './backfill.js'
 
 /**
  * Data access for the per-project layout described in docs/data-model.md.
@@ -83,8 +84,40 @@ async function readProjectNodes(email?: string): Promise<Record<string, ProjectN
         const snap = await database.ref(`projects/${pid}`).get()
         return [pid, snap.val() as ProjectNode | null] as const
       }))
+      /*
+        ── 명단이 한 겹 더 있습니다 ──────────────────────────────────────────
+        프로젝트에 소속이 적혀 있으면, 그 워크스페이스 명단에서도 살아 있어야
+        읽힙니다. 웹 규칙이 그렇게 되어 있고, 관리자 SDK는 그 규칙을 안
+        지나가므로 여기서 다시 봅니다 — 안 보면 내보낸 사람이 웹에서는
+        닫히는데 커넥터로는 계속 읽습니다.
+
+        워크스페이스마다 한 번만 묻습니다. 프로젝트가 스무 개여도 회사는
+        보통 하나입니다.
+      */
+      const seats = new Map<string, Promise<boolean>>()
+      const allowed = (oid: string): Promise<boolean> => {
+        const known = seats.get(oid)
+        if (known) return known
+        const asking = (async () => {
+          const [roleSnap, domainSnap] = await Promise.all([
+            database.ref(`orgs/${oid}/members/${emailKey(email)}/role`).get(),
+            database.ref(`orgs/${oid}/meta/domain`).get(),
+          ])
+          return orgAllows(roleSnap.val() as string | null, domainSnap.val() as string | null, email)
+        })()
+        seats.set(oid, asking)
+        return asking
+      }
+
       const out: Record<string, ProjectNode> = {}
-      for (const [pid, node] of entries) if (node) out[pid] = node
+      for (const [pid, node] of entries) {
+        if (!node) continue
+        const oid = node.meta?.orgId
+        // 소속이 안 적힌 프로젝트는 이 겹이 없습니다 — 혼자 쓰는 것들과
+        // 워크스페이스가 생기기 전의 것들입니다.
+        if (oid && !(await allowed(oid))) continue
+        out[pid] = node
+      }
       return out
     }
     // 프로필이 없는 계정입니다. 한 번도 앱을 안 켰다는 뜻이고, 그러면 프로젝트도

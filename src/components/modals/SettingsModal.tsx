@@ -119,7 +119,7 @@ export function SettingsModal({ onClose, start = 'general' }: {
   const pages: { id: Page; label: string; note: string; group: string; badge?: number }[] = [
     { id: 'general', label: '일반', group: '내 계정', note: '이 기기에서 보이는 것들. 다른 사람 화면은 안 바뀝니다.' },
     { id: 'notify', label: '알림', group: '내 계정', note: '언제 무엇으로 알릴지. 기기마다 따로 정합니다 — 노트북에서 켠다고 폰이 켜지지는 않습니다.' },
-    { id: 'link', label: '연동', group: '내 계정', note: '밖에서 온 것을 알림함과 찾기에 들이는 통로입니다.' },
+    { id: 'link', label: '연동', group: '내 계정', note: '밖에서 온 것을 알림함과 찾기에 들이는 통로입니다. 켜면 그 서비스의 것이 이 앱 안에서 같이 보입니다.' },
     { id: 'trash', label: '휴지통', group: '내 계정', note: "지운 업무가 여기 남습니다. 되살리면 원래 프로젝트로, 원래 이름 그대로 돌아옵니다. '영영 지우기'는 되돌릴 수 없습니다." },
     { id: 'org', label: '개요', group: '워크스페이스', note: isGuest
       ? `${orgName || '이 워크스페이스'}에 게스트로 들어와 있습니다. 초대받은 프로젝트만 보이고, 회의실·장비·명단은 안 열립니다. 내 워크스페이스는 따로 만들 수 있습니다.`
@@ -227,25 +227,24 @@ export function SettingsModal({ onClose, start = 'general' }: {
               </Section>
             )}
 
+            {/*
+              ── 한 칸입니다 ──────────────────────────────────────────────
+              '계정에 붙는 것'과 '이 기기에 붙는 것'으로 갈라 두었습니다.
+              참인 말이지만 **쓰는 사람의 말이 아닙니다.** 여기서 묻는 것은
+              '이거 연결됐나' 하나고, 열쇠가 어디 사는지는 그 답이 아닙니다.
+
+              그렇다고 사라지는 사실은 아닙니다 — 구글 것은 노트북에서 켜도
+              폰에서 한 번 더 눌러야 합니다. 그건 **그게 문제가 되는 자리**로
+              옮겼습니다: 아직 안 켠 구글 줄에만, 그 줄 안에.
+            */}
             {page === 'link' && (
-              <>
-                <Section title="계정에 붙습니다" note="한 번 해 두면 폰에서도 그대로입니다.">
-                  <MailLinkRow />
-                  <NotionLinkRow />
-                  <ConnectorRow />
-                </Section>
-                {/*
-                  ── 왜 갈라 놓나 ──────────────────────────────────────────
-                  구글 것은 **열쇠가 이 브라우저에 삽니다.** 노트북에서 켜도
-                  폰에서는 폰에서 한 번 더 눌러야 실제로 됩니다. 위의 것들과
-                  섞어 놓으면 한 번 켜면 어디서나 된다고 읽히고, 폰에서 안
-                  되는 것이 고장으로 보입니다.
-                */}
-                <Section title="이 기기에 붙습니다" note="열쇠가 이 브라우저에 살아서, 폰에서는 폰에서 한 번 더 눌러야 합니다.">
-                  <GoogleLinkRow which="calendar" />
-                  <GoogleLinkRow which="drive" />
-                </Section>
-              </>
+              <Section title="연동">
+                <MailLinkRow />
+                <GoogleLinkRow which="calendar" />
+                <GoogleLinkRow which="drive" />
+                <NotionLinkRow />
+                <ConnectorRow />
+              </Section>
             )}
 
             {page === 'trash' && <TrashSection />}
@@ -728,6 +727,17 @@ function GoogleLinkRow({ which }: { which: 'calendar' | 'drive' }) {
         <span style={{ display: 'block', ...ROW_SUB, ...(it.error ? { color: 'var(--danger)' } : null) }}>
           {sub}
         </span>
+        {/*
+          열쇠가 이 브라우저에 산다는 사실은, **아직 안 켠 사람에게만** 할 말이
+          있습니다 — 폰에서 또 눌러야 한다는 것. 켠 사람에게는 아무 할 일도
+          없는 설명이라 안 적습니다. 칸 제목에 적어 두었을 때는 이미 켠
+          사람에게도 늘 보였습니다.
+        */}
+        {!on && !it.connecting && !it.error && (
+          <span style={{ display: 'block', ...ROW_SUB, marginTop: 2 }}>
+            기기마다 한 번씩 눌러야 합니다 — 구글이 정한 방식입니다.
+          </span>
+        )}
       </span>
       <MiniSwitch
         on={on}
