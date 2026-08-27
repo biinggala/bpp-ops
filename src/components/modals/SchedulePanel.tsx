@@ -6,7 +6,7 @@ import { openExternal } from '../../lib/desktopLinks'
 import { isComposing, parseAssignees } from '../../lib/utils'
 import { NOTION } from '../../types'
 import type { Task } from '../../types'
-import { DayTimeGrid, hhmm, localIso, durationLabel, minutesOfIso } from '../shared/DayTimeGrid'
+import { TimeRange, BusyStrip, hhmm, localIso, durationLabel, minutesOfIso } from '../shared/TimePick'
 
 /**
  * ── The events a task is made of ─────────────────────────────────────────────
@@ -375,19 +375,16 @@ function NewEventBody({ task, day, dayEvents, candidates, onCreate }: {
         style={{ ...FIELD, width: '100%' }}
       />
 
-      <DayTimeGrid
-        day={day} dayEvents={dayEvents}
+      <TimeRange
         startMin={startMin} minutes={minutes}
         onChange={(s, m) => { setStartMin(s); setMinutes(m) }}
       />
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--t1)' }}>
-          {hhmm(startMin)}–{hhmm(startMin + minutes)}
-        </span>
-        <span style={{ fontSize: 11, color: 'var(--t3)' }}>{durationLabel(minutes)}</span>
+      <BusyStrip dayEvents={dayEvents} startMin={startMin} minutes={minutes} />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
         {[30, 60, 90].map(m => (
-          <button key={m} onClick={() => setMinutes(m)}
+          <button key={m} onClick={() => setMinutes(Math.min(m, 24 * 60 - startMin))}
             style={{ ...CHIP, padding: '1px 7px', fontSize: 11, borderColor: minutes === m ? 'var(--ac)' : 'var(--bd)', color: minutes === m ? 'var(--ac)' : 'var(--t3)' }}
           >{m < 60 ? `${m}분` : `${m / 60}시간`}</button>
         ))}

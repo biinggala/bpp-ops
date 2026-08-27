@@ -7,7 +7,7 @@ import { haptic } from '../../../lib/haptics'
 import { useProjectStore } from '../../../store/projectStore'
 import { useGCalStore, warmCalendarAuth, targetCalendarOf, PEEK_COLOR } from '../../../store/gcalStore'
 import { ActionMenu } from '../../shared/ContextMenu'
-import { DayTimeGrid, hhmm, localIso, durationLabel } from '../../shared/DayTimeGrid'
+import { TimeRange, BusyStrip, localIso, minutesOfIso } from '../../shared/TimePick'
 import { TimelineGrid, GUTTER as HOUR_GUTTER } from '../timeline'
 import { writableCalendars } from '../../../lib/googleCalendar'
 import { useOrgStore } from '../../../store/orgStore'
@@ -1379,14 +1379,31 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
       </div>
 
       {menu && (
-        <ActionMenu
-          x={menu.x} y={menu.y}
-          actions={[
-            { label: '업무 추가', icon: 'plus', onSelect: () => onPlanDay(menu.day) },
-            { label: '일정 추가', icon: 'calendar', onSelect: () => setQuick({ x: menu.x, y: menu.y, day: menu.day }) },
-          ]}
-          onClose={() => setMenu(null)}
-        />
+        <>
+          {/*
+            ── 바깥을 누르면 닫힙니다 ──────────────────────────────────────────
+            ActionMenu는 mousedown으로 닫습니다. 그런데 이 메뉴를 여는 것은
+            칸의 click이라, 다른 칸을 누르면 **닫혔다가 곧바로 다시 열렸습니다**
+            — mousedown에서 닫고, 뒤따라 오는 click이 새로 여는 순서입니다.
+            사람 눈에는 아무리 눌러도 안 닫히는 메뉴였습니다.
+
+            그래서 판을 하나 깔아 클릭을 여기서 멈춥니다. 판을 누른 것은
+            '닫겠다'는 뜻이고, 그 클릭이 칸까지 내려가면 안 됩니다.
+          */}
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 499 }}
+            onClick={() => setMenu(null)}
+            onContextMenu={e => { e.preventDefault(); setMenu(null) }}
+          />
+          <ActionMenu
+            x={menu.x} y={menu.y}
+            actions={[
+              { label: '업무 추가', icon: 'plus', onSelect: () => onPlanDay(menu.day) },
+              { label: '일정 추가', icon: 'calendar', onSelect: () => setQuick({ x: menu.x, y: menu.y, day: menu.day }) },
+            ]}
+            onClose={() => setMenu(null)}
+          />
+        </>
       )}
 
       {quick && (
@@ -1449,7 +1466,7 @@ function QuickEvent({ x, y, day, onClose }: {
   }
 
   const d = toDate(day)
-  const W = allDay ? 250 : 296
+  const W = allDay ? 250 : 300
   return (
     <>
       <div style={{ position: 'fixed', inset: 0, zIndex: 8998 }} onClick={onClose} />
@@ -1457,7 +1474,7 @@ function QuickEvent({ x, y, day, onClose }: {
         style={{
           position: 'fixed',
           left: Math.max(8, Math.min(x, window.innerWidth - W - 8)),
-          top: Math.max(8, Math.min(y, window.innerHeight - (allDay ? 130 : 380))),
+          top: Math.max(8, Math.min(y, window.innerHeight - (allDay ? 130 : 230))),
           zIndex: 8999, width: W, background: 'var(--bg)', border: '1px solid var(--bd)',
           borderRadius: 'var(--r3)', boxShadow: 'var(--sh-lg)', padding: 12,
         }}
@@ -1478,13 +1495,10 @@ function QuickEvent({ x, y, day, onClose }: {
         />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          {/* 날짜만입니다. 시각과 길이는 바로 아래 목록이 말하고 있어서,
+              여기 또 적으면 같은 말이 두 줄이 됩니다. */}
           <span style={{ fontSize: 11.5, color: 'var(--t2)', flex: 1, minWidth: 0 }}>
             {`${d.getMonth() + 1}월 ${d.getDate()}일`}
-            {!allDay && (
-              <span style={{ color: 'var(--t3)' }}>
-                {` · ${hhmm(startMin)}–${hhmm(startMin + minutes)} · ${durationLabel(minutes)}`}
-              </span>
-            )}
           </span>
           {/*
             두 값뿐인 축이라 목록이 아니라 스위치입니다. 시간이 있는 일정과
@@ -1511,16 +1525,18 @@ function QuickEvent({ x, y, day, onClose }: {
 
         {!allDay && (
           <>
-            <DayTimeGrid
-              day={day} dayEvents={dayEvents}
+            <TimeRange
               startMin={startMin} minutes={minutes}
               onChange={(s2, m) => { setStartMin(s2); setMinutes(m) }}
             />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, margin: '8px 0 2px' }}>
+            <div style={{ marginTop: 8 }}>
+              <BusyStrip dayEvents={dayEvents} startMin={startMin} minutes={minutes} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 8 }}>
               {[30, 60, 90].map(m => (
                 <button
                   key={m}
-                  onClick={() => setMinutes(m)}
+                  onClick={() => setMinutes(Math.min(m, 24 * 60 - startMin))}
                   style={{
                     padding: '2px 8px', fontSize: 11, borderRadius: 'var(--r1)', background: 'transparent',
                     border: `1px solid ${minutes === m ? 'var(--ac)' : 'var(--bd)'}`,
@@ -1529,6 +1545,13 @@ function QuickEvent({ x, y, day, onClose }: {
                   }}
                 >{m < 60 ? `${m}분` : `${m / 60}시간`}</button>
               ))}
+              {/* 내 일정과 겹치면 그 자리에서 말합니다 — 띠에도 보이지만,
+                  띠는 훑어보는 것이고 이 줄은 읽히는 것입니다. */}
+              {dayEvents.some(ev => {
+                if (ev.allDay || !ev.startIso || !ev.endIso) return false
+                const s2 = minutesOfIso(ev.startIso), e2 = minutesOfIso(ev.endIso)
+                return startMin < e2 && s2 < startMin + minutes
+              }) && <span style={{ fontSize: 11, color: '#D9730D' }}>겹치는 일정 있음</span>}
             </div>
           </>
         )}
