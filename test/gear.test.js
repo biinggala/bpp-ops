@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   dayNo, dayYMD, gearSpan, gearOverlaps, gearClash, coversDay, gearDays,
-  gearWhen, gearRangeError, MAX_GEAR_DAYS,
+  gearWhen, gearRangeError, MAX_GEAR_DAYS, groupGear, gearKinds, NO_KIND,
 } from '../.test-build/lib/gear.js'
 
 const T = (from, fromMin, to, toMin) => ({ from, to, fromMin, toMin })
@@ -67,4 +67,22 @@ test('말이 안 되는 예약은 이유를 돌려줍니다', () => {
   assert.match(gearRangeError(T('2026-08-27', 720, '2026-08-27', 600)), /빨라요/)
   assert.match(gearRangeError(L('2026-01-01', '2027-01-01')), new RegExp(`${MAX_GEAR_DAYS}일`))
   assert.match(gearRangeError(L('', '')), /날짜/)
+})
+
+const G = (name, kind) => ({ name, ...(kind ? { kind } : {}) })
+
+test('종류로 묶고, 먼저 만든 종류가 앞에 섭니다', () => {
+  const gear = [G('A7S3', '카메라'), G('아리 조명', '조명'), G('A7C', '카메라'), G('삼각대')]
+  const groups = groupGear(gear)
+  assert.deepEqual(groups.map(g => g.kind), ['카메라', '조명', NO_KIND])
+  assert.deepEqual(groups[0].items.map(i => i.name), ['A7S3', 'A7C'])
+  // 종류 없는 것은 늘 맨 아래입니다 — 목록 맨 앞에 있어도.
+  assert.equal(groupGear([G('삼각대'), G('A7S3', '카메라')]).map(g => g.kind).pop(), NO_KIND)
+  // 고르라고 내미는 목록에는 '종류 없음'이 없습니다. 그건 종류가 아닙니다.
+  assert.deepEqual(gearKinds(gear), ['카메라', '조명'])
+})
+
+test('앞뒤 공백은 같은 종류입니다', () => {
+  // 손으로 적는 값이라 '조명'과 '조명 '이 다른 묶음이 되면 목록이 둘로 쪼개집니다.
+  assert.equal(groupGear([G('a', '조명'), G('b', ' 조명 ')]).length, 1)
 })

@@ -930,3 +930,21 @@ test('소속팀은 자기 것과, 관리자면 남의 것도 정한다', async (
   await assertFails(set(ref(authed(BOB), `orgs/${oid}/teamOf/${key(ALICE.email)}`), 't1'))
   await assertSucceeds(set(ref(authed(ALICE), `orgs/${oid}/teamOf/${key(BOB.email)}`), 't1'))
 })
+
+test('장비에 종류를 적고, 같이 잡은 것끼리 묶습니다', async () => {
+  const oid = 'g6'
+  await org(oid, { name: 'W', domain: 'bpp.co.kr' }, {
+    [ALICE.email]: { role: 'member', at: 1 },
+    [BOB.email]: { role: 'member', at: 1 },
+  })
+  await asAdmin(oid, ALICE)
+  await assertSucceeds(set(ref(authed(ALICE), `orgs/${oid}/gear/cam1`), { name: 'FX3', kind: '카메라' }))
+  // 종류는 한 줄짜리 이름표입니다. 문단이 들어오면 목록이 아니라 글이 됩니다.
+  await assertFails(set(ref(authed(ALICE), `orgs/${oid}/gear/cam2`), { name: 'A7C', kind: 'x'.repeat(31) }))
+
+  // 촬영 한 번에 카메라와 조명이 같이 나갑니다. 저장은 장비마다 한 줄이고,
+  // 같이 잡은 표(group)를 나눠 갖습니다.
+  const db = authed(BOB)
+  await assertSucceeds(set(ref(db, `orgs/${oid}/gearBookings/b1`), { ...GEAR_ROW(BOB), group: 'trip1' }))
+  await assertSucceeds(set(ref(db, `orgs/${oid}/gearBookings/b2`), { ...GEAR_ROW(BOB), gearId: 'light1', group: 'trip1' }))
+})

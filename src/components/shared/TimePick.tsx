@@ -53,7 +53,7 @@ export function minutesOfIso(iso: string): number {
  * 구글 캘린더가 하는 것과 같습니다. 아래로 조금만 굴리면 다음 시각들이 있고,
  * 그 사이에도 달력은 계속 보입니다.
  */
-function TimeMenu({ value, options, onPick, width = 92 }: {
+export function TimeMenu({ value, options, onPick, width = 92 }: {
   value: number
   options: { at: number; label: string; sub?: string }[]
   onPick: (at: number) => void

@@ -33,6 +33,14 @@ export interface Gear {
   /** '35mm 렌즈', '2번 삼각대' 같은 한 줄. */
   note?: string
   order?: number
+  /**
+   * '카메라', '조명', '송수신기' 같은 묶음.
+   *
+   * 목록을 따로 관리하지 않습니다 — 여기 적힌 값에서 뽑아냅니다. 관리하는
+   * 목록을 두면 빈 종류와, 지워진 종류를 가리키는 장비가 생깁니다.
+   * `src/lib/gear.ts`의 groupGear 참고.
+   */
+  kind?: string
   /** 고장 났거나 수리 중. 지우는 대신 끕니다 — 회의실과 같은 이유입니다. */
   active?: boolean
 }
@@ -50,8 +58,9 @@ interface GearState {
   /** 그 화면이 열려 있는 동안만. 돌려주는 함수를 부르면 놓습니다. */
   subscribe: (orgId: string) => () => void
 
-  addGear: (name: string, note?: string) => Promise<void>
-  updateGear: (id: string, patch: Partial<Omit<Gear, 'id'>>) => Promise<void>
+  addGear: (name: string, note?: string, kind?: string) => Promise<void>
+  /** `kind: null`은 종류를 지웁니다 — 빈 문자열을 남기면 '종류 없음'이 값이 됩니다. */
+  updateGear: (id: string, patch: Partial<Omit<Gear, 'id' | 'kind'>> & { kind?: string | null }) => Promise<void>
   removeGear: (id: string) => Promise<void>
 
   addTeam: (name: string) => Promise<void>
@@ -60,15 +69,29 @@ interface GearState {
   /** null이면 소속을 지웁니다. */
   setMemberTeam: (email: string, teamId: string | null) => Promise<boolean>
 
+  /**
+   * 한 번의 예약에 **장비 여럿**.
+   *
+   * 촬영을 나가면 카메라 하나, 렌즈 둘, 조명 셋, 삼각대가 같은 날 같은 이유로
+   * 같이 나갑니다. 한 개씩 잡게 하면 같은 폼을 일곱 번 채우게 되고, 그러면
+   * 여섯 번째쯤에서 사유가 달라집니다.
+   *
+   * 저장은 **장비마다 한 줄**입니다 — 겹침을 재는 자리(gearClash)와 현황판의
+   * 줄이 둘 다 장비 하나를 봅니다. 대신 같이 잡은 것들은 `group`을 공유해서,
+   * 화면에서는 한 건으로 읽히고 풀 때도 한 번에 풀립니다.
+   */
   book: (input: GearRange & {
-    gearId: string
+    gearIds: string[]
     by: string
     byName?: string
     team?: string
     reason: string
     extra?: string
   }) => Promise<boolean>
+  /** 한 줄만. */
   release: (id: string) => Promise<boolean>
+  /** 같이 잡은 것 전부. 화면에서 한 건으로 보이는 것은 한 번에 풀려야 합니다. */
+  releaseGroup: (group: string) => Promise<boolean>
 }
 
 function list<T>(raw: unknown): (T & { id: string })[] {
@@ -142,12 +165,13 @@ export const useGearStore = create<GearState>((set, get) => ({
     }
   },
 
-  addGear: async (name, note) => {
+  addGear: async (name, note, kind) => {
     if (!orgIdNow || !name.trim()) return
     const node = push(ref(db, P.orgGear(orgIdNow)))
     await fbSet(node, {
       name: name.trim(),
       ...(note?.trim() ? { note: note.trim() } : {}),
+      ...(kind?.trim() ? { kind: kind.trim() } : {}),
       order: get().gear.length,
       active: true,
     }).catch(e => set({ error: e instanceof Error ? e.message : '장비를 더하지 못했습니다' }))
@@ -209,8 +233,10 @@ export const useGearStore = create<GearState>((set, get) => ({
     }
   },
 
-  book: async ({ gearId, from, to, fromMin, toMin, long, by, byName, team, reason, extra }) => {
+  book: async ({ gearIds, from, to, fromMin, toMin, long, by, byName, team, reason, extra }) => {
     if (!orgIdNow) return false
+    const ids = [...new Set(gearIds)].filter(Boolean)
+    if (!ids.length) { set({ error: '장비를 하나 이상 담아 주세요.' }); return false }
     const range: GearRange = { from, to, fromMin, toMin, ...(long ? { long: true } : {}) }
     /*
       마지막 문입니다. 화면이 먼저 막고 누가 잡고 있는지도 말해 주지만,
@@ -218,33 +244,59 @@ export const useGearStore = create<GearState>((set, get) => ({
     */
     const bad = gearRangeError(range)
     if (bad) { set({ error: bad }); return false }
-    if (!reason.trim()) { set({ error: '사용 사유를 적어 주세요.' }); return false }
-    const held = gearClash(get().bookings, gearId, range)
-    if (held) {
-      set({ error: `이미 ${held.byName || held.by} 님이 잡아 두었습니다.` })
-      return false
+    if (!reason.trim()) { set({ error: '사용 내용을 적어 주세요.' }); return false }
+
+    // **먼저 전부 봅니다.** 하나씩 쓰면서 검사하면 다섯 개 중 넷이 들어간
+    // 뒤에 다섯 번째가 막히고, 절반만 잡힌 예약이 남습니다.
+    const { bookings, gear, teams } = get()
+    for (const gearId of ids) {
+      const held = gearClash(bookings, gearId, range)
+      if (held) {
+        const name = gear.find(g => g.id === gearId)?.name ?? '장비'
+        set({ error: `'${name}'은 이미 ${held.byName || held.by} 님이 잡아 두었습니다.` })
+        return false
+      }
     }
-    const item = get().gear.find(g => g.id === gearId)
-    const teamName = get().teams.find(t => t.id === team)?.name
+
+    const teamName = teams.find(t => t.id === team)?.name
+    const group = push(ref(db, P.orgGearBookings(orgIdNow))).key ?? ''
+    const written: string[] = []
     try {
-      await fbSet(push(ref(db, P.orgGearBookings(orgIdNow))), {
-        gearId, from, to, fromMin, toMin,
-        ...(long ? { long: true } : {}),
-        ...(item?.name ? { gearName: item.name } : {}),
-        by: by.toLowerCase(),
-        ...(byName ? { byName } : {}),
-        ...(team ? { team } : {}),
-        ...(teamName ? { teamName } : {}),
-        reason: reason.trim(),
-        ...(extra?.trim() ? { extra: extra.trim() } : {}),
-        at: Date.now(),
-      })
+      for (const gearId of ids) {
+        const node = push(ref(db, P.orgGearBookings(orgIdNow)))
+        await fbSet(node, {
+          gearId, from, to, fromMin, toMin,
+          ...(long ? { long: true } : {}),
+          ...(gear.find(g => g.id === gearId)?.name ? { gearName: gear.find(g => g.id === gearId)!.name } : {}),
+          ...(group ? { group } : {}),
+          by: by.toLowerCase(),
+          ...(byName ? { byName } : {}),
+          ...(team ? { team } : {}),
+          ...(teamName ? { teamName } : {}),
+          reason: reason.trim(),
+          ...(extra?.trim() ? { extra: extra.trim() } : {}),
+          at: Date.now(),
+        })
+        if (node.key) written.push(node.key)
+      }
       set({ error: null })
       return true
     } catch (e) {
+      // 중간에 막히면 쓴 것을 도로 걷습니다 — 반만 잡힌 예약은 아무도 못 읽고,
+      // 다음 사람에게는 '차 있는데 왜 차 있는지 모르는 자리'가 됩니다.
+      for (const id of written) await remove(ref(db, P.orgGearBooking(orgIdNow, id))).catch(() => {})
       set({ error: e instanceof Error ? e.message : '장비를 잡지 못했습니다' })
       return false
     }
+  },
+
+  releaseGroup: async (group) => {
+    if (!orgIdNow || !group) return false
+    const rows = get().bookings.filter(b => b.group === group)
+    for (const row of rows) {
+      if (!await get().release(row.id)) return false
+    }
+    return true
   },
 
   release: async (id) => {

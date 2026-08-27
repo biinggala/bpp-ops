@@ -414,8 +414,8 @@ orgs/{조직id}/
   rooms/{방id}: { name, note?, order, active }
   bookings/{날짜}/{예약id}: { roomId, from, to, by, byName?, title?, eventId?, at }
   roomRule: { maxMinutes, from, to }
-  gear/{장비id}: { name, note?, order, active }
-  gearBookings/{예약id}: { gearId, gearName?, from, to, fromMin, toMin, long?,
+  gear/{장비id}: { name, note?, kind?, order, active }
+  gearBookings/{예약id}: { gearId, gearName?, group?, from, to, fromMin, toMin, long?,
                            by, byName?, team?, teamName?, reason, extra?, at }
   teams/{팀id}: { name, order }
   teamOf/{이메일키}: 팀id
@@ -617,6 +617,32 @@ orgs/{조직id}/joinRequests/{pid}/{이메일키}: { at, name? }
 것들입니다 — 남의 이름으로 못 잡고, 사유 없이 못 잡고, 남의 예약은 못 풉니다.
 관리자는 풀 수 있습니다: 빌린 사람이 휴가일 때 아무도 그 카메라를 못 쓰는 상태가
 남으면 안 됩니다.
+
+### 한 번의 예약에 장비 여럿 — 저장은 장비마다 한 줄
+
+촬영을 나가면 카메라 하나, 렌즈 둘, 조명 셋, 삼각대가 같은 날 같은 이유로 같이
+나갑니다. 그래서 화면은 장비를 **담아서** 한 번에 신청합니다.
+
+그런데 저장은 장비마다 한 줄입니다. 겹침을 재는 단위(`gearClash`)와 현황판의 줄이
+둘 다 장비 하나를 보기 때문입니다 — 한 줄에 `gearIds: [...]`로 넣으면 두 곳 다
+배열을 풀어 가며 다시 재야 하고, 그 셈이 두 벌이 됩니다.
+
+대신 같이 잡은 것들이 `group`(푸시 id 하나)을 나눠 갖습니다. 화면에서는 한 건으로
+읽히고, 풀 때도 한 번에 풀립니다. `group`이 없는 줄은 자기 혼자인 예약입니다 —
+**안 붙은 것을 없는 것으로 읽지 않습니다.**
+
+쓸 때는 **겹침을 전부 먼저 봅니다.** 하나씩 쓰면서 검사하면 다섯 개 중 넷이 들어간
+뒤 다섯 번째가 막혀서, 절반만 잡힌 예약이 남습니다. 그래도 중간에 쓰기가 실패하면
+쓴 것을 도로 걷습니다.
+
+### 종류(`kind`)는 목록이 아니라 값입니다
+
+'카메라', '조명', '송수신기'. 관리하는 목록을 따로 두지 않고 장비에 적힌 값에서
+뽑아냅니다(`src/lib/gear.ts`의 `groupGear`) — 목록을 두면 아무것도 없는 빈 종류와,
+지워진 종류를 가리키는 장비가 생깁니다. 뽑아내면 둘 다 있을 수 없습니다.
+
+팀(`teams`)은 반대로 관리하는 목록입니다. 사람이 자기 소속으로 고르는 값이고 예약에
+이름이 복사되어 남기 때문입니다 — 거기서는 오타가 사람의 소속을 갈라놓습니다.
 
 ### 팀은 라벨이지 경계가 아닙니다
 
