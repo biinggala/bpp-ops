@@ -191,6 +191,33 @@ export function AppPage() {
    * 소속 도장과 같은 방식입니다 — 멤버가 지나가면서 채웁니다. 한 번 채우면
    * `orgProjects`가 늘어나 다음 렌더에서는 빈 목록이 되어 멈춥니다.
    */
+  /**
+   * ── 어느 캘린더를 보는가는 계정에 붙습니다 ────────────────────────────────
+   *
+   * 체크는 브라우저 저장소에도 남지만, 데스크톱 앱은 껐다 켜면 그게 비어
+   * 있었습니다 — 매번 구독 중인 캘린더가 전부 쏟아졌습니다.
+   *
+   * **다 오기 전에는 안 건드립니다.** 아직 안 온 `hiddenCalendars`는 빈
+   * 배열이고, 빈 배열은 '아무것도 안 껐다'와 똑같이 생겼습니다. 그대로
+   * 반영하면 켤 때마다 전부 켜졌다가 잠시 뒤 다시 꺼집니다.
+   */
+  const prefsReady = usePrefsStore(s => s.ready)
+  const hiddenSeen = usePrefsStore(s => s.hiddenSeen)
+  const hiddenCalendars = usePrefsStore(s => s.hiddenCalendars)
+  const setHiddenCalendars = usePrefsStore(s => s.setHiddenCalendars)
+  const calendarCount = useGCalStore(s => s.calendars.length)
+  const applyHiddenCalendars = useGCalStore(s => s.applyHiddenCalendars)
+  useEffect(() => {
+    if (!prefsReady || !calendarCount) return
+    if (hiddenSeen) { applyHiddenCalendars(hiddenCalendars); return }
+    // 한 번도 적은 적이 없으면, 지금 이 기기의 선택을 계정으로 옮깁니다.
+    // 덮어쓰면 이 기능이 생기기 전부터 꺼 두었던 것이 전부 켜집니다.
+    if (!email) return
+    const { calendars, enabledCalendarIds } = useGCalStore.getState()
+    const on = enabledCalendarIds ?? calendars.map(c => c.id)
+    setHiddenCalendars(email, calendars.filter(c => !on.includes(c.id)).map(c => c.id))
+  }, [prefsReady, hiddenSeen, calendarCount, hiddenCalendars, applyHiddenCalendars, setHiddenCalendars, email])
+
   const orgProjects = useOrgStore(s => s.orgProjects)
   const listProject = useOrgStore(s => s.listProject)
   const unlisted = useMemo(

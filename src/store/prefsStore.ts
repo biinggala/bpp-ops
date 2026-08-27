@@ -42,6 +42,31 @@ interface PrefsState {
    */
   activeOrg: string | null
   /**
+   * 캘린더에서 **꺼 둔** 것들.
+   *
+   * **기기가 아니라 계정에 붙습니다.** 연결(토큰)은 이 브라우저 것이지만,
+   * '어느 캘린더를 보는가'는 취향입니다 — 노트북에서 끈 것이 폰에서 다시
+   * 켜져 있으면 그건 저장이 아닙니다. 데스크톱 앱을 껐다 켜면 매번 구독 중인
+   * 캘린더가 전부 쏟아지던 것도 이것이 브라우저 저장소에만 있어서였습니다.
+   *
+   * **켠 것이 아니라 꺼 둔 것을 적습니다.** 켠 것을 적으면 나중에 구글에서
+   * 캘린더를 하나 더 만들었을 때 그게 목록에 안 뜹니다 — 안 켠 것과 아직
+   * 없던 것이 같아지니까요. 끈 것만 적으면 새로 생긴 것은 그냥 보입니다.
+   *
+   * 줄바꿈으로 이어 붙인 한 문자열로 저장합니다. 캘린더 id에는 `.`과 `@`가
+   * 들어 있는데 그건 실시간 데이터베이스의 키로 못 씁니다.
+   */
+  hiddenCalendars: string[]
+  /**
+   * 이 값을 **한 번이라도 적은 적이 있는가.**
+   *
+   * 없는 것과 '아무것도 안 껐다'가 똑같이 빈 배열로 생겼습니다. 그대로
+   * 두면, 이 기능이 생기기 전부터 기기에 저장해 둔 사람이 앱을 켜는 순간
+   * 계정 쪽의 빈 값이 그걸 덮어써서 캘린더가 전부 켜집니다 — 고치려던 바로
+   * 그 증상입니다. 처음 한 번은 덮어쓰는 대신 기기 것을 계정으로 옮깁니다.
+   */
+  hiddenSeen: boolean
+  /**
    * 첫 조회가 끝났는가.
    *
    * 이게 없으면 앱을 켤 때마다 소개가 한 번 번쩍합니다 — 아직 안 읽은
@@ -54,6 +79,7 @@ interface PrefsState {
   markSeenVersion: (email: string, id: string) => void
   markTimeblock: (email: string) => void
   setActiveOrg: (email: string, orgId: string) => void
+  setHiddenCalendars: (email: string, ids: string[]) => void
   /** 설정에서 '다시 보기'를 눌렀을 때. 저장된 값은 그대로 두고 이번만 엽니다. */
   replay: 'intro' | 'whatsNew' | null
   setReplay: (v: 'intro' | 'whatsNew' | null) => void
@@ -64,24 +90,31 @@ export const usePrefsStore = create<PrefsState>((set) => ({
   seenVersion: null,
   timeblockAt: null,
   activeOrg: null,
+  hiddenCalendars: [],
+  hiddenSeen: false,
   ready: false,
   replay: null,
 
   subscribe: (email) => {
     const node = ref(db, P.userPrefs(email))
     const handler = onValue(node, snap => {
-      const v = (snap.val() ?? {}) as { onboardedAt?: number; seenVersion?: string; timeblockAt?: number; activeOrg?: string }
+      const v = (snap.val() ?? {}) as {
+        onboardedAt?: number; seenVersion?: string; timeblockAt?: number
+        activeOrg?: string; hiddenCalendars?: string
+      }
       set({
         onboardedAt: v.onboardedAt ?? null,
         seenVersion: v.seenVersion ?? null,
         timeblockAt: v.timeblockAt ?? null,
         activeOrg: v.activeOrg ?? null,
+        hiddenCalendars: (v.hiddenCalendars ?? '').split('\n').filter(Boolean),
+        hiddenSeen: v.hiddenCalendars !== undefined,
         ready: true,
       })
     }, () => set({ ready: true }))
     return () => {
       off(node, 'value', handler)
-      set({ onboardedAt: null, seenVersion: null, timeblockAt: null, activeOrg: null, ready: false, replay: null })
+      set({ onboardedAt: null, seenVersion: null, timeblockAt: null, activeOrg: null, hiddenCalendars: [], hiddenSeen: false, ready: false, replay: null })
     }
   },
 
@@ -106,6 +139,11 @@ export const usePrefsStore = create<PrefsState>((set) => ({
   setActiveOrg: (email, orgId) => {
     set({ activeOrg: orgId })
     void fbUpdate(ref(db, P.userPrefs(email)), { activeOrg: orgId }).catch(() => {})
+  },
+
+  setHiddenCalendars: (email, ids) => {
+    set({ hiddenCalendars: ids, hiddenSeen: true })
+    void fbUpdate(ref(db, P.userPrefs(email)), { hiddenCalendars: ids.join('\n') }).catch(() => {})
   },
 
   setReplay: (replay) => set({ replay }),

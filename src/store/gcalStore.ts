@@ -3,6 +3,8 @@ import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import { auth } from '../lib/firebase'
 import { requestGoogleToken, prepareGoogleAuthz, AuthzError, GIS_CONFIGURED } from '../lib/googleAuthz'
 import { isDesktopShell, forgetStoredGrant } from '../lib/desktopAuth'
+import { useAuthStore } from './authStore'
+import { usePrefsStore } from './prefsStore'
 import { askConfirm } from '../components/shared/Confirm'
 import { fetchCalendarList, fetchEventsAcross, fetchEventsForRange, fetchFreeBusy, fetchEventsForTask, searchEvents, setEventTaskLink, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, respondToEvent, type Rsvp, writableCalendars, TASK_LINK_KEY, TIMEBLOCK_KEY, NOTE_LINK_KEY, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent, type EventAttendee } from '../lib/googleCalendar'
 
@@ -249,6 +251,8 @@ interface GCalState {
   disconnect: () => void
   fetchCalendars: () => Promise<void>
   setCalendarEnabled: (id: string, on: boolean) => void
+  /** 계정에 저장된 '꺼 둔 것들'을 화면에 반영합니다. */
+  applyHiddenCalendars: (hidden: string[]) => void
   /** Loads the range if the cached window does not already cover it. */
   ensureEvents: (from: string, to: string) => Promise<void>
   /** Refetches the cached window regardless of age. */
@@ -988,6 +992,24 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     }
   },
 
+  applyHiddenCalendars: (hidden) => {
+    const { calendars, enabledCalendarIds, loadedFrom, loadedTo } = get()
+    if (!calendars.length) return
+    const next = calendars.filter(c => !hidden.includes(c.id)).map(c => c.id)
+    const now = enabledCalendarIds ?? calendars.map(c => c.id)
+    const same = next.length === now.length && next.every(id => now.includes(id))
+    if (same) return
+    localStorage.setItem(ENABLED_KEY, JSON.stringify(next))
+    // 새로 켜진 것이 있으면 그 캘린더는 한 번도 안 읽어 온 것입니다.
+    const opened = next.some(id => !now.includes(id))
+    set({
+      enabledCalendarIds: next,
+      events: get().events.filter(e => next.includes(e.calendarId)),
+      fetchedAt: 0,
+    })
+    if (opened && loadedFrom && loadedTo) void get().fetchEvents(loadedFrom, loadedTo)
+  },
+
   setCalendarEnabled: (id, on) => {
     // 넣는 곳은 못 숨깁니다 — 숨기면 다음에 넣는 일정이 사라집니다.
     // 화면에서도 그 체크는 눌리지 않게 해 두었습니다(눌러도 안 되는 것을
@@ -996,6 +1018,21 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     const current = get().enabledCalendarIds ?? get().calendars.map(c => c.id)
     const next = on ? [...new Set([...current, id])] : current.filter(x => x !== id)
     localStorage.setItem(ENABLED_KEY, JSON.stringify(next))
+    /*
+      ── 계정에도 적습니다 ──────────────────────────────────────────────────
+      브라우저 저장소는 이 기기 것이고, 데스크톱 앱은 껐다 켜면 그게 비어
+      있었습니다 — 매번 구독 중인 캘린더가 전부 쏟아졌습니다. 여기 것은
+      '지금 바로'를 위한 사본으로 두고, 남는 것은 계정에 둡니다.
+
+      끈 것만 적습니다 — 이유는 prefsStore.hiddenCalendars 참고.
+    */
+    const mail = useAuthStore.getState().email
+    if (mail) {
+      usePrefsStore.getState().setHiddenCalendars(
+        mail,
+        get().calendars.filter(c => !next.includes(c.id)).map(c => c.id),
+      )
+    }
 
     // The window held in `events` was read for a different set of calendars, and
     // a checkbox has to take effect on the grid behind it — not on whatever the
