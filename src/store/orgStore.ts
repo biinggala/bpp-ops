@@ -4,7 +4,7 @@ import { db } from '../lib/firebase'
 import { P, domainKey, emailKey } from '../lib/paths'
 import { gid } from '../lib/utils'
 import { useAuthStore } from './authStore'
-import { roomRuleNote, roomTooLong } from '../lib/roomRule'
+import { DEFAULT_ROOM_RULE, roomRuleNote, roomTooLong, type RoomRule } from '../lib/roomRule'
 import { usePrefsStore } from './prefsStore'
 import { pickOrg, orgsSettled } from '../lib/pickOrg'
 
@@ -107,6 +107,15 @@ interface OrgState {
    * 언젠가 어긋납니다.
    */
   admins: string[]
+  /**
+   * 회의실을 얼마나 오래 잡을 수 있나 — 이 워크스페이스가 정합니다.
+   *
+   * 방이 열 개인 회사와 두 개인 회사에 같은 두 시간을 물릴 이유가 없습니다.
+   * 아무것도 안 정했으면 기본값이고, 화면은 그 차이를 몰라도 됩니다.
+   */
+  roomRule: RoomRule
+  /** 규칙을 바꿉니다. 방 목록과 같은 힘 — 관리자만. */
+  setRoomRule: (rule: RoomRule) => Promise<boolean>
   /** 이 워크스페이스의 프로젝트들. 이름만입니다 — 업무는 안 딸려 옵니다. */
   orgProjects: OrgProject[]
   /** 들어오고 싶다는 요청들. 승인은 그 프로젝트 멤버가 합니다. */
@@ -318,6 +327,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
   myOrgs: [],
   admins: [],
   orgProjects: [],
+  roomRule: DEFAULT_ROOM_RULE,
   joinRequests: [],
   bookings: {},
   ready: false,
@@ -451,6 +461,21 @@ export const useOrgStore = create<OrgState>((set, get) => ({
         const founder = (meta?.owner ?? '').replace(/,/g, '.') || (meta?.createdBy ?? '')
         set({ name: meta?.name ?? '', domain: meta?.domain ?? '', founder: founder.toLowerCase() })
       })
+      /*
+        회의실 규칙. 없으면 기본값입니다 — **안 온 것과 안 정한 것을 가릅니다.**
+        구독을 못 하면(권한이 없거나 나가는 중) 기본값으로 두되, 그건 '규칙이
+        없다'가 아니라 '모른다'입니다. 화면은 어차피 기본값으로 굴러가고,
+        마지막 문은 규칙이 서버에서 다시 봅니다.
+      */
+      const ruleRef = ref(db, P.orgRoomRule(orgId))
+      const ruleHandler = onValue(ruleRef, s => {
+        const v = s.val() as RoomRule | null
+        set({
+          roomRule: v && typeof v.maxMinutes === 'number' && typeof v.from === 'number' && typeof v.to === 'number'
+            ? v
+            : DEFAULT_ROOM_RULE,
+        })
+      }, () => set({ roomRule: DEFAULT_ROOM_RULE }))
       const roomsRef = ref(db, P.orgRooms(orgId))
       const roomsHandler = onValue(roomsRef, s => {
         const rooms = list<Room>(s.val())
@@ -500,6 +525,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       inner = [
         () => off(metaRef, 'value', metaHandler),
         () => off(roomsRef, 'value', roomsHandler),
+        () => off(ruleRef, 'value', ruleHandler),
         () => off(adminsRef, 'value', adminsHandler),
         () => off(projectsRef, 'value', projectsHandler),
         () => off(joinRef, 'value', joinHandler),
@@ -758,6 +784,21 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     if (!orgId) return
     await fbUpdate(ref(db, P.orgRoom(orgId, id)), patch)
       .catch(e => set({ error: e instanceof Error ? e.message : '회의실 수정 실패' }))
+  },
+
+  setRoomRule: async (rule) => {
+    const { orgId } = get()
+    if (!orgId) return false
+    try {
+      await fbSet(ref(db, P.orgRoomRule(orgId)), rule)
+      set({ error: null })
+      return true
+    } catch (e) {
+      set({ error: e instanceof Error && /permission/i.test(e.message)
+        ? '회의실 규칙은 관리자만 바꿀 수 있습니다.'
+        : e instanceof Error ? e.message : '규칙을 바꾸지 못했습니다' })
+      return false
+    }
   },
 
   listProject: async (project) => {
@@ -1070,8 +1111,8 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       길이 여럿이라(새 일정, 카드에서 고르기, 일정을 옮기면 예약이 따라감)
       한 군데만 빠뜨려도 규칙이 새 나갑니다. 여기서 한 번 더 봅니다.
     */
-    if (roomTooLong({ from, to })) {
-      set({ error: roomRuleNote() })
+    if (roomTooLong({ from, to }, get().roomRule)) {
+      set({ error: roomRuleNote(get().roomRule) })
       return false
     }
     const node = push(ref(db, P.orgBookings(orgId, date)))

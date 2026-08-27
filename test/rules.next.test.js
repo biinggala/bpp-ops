@@ -775,3 +775,51 @@ test('명단에서 남을 내리는 것은 관리자만', async () => {
   })
   await assertSucceeds(set(ref(authed(ALICE), `orgs/${oid}/members/${key(BOB.email)}`), { role: 'removed', at: 2 }))
 })
+
+/**
+ * ── 회의실 규칙 ─────────────────────────────────────────────────────────────
+ *
+ * '낮에 얼마나 오래 잡을 수 있나'를 워크스페이스가 정합니다. 방 목록과 같은
+ * 힘으로 고칩니다 — 둘 다 모두가 함께 쓰는 회의실에 대한 결정이고, 하나만
+ * 관리자 것이면 규칙이 두 개가 됩니다.
+ */
+test('회의실 규칙은 관리자만 고친다', async () => {
+  const oid = 'rr1'
+  await org(oid, { name: 'W', domain: 'bpp.co.kr' }, {
+    [ALICE.email]: { role: 'member', at: 1 },
+    [BOB.email]: { role: 'member', at: 1 },
+  })
+  const rule = { maxMinutes: 120, from: 600, to: 1080 }
+
+  /*
+    관리자를 먼저 세웁니다. 관리자가 **아무도 없는** 도메인 워크스페이스에서는
+    그 도메인 사람 누구나 맡을 수 있는 것이 규칙이고(영원히 손 못 대는 조직이
+    생기지 않게 하는 안전장치), 그 상태로는 밥도 통과합니다 — 처음에 이걸
+    빼먹고 규칙이 샌다고 읽을 뻔했습니다.
+  */
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), `orgs/${oid}/admins/${key(ALICE.email)}`), true)
+  })
+
+  // 밥은 멤버지만 관리자가 아닙니다.
+  await assertFails(set(ref(authed(BOB), `orgs/${oid}/roomRule`), rule))
+  await assertSucceeds(set(ref(authed(ALICE), `orgs/${oid}/roomRule`), rule))
+  // 읽는 것은 멤버 전부입니다 — 왜 안 잡히는지 알아야 하니까요.
+  await assertSucceeds(get(ref(authed(BOB), `orgs/${oid}/roomRule`)))
+})
+
+test('말이 안 되는 회의실 규칙은 안 들어간다', async () => {
+  const oid = 'rr2'
+  await org(oid, { name: 'W', domain: 'bpp.co.kr' }, { [ALICE.email]: { role: 'member', at: 1 } })
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), `orgs/${oid}/admins/${key(ALICE.email)}`), true)
+  })
+  const db = authed(ALICE)
+  // 끝이 시작보다 앞이면 '붐비는 시간'이 없는 것이 아니라 말이 안 되는 것입니다.
+  await assertFails(set(ref(db, `orgs/${oid}/roomRule`), { maxMinutes: 120, from: 1080, to: 600 }))
+  // 0분이면 아무도 방을 못 잡습니다 — 관리자가 실수로 회의실을 잠급니다.
+  await assertFails(set(ref(db, `orgs/${oid}/roomRule`), { maxMinutes: 0, from: 600, to: 1080 }))
+  await assertFails(set(ref(db, `orgs/${oid}/roomRule`), { maxMinutes: '두 시간', from: 600, to: 1080 }))
+  // 빠진 값이 있으면 나머지가 무엇인지 알 수 없습니다.
+  await assertFails(set(ref(db, `orgs/${oid}/roomRule`), { maxMinutes: 120 }))
+})

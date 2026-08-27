@@ -184,6 +184,8 @@ export const P = {
   orgJoinRequests:  (oid: string) => `orgs/${oid}/joinRequests`,
   orgJoinRequest:   (oid: string, pid: string, email: string) => `orgs/${oid}/joinRequests/${pid}/${emailKey(email)}`,
   orgRooms:         (oid: string) => `orgs/${oid}/rooms`,
+  /** 회의실을 얼마나 오래 잡을 수 있나. 방 목록과 같은 힘으로 고칩니다. */
+  orgRoomRule:      (oid: string) => `orgs/${oid}/roomRule`,
   orgRoom:          (oid: string, rid: string) => `orgs/${oid}/rooms/${rid}`,
   /** 예약은 **날짜가 먼저**입니다. 화면이 묻는 건 늘 '이 날 이 방 비었나'인데,
       방이 먼저면 방마다 리스너가 하나씩 필요합니다. 날짜가 먼저면 하루에

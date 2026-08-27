@@ -2070,6 +2070,20 @@ const MonthCell = React.memo(function MonthCell({
           <div
             onClick={e => e.stopPropagation()}
             onMouseDown={e => e.stopPropagation()}
+            /*
+              끌고 이 판을 벗어나면 닫습니다.
+
+              `dragend`에서만 닫았더니, 다른 날짜에 놓은 뒤에도 목록이 그대로
+              남아 있었습니다 — 옮긴 것은 이미 여기 없는데 이름은 남아서, 무엇을
+              보고 있는지 알 수 없는 목록이 됩니다. 손이 판을 떠나는 순간이
+              '여기서 볼 일은 끝났다'는 뜻입니다.
+
+              들어 있는 줄 사이를 오갈 때는 안 닫아야 하므로, 판 밖으로 나간
+              것인지 확인합니다(relatedTarget).
+            */
+            onDragLeave={e => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) setShowAll(null)
+            }}
             style={{
               position: 'fixed', zIndex: 8901,
               left: Math.max(8, Math.min(showAll.x, window.innerWidth - 248)),

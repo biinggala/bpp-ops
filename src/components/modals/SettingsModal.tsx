@@ -11,6 +11,7 @@ import { useGCalStore } from '../../store/gcalStore'
 import { useMailStore } from '../../store/mailStore'
 import { useNotionStore } from '../../store/notionStore'
 import { PUBLIC_DOMAINS, useOrgStore, pendingJoinCount } from '../../store/orgStore'
+import { roomRuleNote } from '../../lib/roomRule'
 import { useTrashStore } from '../../store/trashStore'
 import { useProjectStore } from '../../store/projectStore'
 import { GetDesktopApp } from '../shared/GetDesktopApp'
@@ -1503,6 +1504,7 @@ function RoomsSection() {
   const isAdmin = admins.includes(email.toLowerCase())
 
   return (
+    <>
     <Section
       title={name || domain || '회의실'}
       count={rooms.length}
@@ -1564,6 +1566,96 @@ function RoomsSection() {
         </div>
       )}
       {error && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6 }}>{error}</div>}
+    </Section>
+
+    {/* 방 목록과 나란한 묶음입니다 — 목록 안에 넣으면 방 하나처럼 읽힙니다. */}
+    <RoomRuleRow isAdmin={isAdmin} />
+    </>
+  )
+}
+
+/**
+ * ── 얼마나 오래 잡을 수 있나 ─────────────────────────────────────────────────
+ *
+ * 방은 몇 개뿐이고 낮에는 모두가 씁니다. 한 팀이 오전 내내 잡아 두면 나머지는
+ * 그날 방이 없습니다 — 그래서 붐비는 시간대에는 한 번에 잡는 길이를 제한합니다.
+ *
+ * **숫자를 코드에 박아 두지 않습니다.** 방이 열 개인 회사와 두 개인 회사에
+ * 같은 두 시간을 물릴 이유가 없고, 붐비는 시간도 회사마다 다릅니다.
+ *
+ * 재는 것은 회의의 길이가 아니라 **그 시간대를 차지한 만큼**이라, 17시에
+ * 시작해 20시에 끝나는 회의는 안 막힙니다. 그 설명을 칸 안에 적어 둡니다 —
+ * 안 적으면 '세 시간짜리 회의를 잡았는데 왜 되지?'가 남습니다.
+ */
+function RoomRuleRow({ isAdmin }: { isAdmin: boolean }) {
+  const { rule, setRoomRule } = useOrgStore(useShallow(s => ({ rule: s.roomRule, setRoomRule: s.setRoomRule })))
+  const [busy, setBusy] = useState(false)
+
+  const save = async (patch: Partial<typeof rule>) => {
+    setBusy(true)
+    await setRoomRule({ ...rule, ...patch })
+    setBusy(false)
+  }
+
+  const hours = Array.from({ length: 25 }, (_, h) => h * 60)
+  const lengths = [30, 60, 90, 120, 180, 240, 360, 480]
+  const label = (m: number) => (m < 60 ? `${m}분` : m % 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분` : `${m / 60}시간`)
+
+  return (
+    <Section
+      title="한 번에 잡을 수 있는 길이"
+      note={isAdmin
+        ? '붐비는 시간대만 제한합니다. 그 시간대를 얼마나 차지하는지로 재기 때문에, 저녁까지 이어지는 긴 회의는 막히지 않습니다.'
+        : roomRuleNote(rule)}
+    >
+      {isAdmin && (
+        <>
+          <div style={{ ...ROW, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ flex: 1, minWidth: 120, ...ROW_TITLE }}>
+              붐비는 시간
+              <span style={{ display: 'block', ...ROW_SUB }}>이 시간대 밖은 얼마든지 잡습니다.</span>
+            </span>
+            <select
+              value={rule.from}
+              disabled={busy}
+              onChange={e => void save({ from: Number(e.target.value) })}
+              style={{ ...INPUT, flex: '0 0 auto', width: 84 }}
+            >
+              {hours.filter(h => h < rule.to).map(h => <option key={h} value={h}>{h}시</option>)}
+            </select>
+            <span style={{ fontSize: 11, color: 'var(--t3)' }}>–</span>
+            <select
+              value={rule.to}
+              disabled={busy}
+              onChange={e => void save({ to: Number(e.target.value) })}
+              style={{ ...INPUT, flex: '0 0 auto', width: 84 }}
+            >
+              {hours.filter(h => h > rule.from).map(h => <option key={h} value={h}>{h}시</option>)}
+            </select>
+          </div>
+
+          <div style={{ ...ROW, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ flex: 1, minWidth: 120, ...ROW_TITLE }}>
+              최대 길이
+              <span style={{ display: 'block', ...ROW_SUB }}>그 시간대를 차지할 수 있는 만큼입니다.</span>
+            </span>
+            <select
+              value={rule.maxMinutes}
+              disabled={busy}
+              onChange={e => void save({ maxMinutes: Number(e.target.value) })}
+              style={{ ...INPUT, flex: '0 0 auto', width: 104 }}
+            >
+              {lengths.map(m => <option key={m} value={m}>{label(m)}</option>)}
+            </select>
+          </div>
+
+          {/* 지금 규칙이 사람 말로 어떻게 읽히는지. 숫자 두 칸을 보고 머릿속에서
+              문장을 만들게 하지 않습니다 — 회의실 칸에 실제로 뜰 그 문장입니다. */}
+          <div style={{ ...ROW_SUB, marginTop: 6, paddingTop: 8, borderTop: '1px solid var(--bd)' }}>
+            {roomRuleNote(rule)}
+          </div>
+        </>
+      )}
     </Section>
   )
 }

@@ -648,8 +648,9 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
     // 회의를 늘렸더니 방이 규칙에 걸리는 경우. 일정은 이미 늘어난 뒤라
     // 예약만 옛 시간에 남는데, 그걸 말 안 하면 회의실이 딴 시간에 잡혀
     // 있는 줄 모릅니다.
-    if (roomTooLong(next)) {
-      useToast.getState().show(`${room?.name ?? '회의실'} 예약은 못 옮겼습니다 — ${roomRuleNote()}`)
+    const rule = useOrgStore.getState().roomRule
+    if (roomTooLong(next, rule)) {
+      useToast.getState().show(`${room?.name ?? '회의실'} 예약은 못 옮겼습니다 — ${roomRuleNote(rule)}`)
       return
     }
     if (clashes.length) {
@@ -2258,6 +2259,7 @@ export function RoomRow({ slot, booking, onPick }: {
   onPick: (roomId: string | null) => void
 }) {
   const rooms = useOrgStore(s => s.rooms)
+  const rule = useOrgStore(s => s.roomRule)
   // 없는 날짜에 매번 새 빈 배열을 돌려주면 무한 렌더입니다 — NO_BOOKINGS 참고.
   const bookings = useOrgStore(s => s.bookings[slot.date] ?? NO_BOOKINGS)
   const orgId = useOrgStore(s => s.orgId)
@@ -2285,7 +2287,7 @@ export function RoomRow({ slot, booking, onPick }: {
     목록을 여는 대신 이유를 적습니다. 열어 놓고 누를 때 거절하면, 고른
     다음에야 안 된다는 걸 알게 되고 그때는 이미 시간을 다 정한 뒤입니다.
   */
-  const tooLong = roomTooLong(slot)
+  const tooLong = roomTooLong(slot, rule)
 
   const chosen = booking ? usable.find(r => r.id === booking.roomId) : undefined
 
@@ -2298,7 +2300,7 @@ export function RoomRow({ slot, booking, onPick }: {
           padding: '7px 9px', borderRadius: 'var(--r1)', background: 'var(--bg3)',
           fontSize: 11.5, color: 'var(--t3)', lineHeight: 1.5,
         }}>
-          {roomRuleNote()}
+          {roomRuleNote(rule)}
           {/* 이미 잡아 둔 방이 있는데 시간을 늘려 규칙에 걸린 경우. 빼는 길을
               안 내주면 저장할 때 조용히 방만 안 잡히고, 잡힌 줄 압니다. */}
           {booking && (
