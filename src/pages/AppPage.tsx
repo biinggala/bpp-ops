@@ -6,7 +6,6 @@ import { useProjectStore } from '../store/projectStore'
 import { useMilestoneStore } from '../store/milestoneStore'
 import { useAuthStore } from '../store/authStore'
 import { usePresenceStore } from '../store/presenceStore'
-import { useUserProfileStore } from '../store/userProfileStore'
 import { useSyncStore } from '../store/syncStore'
 import { useOrgStore } from '../store/orgStore'
 import { useGearStore } from '../store/gearStore'
@@ -132,28 +131,12 @@ export function AppPage() {
    * 실제보다 짧고, 그 짧은 목록으로는 아무도 잘못 적히지 않지만 아무도 안
    * 적히기도 합니다 — 기다렸다 한 번에 하는 편이 낫습니다.
    */
-  const membersByProject = useSyncStore(s => s.membersByProject)
-  const profiles = useUserProfileStore(s => s.profiles)
   const orgId = useOrgStore(s => s.orgId)
   const orgDomain = useOrgStore(s => s.domain)
   const orgReady = useOrgStore(s => s.ready)
   // 게스트로 서 있는 곳에는 안 쓰고 안 읽습니다 — 규칙이 다 막고, 막힌 것을
   // 계속 두드리면 화면에 붉은 오류만 쌓입니다.
   const isGuest = useOrgStore(s => s.isGuest)
-  // 주소를 정렬해 한 줄로 만듭니다. 목록 자체를 의존성에 넣으면 내용이 같아도
-  // 참조가 바뀔 때마다 다시 돌아서, 쓸 것이 없는데도 매번 읽으러 갑니다.
-  const peerKey = useMemo(() => {
-    const uids = new Set<string>()
-    for (const members of Object.values(membersByProject)) {
-      for (const member of Object.keys(members)) uids.add(member)
-    }
-    return [...uids]
-      .map(u => profiles[u]?.email?.toLowerCase().trim())
-      .filter((e): e is string => !!e)
-      .sort()
-      .join(' ')
-  }, [membersByProject, profiles])
-
   /*
     장비·팀 목록과, 아직 안 끝난 예약.
 
@@ -170,14 +153,8 @@ export function AppPage() {
 
   useEffect(() => {
     if (!uid || !email || !orgId || !ready || isGuest) return
-    void syncRoster({
-      orgId,
-      domain: orgDomain,
-      uid,
-      email,
-      peers: peerKey ? peerKey.split(' ') : [],
-    })
-  }, [uid, email, orgId, orgDomain, ready, isGuest, peerKey])
+    void syncRoster({ orgId, domain: orgDomain, uid, email })
+  }, [uid, email, orgId, orgDomain, ready, isGuest])
 
   /**
    * ── 프로젝트에 소속 도장 ───────────────────────────────────────────────────

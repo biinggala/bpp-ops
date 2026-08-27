@@ -1127,7 +1127,7 @@ function MembersPage() {
   const { teams, teamOf, setMemberTeam } = useGearStore(useShallow(s => ({
     teams: s.teams, teamOf: s.teamOf, setMemberTeam: s.setMemberTeam,
   })))
-  const [rows, setRows] = useState<{ email: string; role: string }[] | null>(null)
+  const [rows, setRows] = useState<{ email: string; role: string; at?: number; by?: string }[] | null>(null)
   const [mail, setMail] = useState('')
   const [adminMail, setAdminMail] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
@@ -1163,7 +1163,7 @@ function MembersPage() {
       },
       {
         key: 'guest', label: '게스트',
-        note: '초대받은 프로젝트만 봅니다. 워크스페이스 목록에는 못 들어옵니다.',
+        note: '초대받은 프로젝트만 봅니다. 회의실·장비·명단은 안 열립니다. 프로젝트에 부르면 여기 자동으로 섭니다 — 부른 적 없는 사람이 있으면 지워도 됩니다.',
         people: all.filter(m => !admins.includes(m.email) && m.role === 'guest'),
       },
     ]
@@ -1235,10 +1235,17 @@ function MembersPage() {
                   {/* 이름을 모르는 사람은 주소가 이름 자리에 섭니다. 아래에
                       또 적으면 같은 글자가 두 줄이 됩니다 — 아직 이 앱을 안
                       켜 본 사람이 대개 여기고, 외부 협업자가 그렇습니다. */}
-                  {(name || isFounder || mine) && (
+                  {/* 게스트 줄에는 **누가 들였는지**를 같이 적습니다. 모르는
+                      주소 여섯 개가 이유 없이 서 있으면, 관리자는 지워야
+                      하는지 아닌지를 판단할 근거가 하나도 없습니다. */}
+                  {(name || isFounder || mine || m.by) && (
                     <span style={{ display: 'block', ...ROW_SUB }}>
-                      {[name ? m.email : null, isFounder ? '만든 사람' : null, mine ? '나' : null]
-                        .filter(Boolean).join(' · ')}
+                      {[
+                        name ? m.email : null,
+                        isFounder ? '만든 사람' : null,
+                        mine ? '나' : null,
+                        m.by && m.by !== m.email ? `${getNameByEmail(m.by) || m.by} 님이 초대` : null,
+                      ].filter(Boolean).join(' · ')}
                     </span>
                   )}
                 </span>

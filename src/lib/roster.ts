@@ -44,13 +44,24 @@ export function roleForDomain(email: string, domain: string | null | undefined):
 /**
  * 명단에 아직 없어서 새로 적어야 할 사람들을 고릅니다.
  *
- * 남을 적을 수 있는 건 **게스트로만**입니다. 규칙도 그렇게 되어 있습니다.
- * 우리 도메인 사람인데 명단에 없다면 아직 한 번도 안 들어온 것이고, 그 사람은
- * 다음 로그인에 **스스로** 적힙니다 — 남이 대신 적어 주면 "들어온 적 없는
- * 사람"과 "들어왔던 사람"이 명단에서 같아 보입니다.
+ * ── 이제 아무도 안 부릅니다 ─────────────────────────────────────────────────
  *
- * 이미 있는 행은 건드리지 않습니다. `removed`도 마찬가지입니다 — 뺀 사람이
- * 남의 손으로 조용히 돌아오면 뺀 일이 없던 일이 됩니다.
+ * 1단계의 백필이었습니다. 명단이 생기기 전부터 프로젝트에 있던 외부 협업자를
+ * 한 번 훑어 적어 넣는 일 — 그 일은 끝났습니다.
+ *
+ * 그런데 이건 **아무도 초대한 적 없는 사람을 명단에 올립니다.** 재료가
+ * '내 프로젝트에서 같이 일하는 사람 전부'라서, 누군가의 프로젝트에 한 번
+ * 낀 적이 있으면 그것만으로 그 회사 명단에 이름이 오릅니다. 그리고 명단에
+ * 오르는 순간 관리자 화면에 그 사람을 **멤버로 올리는 토글**이 생깁니다 —
+ * 부른 적도 없는 사람에게요.
+ *
+ * 지금은 부르는 길이 둘 다 제대로 있습니다. 주소로 부르면 초대가 그 자리에서
+ * 게스트 줄을 만들고(projectStore.addMember), 링크로 들어오면 자기가 자기
+ * 자리에 앉습니다(claimGuestSeats). 셋째 길은 필요 없고, 셋째 길만 사람을
+ * 안 물어보고 적었습니다.
+ *
+ * 함수는 남겨 둡니다 — 테스트가 이 판단을 붙들고 있고, 판단 자체는 여전히
+ * 맞습니다(누가 빠져 있나). 부르는 곳이 없을 뿐입니다.
  */
 export function guestsToAdd(
   peers: string[],
@@ -85,10 +96,8 @@ export async function syncRoster(input: {
   domain: string
   uid: string
   email: string
-  /** 내 프로젝트에서 같이 일하는 사람들의 주소. */
-  peers: string[]
 }): Promise<void> {
-  const { orgId, domain, uid, email, peers } = input
+  const { orgId, domain, uid, email } = input
   const at = Date.now()
 
   // 내가 어느 조직인지부터. 이건 나만 쓰는 자리라 언제나 됩니다.
@@ -118,11 +127,10 @@ export async function syncRoster(input: {
   if (!myRow && roleForDomain(email, domain) === 'member') {
     writes[emailKey(email)] = { role: 'member', at }
   }
-  // 게스트 백필도 도메인이 있는 조직에서만. 도메인이 없으면 '도메인 밖'이라는
-  // 말 자체가 성립하지 않고, 거기서는 초대가 명단을 채웁니다.
-  for (const guest of domain ? guestsToAdd(peers, domain, roster) : []) {
-    writes[emailKey(guest)] = { role: 'guest', at, by: email.toLowerCase() }
-  }
+  /*
+    게스트 백필은 걷어냈습니다. 부른 적 없는 사람이 명단에 쌓이던 자리입니다 —
+    위 guestsToAdd의 주석 참고. 명단을 채우는 것은 이제 초대뿐입니다.
+  */
   if (Object.keys(writes).length === 0) return
 
   // 한 줄이 거절당하면 전체가 거절당합니다. 그래서 한 번에 몰지 않고 각자
