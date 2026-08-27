@@ -10,7 +10,7 @@ import { test, before, after, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing'
-import { ref, get, set, remove } from 'firebase/database'
+import { ref, get, set, remove, query, orderByChild, startAt } from 'firebase/database'
 
 const ALICE = { uid: 'alice', email: 'alice@bpp.co.kr' }
 const BOB = { uid: 'bob', email: 'bob@bpp.co.kr' }
@@ -997,4 +997,21 @@ test('내보낸 사람은 이름도 다시 못 읽는다', async () => {
     [MALLORY.email]: { role: 'removed', at: 2 },
   })
   await assertFails(get(ref(authed(MALLORY), `orgs/${oid}/meta/name`)))
+})
+
+test('멤버는 장비 예약을 질의로 읽는다', async () => {
+  const oid = 'gq1'
+  await org(oid, { name: 'W', domain: 'bpp.co.kr' }, {
+    [ALICE.email]: { role: 'member', at: 1 },
+    [MALLORY.email]: { role: 'guest', at: 1 },
+  })
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), `orgs/${oid}/gearBookings/b1`), GEAR_ROW(ALICE))
+  })
+  // 현황판이 실제로 보내는 질의입니다. 통째로 읽는 것과 다릅니다 — 색인이
+  // 없으면 여기서 막히고, 화면에는 붉은 permission_denied로 나옵니다.
+  const q = query(ref(authed(ALICE), `orgs/${oid}/gearBookings`), orderByChild('to'), startAt('2026-01-01'))
+  await assertSucceeds(get(q))
+  // 게스트는 못 읽습니다.
+  await assertFails(get(query(ref(authed(MALLORY), `orgs/${oid}/gearBookings`), orderByChild('to'), startAt('2026-01-01'))))
 })

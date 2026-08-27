@@ -42,6 +42,14 @@ interface PrefsState {
    */
   activeOrg: string | null
   /**
+   * 개인 워크스페이스를 만들어 준 적이 있는가(그 id).
+   *
+   * 만들었다는 사실을 **계정에** 적습니다. 기기에 적으면 폰에서 한 번 더
+   * 만들어지고, 안 적으면 그 워크스페이스를 지운 사람에게 다음 로그인에
+   * 또 생깁니다 — 지운 일이 없던 일이 됩니다.
+   */
+  homeOrg: string | null
+  /**
    * 캘린더에서 **꺼 둔** 것들.
    *
    * **기기가 아니라 계정에 붙습니다.** 연결(토큰)은 이 브라우저 것이지만,
@@ -79,6 +87,7 @@ interface PrefsState {
   markSeenVersion: (email: string, id: string) => void
   markTimeblock: (email: string) => void
   setActiveOrg: (email: string, orgId: string) => void
+  setHomeOrg: (email: string, orgId: string) => void
   setHiddenCalendars: (email: string, ids: string[]) => void
   /** 설정에서 '다시 보기'를 눌렀을 때. 저장된 값은 그대로 두고 이번만 엽니다. */
   replay: 'intro' | 'whatsNew' | null
@@ -90,6 +99,7 @@ export const usePrefsStore = create<PrefsState>((set) => ({
   seenVersion: null,
   timeblockAt: null,
   activeOrg: null,
+  homeOrg: null,
   hiddenCalendars: [],
   hiddenSeen: false,
   ready: false,
@@ -100,13 +110,14 @@ export const usePrefsStore = create<PrefsState>((set) => ({
     const handler = onValue(node, snap => {
       const v = (snap.val() ?? {}) as {
         onboardedAt?: number; seenVersion?: string; timeblockAt?: number
-        activeOrg?: string; hiddenCalendars?: string
+        activeOrg?: string; homeOrg?: string; hiddenCalendars?: string
       }
       set({
         onboardedAt: v.onboardedAt ?? null,
         seenVersion: v.seenVersion ?? null,
         timeblockAt: v.timeblockAt ?? null,
         activeOrg: v.activeOrg ?? null,
+        homeOrg: v.homeOrg ?? null,
         hiddenCalendars: (v.hiddenCalendars ?? '').split('\n').filter(Boolean),
         hiddenSeen: v.hiddenCalendars !== undefined,
         ready: true,
@@ -114,7 +125,7 @@ export const usePrefsStore = create<PrefsState>((set) => ({
     }, () => set({ ready: true }))
     return () => {
       off(node, 'value', handler)
-      set({ onboardedAt: null, seenVersion: null, timeblockAt: null, activeOrg: null, hiddenCalendars: [], hiddenSeen: false, ready: false, replay: null })
+      set({ onboardedAt: null, seenVersion: null, timeblockAt: null, activeOrg: null, homeOrg: null, hiddenCalendars: [], hiddenSeen: false, ready: false, replay: null })
     }
   },
 
@@ -134,6 +145,11 @@ export const usePrefsStore = create<PrefsState>((set) => ({
     const at = Date.now()
     set({ timeblockAt: at })
     void fbUpdate(ref(db, P.userPrefs(email)), { timeblockAt: at }).catch(() => {})
+  },
+
+  setHomeOrg: (email, orgId) => {
+    set({ homeOrg: orgId })
+    void fbUpdate(ref(db, P.userPrefs(email)), { homeOrg: orgId }).catch(() => {})
   },
 
   setActiveOrg: (email, orgId) => {
