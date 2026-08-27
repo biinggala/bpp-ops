@@ -149,15 +149,21 @@ interface TaskLocation {
   path: string
 }
 
+/**
+ * ── 개인 업무는 부르는 사람 것만 ────────────────────────────────────────────
+ *
+ * 예전에는 `personalTasks`를 통째로 읽고 내보낼 때 걸렀습니다. 거르는 코드가
+ * 맞게 돌아도, **모두의 개인 업무가 서버 메모리에 올라와 있는 상태**를 계속
+ * 만들 이유가 없습니다 — 거르는 자리를 한 곳만 빠뜨리면 그대로 나갑니다
+ * (실제로 노트 쪽이 그랬습니다).
+ *
+ * 부르는 사람이 없는 일(아침 브리핑)만 예전처럼 전부 읽습니다.
+ */
 async function readTaskLocations(email?: string): Promise<TaskLocation[]> {
   const database = initDb()
-  const [nodes, personalSnap, profilesSnap] = await Promise.all([
-    readProjectNodes(email),
-    database.ref('personalTasks').get(),
-    database.ref('userProfiles').get(),
-  ])
-
   const out: TaskLocation[] = []
+
+  const nodes = await readProjectNodes(email)
   for (const [pid, node] of entries(nodes)) {
     for (const [tid, task] of entries(node.tasks)) {
       // The path is what decides which project a task belongs to; a stale
@@ -166,16 +172,32 @@ async function readTaskLocations(email?: string): Promise<TaskLocation[]> {
     }
   }
 
+  const push = (uid: string, tid: string, task: Task, owner: string | undefined) => {
+    out.push({
+      task: { ...task, id: tid, projectId: undefined, createdBy: task.createdBy ?? owner },
+      path: `personalTasks/${uid}/${tid}`,
+    })
+  }
+
+  if (email) {
+    const uid = await uidForEmail(email)
+    if (!uid) return out
+    const snap = await database.ref(`personalTasks/${uid}`).get()
+    for (const [tid, task] of entries((snap.val() ?? {}) as Record<string, Task>)) {
+      push(uid, tid, task, email.toLowerCase())
+    }
+    return out
+  }
+
+  const [personalSnap, profilesSnap] = await Promise.all([
+    database.ref('personalTasks').get(),
+    database.ref('userProfiles').get(),
+  ])
   const profiles = (profilesSnap.val() ?? {}) as Record<string, { email?: string }>
   const emailByUid = new Map(Object.entries(profiles).map(([uid, p]) => [uid, (p?.email ?? '').toLowerCase()]))
   const personal = (personalSnap.val() ?? {}) as Record<string, Record<string, Task>>
   for (const [uid, tasks] of entries(personal)) {
-    for (const [tid, task] of entries(tasks)) {
-      out.push({
-        task: { ...task, id: tid, projectId: undefined, createdBy: task.createdBy ?? emailByUid.get(uid) },
-        path: `personalTasks/${uid}/${tid}`,
-      })
-    }
+    for (const [tid, task] of entries(tasks)) push(uid, tid, task, emailByUid.get(uid))
   }
   return out
 }

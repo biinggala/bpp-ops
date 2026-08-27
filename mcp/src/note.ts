@@ -1,4 +1,5 @@
 import type { Task } from './types.js'
+import { isTaskVisible } from './access.js'
 
 /**
  * ── 노트의 글자와 화면 ───────────────────────────────────────────────────────
@@ -77,4 +78,24 @@ export function taskRefHtml(taskIds: string[]): string {
 /** 그냥 글 한 문단. */
 export function paragraphHtml(lines: string[]): string {
   return lines.map(l => `<p>${escape(l.trim())}</p>`).join('')
+}
+
+/**
+ * ── 노트에 적힌 id는 노트 주인이 적은 것입니다 ───────────────────────────────
+ *
+ * 노트 본문은 그 사람이 자기 손으로 쓰는 자리입니다(`dailyNotes/{내 주소}`).
+ * 그래서 **아무 업무 id나 적어 넣을 수 있습니다** — 남의 업무 id라도요.
+ * 여기서 그냥 펴 주면, 노트가 못 보는 업무의 이름과 상태를 읽는 창이 됩니다.
+ * 관리자 SDK는 규칙을 안 지나가므로 그걸 막는 건 이 줄뿐입니다.
+ *
+ * 못 보는 id는 '(삭제된 업무)'로 나옵니다 — noteToMarkdown이 모르는 id를
+ * 그렇게 처리합니다. 없는 것과 못 보는 것이 같아 보이는 편이 맞습니다.
+ */
+export function noteMarkdownFor(
+  html: string,
+  tasks: Task[],
+  email: string,
+  accessibleIds: Set<string>,
+): string {
+  return noteToMarkdown(html, tasks.filter(t => isTaskVisible(t, email, accessibleIds)))
 }
