@@ -960,11 +960,7 @@ function OrgSection({ openNew = false }: { openNew?: boolean }) {
       {!adding ? (
         <button
           onClick={() => setAdding(true)}
-          style={{
-            alignSelf: 'flex-start', margin: '10px 0 0', padding: 0,
-            border: 'none', background: 'transparent', cursor: 'pointer',
-            fontSize: 12, color: 'var(--t3)', fontFamily: 'var(--font)',
-          }}
+          style={{ ...QUIET, marginTop: 16 }}
           onMouseEnter={e => { e.currentTarget.style.color = 'var(--t1)' }}
           onMouseLeave={e => { e.currentTarget.style.color = 'var(--t3)' }}
         >+ 새 워크스페이스 만들기</button>
@@ -1393,16 +1389,16 @@ function DangerZone({ orgId, name, email, isAdmin, adminCount }: {
 
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        style={{
-          alignSelf: 'flex-start', margin: '10px 0 0', padding: 0,
-          border: 'none', background: 'transparent', cursor: 'pointer',
-          fontSize: 12, color: 'var(--t3)', fontFamily: 'var(--font)',
-        }}
-        onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)' }}
-        onMouseLeave={e => { e.currentTarget.style.color = 'var(--t3)' }}
-      >워크스페이스 나가기 · 삭제</button>
+      /* 위의 조용한 줄과 같은 무게로 나란히 서면 둘이 한 묶음으로 읽힙니다.
+         하나는 만드는 일이고 하나는 없애는 일이라, 선 하나로 갈라 둡니다. */
+      <div style={{ marginTop: 24, paddingTop: 14, borderTop: '1px solid var(--bd)' }}>
+        <button
+          onClick={() => setOpen(true)}
+          style={QUIET}
+          onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)' }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'var(--t3)' }}
+        >워크스페이스 나가기 · 삭제</button>
+      </div>
     )
   }
 
@@ -1756,6 +1752,23 @@ const INPUT: React.CSSProperties = {
   padding: '5px 8px', borderRadius: 'var(--r1)', border: '1px solid var(--bd)',
   background: 'var(--bg2)', color: 'var(--t1)', fontSize: 12.5,
   outline: 'none', fontFamily: 'var(--font)',
+}
+
+/**
+ * ── 조용한 줄 ────────────────────────────────────────────────────────────────
+ *
+ * 평생 한 번 누를까 말까 한 것들('새 워크스페이스 만들기', '나가기 · 삭제')이
+ * 씁니다. 눌리는 것이되 눈에 먼저 걸리지는 않아야 합니다.
+ *
+ * `display: block`이 중요합니다. 전에는 `alignSelf: 'flex-start'`만 적어
+ * 두었는데 담는 곳이 flex가 아니어서 아무 일도 안 했고, 버튼 둘이 **한 줄에
+ * 붙어** '+ 새 워크스페이스 만들기워크스페이스 나가기 · 삭제'로 읽혔습니다.
+ * 있지도 않은 부모를 가정한 값이었습니다.
+ */
+const QUIET: React.CSSProperties = {
+  display: 'block', width: 'fit-content', padding: 0,
+  border: 'none', background: 'transparent', cursor: 'pointer',
+  fontSize: 12, color: 'var(--t3)', fontFamily: 'var(--font)', textAlign: 'left',
 }
 
 const navBtn: React.CSSProperties = {
