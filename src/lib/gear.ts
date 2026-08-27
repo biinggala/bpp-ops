@@ -206,3 +206,23 @@ export function groupGear<T extends GearLike>(gear: T[]): { kind: string; items:
 export function gearKinds(gear: GearLike[]): string[] {
   return groupGear(gear).map(g => g.kind).filter(k => k !== NO_KIND)
 }
+
+/**
+ * 그 날 나가 있는 대수.
+ *
+ * 조금이라도 걸쳐 있으면 셉니다 — 오후 두 시간만 쓰는 것도 그날 그 카메라를
+ * 노리던 사람에게는 '나가 있는' 것입니다. 한 대에 예약이 둘이어도 한 대로
+ * 셉니다(연달아 두 팀이 쓰는 날).
+ *
+ * 접힌 줄이 보여 주는 숫자가 이것입니다. 장비가 서른 개면 한 대에 한 줄씩
+ * 주는 순간 화면이 벽이 되고, 정작 묻고 싶은 '송수신기 두 대 빌릴 수 있나'는
+ * 네 줄을 눈으로 세어야 답이 나옵니다.
+ */
+export function busyCount(bookings: GearBooking[], gearIds: string[], ymd: string): number {
+  const want = new Set(gearIds)
+  const out = new Set<string>()
+  for (const b of bookings) {
+    if (want.has(b.gearId) && coversDay(b, ymd)) out.add(b.gearId)
+  }
+  return out.size
+}
