@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, Component } from 'react'
+import { createPortal } from 'react-dom'
 import { useUiStore } from '../../../store/uiStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
@@ -1784,7 +1785,8 @@ const MonthCell = React.memo(function MonthCell({
                 title={milestones!.map(m => m.name).join(', ')}
                 style={{ ...MS_CHIP, border: 'none', cursor: 'pointer', fontFamily: 'var(--font)' }}
               >
-                ◆ 마일스톤 {milestones!.length}
+                <StackedDiamonds />
+                마일스톤 {milestones!.length}개
               </button>
             ) : (
               /* Draggable, like the tasks below: a milestone's date is the one
@@ -1931,7 +1933,17 @@ const MonthCell = React.memo(function MonthCell({
         )}
       </div>
 
-      {showAll && (
+      {/*
+        ── 판을 떠나서 뜹니다 ────────────────────────────────────────────────
+        `position: fixed`는 조상에 `transform`이 걸려 있으면 **화면이 아니라 그
+        조상을 기준으로** 놓입니다. 월 격자는 스크롤을 위해 통째로 translateY
+        되어 있어서, 화면 좌표로 적어 둔 자리가 격자 안 좌표로 읽혔고 팝업이
+        화면 밖 저 멀리 떴습니다.
+
+        고칠 방법은 좌표를 고치는 게 아니라 **그 나무를 떠나는 것**입니다.
+        (같은 이유로 목록 화면의 메뉴들도 body로 나갑니다 — shared/Menu.)
+      */}
+      {showAll && createPortal(
         <>
           <div
             style={{ position: 'fixed', inset: 0, zIndex: 8900 }}
@@ -1977,15 +1989,33 @@ const MonthCell = React.memo(function MonthCell({
               </div>
             ))}
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   )
 })
 
+/**
+ * 겹쳐 놓은 마름모.
+ *
+ * 하나짜리와 여럿을 같은 `◆` 하나로 그렸더니, 접혀 있다는 것이 옆의 숫자
+ * 에서만 보였습니다. 모양이 먼저 말해 주는 편이 낫습니다 — 두 장이 겹쳐 있으면
+ * '여러 개'라는 뜻이 글자를 읽기 전에 전해집니다.
+ */
+function StackedDiamonds() {
+  return (
+    <svg width="13" height="10" viewBox="0 0 13 10" style={{ flexShrink: 0, display: 'block' }} aria-hidden>
+      {/* 뒤쪽 한 장. 앞의 것과 같은 색이면 겹친 자리가 안 보여서, 옅게 둡니다. */}
+      <path d="M4 1 L7 5 L4 9 L1 5 Z" fill="currentColor" opacity=".45" />
+      <path d="M9 1 L12 5 L9 9 L6 5 Z" fill="currentColor" />
+    </svg>
+  )
+}
+
 /** 마일스톤 알약. 접힌 것과 펼친 것이 같은 모양이어야 같은 것으로 읽힙니다. */
 const MS_CHIP: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600,
+  display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600,
   color: NOTION.purple.text, background: NOTION.purple.bg, borderRadius: 4, padding: '1px 5px',
   minWidth: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
 }
