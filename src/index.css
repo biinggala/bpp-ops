@@ -423,9 +423,19 @@ input, select, textarea, button {
 
    hover가 있는 기기에서만입니다. 폰에는 '손이 그 줄에 온' 상태가 없어서,
    숨기면 영영 못 누릅니다. */
+/* ── 지우는 ×는 손이 그 줄에 왔을 때만 ──────────────────────────────────────
+   이 앱의 규칙입니다. 목록을 훑는 눈에 줄마다 ×가 서 있으면 그게 목록의
+   무늬가 되고, 무늬가 되면 눌러도 되는 것처럼 보입니다.
+
+   판단은 **여기 한 곳에서** 합니다. 화면 폭으로 재던 자리가 있었는데(창이
+   좁으면 폰이라고 쳤습니다), 노트북 창을 좁혀 쓰는 사람에게는 늘 보였습니다.
+   물어야 하는 것은 폭이 아니라 '이 기기에 hover가 있나'입니다.
+
+   자리는 늘 잡아 둡니다(opacity만 0) — 나타날 때 줄이 흔들리지 않습니다. */
 @media (hover: hover) {
   .bpp-rowx { opacity: 0; transition: opacity .1s; }
   .bpp-noterow:hover .bpp-rowx,
+  .bpp-row:hover .bpp-rowx,
   .bpp-rowx:focus-visible { opacity: 1; }
 }
 

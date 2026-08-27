@@ -649,7 +649,8 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
     // 예약만 옛 시간에 남는데, 그걸 말 안 하면 회의실이 딴 시간에 잡혀
     // 있는 줄 모릅니다.
     const rule = useOrgStore.getState().roomRule
-    if (roomTooLong(next, rule)) {
+    const held0 = useOrgStore.getState().rooms.find(r => r.id === held.roomId)
+    if (!held0?.noLimit && roomTooLong(next, rule)) {
       useToast.getState().show(`${room?.name ?? '회의실'} 예약은 못 옮겼습니다 — ${roomRuleNote(rule)}`)
       return
     }
@@ -2284,10 +2285,14 @@ export function RoomRow({ slot, booking, onPick }: {
     방은 몇 개뿐이고 낮에는 모두가 씁니다. 한 팀이 오전 내내 잡아 두면
     나머지는 그날 방이 없습니다.
 
-    목록을 여는 대신 이유를 적습니다. 열어 놓고 누를 때 거절하면, 고른
-    다음에야 안 된다는 걸 알게 되고 그때는 이미 시간을 다 정한 뒤입니다.
+    **방마다 다릅니다.** 편집실처럼 오래 붙잡는 자리는 규칙 밖에 둘 수
+    있어서(설정 › 회의실), 칸 전체를 잠그는 대신 줄마다 말합니다 — 규칙에
+    걸리는 방은 못 고르고 왜인지 적히고, 규칙 밖의 방은 그대로 고릅니다.
+
+    전에는 칸을 통째로 닫았는데, 그러면 규칙 밖의 방까지 같이 막혔습니다.
   */
-  const tooLong = roomTooLong(slot, rule)
+  const overLong = roomTooLong(slot, rule)
+  const tooLong = overLong && usable.every(r => !r.noLimit)
 
   const chosen = booking ? usable.find(r => r.id === booking.roomId) : undefined
 
@@ -2336,6 +2341,7 @@ export function RoomRow({ slot, booking, onPick }: {
               key={room.id}
               room={room}
               clashes={clashesFor(bookings, room.id, slot, booking?.eventId)}
+              blocked={overLong && !room.noLimit ? roomRuleNote(rule) : null}
               chosen={booking?.roomId === room.id}
               onPick={() => { onPick(room.id); setOpen(false) }}
             />
@@ -2367,14 +2373,16 @@ export function RoomRow({ slot, booking, onPick }: {
  * 그래서 찬 방만 두 줄입니다. 첫 줄은 방과 시간, 둘째 줄은 회의 제목과
  * 잡은 사람. 빈 방은 한 줄이고, 그게 대부분이라 목록은 여전히 짧습니다.
  */
-function RoomOption({ room, clashes, chosen, onPick }: {
+function RoomOption({ room, clashes, blocked, chosen, onPick }: {
   room: Room
   clashes: Booking[]
+  /** 규칙에 걸려서 못 고르는 이유. 없으면 고를 수 있습니다. */
+  blocked: string | null
   chosen: boolean
   onPick: () => void
 }) {
   const [hovered, setHovered] = useState(false)
-  const taken = clashes.length > 0
+  const taken = clashes.length > 0 || !!blocked
   const first = clashes[0]
 
   return (
@@ -2410,6 +2418,15 @@ function RoomOption({ room, clashes, chosen, onPick }: {
           </span>
         )}
       </span>
+
+      {/* 규칙에 걸린 방은 왜인지 그 줄에서 말합니다. 회색으로 흐려 놓고
+          이유를 안 적으면 '왜 저 방만 안 되지'가 남습니다. */}
+      {!!blocked && !first && (
+        <span style={{
+          fontSize: 10.5, color: 'var(--t3)', width: '100%', minWidth: 0,
+          lineHeight: 1.4, whiteSpace: 'normal', textAlign: 'left',
+        }}>{blocked}</span>
+      )}
 
       {taken && first && (
         <span style={{

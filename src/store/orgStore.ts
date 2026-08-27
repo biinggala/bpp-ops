@@ -41,6 +41,19 @@ export interface Room {
    * '(삭제된 회의실)'이 되는 것보다, 새로 못 잡는 방으로 남는 편이 낫습니다.
    */
   active?: boolean
+  /**
+   * 시간 제한을 안 받는 방.
+   *
+   * 규칙은 워크스페이스가 하나로 정하는데, 방마다 성격이 다릅니다 — 편집실은
+   * 하루 종일 붙잡고 앉아 있는 자리고, 작은 회의실은 삼십 분씩 돌아가며
+   * 씁니다. 하나로 묶으면 둘 중 하나가 늘 틀립니다.
+   *
+   * 이 값을 켜 두면 그 방만 규칙 밖입니다. 규칙 자체를 방마다 따로 두지
+   * 않는 이유: 숫자가 방 수만큼 늘면 '지금 규칙이 뭐지'를 물을 자리가
+   * 없어집니다. 붐비는 방들은 한 규칙, 안 붐비는 방은 제외 — 이 둘이면
+   * 대부분이 설명됩니다.
+   */
+  noLimit?: boolean
 }
 
 /** 워크스페이스 목록의 프로젝트 한 줄. 이름은 베껴 둔 사본입니다. */
@@ -1111,7 +1124,9 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       길이 여럿이라(새 일정, 카드에서 고르기, 일정을 옮기면 예약이 따라감)
       한 군데만 빠뜨려도 규칙이 새 나갑니다. 여기서 한 번 더 봅니다.
     */
-    if (roomTooLong({ from, to }, get().roomRule)) {
+    // 규칙 밖에 둔 방은 안 봅니다.
+    const room = get().rooms.find(r => r.id === roomId)
+    if (!room?.noLimit && roomTooLong({ from, to }, get().roomRule)) {
       set({ error: roomRuleNote(get().roomRule) })
       return false
     }
