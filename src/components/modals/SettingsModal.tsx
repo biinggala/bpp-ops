@@ -10,6 +10,7 @@ import { useDriveStore } from '../../store/driveStore'
 import { useGCalStore } from '../../store/gcalStore'
 import { useMailStore } from '../../store/mailStore'
 import { useNotionStore } from '../../store/notionStore'
+import { useGearStore } from '../../store/gearStore'
 import { PUBLIC_DOMAINS, useOrgStore, pendingJoinCount } from '../../store/orgStore'
 import { roomRuleNote } from '../../lib/roomRule'
 import { useTrashStore } from '../../store/trashStore'
@@ -66,7 +67,7 @@ const THEMES: { value: ThemeChoice; label: string; icon: IconName }[] = [
  * 내주면 본문이 250px가 되고, 그건 설정 한 줄이 안 들어가는 폭입니다.
  */
 
-type Page = 'general' | 'notify' | 'link' | 'trash' | 'org' | 'members' | 'rooms' | 'projects'
+type Page = 'general' | 'notify' | 'link' | 'trash' | 'org' | 'members' | 'rooms' | 'gear' | 'projects'
 
 export function SettingsModal({ onClose, start = 'general' }: {
   onClose: () => void
@@ -123,6 +124,7 @@ export function SettingsModal({ onClose, start = 'general' }: {
     ...(orgId ? [
       { id: 'members' as Page, label: '멤버', group: '워크스페이스', note: '누가 여기 있고 무엇을 할 수 있는지. 관리자·멤버·게스트를 이 한 자리에서 정합니다.' },
       { id: 'rooms' as Page, label: '회의실', group: '워크스페이스', note: '함께 보는 목록입니다. 예약은 전원이 할 수 있고, 목록을 고치는 것은 관리자입니다.' },
+      { id: 'gear' as Page, label: '장비', group: '워크스페이스', note: '카메라·렌즈처럼 빌려 나가는 것들. 목록은 관리자가, 예약은 전원이 합니다 — 먼저 잡는 사람이 임자입니다.' },
       { id: 'projects' as Page, label: '프로젝트', group: '워크스페이스', badge: pending, note: '이 워크스페이스에서 만든 프로젝트가 모두 여기 섭니다. 이름만입니다 — 업무 내용은 참여한 뒤에 보입니다.' },
     ] : []),
   ]
@@ -243,6 +245,7 @@ export function SettingsModal({ onClose, start = 'general' }: {
             {page === 'org' && <OrgSection openNew={openNew} />}
             {page === 'members' && <MembersPage />}
             {page === 'rooms' && <RoomsSection />}
+            {page === 'gear' && <GearSection />}
             {page === 'projects' && <><OrgProjects /><MyProjectMembers /></>}
 
             {!email && (
@@ -1086,6 +1089,12 @@ function MembersPage() {
       setAdmin: s.setAdmin, setOrgRole: s.setOrgRole, error: s.error,
     })))
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  /* 소속팀은 명단과 나란한 이름표입니다 — 여기서 보여 주는 이유는 '누가 어느
+     팀인가'를 물을 자리가 명단 말고 없어서입니다. 목록 자체는 장비 장에
+     있습니다(거기가 이 이름들이 쓰이는 곳입니다). */
+  const { teams, teamOf, setMemberTeam } = useGearStore(useShallow(s => ({
+    teams: s.teams, teamOf: s.teamOf, setMemberTeam: s.setMemberTeam,
+  })))
   const [rows, setRows] = useState<{ email: string; role: string }[] | null>(null)
   const [mail, setMail] = useState('')
   const [adminMail, setAdminMail] = useState('')
@@ -1235,6 +1244,17 @@ function MembersPage() {
                       style={{ ...navBtn, padding: '3px 9px', fontSize: 11, borderColor: 'transparent', color: 'var(--danger)' }}
                     >관리자 해제</button>
                   )
+                )}
+
+                {/* 소속은 게스트에게 안 묻습니다 — 바깥 사람이라 우리 팀이
+                    없고, 장비도 안 빌립니다. */}
+                {teams.length > 0 && m.role !== 'guest' && (
+                  <TeamPick
+                    value={teamOf[m.email] ?? ''}
+                    teams={teams}
+                    disabled={!isAdmin && !mine}
+                    onChange={t => void setMemberTeam(m.email, t)}
+                  />
                 )}
 
                 {isAdmin && !isAdm && !isFounder && (
@@ -1477,6 +1497,209 @@ function DangerZone({ orgId, name, email, isAdmin, adminCount }: {
  * 아닙니다. 회의실을 쓰려고 관리자에게 부탁해야 한다면 이 기능은 없는 게
  * 낫습니다.
  */
+/**
+ * ── 장비 ─────────────────────────────────────────────────────────────────────
+ *
+ * 회의실 칸과 같은 모양입니다. 같은 일을 하는 두 칸이 다르게 생기면, 하나를
+ * 고칠 때 다른 하나를 안 고칩니다.
+ *
+ * 다른 것은 아래 팀 칸 하나입니다. 장비 예약은 '어느 팀이 잡았나'를 보여
+ * 줘야 하는데, 그 팀 이름을 정할 자리가 없으면 예약마다 사람이 손으로
+ * 타이핑하게 되고, 그러면 '촬영팀'과 '촬영 팀'이 다른 팀이 됩니다.
+ */
+function GearSection() {
+  const email = useAuthStore(s => s.email)
+  const { name, domain, admins } = useOrgStore(useShallow(s => ({ name: s.name, domain: s.domain, admins: s.admins })))
+  const { gear, addGear, updateGear, removeGear, error, clearError } = useGearStore(useShallow(s => ({
+    gear: s.gear, addGear: s.addGear, updateGear: s.updateGear, removeGear: s.removeGear,
+    error: s.error, clearError: s.clearError,
+  })))
+  const [draft, setDraft] = useState('')
+  if (!email) return null
+  const isAdmin = admins.includes(email.toLowerCase())
+
+  const add = () => {
+    if (!draft.trim()) return
+    void addGear(draft)
+    setDraft('')
+  }
+
+  return (
+    <>
+      <Section
+        title={name || domain || '장비'}
+        count={gear.length}
+        note={isAdmin
+          ? '여기서 고치면 모두의 화면이 바뀝니다. 예약 현황은 사이드바의 장비에 있습니다.'
+          : '목록은 관리자만 바꿉니다. 예약은 누구나 할 수 있습니다.'}
+      >
+        {gear.length === 0 && (
+          <div style={{ fontSize: 11, color: 'var(--t3)', padding: '2px 0 8px' }}>
+            아직 등록된 장비가 없습니다
+          </div>
+        )}
+        {gear.map(item => (
+          <div key={item.id} className="bpp-row" style={{ ...ROW, opacity: item.active === false ? .5 : 1 }}>
+            <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE }}>
+              {item.name}
+              {item.note && <span style={{ display: 'block', ...ROW_SUB }}>{item.note}</span>}
+            </span>
+            {isAdmin ? (
+              <>
+                {/* 수리 중인 카메라는 없는 것이 아니라 지금 못 쓰는 것입니다.
+                    끄면 예약 목록에서 사라지고, 지난 예약은 그대로 남습니다. */}
+                <MiniSwitch on={item.active !== false} onClick={() => void updateGear(item.id, { active: item.active === false })} />
+                <RowRemove
+                  label={`${item.name} 지우기`}
+                  onClick={async () => {
+                    const ok = await askConfirm({
+                      message: `'${item.name}'을 목록에서 지웁니다`,
+                      detail: '지난 예약은 그대로 남습니다. 수리 중이라면 지우지 말고 스위치를 끄세요.',
+                      confirmLabel: '지우기',
+                    })
+                    if (ok) void removeGear(item.id)
+                  }}
+                />
+              </>
+            ) : item.active === false && <span style={{ fontSize: 11, color: 'var(--t3)' }}>사용 안 함</span>}
+          </div>
+        ))}
+        {isAdmin && (
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <input
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) add() }}
+              placeholder="장비 이름 (예: A7S3 1번기)"
+              style={INPUT}
+            />
+            <button onClick={add} style={navBtn}>추가</button>
+          </div>
+        )}
+        {error && (
+          <div onClick={clearError} style={{ fontSize: 11, color: 'var(--danger)', marginTop: 6, cursor: 'pointer' }}>{error}</div>
+        )}
+      </Section>
+
+      <TeamsSection isAdmin={isAdmin} />
+    </>
+  )
+}
+
+/**
+ * ── 팀 ───────────────────────────────────────────────────────────────────────
+ *
+ * **라벨이지 경계가 아닙니다.** 팀이 다르다고 안 보이는 것은 하나도 없습니다 —
+ * 접근은 계속 프로젝트 멤버십만으로 정해집니다. 여기 이름이 하는 일은 장비
+ * 현황판에서 '이 카메라는 지금 촬영팀이 들고 있다'를 한 줄로 말하는 것
+ * 하나입니다.
+ *
+ * 지우면 소속은 그대로 남습니다(화면에서만 안 보입니다). 오십 줄을 지우는
+ * 쓰기를 걸면 그중 몇은 실패하고, 절반만 지워진 상태가 남습니다.
+ */
+function TeamsSection({ isAdmin }: { isAdmin: boolean }) {
+  const email = useAuthStore(s => s.email)
+  const { teams, teamOf, addTeam, renameTeam, removeTeam, setMemberTeam } = useGearStore(useShallow(s => ({
+    teams: s.teams, teamOf: s.teamOf, addTeam: s.addTeam, renameTeam: s.renameTeam,
+    removeTeam: s.removeTeam, setMemberTeam: s.setMemberTeam,
+  })))
+  const [draft, setDraft] = useState('')
+  const mine = email ? teamOf[email.toLowerCase()] ?? '' : ''
+
+  const add = () => {
+    if (!draft.trim()) return
+    void addTeam(draft)
+    setDraft('')
+  }
+
+  return (
+    <Section
+      title="팀"
+      count={teams.length}
+      note="장비 예약에 '어느 팀이 잡았는지' 적히는 이름입니다. 보이는 범위와는 상관이 없습니다."
+    >
+      {teams.length === 0 && (
+        <div style={{ fontSize: 11, color: 'var(--t3)', padding: '2px 0 8px' }}>
+          아직 팀이 없습니다{isAdmin ? '' : ' — 관리자가 만듭니다'}
+        </div>
+      )}
+      {teams.map(t => (
+        <div key={t.id} className="bpp-row" style={ROW}>
+          {isAdmin ? (
+            <input
+              defaultValue={t.name}
+              onBlur={e => { if (e.target.value.trim() && e.target.value !== t.name) void renameTeam(t.id, e.target.value) }}
+              onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) e.currentTarget.blur() }}
+              style={{ ...INPUT, flex: 1, minWidth: 0, border: '1px solid transparent', background: 'transparent', padding: '2px 4px' }}
+            />
+          ) : (
+            <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE }}>{t.name}</span>
+          )}
+          {isAdmin && (
+            <RowRemove
+              label={`${t.name} 지우기`}
+              onClick={async () => {
+                const ok = await askConfirm({
+                  message: `'${t.name}' 팀을 지웁니다`,
+                  detail: '지난 예약에 적힌 팀 이름은 그대로 남습니다. 지금 이 팀인 사람들은 소속이 없는 것으로 보입니다.',
+                  confirmLabel: '지우기',
+                })
+                if (ok) void removeTeam(t.id)
+              }}
+            />
+          )}
+        </div>
+      ))}
+      {isAdmin && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+          <input
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) add() }}
+            placeholder="팀 이름 (예: 촬영팀)"
+            style={INPUT}
+          />
+          <button onClick={add} style={navBtn}>추가</button>
+        </div>
+      )}
+
+      {/* 내 소속은 내가 답합니다. 관리자 한 명이 오십 명을 채우게 두면
+          아무도 안 채웁니다 — 남의 소속은 멤버 장에서 관리자가 고칩니다. */}
+      {teams.length > 0 && email && (
+        <div style={{ ...ROW, marginTop: 10, borderTop: '1px solid var(--bd)', paddingTop: 12 }}>
+          <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE }}>
+            내 소속
+            <span style={{ display: 'block', ...ROW_SUB }}>내가 잡는 예약에 이 이름이 붙습니다.</span>
+          </span>
+          <TeamPick value={mine} teams={teams} onChange={t => void setMemberTeam(email, t)} />
+        </div>
+      )}
+    </Section>
+  )
+}
+
+function TeamPick({ value, teams, onChange, disabled }: {
+  value: string
+  teams: { id: string; name: string }[]
+  onChange: (teamId: string | null) => void
+  disabled?: boolean
+}) {
+  return (
+    <select
+      value={value}
+      disabled={disabled}
+      onChange={e => onChange(e.target.value || null)}
+      style={{
+        ...navBtn, padding: '3px 6px', fontSize: 11.5, flexShrink: 0,
+        maxWidth: 120, color: value ? 'var(--t1)' : 'var(--t3)',
+      }}
+    >
+      <option value="">소속 없음</option>
+      {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+    </select>
+  )
+}
+
 function RoomsSection() {
   const email = useAuthStore(s => s.email)
   const { name, domain, rooms, admins, addRoom, updateRoom, removeRoom, error } = useOrgStore(useShallow(s => ({ name: s.name, domain: s.domain, rooms: s.rooms, admins: s.admins, addRoom: s.addRoom, updateRoom: s.updateRoom, removeRoom: s.removeRoom, error: s.error })))

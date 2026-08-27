@@ -192,6 +192,33 @@ export const P = {
       하나로 모든 방을 덮습니다. */
   orgBookings:      (oid: string, date: string) => `orgs/${oid}/bookings/${date}`,
   orgBooking:       (oid: string, date: string, bid: string) => `orgs/${oid}/bookings/${date}/${bid}`,
+
+  /** 장비 목록. 회의실과 같은 힘으로 고칩니다 — 관리자만. */
+  orgGear:          (oid: string) => `orgs/${oid}/gear`,
+  orgGearItem:      (oid: string, gid: string) => `orgs/${oid}/gear/${gid}`,
+  /**
+   * 장비 예약. 회의실과 달리 **날짜로 안 나눕니다.**
+   *
+   * 촬영 대여는 금요일에 나가 월요일에 돌아옵니다. 날짜별로 쪼개 두면 한
+   * 건이 네 줄이 되고, 그중 한 줄만 지워진 예약이 생길 수 있습니다. 한
+   * 덩어리로 두고 `to`(반납일)로 색인해서, 현황판은 '오늘 이후에 끝나는 것'만
+   * 읽습니다 — 지난 예약은 안 실려 옵니다.
+   */
+  orgGearBookings:  (oid: string) => `orgs/${oid}/gearBookings`,
+  orgGearBooking:   (oid: string, bid: string) => `orgs/${oid}/gearBookings/${bid}`,
+  /** 팀 목록. 장비 현황에서 '어느 팀이 잡았나'를 말하기 위한 이름표입니다. */
+  orgTeams:         (oid: string) => `orgs/${oid}/teams`,
+  orgTeam:          (oid: string, tid: string) => `orgs/${oid}/teams/${tid}`,
+  /**
+   * 누가 어느 팀인가.
+   *
+   * 명단(`members`)에 넣지 않았습니다. 그 줄은 역할을 쓸 때 통째로 덮어써지고,
+   * 규칙도 그 모양을 정확히 검사합니다 — 거기 한 칸을 더 내면 '게스트로
+   * 내렸더니 소속팀이 사라졌다'가 됩니다. 소속은 **라벨이지 경계가 아니라서**
+   * 따로 두는 편이 안전합니다.
+   */
+  orgTeamOf:        (oid: string) => `orgs/${oid}/teamOf`,
+  orgMyTeam:        (oid: string, email: string) => `orgs/${oid}/teamOf/${emailKey(email)}`,
   /** 내 도메인의 조직이 어느 것인가. 한 도메인에 하나입니다. */
   orgByDomain:      (email: string) => `orgByDomain/${domainKey(email)}`,
 
