@@ -1329,14 +1329,28 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
    * 격자를 한 번 재면 답이 나옵니다.
    */
   const trackRef = useRef<HTMLDivElement>(null)
-  const [rowsFit, setRowsFit] = useState(5)
+  /**
+   * 두 값입니다.
+   *
+   *   all   '더보기' 없이 꽉 채웠을 때 들어가는 줄 수
+   *   some  '더보기' 자리를 남겼을 때 들어가는 줄 수
+   *
+   * 하나로 두면 둘 중 하나가 틀립니다 — 늘 더보기 자리를 남기면 넘치지 않는
+   * 날에 한 줄을 헛되이 비우고, 안 남기면 넘치는 날에 더보기가 줄 하나를
+   * 밀어냅니다.
+   */
+  const [rowsFit, setRowsFit] = useState({ all: 5, some: 4 })
   useEffect(() => {
     const el = trackRef.current
     if (!el) return
     const measure = () => {
       // 격자는 여덟 줄짜리고 위아래 한 줄씩은 스크롤용 여분입니다.
       const perCell = el.clientHeight / 8
-      setRowsFit(Math.max(1, Math.floor((perCell - CELL_HEAD_H) / CELL_ROW_H)))
+      const room = perCell - CELL_HEAD_H
+      setRowsFit({
+        all: Math.max(1, Math.floor(room / CELL_ROW_H)),
+        some: Math.max(1, Math.floor((room - CELL_MORE_H) / CELL_ROW_H)),
+      })
     }
     measure()
     const ro = new ResizeObserver(measure)
@@ -1753,7 +1767,7 @@ const MonthCell = React.memo(function MonthCell({
   chips?: Chip[]
   milestones?: { id: string; name: string; color: string }[]
   /** 이 칸에 들어가는 줄 수. 창 높이에 따라 달라집니다 — MonthGrid가 잽니다. */
-  rowsFit: number
+  rowsFit: { all: number; some: number }
   draggingId: string | null
   /** 이 일정을 끌 수 있나 — 내가 쓸 수 있는 캘린더의 것만. */
   canMove: (ev: GCalEvent) => boolean
@@ -1774,11 +1788,21 @@ const MonthCell = React.memo(function MonthCell({
   const [showAll, setShowAll] = useState<{ x: number; y: number } | null>(null)
   /** 그 목록에서 무언가를 끌고 있는가 — 아래 '판'을 비켜 주려고 씁니다. */
   const [dragOut, setDragOut] = useState(false)
+  // 열린 것은 Esc로 닫힙니다 — 이 앱의 다른 창들과 같은 규칙입니다.
+  useEffect(() => {
+    if (!showAll) return
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowAll(null) }
+    window.addEventListener('keydown', esc)
+    return () => window.removeEventListener('keydown', esc)
+  }, [showAll])
   const isWeekend = column === 0 || column === 6
 
   // 마일스톤이 한 줄 차지하면 일정은 한 줄 덜 들어갑니다.
-  const LIMIT = Math.max(1, rowsFit - (hasMilestone ? 1 : 0))
-  const visible = all.length <= LIMIT ? all : all.slice(0, LIMIT - 1)
+  const used = hasMilestone ? 1 : 0
+  const roomAll = Math.max(1, rowsFit.all - used)
+  const roomSome = Math.max(1, rowsFit.some - used)
+  // 다 들어가면 다 그립니다. 안 들어갈 때만 '더보기' 자리를 뺍니다.
+  const visible = all.length <= roomAll ? all : all.slice(0, roomSome)
   const overflow = all.length - visible.length
 
   return (
@@ -1934,6 +1958,7 @@ const MonthCell = React.memo(function MonthCell({
                    얼마나 찼는지 보입니다. */
                 style={{
                   fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3,
+                  height: CHIP_H, lineHeight: '13px',
                   color: GCAL_TEXT, overflow: 'hidden', textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap', textDecoration: 'none', display: 'block',
                   // 자리가 모자라면 줄은 **잘려야지 눌리면 안 됩니다.** 기본값
@@ -1970,7 +1995,7 @@ const MonthCell = React.memo(function MonthCell({
               onDragStart={e => { e.dataTransfer.setData('taskId', t.id); e.dataTransfer.setData('fromDate', day); e.dataTransfer.effectAllowed = 'move'; onTaskDragStart(t.id) }}
               onDragEnd={onTaskDragEnd}
               onClick={e => { e.stopPropagation(); onOpenTask(t.id) }}
-              style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3, background: color.bg, color: color.text, cursor: 'grab', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: isBeingDragged ? .35 : 1, transition: 'opacity .1s', userSelect: 'none', minWidth: 0, flexShrink: 0 }}
+              style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3, height: CHIP_H, lineHeight: '13px', boxSizing: 'border-box', background: color.bg, color: color.text, cursor: 'grab', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: isBeingDragged ? .35 : 1, transition: 'opacity .1s', userSelect: 'none', minWidth: 0, flexShrink: 0 }}
               onMouseEnter={e => { if (!isBeingDragged) e.currentTarget.style.opacity = '.75' }}
               onMouseLeave={e => { if (!isBeingDragged) e.currentTarget.style.opacity = '1' }}
             >
@@ -1997,7 +2022,8 @@ const MonthCell = React.memo(function MonthCell({
           onClick={e => { e.stopPropagation(); onOpenDay(day) }}
           style={{
             border: 'none', background: 'var(--bg3)', textAlign: 'left',
-            fontSize: 10.5, color: 'var(--t2)', padding: '2px 6px',
+            fontSize: 10.5, color: 'var(--t2)', padding: '0 6px',
+            height: CHIP_H, lineHeight: `${CHIP_H}px`, boxSizing: 'border-box',
             borderRadius: 3, cursor: 'pointer', fontFamily: 'var(--font)',
             // 줄들과 같은 왼쪽 선에 맞춥니다 — 목록 밖으로 나와서 그 여백을
             // 이제 스스로 가져야 합니다.
@@ -2030,10 +2056,20 @@ const MonthCell = React.memo(function MonthCell({
           */}
           <div
             style={{ position: 'fixed', inset: 0, zIndex: 8900, pointerEvents: dragOut ? 'none' : 'auto' }}
+            /*
+              누르는 순간 닫습니다(click이 아니라 mousedown).
+
+              click은 누른 곳과 뗀 곳이 같아야 납니다. 목록의 줄들이 draggable
+              이라 손이 조금만 움직여도 브라우저는 그걸 끌기로 치고, 그러면
+              click이 아예 안 납니다 — 눌렀는데 안 닫히는 것이 그것입니다.
+              누른 사실 자체로 닫습니다.
+            */
+            onMouseDown={e => { e.stopPropagation(); setShowAll(null) }}
             onClick={e => { e.stopPropagation(); setShowAll(null) }}
           />
           <div
             onClick={e => e.stopPropagation()}
+            onMouseDown={e => e.stopPropagation()}
             style={{
               position: 'fixed', zIndex: 8901,
               left: Math.max(8, Math.min(showAll.x, window.innerWidth - 248)),
@@ -2111,13 +2147,24 @@ function StackedDiamonds() {
  * 넉넉하게 잡습니다. 모자라게 잡으면 한 줄이 잘리는데, 그건 지금 고치고 있는
  * 바로 그 증상입니다.
  */
-const CELL_HEAD_H = 32
-const CELL_ROW_H = 17
+const CELL_HEAD_H = 34
+/** 줄 하나 + 줄 사이 여백. 아래 CHIP_H와 목록의 gap을 더한 값입니다. */
+const CELL_ROW_H = 19
+/** 'n개 더보기' 줄이 차지하는 높이(아래 여백 포함). */
+const CELL_MORE_H = 21
+/**
+ * 줄 하나의 높이를 **못 박습니다.**
+ *
+ * 글자에 맡겨 두었더니 몇 줄이 들어가는지를 셀 수가 없었습니다. 재서 넣어도
+ * 실제 높이가 조금씩 달라서 마지막 줄이 반쯤 잘렸고, 그게 '툭 끊긴' 모양이
+ * 됐습니다. 높이가 정해져 있으면 세는 쪽과 그리는 쪽이 같은 값을 봅니다.
+ */
+const CHIP_H = 17
 
 /** 마일스톤 알약. 접힌 것과 펼친 것이 같은 모양이어야 같은 것으로 읽힙니다. */
 const MS_CHIP: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600,
-  flexShrink: 0,
+  flexShrink: 0, height: CHIP_H, boxSizing: 'border-box',
   color: NOTION.purple.text, background: NOTION.purple.bg, borderRadius: 4, padding: '1px 5px',
   minWidth: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
 }
