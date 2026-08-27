@@ -25,6 +25,7 @@ import { LoadingChips } from '../../shared/Loading'
 import type { Task } from '../../../types'
 import { useShallow } from 'zustand/react/shallow'
 import { useVisibleProjects } from '../../../hooks/useVisibleProjects'
+import { CopyClean } from '../../shared/CopyClean'
 
 /**
  * ── 오늘 ─────────────────────────────────────────────────────────────────────
@@ -166,6 +167,8 @@ export function TodayView() {
       MarkdownTasks,
       // 시간 축에 놓인 체크박스 줄에 그 시간을 붙입니다(그릴 때만).
       BlockTime.configure({ dateRef }),
+      // 밖으로 복사할 때 줄 사이가 벌어지고 불릿이 사라지던 것.
+      CopyClean,
     ],
     content: '',
     editorProps: {

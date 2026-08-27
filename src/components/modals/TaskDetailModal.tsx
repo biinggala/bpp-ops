@@ -44,6 +44,7 @@ import {
 import { useInviteAssign } from '../../hooks/useInviteAssign'
 import { StatusMark } from '../shared/StatusMark'
 import { useShallow } from 'zustand/react/shallow'
+import { CopyClean } from '../shared/CopyClean'
 
 
 /* ── Shared helpers ── */
@@ -957,6 +958,8 @@ export function TaskDetailModal() {
       Placeholder.configure({ placeholder: '내용을 자유롭게 작성하세요...' }),
       TaskList,
       TaskItem.configure({ nested: true }),
+      // 밖으로 복사할 때 줄 사이가 벌어지고 불릿이 사라지던 것.
+      CopyClean,
       Highlight,
     ],
     content: editorContent,
