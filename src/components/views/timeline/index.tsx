@@ -24,7 +24,6 @@ import { openExternal } from '../../../lib/desktopLinks'
 import { splitAgenda, joinAgenda } from '../../../lib/googleCalendar'
 import type { GCalEvent } from '../../../store/gcalStore'
 import { useShallow } from 'zustand/react/shallow'
-import { usePeekPreview } from '../../../hooks/usePeekPreview'
 import { useVisibleProjects } from '../../../hooks/useVisibleProjects'
 
 /**
@@ -770,11 +769,6 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
     }
     return null
   }, [selected, eventsByDate])
-
-  // 카드가 열려 있는 동안만, 부른 사람들의 그 날짜 일정을 겹쳐 그립니다.
-  // 왜 켜 두기(`peeking`)와 따로인지는 usePeekPreview에 적어 두었습니다.
-  const cardOpen = !!naming || !!(selectedInfo && !selectedInfo.event.isBlock)
-  usePeekPreview(guests, days[0], days[days.length - 1], cardOpen)
 
   const shownTitle = selectedInfo
     ? (titleDraft?.id === selectedInfo.event.id ? titleDraft.text : (selectedInfo.event.summary ?? ''))
@@ -1561,9 +1555,6 @@ function AttendeeList({ teammates, chosen, nameOf, onToggle, responses }: {
   onToggle: (email: string) => void
   responses?: { email: string; responseStatus?: string }[]
 }) {
-  const { peekSeen, peekLoading } = useGCalStore(useShallow(s => ({
-    peekSeen: s.peekSeen, peekLoading: s.peekLoading,
-  })))
   const [adding, setAdding] = useState(false)
   const [q, setQ] = useState('')
   const [pick, setPick] = useState(0)
@@ -1664,31 +1655,6 @@ function AttendeeList({ teammates, chosen, nameOf, onToggle, responses }: {
           접혀 있을 때는 이 줄이 접힌 부분을 대신 말해 줍니다. */}
       {tally && (
         <div style={{ fontSize: 11, color: 'var(--t3)', padding: '0 4px 4px' }}>{tally}</div>
-      )}
-
-      {/*
-        ── 회색 블록이 무엇인지 말해 줍니다 ────────────────────────────────────
-        이름을 넣는 순간 뒤 화면에 회색 덩어리가 생깁니다. 왜 생겼는지 안
-        말하면 그건 고장으로 보이고, 몇 명 것이 왔는지 안 말하면 **못 읽은
-        사람의 빈 하루**를 '비어 있다'로 읽습니다. 둘은 다른 사실입니다.
-      */}
-      {!!chosen.length && (
-        <div style={{ fontSize: 11, color: 'var(--t3)', padding: '0 4px 5px', lineHeight: 1.5 }}>
-          {peekLoading
-            ? '이분들 일정을 보는 중…'
-            : (() => {
-                /*
-                  '일정이 없다'와 '못 읽었다'를 가릅니다. 그리는 일정으로
-                  세면 그날 한가한 사람이 못 읽은 사람과 같아 보이는데,
-                  회의를 잡는 사람에게 그 둘은 정반대의 뜻입니다.
-                */
-                const got = chosen.filter(e => peekSeen.includes(e)).length
-                if (!got) return '이분들 일정은 볼 수 없습니다 — 공유가 닫혀 있습니다.'
-                return got === chosen.length
-                  ? '뒤의 회색이 이분들 일정입니다. 비어 있으면 그 시간은 한가합니다.'
-                  : `${got}명의 일정만 보입니다. 나머지는 공유가 닫혀 있습니다.`
-              })()}
-        </div>
       )}
 
       {shown.map(email => {

@@ -217,30 +217,8 @@ interface GCalState {
   peeking: string[]
   /** 그 사람들의 일정. 내 것과 **섞지 않습니다** — GCalEvent.peekOf 참고. */
   peekEvents: GCalEvent[]
-  /**
-   * 물어봤을 때 **답이 온** 사람들.
-   *
-   * 일정 목록으로는 이걸 알 수 없습니다. 그날 아무 일정이 없는 사람과 달력이
-   * 닫혀 있어 못 읽은 사람이 똑같이 '일정 0개'로 보입니다 — 둘은 완전히 다른
-   * 사실이고, 회의를 잡는 사람에게는 정반대의 뜻입니다.
-   */
-  peekSeen: string[]
   peekLoading: boolean
   setPeeking: (email: string, on: boolean) => void
-  /**
-   * ── 지금 초대 중인 사람들 ─────────────────────────────────────────────────
-   *
-   * `peeking`과 **다른 목록입니다.** 저쪽은 내가 켜 둔 것이라 껐다 켜기 전까지
-   * 남고, 이쪽은 열려 있는 카드에 붙습니다 — 카드를 닫으면 같이 사라집니다.
-   *
-   * 회의를 잡으면서 부를 사람을 넣는 순간 그 사람이 그 시간에 비었는지 알고
-   * 싶은 것이지, 그 사람 달력을 앞으로 계속 켜 두고 싶은 것이 아닙니다. 둘을
-   * 한 목록으로 만들면 회의 하나 잡을 때마다 켜 둔 사람이 늘어납니다.
-   */
-  preview: string[]
-  /** 미리 볼 기간. 카드가 놓인 날들만입니다 — 넉 달치를 사람마다 읽지 않습니다. */
-  previewRange: { from: string; to: string } | null
-  setPreview: (emails: string[], from?: string, to?: string) => void
   /** 켜 둔 사람들의 그 기간 일정을 다시 읽습니다. `only`를 주면 그 사람만. */
   fetchPeek: (from: string, to: string, only?: string[]) => Promise<void>
   /** 읽는 중에 들어온 요청. 지금 것이 끝나면 이어서 읽습니다. */
@@ -566,10 +544,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
   enabledCalendarIds: loadEnabled(),
   peeking: loadPeeking(),
   peekEvents: [],
-  peekSeen: [],
   peekLoading: false,
-  preview: [],
-  previewRange: null,
   queued: null,
   canWrite: loadWrite(),
   targetCalendarId: (() => { try { return localStorage.getItem(TARGET_KEY) } catch { return null } })(),
@@ -643,7 +618,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     localStorage.removeItem(ENABLED_KEY)
     localStorage.removeItem(WRITE_KEY)
     try { localStorage.removeItem(CAL_KEY); localStorage.removeItem(EVENTS_KEY) } catch { /* 시크릿 창 */ }
-    set({ token: null, expiry: null, wasConnected: false, events: [], calendars: [], enabledCalendarIds: null, canWrite: false, error: null, loadedFrom: null, loadedTo: null, fetchedAt: 0, peekEvents: [], peekSeen: [], preview: [], previewRange: null, queued: null })
+    set({ token: null, expiry: null, wasConnected: false, events: [], calendars: [], enabledCalendarIds: null, canWrite: false, error: null, loadedFrom: null, loadedTo: null, fetchedAt: 0, peekEvents: [], queued: null })
   },
 
   /**
@@ -816,40 +791,12 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       peeking: next,
       // 끄는 사람이 지금 초대 중인 사람이기도 하면 그림은 그대로 둡니다 —
       // 카드가 아직 열려 있고, 거기서 필요해서 그려 둔 것입니다.
-      ...(on || get().preview.includes(who)
-        ? {}
-        : {
-            peekEvents: get().peekEvents.filter(e => e.peekOf !== who),
-            peekSeen: get().peekSeen.filter(e => e !== who),
-          }),
+      ...(on ? {} : { peekEvents: get().peekEvents.filter(e => e.peekOf !== who) }),
     })
     try { localStorage.setItem(PEEK_KEY, JSON.stringify(next)) } catch { /* private mode */ }
     // 켤 때 그 사람만 읽습니다. 전부 다시 읽으면 한 명 켜는 데 켜 둔 사람 수만큼
     // 기다립니다.
     if (on) void get().fetchPeek(get().loadedFrom ?? '', get().loadedTo ?? '', [who])
-  },
-
-  setPreview: (emails, from, to) => {
-    const who = [...new Set(emails.map(e => e.toLowerCase().trim()).filter(Boolean))]
-    const { preview, peeking, previewRange, loadedFrom, loadedTo } = get()
-    const range = from && to ? { from, to } : previewRange
-    const same = who.length === preview.length && who.every(e => preview.includes(e))
-    if (same && range?.from === previewRange?.from && range?.to === previewRange?.to) return
-
-    // 빠진 사람은 그림에서도 뺍니다 — 켜 둔 사람이면 그대로 둡니다.
-    const gone = preview.filter(e => !who.includes(e) && !peeking.includes(e))
-    set({
-      preview: who,
-      previewRange: who.length ? range ?? null : null,
-      ...(gone.length ? {
-        peekEvents: get().peekEvents.filter(e => !gone.includes(e.peekOf ?? '')),
-        peekSeen: get().peekSeen.filter(e => !gone.includes(e)),
-      } : {}),
-    })
-
-    // 새로 들어온 사람만 읽습니다. 이미 켜 둔 사람은 이미 그려져 있습니다.
-    const fresh = who.filter(e => !preview.includes(e) && !peeking.includes(e))
-    if (fresh.length && range) void get().fetchPeek(loadedFrom ?? '', loadedTo ?? '', fresh)
   },
 
   /**
@@ -859,34 +806,24 @@ export const useGCalStore = create<GCalState>((set, get) => ({
    * 왕복 다섯 번을 줄 세운 것이라, 한 번이 0.4초면 2초였습니다. 서로 아무
    * 상관이 없는 다섯 개의 질문인데 말입니다.
    *
-   * 사람마다 보는 기간이 다를 수 있습니다. 켜 둔 사람은 달력에 실린 창 전체를,
-   * 지금 초대 중인 사람은 카드가 놓인 날들만 봅니다 — 회의 하나 잡자고 넉 달치를
-   * 사람 수만큼 읽을 이유가 없습니다.
+   * `only`를 주면 그 사람만 읽고 그 사람 것만 갈아 끼웁니다 — 한 명 켜자고
+   * 켜 둔 사람 전부를 다시 읽을 이유가 없습니다.
    */
   fetchPeek: async (from, to, only) => {
-    const { token, peeking, preview, previewRange } = get()
-    if (!token) return
+    const { token, peeking } = get()
+    if (!token || !from || !to) return
+    const who = only ? peeking.filter(e => only.includes(e)) : peeking
 
-    const jobs: { who: string; from: string; to: string }[] = []
-    const add = (who: string, f: string, t: string) => {
-      if (!f || !t) return
-      if (only && !only.includes(who)) return
-      if (jobs.some(j => j.who === who)) return
-      jobs.push({ who, from: f, to: t })
-    }
-    for (const who of peeking) add(who, from, to)
-    if (previewRange) for (const who of preview) add(who, previewRange.from, previewRange.to)
-
-    if (!jobs.length) {
+    if (!who.length) {
       // 아무도 안 보고 있으면 그림도 비웁니다. 다만 '그 사람만' 읽으라고
       // 불린 것이면 나머지는 남의 몫이라 건드리지 않습니다.
-      if (!only && get().peekEvents.length) set({ peekEvents: [], peekSeen: [] })
+      if (!only && get().peekEvents.length) set({ peekEvents: [] })
       return
     }
 
     set({ peekLoading: true })
-    const settled = await Promise.allSettled(jobs.map(j =>
-      fetchEventsForRange(token, { id: j.who, summary: j.who, backgroundColor: PEEK_COLOR }, j.from, j.to),
+    const settled = await Promise.allSettled(who.map(mail =>
+      fetchEventsForRange(token, { id: mail, summary: mail, backgroundColor: PEEK_COLOR }, from, to),
     ))
     if (settled.some(r => r.status === 'rejected' && (r.reason as Error)?.message === TOKEN_EXPIRED)) {
       set({ peekLoading: false })
@@ -894,49 +831,34 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     }
 
     const collected: GCalEvent[] = []
-    /** 답이 온 사람들. 일정이 하나도 없어도 여기 듭니다. */
-    const answered = new Set<string>()
-    /** 상세를 못 읽은 사람들. 같은 기간끼리 묶어 한 번에 한가함/바쁨을 묻습니다. */
-    const opaque = new Map<string, string[]>()
+    /** 상세를 못 읽은 사람들. 이들만 모아 한 번에 한가함/바쁨을 묻습니다. */
+    const opaque: string[] = []
     settled.forEach((r, i) => {
-      const job = jobs[i]
-      if (r.status === 'fulfilled') {
-        answered.add(job.who)
-        // 읽히긴 했는데 상세가 없는 경우가 있습니다(제목 없는 '바쁨'). 그건
-        // 구글이 이미 가려서 준 것이라 그대로 씁니다.
-        collected.push(...r.value
-          .map(toGCalEvent)
-          .filter((e): e is GCalEvent => !!e)
-          .map(e => ({ ...e, calendarColor: PEEK_COLOR, peekOf: job.who })))
-        return
-      }
-      const key = `${job.from}|${job.to}`
-      opaque.set(key, [...(opaque.get(key) ?? []), job.who])
+      if (r.status !== 'fulfilled') { opaque.push(who[i]); return }
+      // 읽히긴 했는데 상세가 없는 경우가 있습니다(제목 없는 '바쁨'). 그건
+      // 구글이 이미 가려서 준 것이라 그대로 씁니다.
+      collected.push(...r.value
+        .map(toGCalEvent)
+        .filter((e): e is GCalEvent => !!e)
+        .map(e => ({ ...e, calendarColor: PEEK_COLOR, peekOf: who[i] })))
     })
 
-    await Promise.all([...opaque.entries()].map(async ([key, people]) => {
-      const [f, t] = key.split('|')
+    if (opaque.length) {
       try {
-        const busy = await fetchFreeBusy(token, people, f, t)
-        for (const [who, slots] of Object.entries(busy)) {
-          // 키가 왔다는 것이 곧 답이 왔다는 뜻입니다 — 빈 배열이어도.
-          // 못 읽은 사람은 애초에 키가 안 옵니다(fetchFreeBusy 참고).
-          answered.add(who)
-          collected.push(...slots.map((slot, i) => busyToEvent(who, slot, i)))
+        const busy = await fetchFreeBusy(token, opaque, from, to)
+        for (const [mail, slots] of Object.entries(busy)) {
+          collected.push(...slots.map((slot, i) => busyToEvent(mail, slot, i)))
         }
       } catch { /* 못 물어봤으면 그 사람은 안 그립니다 */ }
-    }))
+    }
 
-    // '그 사람만' 읽었으면 그 사람 것만 갈아 끼웁니다. 통째로 바꾸면 방금
-    // 읽어 온 남의 것이 사라집니다.
-    const ran = new Set(jobs.map(j => j.who))
+    // '그 사람만' 읽었으면 그 사람 것만 갈아 끼웁니다. 통째로 바꾸면 켜 둔
+    // 나머지가 사라집니다.
+    const ran = new Set(who)
     set({
       peekEvents: only
         ? [...get().peekEvents.filter(e => !ran.has(e.peekOf ?? '')), ...collected]
         : collected,
-      peekSeen: only
-        ? [...new Set([...get().peekSeen.filter(e => !ran.has(e)), ...answered])]
-        : [...answered],
       peekLoading: false,
     })
   },
