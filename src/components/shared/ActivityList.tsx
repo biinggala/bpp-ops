@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useActivity } from '../../hooks/useActivity'
-import type { Activity } from '../../lib/activity'
+import { activityLine, withCreation, ORIGIN_ID } from '../../lib/activityView'
+import { useTaskStore } from '../../store/taskStore'
+import { useUserProfileStore } from '../../store/userProfileStore'
 
 /**
  * ── 활동 ─────────────────────────────────────────────────────────────────────
@@ -16,13 +18,6 @@ import type { Activity } from '../../lib/activity'
  * segments: at this density the segments cost more attention than the sequence
  * they describe.
  */
-
-const KIND_TEXT: Record<Activity['kind'], string> = {
-  created: '업무를 만들었습니다',
-  changed: '수정했습니다',
-  deleted: '업무를 삭제했습니다',
-  restored: '휴지통에서 되살렸습니다',
-}
 
 function when(at: number): string {
   const d = new Date(at)
@@ -41,7 +36,24 @@ export function ActivityList({ taskId, projectId, compact = false }: {
   /** The phone's tab has the screen to itself; the desktop section does not. */
   compact?: boolean
 }) {
-  const entries = useActivity(taskId, projectId)
+  const logged = useActivity(taskId, projectId)
+  /**
+   * 기록은 '만들었습니다'로 시작해야 합니다 — 그게 이 업무에 일어난 첫
+   * 일이니까요. 그 줄이 없는 업무가 둘 있습니다: 활동 기록이 생기기 전에
+   * 만든 것과, 커넥터로 만든 것. 둘 다 누가 만들었는지는 압니다.
+   * 시각만 모르고, 모르는 것은 비워 둡니다(lib/activityView).
+   */
+  const task = useTaskStore(s => s.tasks.find(t => t.id === taskId))
+  const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  const made = task?.createdBy
+    ? { by: getNameByEmail(task.createdBy) || task.createdBy.split('@')[0], title: task.name }
+    : null
+  const entries = useMemo(
+    () => withCreation(logged, made),
+    // made는 매번 새 객체라 값으로 비교합니다 — 참조로 두면 매번 다시 만듭니다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [logged, made?.by, made?.title],
+  )
   /**
    * 처음에는 최근 것만 보여 줍니다.
    *
@@ -86,10 +98,15 @@ export function ActivityList({ taskId, projectId, compact = false }: {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: compact ? 12 : 13, color: 'var(--t2)', lineHeight: 1.5 }}>
               <span style={{ color: 'var(--t1)', fontWeight: 500 }}>{entry.by}</span>
-              님이 {KIND_TEXT[entry.kind]}
-              <span style={{ color: 'var(--t3)', marginLeft: 6, fontSize: compact ? 11 : 12 }}>
-                {when(entry.at)}
-              </span>
+              님이 {activityLine(entry.kind, entry.title)}
+              {/* 되살린 줄은 시각을 압니다. 시각을 모르는 것은 기록이 없어서
+                  되살려 세운 '만들었습니다' 한 줄뿐이고, 거기는 비웁니다 —
+                  그럴듯한 시각을 지어내면 나중에 그게 거짓말이 됩니다. */}
+              {entry.id !== ORIGIN_ID && (
+                <span style={{ color: 'var(--t3)', marginLeft: 6, fontSize: compact ? 11 : 12 }}>
+                  {when(entry.at)}
+                </span>
+              )}
             </div>
             {entry.changes && entry.changes.length > 0 && (
               <div style={{ marginTop: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
