@@ -94,6 +94,19 @@ interface GearState {
   releaseGroup: (group: string) => Promise<boolean>
 }
 
+/**
+ * 사람에게 할 말로 바꿉니다.
+ *
+ * `permission_denied at /orgs/z1tbxjmemt8o0sb8/gearBookings`는 개발자에게
+ * 하는 말입니다. 읽는 사람이 알아야 하는 건 경로가 아니라 **왜 안 되는가**고,
+ * 여기서 답은 하나뿐입니다 — 이 워크스페이스의 멤버가 아니라서.
+ */
+function readError(what: string, e: unknown): string {
+  const msg = e instanceof Error ? e.message : ''
+  if (/permission/i.test(msg)) return `${what}은 이 워크스페이스의 멤버만 볼 수 있습니다.`
+  return msg ? `${what}을 읽지 못했습니다: ${msg}` : `${what}을 읽지 못했습니다`
+}
+
 function list<T>(raw: unknown): (T & { id: string })[] {
   if (!raw || typeof raw !== 'object') return []
   return Object.entries(raw as Record<string, T>).map(([id, v]) => ({ ...(v as T), id }))
@@ -120,7 +133,7 @@ export const useGearStore = create<GearState>((set, get) => ({
           .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
         ready: true,
       })
-    }, e => set({ gear: [], ready: true, error: e instanceof Error ? `장비 목록을 읽지 못했습니다: ${e.message}` : null }))
+    }, e => set({ gear: [], ready: true, error: readError('장비 목록', e) }))
 
     const teamsRef = ref(db, P.orgTeams(orgId))
     const teamsHandler = onValue(teamsRef, s => {
@@ -153,7 +166,7 @@ export const useGearStore = create<GearState>((set, get) => ({
           .filter(b => b.gearId && b.from && b.to)
           .sort((a, b) => a.from.localeCompare(b.from) || a.fromMin - b.fromMin),
       })
-    }, e => set({ bookings: [], error: e instanceof Error ? `예약을 읽지 못했습니다: ${e.message}` : null }))
+    }, e => set({ bookings: [], error: readError('장비 예약', e) }))
 
     return () => {
       off(gearRef, 'value', gearHandler)

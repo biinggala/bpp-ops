@@ -15,6 +15,8 @@ import { Welcome } from '../components/modals/Welcome'
 import { parseInviteToken, PENDING_TASK_KEY } from '../lib/paths'
 import { claimGuestSeats, claimInvitedOrgs, stampProjects, syncRoster } from '../lib/roster'
 import { projectsToList } from '../lib/orgListing'
+import { needsHomeOrg } from '../lib/homeOrg'
+import { useUserProfileStore } from '../store/userProfileStore'
 import { useMobile } from '../hooks/useMobile'
 import type { Project } from '../types'
 import { Sidebar } from '../components/layout/Sidebar'
@@ -137,6 +139,34 @@ export function AppPage() {
   // 게스트로 서 있는 곳에는 안 쓰고 안 읽습니다 — 규칙이 다 막고, 막힌 것을
   // 계속 두드리면 화면에 붉은 오류만 쌓입니다.
   const isGuest = useOrgStore(s => s.isGuest)
+  /**
+   * ── 자기 워크스페이스 하나 ────────────────────────────────────────────────
+   *
+   * 아무 데도 자리가 없는 사람에게 '○○의 워크스페이스'를 만들어 줍니다.
+   * 워크스페이스 없이 앱을 쓰는 상태를 없애기 위한 것입니다 — 그 상태 하나가
+   * 곳곳에 예외를 하나씩 더 만들고 있었습니다(lib/homeOrg 참고).
+   *
+   * 판단은 값만 보는 함수가 합니다. 여기서 `myOrgs.length === 0`으로 물으면
+   * 안 됩니다 — 목록은 처음 한 바퀴 언제나 비어 있고, 읽기가 실패해도 비어
+   * 있습니다. 둘 다 '없다'로 읽히면 켤 때마다 하나씩 늘어납니다.
+   */
+  const scan = useOrgStore(s => s.scan)
+  const makeHomeOrg = useOrgStore(s => s.makeHomeOrg)
+  const homeOrg = usePrefsStore(s => s.homeOrg)
+  const prefsSeen = usePrefsStore(s => s.ready)
+  const myName = useUserProfileStore(s => (email ? s.getNameByEmail(email) : ''))
+  useEffect(() => {
+    if (!email || !uid) return
+    const need = needsHomeOrg({
+      settled: orgReady && prefsSeen,
+      candidates: scan.candidates,
+      resolved: scan.resolved,
+      member: scan.member,
+      madeBefore: !!homeOrg,
+    })
+    if (need) void makeHomeOrg(email, myName || null)
+  }, [email, uid, orgReady, prefsSeen, scan, homeOrg, myName, makeHomeOrg])
+
   /*
     장비·팀 목록과, 아직 안 끝난 예약.
 

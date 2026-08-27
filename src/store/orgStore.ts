@@ -7,6 +7,7 @@ import { useAuthStore } from './authStore'
 import { DEFAULT_ROOM_RULE, roomRuleNote, roomTooLong, type RoomRule } from '../lib/roomRule'
 import { usePrefsStore } from './prefsStore'
 import { pickOrg, orgsSettled } from '../lib/pickOrg'
+import { homeOrgName } from '../lib/homeOrg'
 
 /**
  * ── 조직과 회의실 ────────────────────────────────────────────────────────────
@@ -152,6 +153,13 @@ interface OrgState {
   myOrgs: { id: string; name: string; guest?: boolean }[]
   /** 지금 서 있는 곳에서 나는 게스트인가. */
   isGuest: boolean
+  /**
+   * 마지막으로 목록을 만들 때의 셈.
+   *
+   * '후보가 없다'와 '후보를 못 읽었다'를 가르기 위해서입니다 — 개인
+   * 워크스페이스를 만들지 말지가 이 차이에 걸려 있습니다(lib/homeOrg).
+   */
+  scan: { candidates: number; resolved: number; member: number }
   /** 조직을 찾는 첫 조회가 끝났는가. 그 전에는 '없다'고 말하지 않습니다. */
   ready: boolean
   error: string | null
@@ -195,6 +203,18 @@ interface OrgState {
    * 없습니다.
    */
   createInviteOrg: (name: string, email: string) => Promise<boolean>
+  /**
+   * 처음 들어온 사람에게 '○○의 워크스페이스'를 하나.
+   *
+   * 만들 때인지는 부르는 쪽이 정합니다(lib/homeOrg의 needsHomeOrg) — 그
+   * 판단이 값만 보는 함수라야 '아직 안 왔다'와 '없다'를 테스트로 갈라 놓을
+   * 수 있습니다. 여기서는 만들기만 합니다.
+   *
+   * 두 번 안 만듭니다. 만들고 나면 그 사실이 계정에 적히고(prefs.homeOrg),
+   * 만드는 동안에는 이 스토어가 문을 잠급니다 — 탭이 둘이면 둘 다 같은
+   * 순간에 '없다'를 봅니다.
+   */
+  makeHomeOrg: (email: string, displayName: string | null) => Promise<void>
   addRoom: (name: string, note?: string) => Promise<void>
   updateRoom: (id: string, patch: Partial<Omit<Room, 'id'>>) => Promise<void>
   /** 관리자를 더하거나 뺍니다. 우리 도메인 주소만 됩니다. */
@@ -346,6 +366,9 @@ export function pendingJoinCount(joinRequests: JoinRequest[], myProjectIds: Set<
   return joinRequests.filter(r => myProjectIds.has(r.projectId)).length
 }
 
+/** 만드는 중. 탭이 둘이어도 하나만 만들게 하는 걸쇠입니다. */
+let homing = false
+
 export const useOrgStore = create<OrgState>((set, get) => ({
   orgId: null,
   name: '',
@@ -355,6 +378,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
   rooms: [],
   myOrgs: [],
   isGuest: false,
+  scan: { candidates: 0, resolved: 0, member: 0 },
   admins: [],
   orgProjects: [],
   roomRule: DEFAULT_ROOM_RULE,
@@ -457,9 +481,15 @@ export const useOrgStore = create<OrgState>((set, get) => ({
      * 목록도 못 읽어서 화면이 오류로 채워집니다 — 게스트에게 그 자리는 아예
      * 없는 편이 맞습니다.
      */
-    const myOrgsFrom = async (ids: string[]): Promise<{ id: string; name: string }[]> => {
-      const out: { id: string; name: string }[] = []
-      for (const oid of [...new Set(ids)].sort()) {
+    const myOrgsFrom = async (ids: string[]): Promise<{ id: string; name: string; guest?: boolean }[]> => {
+      const out: { id: string; name: string; guest?: boolean }[] = []
+      const all = [...new Set(ids)].sort()
+      // 본 것과 읽은 것을 따로 셉니다. 읽기가 실패해도 목록은 빈 채로 오는데,
+      // 그 둘을 안 가르면 네트워크가 흔들릴 때마다 워크스페이스가 하나씩
+      // 늘어납니다.
+      let resolved = 0
+      let member = 0
+      for (const oid of all) {
         try {
           const roleSnap = await fbGet(ref(db, P.orgMember(oid, email)))
           const role = (roleSnap.val() as { role?: string } | null)?.role
@@ -473,6 +503,14 @@ export const useOrgStore = create<OrgState>((set, get) => ({
            *
            * 없는 것과 지워진 것은 다릅니다.
            */
+          resolved++
+          /*
+            **도메인이 답한 자리도 멤버로 셉니다.** 회사 계정의 첫 로그인은
+            명단에 아직 행이 없습니다(syncRoster가 곧 적습니다). 그때를 '멤버인
+            곳이 없다'로 읽으면, 블랙페이퍼 직원이 처음 들어오는 순간 개인
+            워크스페이스가 하나 만들어집니다.
+          */
+          if (role === 'member' || (!role && oid === fromDomain)) member++
           if (role === 'removed') continue
           /**
            * **게스트도 목록에 섭니다 — 이름만 아는 자리로.**
@@ -496,8 +534,9 @@ export const useOrgStore = create<OrgState>((set, get) => ({
             name: (nameSnap.val() as string | null) || '이름 없는 워크스페이스',
             ...(guest ? { guest: true } : {}),
           })
-        } catch { /* 못 읽으면 내 자리가 아닙니다 */ }
+        } catch { /* 못 읽으면 내 자리가 아닙니다 — resolved에도 안 셉니다 */ }
       }
+      set({ scan: { candidates: all.length, resolved, member } })
       return out
     }
 
@@ -758,6 +797,19 @@ export const useOrgStore = create<OrgState>((set, get) => ({
    * 찾는 길은 `userOrgs`뿐이고, 그래서 그것을 **반드시** 적어야 합니다.
    * 안 적으면 방금 만든 조직을 자기도 못 찾습니다.
    */
+  makeHomeOrg: async (email, displayName) => {
+    if (homing) return
+    homing = true
+    try {
+      const ok = await get().createInviteOrg(homeOrgName(displayName, email), email)
+      // 만든 것만 적습니다. 실패했으면 다음 기회에 다시 봅니다 — 못 만든 것을
+      // 만들었다고 적으면 그 사람은 영영 자기 자리가 없습니다.
+      if (ok) usePrefsStore.getState().setHomeOrg(email, get().orgId ?? '')
+    } finally {
+      homing = false
+    }
+  },
+
   createInviteOrg: async (name, email) => {
     const uid = useAuthStore.getState().uid
     if (!uid || !name.trim()) return false
