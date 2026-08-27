@@ -1741,7 +1741,9 @@ const MonthCell = React.memo(function MonthCell({
   const [showAll, setShowAll] = useState<{ x: number; y: number } | null>(null)
   const isWeekend = column === 0 || column === 6
 
-  const LIMIT = 5
+  // 마일스톤이 한 줄 차지하면 일정은 한 줄 덜 들어갑니다. 칸 높이는
+  // 그대로인데 줄만 늘면 아래가 잘립니다.
+  const LIMIT = hasMilestone ? 4 : 5
   const visible = all.length <= LIMIT ? all : all.slice(0, LIMIT - 1)
   const overflow = all.length - visible.length
 
@@ -1764,8 +1766,47 @@ const MonthCell = React.memo(function MonthCell({
         transition: 'background .08s',
       }}
     >
-      {/* Date number + milestone diamonds */}
+      {/*
+        ── 날짜 줄에는 날짜만 ────────────────────────────────────────────────
+        마일스톤 알약이 여기 같이 서 있었습니다. 마일스톤과 일정으로 칸이
+        꽉 차면 **누를 빈 자리가 한 뼘도 없어서**, 그 날에 무언가 만들려면
+        만들 수가 없었습니다.
+
+        마일스톤은 한 칸 내려 일정 블록 맨 위로 갔습니다 — 날짜에 붙은
+        것이라는 뜻은 그대로고, 이 줄은 통째로 '여기에 만들기'가 됩니다.
+      */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 8px 3px', gap: 4 }}>
+        {/* 숫자는 '이 날을 열기'입니다. 칸의 나머지는 '여기에 만들기'고요 —
+            같은 칸에 두 가지 뜻이 있으니 숫자 쪽이 눌리는 것처럼 보여야
+            합니다(손이 오면 동그라미가 뜹니다). */}
+        <button
+          onClick={e => { e.stopPropagation(); onOpenDay(day) }}
+          title="이 날부터 3일 보기"
+          className={isToday ? 'bpp-daynum on' : 'bpp-daynum'}
+          style={{
+            border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'var(--font)',
+            fontSize: 12, fontWeight: isToday ? 700 : 400,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            minWidth: 22, height: 22, borderRadius: '50%',
+            /*
+              오늘이 아닐 때는 배경을 **여기서 안 정합니다.**
+
+              인라인 스타일은 클래스 규칙을 이깁니다. `background: transparent`를
+              적어 두었더니 `.bpp-daynum:hover`가 늘 졌고, 그래서 동그라미가
+              한 번도 안 떴습니다 — 규칙은 있는데 화면에는 없는 상태였습니다.
+              같은 값을 두 곳에서 정하면 어느 쪽이 이기는지를 매번 기억해야
+              하니, 배경은 CSS 한 곳에만 둡니다.
+            */
+            ...(isToday ? { background: 'var(--ac)' } : {}),
+            color: isToday ? '#fff' : !isCurrentMonth ? 'var(--t3)' : 'var(--t2)',
+          }}
+        >
+          {dayOfMonth}
+        </button>
+      </div>
+
+      {/* Events */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 3px 4px', minWidth: 0 }}>
         {/*
           ── 마일스톤이 몰린 날 ──────────────────────────────────────────────
           한 줄에 나란히 세워 두었습니다. 하나일 때는 이름이 다 보이는데,
@@ -1818,37 +1859,6 @@ const MonthCell = React.memo(function MonthCell({
           </div>
         )}
 
-        {/* 숫자는 '이 날을 열기'입니다. 칸의 나머지는 '여기에 만들기'고요 —
-            같은 칸에 두 가지 뜻이 있으니 숫자 쪽이 눌리는 것처럼 보여야
-            합니다(손이 오면 동그라미가 뜹니다). */}
-        <button
-          onClick={e => { e.stopPropagation(); onOpenDay(day) }}
-          title="이 날부터 3일 보기"
-          className={isToday ? 'bpp-daynum on' : 'bpp-daynum'}
-          style={{
-            border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'var(--font)',
-            fontSize: 12, fontWeight: isToday ? 700 : 400,
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            minWidth: 22, height: 22, borderRadius: '50%',
-            /*
-              오늘이 아닐 때는 배경을 **여기서 안 정합니다.**
-
-              인라인 스타일은 클래스 규칙을 이깁니다. `background: transparent`를
-              적어 두었더니 `.bpp-daynum:hover`가 늘 졌고, 그래서 동그라미가
-              한 번도 안 떴습니다 — 규칙은 있는데 화면에는 없는 상태였습니다.
-              같은 값을 두 곳에서 정하면 어느 쪽이 이기는지를 매번 기억해야
-              하니, 배경은 CSS 한 곳에만 둡니다.
-            */
-            ...(isToday ? { background: 'var(--ac)' } : {}),
-            color: isToday ? '#fff' : !isCurrentMonth ? 'var(--t3)' : 'var(--t2)',
-          }}
-        >
-          {dayOfMonth}
-        </button>
-      </div>
-
-      {/* Events */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 3px 4px', minWidth: 0 }}>
         {visible.map((chip, ci) => {
           if (chip.kind === 'gcal') {
             const ev = chip.ev
@@ -1981,9 +1991,13 @@ const MonthCell = React.memo(function MonthCell({
                   e.dataTransfer.setData('milestoneId', ms.id)
                   e.dataTransfer.effectAllowed = 'move'
                   onTaskDragStart(ms.id)
-                  setShowAll(null)
                 }}
-                onDragEnd={onTaskDragEnd}
+                /*
+                  창은 **끝날 때** 닫습니다. `dragstart`에서 닫았더니 끌던 줄이
+                  그 자리에서 사라졌고, 브라우저는 없어진 것을 계속 끌지
+                  않습니다 — 손은 움직이는데 아무 데도 안 놓였습니다.
+                */
+                onDragEnd={() => { onTaskDragEnd(); setShowAll(null) }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6,
                   padding: '5px 7px', borderRadius: 'var(--r1)',
