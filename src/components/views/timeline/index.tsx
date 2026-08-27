@@ -19,6 +19,7 @@ import { RsvpPicker } from '../../shared/RsvpPicker'
 import { MoreMenu } from '../../shared/MoreMenu'
 import { useToast } from '../../shared/Toast'
 import { useOrgStore, clashesFor, NO_BOOKINGS, type Room, type Booking } from '../../../store/orgStore'
+import { roomRuleNote, roomTooLong } from '../../../lib/roomRule'
 import { addDays, toDate, fmtYMD, isComposing } from '../../../lib/utils'
 import { openExternal } from '../../../lib/desktopLinks'
 import { splitAgenda, joinAgenda } from '../../../lib/googleCalendar'
@@ -644,6 +645,13 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
     if (!held || !myEmail) return
     const clashes = clashesFor(bookingsByDate[date] ?? [], held.roomId, next, eventId)
     const room = useOrgStore.getState().rooms.find(r => r.id === held.roomId)
+    // 회의를 늘렸더니 방이 규칙에 걸리는 경우. 일정은 이미 늘어난 뒤라
+    // 예약만 옛 시간에 남는데, 그걸 말 안 하면 회의실이 딴 시간에 잡혀
+    // 있는 줄 모릅니다.
+    if (roomTooLong(next)) {
+      useToast.getState().show(`${room?.name ?? '회의실'} 예약은 못 옮겼습니다 — ${roomRuleNote()}`)
+      return
+    }
     if (clashes.length) {
       useToast.getState().show(`${room?.name ?? '회의실'} 예약은 옮기지 못했습니다 — 그 시간에 이미 잡혀 있습니다`)
       return
@@ -2269,13 +2277,42 @@ export function RoomRow({ slot, booking, onPick }: {
   const usable = rooms.filter(r => r.active !== false)
   if (!orgId || !usable.length) return null
 
+  /*
+    ── 붐비는 시간을 오래 못 잡습니다 ────────────────────────────────────────
+    방은 몇 개뿐이고 낮에는 모두가 씁니다. 한 팀이 오전 내내 잡아 두면
+    나머지는 그날 방이 없습니다.
+
+    목록을 여는 대신 이유를 적습니다. 열어 놓고 누를 때 거절하면, 고른
+    다음에야 안 된다는 걸 알게 되고 그때는 이미 시간을 다 정한 뒤입니다.
+  */
+  const tooLong = roomTooLong(slot)
+
   const chosen = booking ? usable.find(r => r.id === booking.roomId) : undefined
 
   return (
     <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--bd)' }}>
       <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--t2)', marginBottom: 6 }}>회의실</div>
 
-      {!open ? (
+      {tooLong ? (
+        <div style={{
+          padding: '7px 9px', borderRadius: 'var(--r1)', background: 'var(--bg3)',
+          fontSize: 11.5, color: 'var(--t3)', lineHeight: 1.5,
+        }}>
+          {roomRuleNote()}
+          {/* 이미 잡아 둔 방이 있는데 시간을 늘려 규칙에 걸린 경우. 빼는 길을
+              안 내주면 저장할 때 조용히 방만 안 잡히고, 잡힌 줄 압니다. */}
+          {booking && (
+            <button
+              onClick={() => onPick(null)}
+              style={{
+                display: 'block', marginTop: 6, padding: 0, border: 'none',
+                background: 'transparent', color: 'var(--danger)', fontSize: 11.5,
+                cursor: 'pointer', fontFamily: 'var(--font)',
+              }}
+            >회의실 빼기</button>
+          )}
+        </div>
+      ) : !open ? (
         <button
           onClick={() => setOpen(true)}
           style={{

@@ -4,6 +4,7 @@ import { db } from '../lib/firebase'
 import { P, domainKey, emailKey } from '../lib/paths'
 import { gid } from '../lib/utils'
 import { useAuthStore } from './authStore'
+import { roomRuleNote, roomTooLong } from '../lib/roomRule'
 import { usePrefsStore } from './prefsStore'
 import { pickOrg, orgsSettled } from '../lib/pickOrg'
 
@@ -1064,6 +1065,15 @@ export const useOrgStore = create<OrgState>((set, get) => ({
   book: async ({ date, roomId, from, to, title, eventId, by, byName }) => {
     const { orgId } = get()
     if (!orgId) return false
+    /*
+      마지막 문입니다. 화면이 먼저 막고 왜 안 되는지도 말하지만, 방을 잡는
+      길이 여럿이라(새 일정, 카드에서 고르기, 일정을 옮기면 예약이 따라감)
+      한 군데만 빠뜨려도 규칙이 새 나갑니다. 여기서 한 번 더 봅니다.
+    */
+    if (roomTooLong({ from, to })) {
+      set({ error: roomRuleNote() })
+      return false
+    }
     const node = push(ref(db, P.orgBookings(orgId, date)))
     const roomName = get().rooms.find(r => r.id === roomId)?.name
     try {
