@@ -728,18 +728,22 @@ export function Sidebar() {
           </NavItem>
 
           {/*
-            장비도 '가는 곳'입니다 — 오늘·캘린더와 같은 층입니다.
+            함께 쓰는 것들의 현황. '가는 곳'이라 오늘·캘린더와 같은 층입니다.
+
+            회의실과 장비를 한 줄로 묶습니다. 둘은 같은 질문에 답합니다 —
+            '지금 이거 비었나'. 줄을 둘로 나누면 그 질문을 두 군데서
+            물어야 합니다.
 
             굵게 하지 않았습니다. 위의 둘은 매일 아침 여는 곳이고, 여기는
             촬영이 잡혔을 때 여는 곳입니다. 굵은 줄이 셋이면 굵기가 아무
             말도 안 하게 됩니다.
           */}
           <NavItem
-            active={screen === 'gear'}
-            onClick={() => { setScreen('gear'); closeSidebar() }}
+            active={screen === 'res'}
+            onClick={() => { setScreen('res'); closeSidebar() }}
             node={<Icon name="camera" size={14} />}
           >
-            장비
+            회의실 · 장비
           </NavItem>
 
           {/*

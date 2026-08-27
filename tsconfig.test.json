@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "noEmit": false
   },
-  "include": ["src/lib/utils.ts", "src/types/index.ts", "src/lib/noteChecks.ts", "src/lib/visibleProjects.ts", "src/lib/pickOrg.ts", "src/lib/orgListing.ts", "src/lib/noteText.ts", "src/lib/roomRule.ts", "src/lib/gear.ts", "src/lib/sanitizeHtml.ts"]
+  "include": ["src/lib/utils.ts", "src/types/index.ts", "src/lib/noteChecks.ts", "src/lib/visibleProjects.ts", "src/lib/pickOrg.ts", "src/lib/orgListing.ts", "src/lib/noteText.ts", "src/lib/roomRule.ts", "src/lib/gear.ts", "src/lib/lanes.ts", "src/lib/sanitizeHtml.ts"]
 }

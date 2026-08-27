@@ -3,6 +3,7 @@ import './index.css'
 import App from './App.tsx'
 import { installExternalLinkHandler } from './lib/desktopLinks'
 import { installTheme } from './lib/theme'
+import { watchPointerKind } from './lib/pointerKind'
 import { isDesktopShell } from './lib/desktopAuth'
 import { autoEnablePush, installServiceWorker } from './lib/push'
 
@@ -89,6 +90,9 @@ void installServiceWorker()
 // 알림은 켜져 있는 게 기본입니다. 권한이 이미 있는 기기는 아무것도 묻지 않고
 // 구독하고, 명시적으로 끈 기기는 꺼진 채로 둡니다 — 자세한 사정은 push.ts.
 void autoEnablePush()
+
+// 손가락이 닿는 기기인지는 물어보지 않고 봅니다 — pointerKind.ts의 그 사연.
+watchPointerKind()
 
 // Before the first paint, so nothing flashes white on the way into dark.
 installTheme()

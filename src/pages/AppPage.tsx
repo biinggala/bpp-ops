@@ -27,7 +27,7 @@ import { CalendarView } from '../components/views/calendar'
 import { StatsView } from '../components/views/stats'
 import { FilesView } from '../components/views/files'
 import { GanttView } from '../components/views/gantt'
-import { GearView } from '../components/views/gear'
+import { ResourceView } from '../components/views/resources'
 import { TodayView } from '../components/views/today'
 import { TaskModal } from '../components/modals/TaskModal'
 import { TaskDetailModal } from '../components/modals/TaskDetailModal'
@@ -490,11 +490,11 @@ export function AppPage() {
             <TodayView />
           ) : !ready ? (
             <LoadingRows />
-          ) : screen === 'gear' ? (
-            /* 장비 현황. 업무가 하나도 없어도 열려야 하는 화면이라 아래
-               빈 상태 분기보다 위에 있습니다 — 장비를 보러 온 사람에게
+          ) : screen === 'res' ? (
+            /* 회의실·장비 현황. 업무가 하나도 없어도 열려야 하는 화면이라
+               아래 빈 상태 분기보다 위에 있습니다 — 장비를 보러 온 사람에게
                '업무를 만들어 보세요'를 보여 줄 이유가 없습니다. */
-            <GearView />
+            <ResourceView />
           ) : screen === 'calendar' ? (
             /* 범위 없는 캘린더. 뷰 탭의 캘린더와 같은 화면을 그리지만,
                걸린 필터가 없어서 보이는 것이 곧 내 앞의 전부입니다. */

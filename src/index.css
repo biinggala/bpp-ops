@@ -448,16 +448,10 @@ input, select, textarea, button {
 
 /* 손가락에는 hover가 없습니다 — 거기서는 늘 보여야 누를 수 있습니다.
 
-   전에는 `@media (hover: hover)` 안에 숨기는 규칙을 통째로 넣어 두었습니다.
-   그 한 물음에 아니라고 답하는 환경이 있었고(웹뷰), 그러면 숨기는 규칙 자체가
-   없는 것이 되어 ×가 **늘** 서 있었습니다 — 마우스는 멀쩡히 움직이는데요.
-
-   그래서 뒤집고, 둘을 함께 묻습니다. 진짜 손가락은 둘 다 맞고(hover 없음 ·
-   굵은 포인터), 마우스는 둘 다 틀립니다. 하나를 잘못 답해도 기본값인
-   '숨김'이 남습니다 — 틀렸을 때 규칙을 지키는 쪽으로 틀립니다. */
-@media (hover: none) and (pointer: coarse) {
-  .bpp-rowx { opacity: 1; }
-}
+   미디어 쿼리로 두 번 물었고 두 번 다 틀렸습니다(`hover: hover`,
+   그다음 `(hover: none) and (pointer: coarse)`). 이제 묻지 않고 봅니다 —
+   진짜 손가락이 닿으면 lib/pointerKind.ts가 이 표를 답니다. */
+:root[data-touch] .bpp-rowx { opacity: 1; }
 
 /* Placeholder */
 .ProseMirror p.is-editor-empty:first-child::before {
