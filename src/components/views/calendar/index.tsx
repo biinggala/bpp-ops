@@ -1917,19 +1917,28 @@ const MonthCell = React.memo(function MonthCell({
             </div>
           )
         })}
-        {/* '더 보기'는 만드는 것이 아니라 보는 것입니다 — 칸을 누른 것으로
-            치면 무엇을 만들지 묻는 메뉴가 뜹니다. 그 날로 보냅니다. */}
+        {/*
+          ── 못 보여준 것이 몇 개인지 ──────────────────────────────────────────
+          칸에는 다섯 줄까지만 들어갑니다. 나머지가 있다는 것을 10px 회색
+          글자로만 말하고 있었더니, 줄들 사이에 섞여서 '아래에 더 있다'가
+          아니라 '흐린 일정 하나'로 읽혔습니다.
+
+          위의 줄들과 다른 것이니 다르게 생겨야 합니다 — 옅은 판을 깔아
+          누르는 것으로 보이게 합니다. 누르면 그 날로 갑니다: 더 보는 일이지
+          만드는 일이 아니라서, 칸을 누른 것으로 치면 안 됩니다.
+        */}
         {overflow > 0 && (
           <button
             onClick={e => { e.stopPropagation(); onOpenDay(day) }}
             style={{
-              border: 'none', background: 'transparent', textAlign: 'left',
-              fontSize: 10, color: 'var(--t3)', padding: '0 6px',
-              cursor: 'pointer', fontFamily: 'var(--font)',
+              border: 'none', background: 'var(--bg3)', textAlign: 'left',
+              fontSize: 10.5, color: 'var(--t2)', padding: '2px 6px',
+              borderRadius: 3, cursor: 'pointer', fontFamily: 'var(--font)',
+              margin: '1px 0 0',
             }}
-            onMouseEnter={e => { e.currentTarget.style.color = 'var(--t1)' }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'var(--t3)' }}
-          >+{overflow}개 더</button>
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg4)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg3)' }}
+          >{overflow}개 더보기</button>
         )}
       </div>
 
