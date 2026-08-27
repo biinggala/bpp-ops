@@ -1015,3 +1015,31 @@ test('멤버는 장비 예약을 질의로 읽는다', async () => {
   // 게스트는 못 읽습니다.
   await assertFails(get(query(ref(authed(MALLORY), `orgs/${oid}/gearBookings`), orderByChild('to'), startAt('2026-01-01'))))
 })
+
+/**
+ * 회의실 예약도 관리자가 풀 수 있어야 합니다.
+ *
+ * 장비는 이미 그랬는데 회의실만 아니었습니다 — 그런데 현황판은 관리자에게
+ * '예약 풀기'를 보여 줍니다. **눌러도 안 되는 것을 눌리게 두면 그건 고장으로
+ * 보입니다.** 이유도 장비와 같습니다: 잡아 둔 사람이 휴가인데 그 방이 하루
+ * 종일 막혀 있으면, 아무도 못 푸는 자리가 남습니다.
+ */
+test('회의실 예약 — 남의 것은 못 풀고, 관리자는 푼다', async () => {
+  const oid = 'rb1'
+  await org(oid, { name: 'W', domain: 'bpp.co.kr' }, {
+    [ALICE.email]: { role: 'member', at: 1 },
+    [BOB.email]: { role: 'member', at: 1 },
+  })
+  await asAdmin(oid, ALICE)
+  const row = { roomId: 'r1', from: 600, to: 660, by: BOB.email, at: 1 }
+  await assertSucceeds(set(ref(authed(BOB), `orgs/${oid}/bookings/2026-08-27/b1`), row))
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), `orgs/${oid}/bookings/2026-08-27/b2`), { ...row, by: 'carol@bpp.co.kr' })
+  })
+  // 밥은 남의 것을 못 건드립니다.
+  await assertFails(remove(ref(authed(BOB), `orgs/${oid}/bookings/2026-08-27/b2`)))
+  // 자기 것은 풉니다.
+  await assertSucceeds(remove(ref(authed(BOB), `orgs/${oid}/bookings/2026-08-27/b1`)))
+  // 관리자는 막힌 방을 풀어 줄 수 있습니다.
+  await assertSucceeds(remove(ref(authed(ALICE), `orgs/${oid}/bookings/2026-08-27/b2`)))
+})
