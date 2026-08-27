@@ -1535,7 +1535,9 @@ function QuickEvent({ x, y, day, onClose }: {
    * 카드가 제 안에서 스크롤할 뿐 자리는 안 움직입니다. 타임라인 카드가
    * 같은 방식입니다.
    */
-  const W = allDay ? 268 : 306
+  // 폭은 하나입니다. 시간/종일을 오갈 때마다 카드가 넓어졌다 좁아졌다 하면,
+  // 바꾼 것은 한 칸인데 화면 전체가 움직인 것처럼 보입니다.
+  const W = 306
   const M = 8
   const MIN_H = 220
   const place = (() => {
@@ -1734,6 +1736,8 @@ const MonthCell = React.memo(function MonthCell({
 }) {
   const all = chips ?? []
   const hasMilestone = !!milestones?.length
+  /** 몰린 마일스톤을 펼쳐 보는 자리. 누른 지점에 섭니다. */
+  const [showAll, setShowAll] = useState<{ x: number; y: number } | null>(null)
   const isWeekend = column === 0 || column === 6
 
   const LIMIT = 5
@@ -1761,37 +1765,57 @@ const MonthCell = React.memo(function MonthCell({
     >
       {/* Date number + milestone diamonds */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 8px 3px', gap: 4 }}>
+        {/*
+          ── 마일스톤이 몰린 날 ──────────────────────────────────────────────
+          한 줄에 나란히 세워 두었습니다. 하나일 때는 이름이 다 보이는데,
+          넷이 겹치는 날에는 서로를 눌러서 **다이아몬드만 넷** 남았습니다 —
+          무엇이 있는지 알 방법이 화면에 없었습니다. 마감이 몰린 날이 정작
+          제일 알고 싶은 날인데요.
+
+          둘 이상이면 개수 하나로 접고, 누르면 이름을 펼칩니다. 이름이 다
+          보이는 하나짜리는 그대로 둡니다 — 대부분이 그쪽이고, 접으면 한 번
+          더 눌러야 알게 됩니다.
+        */}
         {hasMilestone && (
           <div style={{ display: 'flex', gap: 3, alignItems: 'center', flex: 1, minWidth: 0, overflow: 'hidden' }}>
-            {/* Draggable, like the tasks below: a milestone's date is the one
-                thing about it this view shows, so this is where it should be
-                possible to change it. */}
-            {milestones!.map(ms => (
-              <span
-                key={ms.id}
-                draggable
-                title={`${ms.name} — 끌어서 날짜 변경`}
-                onDragStart={e => {
-                  e.stopPropagation()
-                  e.dataTransfer.setData('milestoneId', ms.id)
-                  e.dataTransfer.effectAllowed = 'move'
-                  onTaskDragStart(ms.id)
-                }}
-                onDragEnd={onTaskDragEnd}
-                onClick={e => e.stopPropagation()}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600,
-                  color: NOTION.purple.text, background: NOTION.purple.bg, borderRadius: 4, padding: '1px 5px',
-                  minWidth: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  cursor: 'grab', userSelect: 'none',
-                  opacity: draggingId === ms.id ? .35 : 1, transition: 'opacity .1s',
-                }}
+            {milestones!.length > 1 ? (
+              <button
+                onClick={e => { e.stopPropagation(); setShowAll({ x: e.clientX, y: e.clientY }) }}
+                title={milestones!.map(m => m.name).join(', ')}
+                style={{ ...MS_CHIP, border: 'none', cursor: 'pointer', fontFamily: 'var(--font)' }}
               >
-                ◆ {ms.name}
-              </span>
-            ))}
+                ◆ 마일스톤 {milestones!.length}
+              </button>
+            ) : (
+              /* Draggable, like the tasks below: a milestone's date is the one
+                 thing about it this view shows, so this is where it should be
+                 possible to change it. */
+              milestones!.map(ms => (
+                <span
+                  key={ms.id}
+                  draggable
+                  title={`${ms.name} — 끌어서 날짜 변경`}
+                  onDragStart={e => {
+                    e.stopPropagation()
+                    e.dataTransfer.setData('milestoneId', ms.id)
+                    e.dataTransfer.effectAllowed = 'move'
+                    onTaskDragStart(ms.id)
+                  }}
+                  onDragEnd={onTaskDragEnd}
+                  onClick={e => e.stopPropagation()}
+                  style={{
+                    ...MS_CHIP,
+                    cursor: 'grab', userSelect: 'none',
+                    opacity: draggingId === ms.id ? .35 : 1, transition: 'opacity .1s',
+                  }}
+                >
+                  ◆ {ms.name}
+                </span>
+              ))
+            )}
           </div>
         )}
+
         {/* 숫자는 '이 날을 열기'입니다. 칸의 나머지는 '여기에 만들기'고요 —
             같은 칸에 두 가지 뜻이 있으니 숫자 쪽이 눌리는 것처럼 보여야
             합니다(손이 오면 동그라미가 뜹니다). */}
@@ -1906,9 +1930,65 @@ const MonthCell = React.memo(function MonthCell({
           >+{overflow}개 더</button>
         )}
       </div>
+
+      {showAll && (
+        <>
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 8900 }}
+            onClick={e => { e.stopPropagation(); setShowAll(null) }}
+          />
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: 'fixed', zIndex: 8901,
+              left: Math.max(8, Math.min(showAll.x, window.innerWidth - 248)),
+              top: Math.max(8, Math.min(showAll.y, window.innerHeight - 40 - milestones!.length * 26)),
+              width: 240, padding: 6, background: 'var(--bg)',
+              border: '1px solid var(--bd)', borderRadius: 'var(--r2)', boxShadow: 'var(--sh-md)',
+            }}
+          >
+            {/* 여기서도 끌어서 날짜를 옮깁니다. 접었다고 할 수 있던 일이
+                없어지면, 마감이 몰린 날에서만 못 옮기게 됩니다 — 정작 제일
+                옮기고 싶은 날에서요. */}
+            {milestones!.map(ms => (
+              <div
+                key={ms.id}
+                draggable
+                title={`${ms.name} — 끌어서 날짜 변경`}
+                onDragStart={e => {
+                  e.stopPropagation()
+                  e.dataTransfer.setData('milestoneId', ms.id)
+                  e.dataTransfer.effectAllowed = 'move'
+                  onTaskDragStart(ms.id)
+                  setShowAll(null)
+                }}
+                onDragEnd={onTaskDragEnd}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '5px 7px', borderRadius: 'var(--r1)',
+                  fontSize: 12.5, color: 'var(--t1)', cursor: 'grab', userSelect: 'none',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span style={{ color: NOTION.purple.text, flexShrink: 0 }}>◆</span>
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{ms.name}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 })
+
+/** 마일스톤 알약. 접힌 것과 펼친 것이 같은 모양이어야 같은 것으로 읽힙니다. */
+const MS_CHIP: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600,
+  color: NOTION.purple.text, background: NOTION.purple.bg, borderRadius: 4, padding: '1px 5px',
+  minWidth: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+}
 
 function NavBtn({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
   return (
