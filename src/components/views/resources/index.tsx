@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useAuthStore } from '../../../store/authStore'
-import { useOrgStore } from '../../../store/orgStore'
+import { NO_BOOKINGS, useOrgStore, type Booking } from '../../../store/orgStore'
 import { useGearStore, teamOfEmail } from '../../../store/gearStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
 import { addDays, fmtYMD, isComposing } from '../../../lib/utils'
@@ -11,7 +11,9 @@ import {
 } from '../../../lib/gear'
 import { TimeMenu } from '../../shared/TimePick'
 import { DateField } from '../../shared/DatePicker'
+import { Icon, type IconName } from '../../shared/Icon'
 import { askConfirm } from '../../shared/Confirm'
+import { assignLanes } from '../../../lib/lanes'
 import { useMobile } from '../../../hooks/useMobile'
 
 /**
@@ -48,7 +50,266 @@ function teamHue(id: string | undefined): number {
   return TEAM_HUES[n % TEAM_HUES.length]
 }
 
-export function GearView() {
+/**
+ * ── 무엇이 지금 나가 있나 ────────────────────────────────────────────────────
+ *
+ * 회의실과 장비는 같은 질문에 답합니다 — '이거 지금 비었나'. 그래서 한 화면에
+ * 두 탭으로 둡니다. 줄을 둘로 나누면 같은 질문을 두 군데서 물어야 합니다.
+ *
+ * 두 판은 **같은 격자**입니다. 세로가 자원, 가로가 시간, 막대 하나가 예약
+ * 하나. 다른 것은 눈금의 단위뿐입니다 —
+ *
+ *   회의실   하루를 시각으로 나눕니다. 방은 하루에 대여섯 번 손이 바뀝니다.
+ *   장비     2주를 날짜로 나눕니다. 카메라는 며칠씩 나갔다 옵니다.
+ *
+ * 단위를 맞추려다 둘 중 하나를 못 쓰게 만들지 않습니다. 회의실을 날짜 칸으로
+ * 그리면 하루에 다섯 건이 한 칸에 겹치고, 장비를 시각으로 그리면 2주가
+ * 화면에 안 들어옵니다.
+ */
+export function ResourceView() {
+  const [tab, setTab] = useState<ResTab>(() => readTab())
+  const pick = (next: ResTab) => {
+    setTab(next)
+    try { localStorage.setItem(TAB_KEY, next) } catch { /* 사파리 프라이빗 */ }
+  }
+  const tabs = <ResTabs tab={tab} onPick={pick} />
+  return tab === 'room' ? <RoomBoard tabs={tabs} /> : <GearBoard tabs={tabs} />
+}
+
+type ResTab = 'room' | 'gear'
+const TAB_KEY = 'bpp_res_tab'
+
+/** 마지막으로 본 탭. **내 것입니다** — 남의 화면은 안 바뀝니다. */
+function readTab(): ResTab {
+  try { return localStorage.getItem(TAB_KEY) === 'gear' ? 'gear' : 'room' } catch { return 'room' }
+}
+
+function ResTabs({ tab, onPick }: { tab: ResTab; onPick: (t: ResTab) => void }) {
+  return (
+    <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+      <ResTab on={tab === 'room'} onClick={() => onPick('room')} icon="users">회의실</ResTab>
+      <ResTab on={tab === 'gear'} onClick={() => onPick('gear')} icon="camera">장비</ResTab>
+    </div>
+  )
+}
+
+/** 뷰 탭 한 장. 업무 화면의 탭과 같은 모양입니다(layout/ViewBar의 ViewTab). */
+function ResTab({ on, onClick, icon, children }: {
+  on: boolean
+  onClick: () => void
+  icon: IconName
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-current={on ? 'page' : undefined}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6, padding: '5px 11px',
+        borderRadius: 'var(--r2)', fontSize: 13.5, fontWeight: on ? 500 : 400,
+        cursor: 'pointer', border: 'none', whiteSpace: 'nowrap',
+        background: on ? 'var(--bg3)' : 'transparent',
+        fontFamily: 'var(--font)',
+        color: on ? 'var(--t1)' : 'var(--t2)',
+        transition: 'background .1s, color .1s',
+      }}
+      onMouseEnter={e => { if (!on) { e.currentTarget.style.color = 'var(--t1)'; e.currentTarget.style.background = 'var(--bg3)' } }}
+      onMouseLeave={e => { if (!on) { e.currentTarget.style.color = 'var(--t2)'; e.currentTarget.style.background = 'transparent' } }}
+    >
+      <span style={{ display: 'flex', opacity: on ? 1 : .75 }}><Icon name={icon} size={14} /></span>
+      {children}
+    </button>
+  )
+}
+
+/** 하루의 시작·끝. 잡힌 예약이 이 밖으로 나가면 그만큼 넓힙니다 — 새벽 회의도
+ *  화면 밖에 두지 않습니다. */
+const ROOM_OPEN = 8 * 60
+const ROOM_CLOSE = 20 * 60
+/** 예약 막대 한 층의 높이. 층은 겹칠 때만 늘어납니다(lib/lanes). */
+const LANE_H = 22
+
+function RoomBoard({ tabs }: { tabs: React.ReactNode }) {
+  const isMobile = useMobile()
+  const email = useAuthStore(s => s.email)
+  const { orgId, rooms, admins, watchDates, release, error } = useOrgStore(useShallow(s => ({
+    orgId: s.orgId, rooms: s.rooms, admins: s.admins,
+    watchDates: s.watchDates, release: s.release, error: s.error,
+  })))
+  const [date, setDate] = useState(() => fmtYMD(new Date()))
+  const [picked, setPicked] = useState<Booking | null>(null)
+  // 없는 날짜에 매번 새 빈 배열을 돌려주면 무한 렌더입니다 — NO_BOOKINGS 참고.
+  const bookings = useOrgStore(s => s.bookings[date] ?? NO_BOOKINGS)
+
+  // 보고 있는 하루만 듣습니다. 이 화면을 떠나면 놓습니다.
+  useEffect(() => {
+    if (!orgId) return
+    watchDates('resboard', [date])
+    return () => watchDates('resboard', [])
+  }, [orgId, date, watchDates])
+
+  const today = fmtYMD(new Date())
+  const win = useMemo(() => {
+    let from = ROOM_OPEN, to = ROOM_CLOSE
+    for (const b of bookings) { from = Math.min(from, b.from); to = Math.max(to, b.to) }
+    return { from: Math.floor(from / 60) * 60, to: Math.ceil(to / 60) * 60 }
+  }, [bookings])
+  const hours = useMemo(
+    () => Array.from({ length: (win.to - win.from) / 60 + 1 }, (_, i) => win.from + i * 60),
+    [win],
+  )
+  const at = (m: number) => ((m - win.from) / (win.to - win.from)) * 100
+
+  const step = (n: number) => setDate(fmtYMD(addDays(new Date(date.replace(/-/g, '/')), n)))
+
+  if (!orgId) return <BlankPage tabs={tabs}>워크스페이스에 들어가면 회의실을 함께 씁니다. 설정 → 개요에서 만들 수 있습니다.</BlankPage>
+
+  const isAdmin = !!email && admins.includes(email.toLowerCase())
+  const wd = new Date(date.replace(/-/g, '/')).getDay()
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+        padding: isMobile ? '8px 12px' : '10px 18px', borderBottom: '1px solid var(--bd)', flexShrink: 0,
+      }}>
+        {tabs}
+        <div style={{ width: 1, height: 16, background: 'var(--bd)', margin: '0 2px' }} />
+        <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          <Step label="어제" onClick={() => step(-1)}>‹</Step>
+          <button onClick={() => setDate(today)} style={{ ...BTN, padding: '3px 10px' }}>오늘</button>
+          <Step label="내일" onClick={() => step(1)}>›</Step>
+        </div>
+        <div style={{
+          fontSize: 13, fontWeight: 500,
+          color: date === today ? 'var(--ac)' : wd === 0 ? 'var(--danger)' : 'var(--t1)',
+        }}>
+          {Number(date.slice(5, 7))}월 {Number(date.slice(8))}일 ({WEEK[wd]})
+        </div>
+
+        <div style={{ flex: 1 }} />
+        {/* 여기서는 못 잡습니다. 예약은 일정에 붙어 있어서(eventId), 일정
+            없이 잡으면 아무도 치울 수 없는 예약이 남습니다. 그래서 어디서
+            잡는지 적어 둡니다 — 못 하는 것을 말없이 안 되게 두지 않습니다. */}
+        <div style={{ fontSize: 11, color: 'var(--t3)' }}>예약은 캘린더에서 일정을 만들 때 함께 잡습니다.</div>
+      </div>
+
+      {error && <div style={{ padding: '7px 18px', fontSize: 12, color: 'var(--danger)', flexShrink: 0 }}>{error}</div>}
+
+      {rooms.length === 0 ? (
+        <Blank>
+          아직 등록된 회의실이 없습니다.
+          {isAdmin ? ' 설정 → 회의실에서 더할 수 있습니다.' : ' 관리자가 목록을 만들면 여기 섭니다.'}
+        </Blank>
+      ) : (
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        {/* 시각 눈금. 굴려도 붙어 있어야 어느 칸인지 압니다. */}
+        <div style={{
+          display: 'flex', position: 'sticky', top: 0, zIndex: 2,
+          background: 'var(--bg)', borderBottom: '1px solid var(--bd)',
+        }}>
+          <div style={{ width: NAME_W, flexShrink: 0 }} />
+          <div style={{ flex: 1, position: 'relative', height: 22 }}>
+            {hours.map(h => (
+              <div key={h} style={{
+                position: 'absolute', left: `${at(h)}%`, top: 4,
+                fontSize: 10.5, color: 'var(--t3)', transform: 'translateX(-50%)',
+                fontVariantNumeric: 'tabular-nums',
+              }}>{h / 60}</div>
+            ))}
+          </div>
+          <div style={{ width: 10, flexShrink: 0 }} />
+        </div>
+
+        {rooms.map(room => {
+          const mine = bookings.filter(b => b.roomId === room.id)
+          const placed = assignLanes(mine)
+          const lanes = placed[0]?.lanes ?? 1
+          const h = Math.max(34, lanes * LANE_H + 10)
+          return (
+            <div key={room.id} style={{
+              display: 'flex', borderBottom: '1px solid var(--bd2)',
+              opacity: room.active === false ? .45 : 1,
+            }}>
+              <div style={{
+                width: NAME_W, flexShrink: 0, padding: '0 10px', height: h,
+                display: 'flex', flexDirection: 'column', justifyContent: 'center',
+                borderRight: '1px solid var(--bd)',
+              }}>
+                <div style={{ fontSize: 12, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {room.name}
+                </div>
+                {room.note && (
+                  <div style={{ fontSize: 10, color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {room.note}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ flex: 1, position: 'relative', height: h, minWidth: 0 }}>
+                {hours.map(h2 => (
+                  <div key={h2} style={{
+                    position: 'absolute', left: `${at(h2)}%`, top: 0, bottom: 0,
+                    width: 1, background: 'var(--bd2)',
+                  }} />
+                ))}
+                {placed.map(({ item: b, lane }) => (
+                  <button
+                    key={b.id}
+                    onClick={() => setPicked(b)}
+                    title={`${hhmm(b.from)}–${hhmm(b.to)} · ${b.title || '(제목 없음)'} · ${b.byName || b.by}`}
+                    style={{
+                      position: 'absolute',
+                      left: `${at(b.from)}%`, width: `calc(${at(b.to) - at(b.from)}% - 2px)`,
+                      top: 5 + lane * LANE_H, height: LANE_H - 3,
+                      borderRadius: 'var(--r1)', border: '1px solid hsl(212 60% 62%)',
+                      background: 'hsl(212 72% 93%)', color: 'hsl(212 60% 26%)',
+                      fontSize: 10.5, fontFamily: 'var(--font)', cursor: 'pointer',
+                      padding: '0 5px', textAlign: 'left', overflow: 'hidden',
+                      whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {hhmm(b.from)} {b.title || (b.byName || b.by.split('@')[0])}
+                  </button>
+                ))}
+              </div>
+              <div style={{ width: 10, flexShrink: 0 }} />
+            </div>
+          )
+        })}
+      </div>
+      )}
+
+      {picked && (
+        <Sheet onClose={() => setPicked(null)} title={picked.roomName || rooms.find(r => r.id === picked.roomId)?.name || '회의실'}>
+          <Field label="언제">{Number(date.slice(5, 7))}월 {Number(date.slice(8))}일 {hhmm(picked.from)}–{hhmm(picked.to)}</Field>
+          <Field label="무슨 회의">{picked.title || '제목이 없습니다'}</Field>
+          <Field label="잡은 사람">{picked.byName || picked.by}</Field>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 14 }}>
+            {(!!email && (picked.by === email.toLowerCase() || isAdmin)) && (
+              <button
+                onClick={async () => {
+                  const ok = await askConfirm({
+                    message: '이 회의실 예약을 풉니다',
+                    detail: `${hhmm(picked.from)}–${hhmm(picked.to)} · ${picked.title || '제목 없음'}. 일정 자체는 그대로 남습니다.`,
+                    confirmLabel: '풀기',
+                  })
+                  if (!ok) return
+                  await release(date, picked.id)
+                  setPicked(null)
+                }}
+                style={{ ...BTN, color: 'var(--danger)' }}
+              >예약 풀기</button>
+            )}
+            <button onClick={() => setPicked(null)} style={BTN}>닫기</button>
+          </div>
+        </Sheet>
+      )}
+    </div>
+  )
+}
+
+function GearBoard({ tabs }: { tabs: React.ReactNode }) {
   const isMobile = useMobile()
   const email = useAuthStore(s => s.email)
   const orgId = useOrgStore(s => s.orgId)
@@ -77,16 +338,16 @@ export function GearView() {
   const rows = useMemo(() => groupGear(gear), [gear])
 
   if (!orgId) {
-    return <Blank>워크스페이스에 들어가면 장비를 함께 씁니다. 설정 → 개요에서 만들 수 있습니다.</Blank>
+    return <BlankPage tabs={tabs}>워크스페이스에 들어가면 장비를 함께 씁니다. 설정 → 개요에서 만들 수 있습니다.</BlankPage>
   }
-  if (!ready) return <Blank>불러오는 중…</Blank>
+  if (!ready) return <BlankPage tabs={tabs}>불러오는 중…</BlankPage>
   const isAdmin = !!email && admins.includes(email.toLowerCase())
   if (gear.length === 0) {
     return (
-      <Blank>
+      <BlankPage tabs={tabs}>
         아직 등록된 장비가 없습니다.
         {isAdmin ? ' 설정 → 장비에서 더할 수 있습니다.' : ' 관리자가 목록을 만들면 여기 섭니다.'}
-      </Blank>
+      </BlankPage>
     )
   }
 
@@ -99,6 +360,8 @@ export function GearView() {
       }}>
         {/* 제목은 위 툴바가 답니다 — 캘린더 화면과 같습니다. 한 화면에 같은
             이름이 두 번 서면 둘 중 하나는 소음입니다. */}
+        {tabs}
+        <div style={{ width: 1, height: 16, background: 'var(--bd)', margin: '0 2px' }} />
         <div style={{ display: 'flex', gap: 2 }}>
           <Step label="이전 주" onClick={() => setAnchor(fmtYMD(addDays(new Date(anchor.replace(/-/g, '/')), -7)))}>‹</Step>
           <button
@@ -314,6 +577,26 @@ function Blank({ children }: { children: React.ReactNode }) {
       flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: 40, fontSize: 12.5, color: 'var(--t3)', textAlign: 'center', lineHeight: 1.7,
     }}>{children}</div>
+  )
+}
+
+/**
+ * 아무것도 없는 화면에도 탭은 섭니다.
+ *
+ * 회의실이 아직 없다고 장비 탭까지 사라지면, 둘 중 하나가 비어 있는 동안
+ * 다른 하나로 갈 길이 없습니다 — 처음 켠 워크스페이스가 정확히 그 상태입니다.
+ */
+function BlankPage({ tabs, children }: { tabs: React.ReactNode; children: React.ReactNode }) {
+  const isMobile = useMobile()
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: isMobile ? '8px 12px' : '10px 18px',
+        borderBottom: '1px solid var(--bd)', flexShrink: 0,
+      }}>{tabs}</div>
+      <Blank>{children}</Blank>
+    </div>
   )
 }
 

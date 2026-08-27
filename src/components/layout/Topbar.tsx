@@ -27,8 +27,8 @@ export function Topbar() {
     ? '오늘'
     : screen === 'calendar'
     ? '캘린더'
-    : screen === 'gear'
-    ? '장비'
+    : screen === 'res'
+    ? '회의실 · 장비 현황'
     : (activeProject?.name ?? (personalOnly ? '개인' : myTasksOnly ? '내 할 일' : '전체 업무'))
 
   return (

@@ -59,8 +59,8 @@ interface UiState {
    * 낄 자리가 아닙니다. 오늘은 프로젝트에 속하지도, 남과 공유되지도 않습니다.
    * 그래서 한 층 위에 둡니다.
    */
-  screen: 'today' | 'work' | 'calendar' | 'gear'
-  setScreen: (s: 'today' | 'work' | 'calendar' | 'gear') => void
+  screen: 'today' | 'work' | 'calendar' | 'res'
+  setScreen: (s: 'today' | 'work' | 'calendar' | 'res') => void
   /**
    * 캘린더를 '뷰'가 아니라 '가는 곳'으로 여는 문.
    *
