@@ -137,6 +137,9 @@ export function AppPage() {
   const orgId = useOrgStore(s => s.orgId)
   const orgDomain = useOrgStore(s => s.domain)
   const orgReady = useOrgStore(s => s.ready)
+  // 게스트로 서 있는 곳에는 안 쓰고 안 읽습니다 — 규칙이 다 막고, 막힌 것을
+  // 계속 두드리면 화면에 붉은 오류만 쌓입니다.
+  const isGuest = useOrgStore(s => s.isGuest)
   // 주소를 정렬해 한 줄로 만듭니다. 목록 자체를 의존성에 넣으면 내용이 같아도
   // 참조가 바뀔 때마다 다시 돌아서, 쓸 것이 없는데도 매번 읽으러 갑니다.
   const peerKey = useMemo(() => {
@@ -161,12 +164,12 @@ export function AppPage() {
   */
   const subscribeGear = useGearStore(s => s.subscribe)
   useEffect(() => {
-    if (!orgId || !ready) return
+    if (!orgId || !ready || isGuest) return
     return subscribeGear(orgId)
-  }, [orgId, ready, subscribeGear])
+  }, [orgId, ready, isGuest, subscribeGear])
 
   useEffect(() => {
-    if (!uid || !email || !orgId || !ready) return
+    if (!uid || !email || !orgId || !ready || isGuest) return
     void syncRoster({
       orgId,
       domain: orgDomain,
@@ -174,7 +177,7 @@ export function AppPage() {
       email,
       peers: peerKey ? peerKey.split(' ') : [],
     })
-  }, [uid, email, orgId, orgDomain, ready, peerKey])
+  }, [uid, email, orgId, orgDomain, ready, isGuest, peerKey])
 
   /**
    * ── 프로젝트에 소속 도장 ───────────────────────────────────────────────────
@@ -189,13 +192,13 @@ export function AppPage() {
     [projects],
   )
   useEffect(() => {
-    if (!orgId || !ready || !unstamped) return
+    if (!orgId || !ready || isGuest || !unstamped) return
     void stampProjects({
       orgId,
       domain: orgDomain,
       projects: projects.map(p => ({ id: p.id, orgId: p.orgId, creatorEmail: p.creatorEmail })),
     })
-  }, [orgId, orgDomain, ready, unstamped])
+  }, [orgId, orgDomain, ready, isGuest, unstamped])
 
   /**
    * ── 목록에 아직 없는 프로젝트를 올립니다 ──────────────────────────────────
@@ -242,7 +245,7 @@ export function AppPage() {
   )
   const unlistedKey = unlisted.join(' ')
   useEffect(() => {
-    if (!orgId || !ready || !unlistedKey) return
+    if (!orgId || !ready || isGuest || !unlistedKey) return
     const byId = new Map(projects.map(p => [p.id, p]))
     for (const id of unlistedKey.split(' ')) {
       const p = byId.get(id)
@@ -250,7 +253,7 @@ export function AppPage() {
     }
     // projects는 매 렌더 새 배열입니다 — 위 목록(unlistedKey)이 곧 그 요약입니다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, ready, unlistedKey, listProject])
+  }, [orgId, ready, isGuest, unlistedKey, listProject])
 
   /**
    * ── 남의 회사에서는 게스트 자리에 스스로 앉습니다 ─────────────────────────

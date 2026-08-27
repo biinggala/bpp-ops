@@ -142,7 +142,16 @@ interface OrgState {
    * 하거나, 외주로 두 곳에 들어가 있거나. 게스트로만 들어가 있는 곳은
    * 여기 안 들어옵니다: 골라 봐야 회의실도 공개 목록도 못 읽습니다.
    */
-  myOrgs: { id: string; name: string }[]
+  /**
+   * 내가 갈 수 있는 워크스페이스들.
+   *
+   * `guest`가 참이면 **이름만 아는 곳**입니다. 초대받은 프로젝트를 보러
+   * 거기 설 수는 있지만, 회의실·장비·명단·공개 목록은 안 열립니다 —
+   * 규칙이 `meta/name` 하나만 게스트에게 엽니다.
+   */
+  myOrgs: { id: string; name: string; guest?: boolean }[]
+  /** 지금 서 있는 곳에서 나는 게스트인가. */
+  isGuest: boolean
   /** 조직을 찾는 첫 조회가 끝났는가. 그 전에는 '없다'고 말하지 않습니다. */
   ready: boolean
   error: string | null
@@ -338,6 +347,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
   teardown: false,
   rooms: [],
   myOrgs: [],
+  isGuest: false,
   admins: [],
   orgProjects: [],
   roomRule: DEFAULT_ROOM_RULE,
@@ -457,14 +467,54 @@ export const useOrgStore = create<OrgState>((set, get) => ({
            * 없는 것과 지워진 것은 다릅니다.
            */
           if (role === 'removed') continue
+          /**
+           * **게스트도 목록에 섭니다 — 이름만 아는 자리로.**
+           *
+           * 전에는 걸러 냈습니다. 붙어 봐야 회의실도 공개 목록도 못 읽어서
+           * 화면이 붉은 오류로 채워졌으니까요. 그런데 그 결과, 초대받은
+           * 사람의 화면에는 **자기가 어디에 초대됐는지가 아무 데도 없었습니다** —
+           * 프로젝트 하나가 출처 없이 떠 있었습니다.
+           *
+           * 오류가 나던 이유는 게스트를 세운 것이 아니라 **멤버와 똑같이
+           * 세운 것**이었습니다. 이제 게스트라고 표를 달고, 붙을 때 그 표를
+           * 보고 안 읽을 것은 아예 안 묻습니다(attach 참고).
+           */
+          const guest = role === 'guest'
           // 도메인으로 찾은 곳은 명단에 아직 없어도 내 곳입니다 — 규칙도
           // 도메인을 예비 근거로 인정합니다. 첫 로그인이 그 자리입니다.
-          if (role !== 'member' && oid !== fromDomain) continue
+          if (role !== 'member' && !guest && oid !== fromDomain) continue
           const nameSnap = await fbGet(ref(db, `${P.orgMeta(oid)}/name`))
-          out.push({ id: oid, name: (nameSnap.val() as string | null) || '이름 없는 워크스페이스' })
+          out.push({
+            id: oid,
+            name: (nameSnap.val() as string | null) || '이름 없는 워크스페이스',
+            ...(guest ? { guest: true } : {}),
+          })
         } catch { /* 못 읽으면 내 자리가 아닙니다 */ }
       }
       return out
+    }
+
+    /**
+     * ── 게스트로 붙기 ─────────────────────────────────────────────────────────
+     *
+     * 이름 하나만 듣습니다. 나머지는 **묻지도 않습니다** — 물어 봐야 규칙이
+     * 거절하고, 거절은 화면에 붉은 오류로 남습니다. 자기가 할 수 없는 일에
+     * 대한 오류 메시지는 대체로 소음입니다.
+     *
+     * 값들은 빈 채로 둡니다. 화면 쪽은 `isGuest`를 보고 그 칸들을 아예
+     * 안 그립니다 — 빈 목록을 '회의실이 없는 회사'로 읽으면 안 되니까요.
+     */
+    const attachGuest = (orgId: string) => {
+      const nameRef = ref(db, `${P.orgMeta(orgId)}/name`)
+      const nameHandler = onValue(nameRef, s => {
+        set({ name: (s.val() as string | null) ?? '' })
+      }, () => set({ name: '' }))
+      inner = [() => off(nameRef, 'value', nameHandler)]
+      set({
+        orgId, isGuest: true, ready: true, error: null,
+        domain: '', founder: '', rooms: [], admins: [], orgProjects: [],
+        joinRequests: [], roomRule: DEFAULT_ROOM_RULE,
+      })
     }
 
     const attach = (orgId: string) => {
@@ -543,7 +593,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
         () => off(projectsRef, 'value', projectsHandler),
         () => off(joinRef, 'value', joinHandler),
       ]
-      set({ orgId, ready: true, error: null })
+      set({ orgId, isGuest: false, ready: true, error: null })
     }
 
     const apply = () => {
@@ -586,11 +636,13 @@ export const useOrgStore = create<OrgState>((set, get) => ({
         current = next
         dropInner()
         if (next) {
-          attach(next)
+          // 게스트로 서는 곳은 이름만 듣습니다 — attachGuest의 그 사연.
+          if (get().myOrgs.find(o => o.id === next)?.guest) attachGuest(next)
+          else attach(next)
         } else {
           // 오류도 같이 지웁니다. 붙어 있지도 않은 곳의 권한 오류가 화면에
           // 남아 있으면, 읽을 수 없는 것이 무엇인지 아무 말도 안 해 줍니다.
-          set({ orgId: null, name: '', domain: '', founder: '', rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {}, error: null })
+          set({ orgId: null, isGuest: false, name: '', domain: '', founder: '', rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {}, error: null })
         }
       }
       settle()
@@ -659,7 +711,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       for (const fn of Object.values(dateWatchers)) fn()
       for (const key of Object.keys(dateWatchers)) delete dateWatchers[key]
       for (const key of Object.keys(wanted)) delete wanted[key]
-      set({ orgId: null, name: '', domain: '', founder: '', myOrgs: [], rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {}, ready: false })
+      set({ orgId: null, isGuest: false, name: '', domain: '', founder: '', myOrgs: [], rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {}, ready: false })
     }
   },
 
