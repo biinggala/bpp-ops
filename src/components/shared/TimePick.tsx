@@ -41,11 +41,114 @@ export function minutesOfIso(iso: string): number {
   return d.getHours() * 60 + d.getMinutes()
 }
 
-const FIELD: React.CSSProperties = {
-  padding: '4px 6px', borderRadius: 'var(--r1)', border: '1px solid var(--bd)',
-  background: 'var(--bg2)', color: 'var(--t1)', fontSize: 12.5,
-  outline: 'none', fontFamily: 'var(--font)', minWidth: 0,
-  fontVariantNumeric: 'tabular-nums',
+/**
+ * ── 시각 하나를 고르는 단추 ──────────────────────────────────────────────────
+ *
+ * `<select>`를 썼다가 크게 틀렸습니다. 15분 눈금으로 하루를 담으면 96줄인데,
+ * 브라우저는 그걸 **화면을 덮는 한 덩어리**로 폅니다 — 달력이 통째로 가려지고,
+ * 지금 무슨 날짜를 보고 있었는지도 안 보입니다. 목록이 길어질 수 있다는 걸
+ * 알면서 목록의 생김새를 브라우저에 맡긴 것이 잘못이었습니다.
+ *
+ * 그래서 우리가 그립니다. 여섯 줄만 보이고, 열면 지금 값이 가운데 와 있습니다 —
+ * 구글 캘린더가 하는 것과 같습니다. 아래로 조금만 굴리면 다음 시각들이 있고,
+ * 그 사이에도 달력은 계속 보입니다.
+ */
+function TimeMenu({ value, options, onPick, width = 92 }: {
+  value: number
+  options: { at: number; label: string; sub?: string }[]
+  onPick: (at: number) => void
+  width?: number
+}) {
+  const btn = React.useRef<HTMLButtonElement>(null)
+  const list = React.useRef<HTMLDivElement>(null)
+  const [open, setOpen] = React.useState(false)
+  const [box, setBox] = React.useState<{ left: number; top: number } | null>(null)
+
+  const show = () => {
+    const r = btn.current?.getBoundingClientRect()
+    if (!r) return
+    // 아래에 자리가 없으면 위로 폅니다. 화면 밖으로 펴 놓고 스크롤하라고
+    // 하면 그건 없는 목록입니다.
+    const below = window.innerHeight - r.bottom
+    setBox({
+      left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)),
+      top: below > 200 ? r.bottom + 4 : Math.max(8, r.top - 196),
+    })
+    setOpen(true)
+  }
+
+  // 열리면 지금 값으로 굴려 놓습니다. 아침 7시부터 훑어 내려오게 두면
+  // 목록을 짧게 만든 뜻이 없습니다.
+  React.useEffect(() => {
+    if (!open) return
+    const el = list.current?.querySelector('[data-on="1"]')
+    el?.scrollIntoView({ block: 'center' })
+  }, [open])
+
+  React.useEffect(() => {
+    if (!open) return
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false) } }
+    window.addEventListener('keydown', esc, true)
+    return () => window.removeEventListener('keydown', esc, true)
+  }, [open])
+
+  const now = options.find(o => o.at === value)
+
+  return (
+    <>
+      <button
+        ref={btn}
+        onClick={show}
+        style={{
+          width, flexShrink: 0, padding: '4px 8px', textAlign: 'left',
+          borderRadius: 'var(--r1)', border: '1px solid var(--bd)',
+          background: 'var(--bg2)', color: 'var(--t1)', fontSize: 12.5,
+          fontFamily: 'var(--font)', cursor: 'pointer',
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >{now?.label ?? ''}</button>
+
+      {open && box && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 9200 }} onClick={() => setOpen(false)} />
+          <div
+            ref={list}
+            style={{
+              position: 'fixed', left: box.left, top: box.top, width,
+              zIndex: 9201, maxHeight: 192, overflowY: 'auto', padding: 4,
+              background: 'var(--bg)', border: '1px solid var(--bd)',
+              borderRadius: 'var(--r2)', boxShadow: 'var(--sh-md)',
+            }}
+          >
+            {options.map(o => {
+              const on = o.at === value
+              return (
+                <button
+                  key={o.at}
+                  data-on={on ? '1' : '0'}
+                  onClick={() => { onPick(o.at); setOpen(false) }}
+                  style={{
+                    display: 'flex', alignItems: 'baseline', gap: 5, width: '100%',
+                    padding: '4px 7px', borderRadius: 'var(--r1)', border: 'none',
+                    background: on ? 'var(--bg3)' : 'transparent',
+                    color: 'var(--t1)', fontSize: 12.5, fontFamily: 'var(--font)',
+                    cursor: 'pointer', textAlign: 'left',
+                    fontWeight: on ? 600 : 400,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                  onMouseEnter={e => { if (!on) e.currentTarget.style.background = 'var(--bg2)' }}
+                  onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent' }}
+                >
+                  {o.label}
+                  {o.sub && <span style={{ fontSize: 10.5, color: 'var(--t3)' }}>{o.sub}</span>}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </>
+  )
 }
 
 /**
@@ -63,36 +166,35 @@ export function TimeRange({ startMin, minutes, onChange }: {
   minutes: number
   onChange: (startMin: number, minutes: number) => void
 }) {
-  const starts: number[] = []
-  for (let m = 0; m < 24 * 60; m += SNAP) starts.push(m)
-  const ends: number[] = []
-  for (let m = startMin + SNAP; m <= 24 * 60; m += SNAP) ends.push(m)
+  const starts = React.useMemo(() => {
+    const out: { at: number; label: string }[] = []
+    for (let m = 0; m < 24 * 60; m += SNAP) out.push({ at: m, label: hhmm(m) })
+    return out
+  }, [])
+  const ends = React.useMemo(() => {
+    const out: { at: number; label: string; sub: string }[] = []
+    for (let m = startMin + SNAP; m <= 24 * 60; m += SNAP) {
+      out.push({ at: m, label: m === 24 * 60 ? '24:00' : hhmm(m), sub: durationLabel(m - startMin) })
+    }
+    return out
+  }, [startMin])
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <select
+      <TimeMenu
         value={startMin}
-        onChange={e => {
-          const next = Number(e.target.value)
-          // 길이는 그대로 들고 갑니다. 시작을 옮긴 것이 길이를 바꾸겠다는
-          // 뜻은 아니고, 하루 끝을 넘길 때만 줄입니다.
-          onChange(next, Math.max(SNAP, Math.min(minutes, 24 * 60 - next)))
-        }}
-        style={{ ...FIELD, flex: 1 }}
-      >
-        {starts.map(m => <option key={m} value={m}>{hhmm(m)}</option>)}
-      </select>
+        options={starts}
+        // 길이는 그대로 들고 갑니다. 시작을 옮긴 것이 길이를 바꾸겠다는
+        // 뜻은 아니고, 하루 끝을 넘길 때만 줄입니다.
+        onPick={next => onChange(next, Math.max(SNAP, Math.min(minutes, 24 * 60 - next)))}
+      />
       <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0 }}>→</span>
-      <select
+      <TimeMenu
         value={startMin + minutes}
-        onChange={e => onChange(startMin, Number(e.target.value) - startMin)}
-        style={{ ...FIELD, flex: 1 }}
-      >
-        {ends.map(m => (
-          <option key={m} value={m}>{m === 24 * 60 ? '24:00' : hhmm(m)}</option>
-        ))}
-      </select>
-      <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0, minWidth: 44 }}>
+        options={ends}
+        onPick={at => onChange(startMin, at - startMin)}
+      />
+      <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0 }}>
         {durationLabel(minutes)}
       </span>
     </div>

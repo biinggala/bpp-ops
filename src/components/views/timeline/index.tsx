@@ -1548,7 +1548,7 @@ const RESPONSE_MARK: Record<string, { glyph: string; color: string; label: strin
   needsAction: { glyph: '?', color: 'var(--t3)',    label: '응답 대기' },
 }
 
-function AttendeeList({ teammates, chosen, nameOf, onToggle, responses }: {
+export function AttendeeList({ teammates, chosen, nameOf, onToggle, responses }: {
   teammates: string[]
   chosen: string[]
   nameOf: (email: string) => string
@@ -2242,7 +2242,7 @@ function AgendaRow({ agenda, onAgenda, notesUrl, onNotesUrl, disabled }: {
  * 조직이 없거나 등록된 방이 없으면 이 칸 자체가 없습니다. 회의실이 없는
  * 회사에 회의실 칸을 보여줄 이유가 없습니다.
  */
-function RoomRow({ slot, booking, onPick }: {
+export function RoomRow({ slot, booking, onPick }: {
   slot: { date: string; from: number; to: number }
   booking: Booking | null
   onPick: (roomId: string | null) => void

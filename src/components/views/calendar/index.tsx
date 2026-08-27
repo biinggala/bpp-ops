@@ -8,7 +8,7 @@ import { useProjectStore } from '../../../store/projectStore'
 import { useGCalStore, warmCalendarAuth, targetCalendarOf, PEEK_COLOR } from '../../../store/gcalStore'
 import { ActionMenu } from '../../shared/ContextMenu'
 import { TimeRange, BusyStrip, localIso, minutesOfIso } from '../../shared/TimePick'
-import { TimelineGrid, GUTTER as HOUR_GUTTER } from '../timeline'
+import { TimelineGrid, AttendeeList, RoomRow, GUTTER as HOUR_GUTTER } from '../timeline'
 import { writableCalendars } from '../../../lib/googleCalendar'
 import { useOrgStore } from '../../../store/orgStore'
 import { useAuthStore } from '../../../store/authStore'
@@ -1436,16 +1436,35 @@ function QuickEvent({ x, y, day, onClose }: {
 }) {
   const createEvent = useGCalStore(s => s.createEvent)
   const events = useGCalStore(s => s.events)
+  const bookRoom = useOrgStore(s => s.book)
+  const myEmail = useAuthStore(s => s.email)
+  const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  const projects = useProjectStore(s => s.projects)
   const [title, setTitle] = useState('')
   const [allDay, setAllDay] = useState(false)
   const [startMin, setStartMin] = useState(14 * 60)
   const [minutes, setMinutes] = useState(60)
+  const [guests, setGuests] = useState<string[]>([])
+  const [room, setRoom] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  // 남의 일정은 빼고 내 것만. 격자는 '내 하루가 얼마나 찼나'를 그립니다.
+  // 남의 일정은 빼고 내 것만. 띠는 '내 하루가 얼마나 찼나'를 그립니다.
   const dayEvents = useMemo(
     () => events.filter(ev => !ev.peekOf && (ev.startIso ?? ev.start).slice(0, 10) === day),
     [events, day],
+  )
+  // 부를 수 있는 사람 — 내가 같이 일하는 프로젝트의 멤버들. 타임라인 카드와
+  // 같은 셈입니다.
+  const teammates = useMemo(
+    // 보관한 프로젝트는 뺍니다 — 치워 둔 일의 사람들이 후보로 서면 지금
+    // 같이 일하는 사람을 그만큼 늦게 찾습니다. 타임라인 카드와 같은 셈입니다.
+    () => [...authorizedEmails(projects.filter(p => !p.archived), myEmail)]
+      .filter(e => e !== myEmail?.toLowerCase()).sort(),
+    [projects, myEmail],
+  )
+  const slot = useMemo(
+    () => ({ date: day, from: startMin, to: startMin + minutes }),
+    [day, startMin, minutes],
   )
 
   const submit = async () => {
@@ -1454,19 +1473,41 @@ function QuickEvent({ x, y, day, onClose }: {
     setBusy(true)
     // 실패하면 스토어가 error를 세우고 캘린더 단추가 그걸 말합니다. 여기서
     // 창을 닫아 버리면 방금 친 제목이 같이 사라집니다.
+    /*
+      방 이름을 구글 일정의 **장소**에도 적습니다. 예약 자체는 우리
+      데이터베이스에 있고 그건 조직원만 읽는데, 회의에는 도메인 밖 사람도
+      있습니다 — 그들에게 '어디서 하지'를 답해 줄 유일한 공통 자리입니다.
+      만들 때 같이 넣습니다. 나중에 붙이면 이미 나간 초대 메일에는 없습니다.
+    */
+    const roomName = room
+      ? useOrgStore.getState().rooms.find(r => r.id === room)?.name
+      : undefined
     const id = await createEvent(allDay
-      ? { summary, allDayDate: day }
+      ? { summary, allDayDate: day, ...(guests.length ? { attendees: guests } : {}) }
       : {
           summary,
           startDateTime: localIso(day, startMin),
           endDateTime: localIso(day, startMin + minutes),
+          ...(guests.length ? { attendees: guests } : {}),
+          ...(roomName ? { location: roomName } : {}),
         })
+    /*
+      일정이 생긴 뒤에 방을 잡습니다. 예약은 일정 id로 자기가 어느 회의의
+      것인지 기억하고, 그 id는 구글이 만들어 준 다음에야 있습니다. 반대로
+      하면 주인 없는 예약이 남아 아무도 못 치웁니다.
+    */
+    if (id && room && myEmail && !allDay) {
+      await bookRoom({
+        date: day, roomId: room, from: startMin, to: startMin + minutes,
+        title: summary, eventId: id, by: myEmail, byName: getNameByEmail(myEmail),
+      })
+    }
     setBusy(false)
     if (id) onClose()
   }
 
   const d = toDate(day)
-  const W = allDay ? 250 : 300
+  const W = allDay ? 268 : 306
   return (
     <>
       <div style={{ position: 'fixed', inset: 0, zIndex: 8998 }} onClick={onClose} />
@@ -1474,7 +1515,7 @@ function QuickEvent({ x, y, day, onClose }: {
         style={{
           position: 'fixed',
           left: Math.max(8, Math.min(x, window.innerWidth - W - 8)),
-          top: Math.max(8, Math.min(y, window.innerHeight - (allDay ? 130 : 230))),
+          top: Math.max(8, Math.min(y, window.innerHeight - (allDay ? 210 : 330))),
           zIndex: 8999, width: W, background: 'var(--bg)', border: '1px solid var(--bd)',
           borderRadius: 'var(--r3)', boxShadow: 'var(--sh-lg)', padding: 12,
         }}
@@ -1556,6 +1597,28 @@ function QuickEvent({ x, y, day, onClose }: {
           </>
         )}
 
+        {/*
+          ── 참석자와 회의실 ──────────────────────────────────────────────────
+          타임라인 카드의 그 칸을 그대로 씁니다. 같은 일을 하는 화면이 둘이면
+          둘 중 하나는 언젠가 뒤처집니다 — 여기만 회의실 목록이 옛것이거나,
+          저기만 응답 표시가 있는 식으로요.
+
+          종일에는 안 붙입니다. 회의실은 시각이 있어야 잡히고(누가 언제
+          쓰는지가 예약의 전부입니다), 시각 없는 하루를 통째로 잡는 것은
+          이 카드가 할 일이 아닙니다.
+        */}
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--bd)' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--t2)', marginBottom: 4 }}>참석자</div>
+          <AttendeeList
+            teammates={teammates}
+            chosen={guests}
+            nameOf={getNameByEmail}
+            onToggle={email => setGuests(g => g.includes(email) ? g.filter(x => x !== email) : [...g, email])}
+          />
+        </div>
+
+        {!allDay && <RoomRow slot={slot} booking={null} onPick={setRoom} />}
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
           <button
             onClick={() => void submit()}
@@ -1568,10 +1631,7 @@ function QuickEvent({ x, y, day, onClose }: {
             }}
           >{busy ? '만드는 중…' : '만들기'}</button>
           <span style={{ fontSize: 11, color: 'var(--t3)' }}>
-            {/* 참석자·회의실 칸은 이 카드에 없습니다. 월 화면에서 일정을
-                누르면 구글로 나가고, 그 카드는 3일·주 화면에만 있습니다 —
-                여기 없는 것을 여기 있는 것처럼 말하지 않습니다. */}
-            {allDay ? '시각 없이 하루로' : '참석자·회의실은 3일·주 화면에서'}
+            {allDay ? '시각 없이 하루로' : guests.length ? '초대 메일이 발송됩니다' : ''}
           </span>
         </div>
       </div>
