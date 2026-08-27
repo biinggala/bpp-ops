@@ -9,6 +9,7 @@ import { usePresenceStore } from '../store/presenceStore'
 import { useUserProfileStore } from '../store/userProfileStore'
 import { useSyncStore } from '../store/syncStore'
 import { useOrgStore } from '../store/orgStore'
+import { useGearStore } from '../store/gearStore'
 import { usePrefsStore } from '../store/prefsStore'
 import { useNotionStore } from '../store/notionStore'
 import { Welcome } from '../components/modals/Welcome'
@@ -26,6 +27,7 @@ import { CalendarView } from '../components/views/calendar'
 import { StatsView } from '../components/views/stats'
 import { FilesView } from '../components/views/files'
 import { GanttView } from '../components/views/gantt'
+import { GearView } from '../components/views/gear'
 import { TodayView } from '../components/views/today'
 import { TaskModal } from '../components/modals/TaskModal'
 import { TaskDetailModal } from '../components/modals/TaskDetailModal'
@@ -148,6 +150,20 @@ export function AppPage() {
       .sort()
       .join(' ')
   }, [membersByProject, profiles])
+
+  /*
+    장비·팀 목록과, 아직 안 끝난 예약.
+
+    화면이 열릴 때가 아니라 여기서 붙습니다 — 설정의 장비 칸과 사이드바
+    양쪽이 같은 목록을 봐야 하고, 붙는 자리가 둘이면 하나는 언젠가
+    안 붙습니다. 읽는 양은 작습니다: 반납일로 색인해 두어서 지난 예약은
+    아예 안 실려 옵니다.
+  */
+  const subscribeGear = useGearStore(s => s.subscribe)
+  useEffect(() => {
+    if (!orgId || !ready) return
+    return subscribeGear(orgId)
+  }, [orgId, ready, subscribeGear])
 
   useEffect(() => {
     if (!uid || !email || !orgId || !ready) return
@@ -474,6 +490,11 @@ export function AppPage() {
             <TodayView />
           ) : !ready ? (
             <LoadingRows />
+          ) : screen === 'gear' ? (
+            /* 장비 현황. 업무가 하나도 없어도 열려야 하는 화면이라 아래
+               빈 상태 분기보다 위에 있습니다 — 장비를 보러 온 사람에게
+               '업무를 만들어 보세요'를 보여 줄 이유가 없습니다. */
+            <GearView />
           ) : screen === 'calendar' ? (
             /* 범위 없는 캘린더. 뷰 탭의 캘린더와 같은 화면을 그리지만,
                걸린 필터가 없어서 보이는 것이 곧 내 앞의 전부입니다. */

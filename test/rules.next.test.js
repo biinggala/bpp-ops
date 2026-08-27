@@ -823,3 +823,110 @@ test('말이 안 되는 회의실 규칙은 안 들어간다', async () => {
   // 빠진 값이 있으면 나머지가 무엇인지 알 수 없습니다.
   await assertFails(set(ref(db, `orgs/${oid}/roomRule`), { maxMinutes: 120 }))
 })
+
+/**
+ * ── 장비 ─────────────────────────────────────────────────────────────────────
+ *
+ * 목록은 회의실과 같은 힘으로 고칩니다 — 관리자. 예약은 전원이 합니다.
+ *
+ * 겹침은 **규칙이 못 봅니다.** 형제 줄을 훑을 수 없어서 '이 시간에 이미 누가
+ * 잡았나'를 물을 자리가 없습니다(회의실도 같습니다). 그건 화면이 막습니다.
+ * 여기서 지키는 것은 그 아래 것들입니다 — 남의 예약을 못 지우고, 남의
+ * 이름으로 못 잡고, 사유 없이 못 잡습니다.
+ */
+const asAdmin = async (oid, who) => {
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), `orgs/${oid}/admins/${key(who.email)}`), true)
+  })
+}
+
+const GEAR_ROW = by => ({
+  gearId: 'cam1', from: '2026-08-27', to: '2026-08-29',
+  fromMin: 0, toMin: 1440, long: true,
+  by: by.email, reason: '촬영', at: 1,
+})
+
+test('장비 목록은 관리자만 고치고, 멤버는 읽는다', async () => {
+  const oid = 'g1'
+  await org(oid, { name: 'W', domain: 'bpp.co.kr' }, {
+    [ALICE.email]: { role: 'member', at: 1 },
+    [BOB.email]: { role: 'member', at: 1 },
+  })
+  // 관리자 없는 도메인 워크스페이스는 누구나 맡을 수 있는 것이 규칙이라,
+  // 먼저 한 명을 세워 두지 않으면 밥도 통과합니다.
+  await asAdmin(oid, ALICE)
+
+  await assertFails(set(ref(authed(BOB), `orgs/${oid}/gear/cam1`), { name: 'A7S3' }))
+  await assertSucceeds(set(ref(authed(ALICE), `orgs/${oid}/gear/cam1`), { name: 'A7S3' }))
+  await assertSucceeds(get(ref(authed(BOB), `orgs/${oid}/gear/cam1`)))
+  // 이름 없는 장비는 목록에서 이름을 잃습니다.
+  await assertFails(set(ref(authed(ALICE), `orgs/${oid}/gear/cam2`), { note: '렌즈' }))
+})
+
+test('장비는 멤버 누구나 잡는다', async () => {
+  const oid = 'g2'
+  await org(oid, { name: 'W', domain: 'bpp.co.kr' }, {
+    [ALICE.email]: { role: 'member', at: 1 },
+    [BOB.email]: { role: 'member', at: 1 },
+  })
+  await asAdmin(oid, ALICE)
+  await assertSucceeds(set(ref(authed(BOB), `orgs/${oid}/gearBookings/b1`), GEAR_ROW(BOB)))
+  // 바깥 사람은 못 잡습니다.
+  await assertFails(set(ref(authed(MALLORY), `orgs/${oid}/gearBookings/b2`), GEAR_ROW(MALLORY)))
+})
+
+test('남의 이름으로 잡거나, 사유 없이 잡을 수 없다', async () => {
+  const oid = 'g3'
+  await org(oid, { name: 'W', domain: 'bpp.co.kr' }, {
+    [ALICE.email]: { role: 'member', at: 1 },
+    [BOB.email]: { role: 'member', at: 1 },
+  })
+  const db = authed(BOB)
+  // 앨리스 이름을 달고 잡으면 현황판이 거짓말을 합니다.
+  await assertFails(set(ref(db, `orgs/${oid}/gearBookings/b1`), GEAR_ROW(ALICE)))
+  // 사유는 비워 둘 수 없습니다 — 나갔다 오는 물건이라 '왜'가 남아야 합니다.
+  await assertFails(set(ref(db, `orgs/${oid}/gearBookings/b2`), { ...GEAR_ROW(BOB), reason: '' }))
+  // 반납일이 대여일보다 빠르면 구간이 아닙니다.
+  await assertFails(set(ref(db, `orgs/${oid}/gearBookings/b3`), { ...GEAR_ROW(BOB), from: '2026-08-29', to: '2026-08-27' }))
+  // 하루를 넘는 시각은 없습니다.
+  await assertFails(set(ref(db, `orgs/${oid}/gearBookings/b4`), { ...GEAR_ROW(BOB), long: false, fromMin: 600, toMin: 2000 }))
+})
+
+test('남의 예약은 못 푼다 — 관리자는 푼다', async () => {
+  const oid = 'g4'
+  await org(oid, { name: 'W', domain: 'bpp.co.kr' }, {
+    [ALICE.email]: { role: 'member', at: 1 },
+    [BOB.email]: { role: 'member', at: 1 },
+  })
+  await asAdmin(oid, ALICE)
+  await assertSucceeds(set(ref(authed(BOB), `orgs/${oid}/gearBookings/b1`), GEAR_ROW(BOB)))
+
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), `orgs/${oid}/gearBookings/b2`), GEAR_ROW(ALICE))
+  })
+  // 밥은 앨리스 것을 못 건드립니다.
+  await assertFails(remove(ref(authed(BOB), `orgs/${oid}/gearBookings/b2`)))
+  // 자기 것은 풉니다.
+  await assertSucceeds(remove(ref(authed(BOB), `orgs/${oid}/gearBookings/b1`)))
+  // 관리자는 막힌 예약을 풀어 줄 수 있어야 합니다 — 빌린 사람이 휴가일 때
+  // 아무도 그 카메라를 못 쓰는 상태가 남으면 안 됩니다.
+  await assertSucceeds(remove(ref(authed(ALICE), `orgs/${oid}/gearBookings/b2`)))
+})
+
+test('소속팀은 자기 것과, 관리자면 남의 것도 정한다', async () => {
+  const oid = 'g5'
+  await org(oid, { name: 'W', domain: 'bpp.co.kr' }, {
+    [ALICE.email]: { role: 'member', at: 1 },
+    [BOB.email]: { role: 'member', at: 1 },
+  })
+  await asAdmin(oid, ALICE)
+  await assertFails(set(ref(authed(BOB), `orgs/${oid}/teams/t1`), { name: '촬영팀' }))
+  await assertSucceeds(set(ref(authed(ALICE), `orgs/${oid}/teams/t1`), { name: '촬영팀' }))
+
+  // 자기 소속은 자기가 답합니다 — 오십 명을 관리자 한 명이 채우게 두면
+  // 아무도 안 채웁니다. 소속은 경계가 아니라 이름표라 안전합니다.
+  await assertSucceeds(set(ref(authed(BOB), `orgs/${oid}/teamOf/${key(BOB.email)}`), 't1'))
+  // 남의 소속은 관리자만.
+  await assertFails(set(ref(authed(BOB), `orgs/${oid}/teamOf/${key(ALICE.email)}`), 't1'))
+  await assertSucceeds(set(ref(authed(ALICE), `orgs/${oid}/teamOf/${key(BOB.email)}`), 't1'))
+})

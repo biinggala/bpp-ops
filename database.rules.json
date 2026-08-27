@@ -124,6 +124,33 @@
             }
           }
         },
+        "gear": {
+          ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && (root.child('orgs/' + $org + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).child('role').val() === 'member' || (!root.child('orgs/' + $org + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).exists() && root.child('orgs/' + $org + '/meta/domain').exists() && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ',')))) && ((root.child('orgs/' + $org + '/admins/' + auth.token.email.toLowerCase().replace('.', ',')).val() === true) || (!root.child('orgs/' + $org + '/admins').exists() && root.child('orgs/' + $org + '/meta/domain').exists() && (!root.child('orgs/' + $org + '/meta/createdBy').exists() || root.child('orgs/' + $org + '/meta/createdBy').val() === auth.token.email.toLowerCase())) || (root.child('orgs/' + $org + '/meta/owner').val() === auth.token.email.toLowerCase().replace('.', ',')))",
+          "$gid": {
+            ".validate": "newData.hasChildren(['name']) && newData.child('name').isString() && newData.child('name').val().length <= 60"
+          }
+        },
+        "teams": {
+          ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && (root.child('orgs/' + $org + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).child('role').val() === 'member' || (!root.child('orgs/' + $org + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).exists() && root.child('orgs/' + $org + '/meta/domain').exists() && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ',')))) && ((root.child('orgs/' + $org + '/admins/' + auth.token.email.toLowerCase().replace('.', ',')).val() === true) || (!root.child('orgs/' + $org + '/admins').exists() && root.child('orgs/' + $org + '/meta/domain').exists() && (!root.child('orgs/' + $org + '/meta/createdBy').exists() || root.child('orgs/' + $org + '/meta/createdBy').val() === auth.token.email.toLowerCase())) || (root.child('orgs/' + $org + '/meta/owner').val() === auth.token.email.toLowerCase().replace('.', ',')))",
+          "$tid": {
+            ".validate": "newData.hasChildren(['name']) && newData.child('name').isString() && newData.child('name').val().length <= 40"
+          }
+        },
+        "teamOf": {
+          "$mail": {
+            ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && (root.child('orgs/' + $org + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).child('role').val() === 'member' || (!root.child('orgs/' + $org + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).exists() && root.child('orgs/' + $org + '/meta/domain').exists() && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ',')))) && ($mail === auth.token.email.toLowerCase().replace('.', ',') || root.child('orgs/' + $org + '/admins/' + auth.token.email.toLowerCase().replace('.', ',')).val() === true)",
+            ".validate": "newData.isString() && newData.val().length <= 60"
+          }
+        },
+        "gearBookings": {
+          ".indexOn": [
+            "to"
+          ],
+          "$bid": {
+            ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && (root.child('orgs/' + $org + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).child('role').val() === 'member' || (!root.child('orgs/' + $org + '/members/' + auth.token.email.toLowerCase().replace('.', ',')).exists() && root.child('orgs/' + $org + '/meta/domain').exists() && auth.token.email.toLowerCase().replace('.', ',').endsWith('@' + root.child('orgs/' + $org + '/meta/domain').val().replace('.', ',')))) && (!data.exists() || data.child('by').val() === auth.token.email.toLowerCase() || root.child('orgs/' + $org + '/admins/' + auth.token.email.toLowerCase().replace('.', ',')).val() === true)",
+            ".validate": "newData.hasChildren(['gearId','from','to','fromMin','toMin','by','reason','at']) && newData.child('gearId').isString() && newData.child('from').isString() && newData.child('from').val().length === 10 && newData.child('to').isString() && newData.child('to').val().length === 10 && newData.child('to').val() >= newData.child('from').val() && newData.child('fromMin').isNumber() && newData.child('fromMin').val() >= 0 && newData.child('fromMin').val() <= 1440 && newData.child('toMin').isNumber() && newData.child('toMin').val() >= 0 && newData.child('toMin').val() <= 1440 && newData.child('by').val() === auth.token.email.toLowerCase() && newData.child('reason').isString() && newData.child('reason').val().length > 0 && newData.child('reason').val().length <= 200 && (!newData.hasChild('extra') || newData.child('extra').val().length <= 300) && (!newData.hasChild('team') || newData.child('team').val().length <= 60) && newData.child('at').isNumber()"
+          }
+        },
         ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && data.exists() && !newData.exists() && (root.child('orgs/' + $org + '/admins/' + auth.token.email.toLowerCase().replace('.', ',')).val() === true  || data.child('meta/createdBy').val() === auth.token.email.toLowerCase()  || data.child('meta/owner').val() === auth.token.email.toLowerCase().replace('.', ',')) && !data.child('owns').exists() && !data.child('projects').exists()"
       }
     },

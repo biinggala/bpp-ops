@@ -31,6 +31,8 @@ export type IconName =
   | 'zip' | 'attach' | 'folder'
   /** 사이드바의 세 범위 — 내 할 일 · 전체 업무 · 개인. */
   | 'checkSquare' | 'stack' | 'person'
+  /** 장비. 우리 팀이 빌려 나가는 것의 거의 전부가 카메라라 카메라로 그립니다. */
+  | 'camera'
   /**
    * 노션의 N.
    *
@@ -222,6 +224,15 @@ export function Icon({ name, size = 15, strokeWidth = 1.7 }: {
         <rect x="3.4" y="5.2" width="17.2" height="15.2" rx="2.6" />
         <path d="M3.4 9.6h17.2M8.2 3.4v3.4M15.8 3.4v3.4" />
         <rect x="10.4" y="12.6" width="3.2" height="3.2" rx=".8" fill="currentColor" stroke="none" />
+      </svg>
+    )
+  }
+  if (name === 'camera') {
+    return (
+      <svg {...common}>
+        <rect x="3" y="7.2" width="18" height="12.6" rx="2.6" />
+        <path d="M8.4 7.2 9.7 4.6h4.6l1.3 2.6" />
+        <circle cx="12" cy="13.6" r="3.3" />
       </svg>
     )
   }

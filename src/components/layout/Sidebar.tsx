@@ -728,6 +728,21 @@ export function Sidebar() {
           </NavItem>
 
           {/*
+            장비도 '가는 곳'입니다 — 오늘·캘린더와 같은 층입니다.
+
+            굵게 하지 않았습니다. 위의 둘은 매일 아침 여는 곳이고, 여기는
+            촬영이 잡혔을 때 여는 곳입니다. 굵은 줄이 셋이면 굵기가 아무
+            말도 안 하게 됩니다.
+          */}
+          <NavItem
+            active={screen === 'gear'}
+            onClick={() => { setScreen('gear'); closeSidebar() }}
+            node={<Icon name="camera" size={14} />}
+          >
+            장비
+          </NavItem>
+
+          {/*
             여기서 한 번 끊깁니다.
 
             위의 둘은 *장소*입니다 — 생김새부터 다른 화면으로 갑니다. 아래의
