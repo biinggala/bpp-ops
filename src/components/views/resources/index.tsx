@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useAuthStore } from '../../../store/authStore'
 import { NO_BOOKINGS, useOrgStore, type Booking } from '../../../store/orgStore'
@@ -31,11 +31,38 @@ import { useMobile } from '../../../hooks/useMobile'
  * 궁금하다고 했습니다 — 이름은 모를 수 있어도 팀은 압니다.
  */
 
-const COL = 46
-const ROW_H = 30
-const NAME_W = 176
-/** 종류 줄. 접혀 있을 때는 이게 곧 그 묶음의 요약입니다. */
-const KIND_H = 26
+/**
+ * ── 폰에서는 숫자가 달라집니다 ──────────────────────────────────────────────
+ *
+ * 이름 열이 176px이면 375px 화면의 **절반**입니다. 남는 절반에 격자를 그리면
+ * 그건 격자가 아니라 목록이고, 이 화면이 격자인 이유가 사라집니다. 이름을
+ * 좁히고, 격자는 옆으로 굴려서 봅니다 — 굴리는 동안 이름 열은 왼쪽에 붙어
+ * 있어야 지금 보는 줄이 무엇인지 압니다.
+ *
+ * 줄 높이도 손가락에 맞춥니다. 빈 칸을 눌러서 예약하는 화면인데 30px는
+ * 마우스 포인터의 크기지 손가락의 크기가 아닙니다.
+ */
+function metrics(isMobile: boolean) {
+  return {
+    col: 46,
+    rowH: isMobile ? 36 : 30,
+    nameW: isMobile ? 116 : 176,
+    /** 종류 줄. 접혀 있을 때는 이게 곧 그 묶음의 요약입니다. */
+    kindH: isMobile ? 32 : 26,
+    /**
+     * 회의실 띠에서 한 시간의 너비. **폰에서만 씁니다.**
+     *
+     * 넓은 화면에서는 하루가 창에 다 들어가서 띠를 늘려 두면 되는데, 폰에서
+     * 같은 짓을 하면 열두 시간이 200px에 눌립니다 — 한 시간짜리 회의가
+     * 16px짜리 조각이 되고, 그 안에 글자가 들어갈 자리는 없습니다.
+     * 폰에서는 시간마다 폭을 못 박고 옆으로 굴립니다.
+     */
+    hourW: 52,
+    /** 손이 닿아야 하는 단추. 26px는 마우스 크기입니다. */
+    tap: isMobile ? 32 : 26,
+  }
+}
+
 /** 한 화면에 보이는 날 수. 2주면 '다음 주 촬영'까지 들어옵니다. */
 const SPAN = 14
 
@@ -131,6 +158,7 @@ const LANE_H = 22
 
 function RoomBoard({ tabs }: { tabs: React.ReactNode }) {
   const isMobile = useMobile()
+  const M = metrics(isMobile)
   const email = useAuthStore(s => s.email)
   const { orgId, rooms, admins, watchDates, release, error } = useOrgStore(useShallow(s => ({
     orgId: s.orgId, rooms: s.rooms, admins: s.admins,
@@ -160,12 +188,71 @@ function RoomBoard({ tabs }: { tabs: React.ReactNode }) {
   )
   const at = (m: number) => ((m - win.from) / (win.to - win.from)) * 100
 
+  /**
+   * 폰에서는 띠에 폭을 못 박고 옆으로 굴립니다(metrics.hourW 참고). 안쪽의
+   * 자리 계산은 그대로 퍼센트입니다 — 폭이 정해진 상자 안의 퍼센트라 값이
+   * 그대로 맞습니다.
+   */
+  const beltW = isMobile ? ((win.to - win.from) / 60) * M.hourW : undefined
+  const belt = { flex: isMobile ? undefined : 1, width: beltW, flexShrink: 0 }
+  /** 굴리는 동안 이름은 왼쪽에 붙어 있어야 어느 방인지 압니다. */
+  const stick: React.CSSProperties = isMobile
+    ? { position: 'sticky', left: 0, zIndex: 1 }
+    : {}
+
   const step = (n: number) => setDate(fmtYMD(addDays(new Date(date.replace(/-/g, '/')), n)))
+
+  /**
+   * ── 폰에서는 '지금'이 보이는 자리에서 시작합니다 ──────────────────────────
+   *
+   * 띠가 창보다 넓어졌으니 어딘가에서 시작해야 하는데, 왼쪽 끝(오전 8시)은
+   * 오후에 이 화면을 여는 사람에게 아무 말도 안 합니다. 굴려야 뭐가 있는지
+   * 알게 되고, 그 전까지는 '오늘은 아무것도 없네'로 읽힙니다.
+   */
+  const beltRef = useRef<HTMLDivElement>(null)
+  const rulerRef = useRef<HTMLDivElement>(null)
+
+  /**
+   * 이름 열 밑으로 들어간 숫자는 **지웁니다.**
+   *
+   * 이름 열이 왼쪽에 붙어 있으니 눈금이 그 밑을 지나갑니다. 반쯤 가려진
+   * '13'은 '3'으로 읽힙니다 — 안 보이는 것보다 나쁩니다. 틀리게 보이느니
+   * 없는 편이 낫습니다.
+   *
+   * 리렌더로 하지 않습니다. 굴릴 때마다 방 목록을 다시 그리면 그게 곧
+   * 끊김입니다 — 글자 몇 개의 투명도만 직접 바꿉니다.
+   */
+  const syncRuler = (x: number) => {
+    const r = rulerRef.current
+    if (!r) return
+    for (const el of Array.from(r.children) as HTMLElement[]) {
+      el.style.opacity = Number(el.dataset.x) - x < 8 ? '0' : '1'
+    }
+  }
+
+  useEffect(() => {
+    const el = beltRef.current
+    if (!el || !isMobile) return
+    const now = new Date()
+    const at2 = date === today ? now.getHours() * 60 + now.getMinutes() : win.from
+    // 지금이 왼쪽에서 한 뼘 들어온 자리에 오게. 0으로 두면 지금이 화면
+    // 가장자리에 붙어서 방금 끝난 회의가 안 보입니다.
+    el.scrollLeft = Math.max(0, ((at2 - win.from) / 60) * M.hourW - M.hourW)
+    syncRuler(el.scrollLeft)
+  }, [date, today, isMobile, win.from, M.hourW])
 
   if (!orgId) return <BlankPage tabs={tabs}>워크스페이스에 들어가면 회의실을 함께 씁니다. 설정 → 개요에서 만들 수 있습니다.</BlankPage>
 
   const isAdmin = !!email && admins.includes(email.toLowerCase())
   const wd = new Date(date.replace(/-/g, '/')).getDay()
+  const dateChip = (
+    <div style={{
+      fontSize: 13, fontWeight: 500,
+      color: date === today ? 'var(--ac)' : wd === 0 ? 'var(--danger)' : 'var(--t1)',
+    }}>
+      {Number(date.slice(5, 7))}월 {Number(date.slice(8))}일 ({WEEK[wd]})
+    </div>
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
@@ -174,24 +261,30 @@ function RoomBoard({ tabs }: { tabs: React.ReactNode }) {
         padding: isMobile ? '8px 12px' : '10px 18px', borderBottom: '1px solid var(--bd)', flexShrink: 0,
       }}>
         {tabs}
-        <div style={{ width: 1, height: 16, background: 'var(--bd)', margin: '0 2px' }} />
+        {/*
+          ── 폰에서는 두 줄 ──────────────────────────────────────────────────
+          한 줄에 다 세우면 탭·이동·날짜가 375px에서 서로를 밀어냅니다. 줄을
+          쪼개는 것은 빈 칸 하나로 합니다(flexBasis 100%) — 같은 JSX를 두 번
+          쓰면 한쪽만 고치는 날이 옵니다.
+        */}
+        {isMobile && <div style={{ flex: 1 }} />}
+        {isMobile && dateChip}
+        {isMobile && <div style={{ flexBasis: '100%', height: 0 }} />}
+        {!isMobile && <div style={{ width: 1, height: 16, background: 'var(--bd)', margin: '0 2px' }} />}
         <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-          <Step label="어제" onClick={() => step(-1)}>‹</Step>
-          <button onClick={() => setDate(today)} style={{ ...BTN, padding: '3px 10px' }}>오늘</button>
-          <Step label="내일" onClick={() => step(1)}>›</Step>
+          <Step label="어제" onClick={() => step(-1)} size={M.tap}>‹</Step>
+          <button onClick={() => setDate(today)} style={{ ...BTN, padding: isMobile ? '5px 12px' : '3px 10px' }}>오늘</button>
+          <Step label="내일" onClick={() => step(1)} size={M.tap}>›</Step>
         </div>
-        <div style={{
-          fontSize: 13, fontWeight: 500,
-          color: date === today ? 'var(--ac)' : wd === 0 ? 'var(--danger)' : 'var(--t1)',
-        }}>
-          {Number(date.slice(5, 7))}월 {Number(date.slice(8))}일 ({WEEK[wd]})
-        </div>
+        {!isMobile && dateChip}
 
         <div style={{ flex: 1 }} />
         {/* 여기서는 못 잡습니다. 예약은 일정에 붙어 있어서(eventId), 일정
             없이 잡으면 아무도 치울 수 없는 예약이 남습니다. 그래서 어디서
             잡는지 적어 둡니다 — 못 하는 것을 말없이 안 되게 두지 않습니다. */}
-        <div style={{ fontSize: 11, color: 'var(--t3)' }}>예약은 캘린더에서 일정을 만들 때 함께 잡습니다.</div>
+        <div style={{ fontSize: 11, color: 'var(--t3)' }}>
+          예약은 캘린더에서 {isMobile ? '함께 잡습니다.' : '일정을 만들 때 함께 잡습니다.'}
+        </div>
       </div>
 
       {error && <div style={{ padding: '7px 18px', fontSize: 12, color: 'var(--danger)', flexShrink: 0 }}>{error}</div>}
@@ -202,18 +295,26 @@ function RoomBoard({ tabs }: { tabs: React.ReactNode }) {
           {isAdmin ? ' 설정 → 회의실에서 더할 수 있습니다.' : ' 관리자가 목록을 만들면 여기 섭니다.'}
         </Blank>
       ) : (
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div
+        ref={beltRef}
+        onScroll={isMobile ? e => syncRuler(e.currentTarget.scrollLeft) : undefined}
+        style={{ flex: 1, minHeight: 0, overflow: 'auto' }}
+      >
+        <div style={{ minWidth: beltW ? M.nameW + beltW + 10 : undefined }}>
         {/* 시각 눈금. 굴려도 붙어 있어야 어느 칸인지 압니다. */}
         <div style={{
-          display: 'flex', position: 'sticky', top: 0, zIndex: 2,
+          display: 'flex', position: 'sticky', top: 0, zIndex: 3,
           background: 'var(--bg)', borderBottom: '1px solid var(--bd)',
         }}>
-          <div style={{ width: NAME_W, flexShrink: 0 }} />
-          <div style={{ flex: 1, position: 'relative', height: 22 }}>
-            {hours.map(h => (
-              <div key={h} style={{
+          <div style={{ width: M.nameW, flexShrink: 0, ...stick, background: 'var(--bg)' }} />
+          <div ref={rulerRef} style={{ ...belt, position: 'relative', height: 22 }}>
+            {hours.map((h, i) => (
+              <div key={h} data-x={((h - win.from) / 60) * M.hourW} style={{
                 position: 'absolute', left: `${at(h)}%`, top: 4,
-                fontSize: 10.5, color: 'var(--t3)', transform: 'translateX(-50%)',
+                fontSize: 10.5, color: 'var(--t3)',
+                // 가운데 맞추면 첫 글자의 왼쪽 절반이 이름 열 밑으로 들어가고,
+                // 마지막 글자는 오른쪽으로 삐져나갑니다. 양 끝만 안쪽으로.
+                transform: i === 0 ? 'none' : i === hours.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)',
                 fontVariantNumeric: 'tabular-nums',
               }}>{h / 60}</div>
             ))}
@@ -232,9 +333,10 @@ function RoomBoard({ tabs }: { tabs: React.ReactNode }) {
               opacity: room.active === false ? .45 : 1,
             }}>
               <div style={{
-                width: NAME_W, flexShrink: 0, padding: '0 10px', height: h,
+                width: M.nameW, flexShrink: 0, padding: '0 10px', height: h,
                 display: 'flex', flexDirection: 'column', justifyContent: 'center',
                 borderRight: '1px solid var(--bd)',
+                ...stick, background: 'var(--bg)',
               }}>
                 <div style={{ fontSize: 12, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {room.name}
@@ -246,7 +348,7 @@ function RoomBoard({ tabs }: { tabs: React.ReactNode }) {
                 )}
               </div>
 
-              <div style={{ flex: 1, position: 'relative', height: h, minWidth: 0 }}>
+              <div style={{ ...belt, position: 'relative', height: h, minWidth: 0 }}>
                 {hours.map(h2 => (
                   <div key={h2} style={{
                     position: 'absolute', left: `${at(h2)}%`, top: 0, bottom: 0,
@@ -277,6 +379,7 @@ function RoomBoard({ tabs }: { tabs: React.ReactNode }) {
             </div>
           )
         })}
+        </div>
       </div>
       )}
 
@@ -311,6 +414,7 @@ function RoomBoard({ tabs }: { tabs: React.ReactNode }) {
 
 function GearBoard({ tabs }: { tabs: React.ReactNode }) {
   const isMobile = useMobile()
+  const M = metrics(isMobile)
   const email = useAuthStore(s => s.email)
   const orgId = useOrgStore(s => s.orgId)
   const admins = useOrgStore(s => s.admins)
@@ -391,6 +495,27 @@ function GearBoard({ tabs }: { tabs: React.ReactNode }) {
     )
   }
 
+  const teamPick = teams.length > 0 ? (
+    <select
+      value={teamFilter}
+      onChange={e => setTeamFilter(e.target.value)}
+      style={{ ...BTN, padding: '4px 8px', maxWidth: isMobile ? 104 : undefined }}
+    >
+      <option value="">모든 팀</option>
+      {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+    </select>
+  ) : null
+
+  const bookBtn = (
+    <button
+      onClick={() => setAdding({ gearId: live[0]?.id ?? gear[0].id, date: today })}
+      style={{
+        ...BTN, background: 'var(--ac)', color: '#fff', borderColor: 'transparent',
+        padding: isMobile ? '6px 14px' : '4px 12px',
+      }}
+    >예약하기</button>
+  )
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       {/* ── 머리 ─────────────────────────────────────────────────────────── */}
@@ -401,49 +526,51 @@ function GearBoard({ tabs }: { tabs: React.ReactNode }) {
         {/* 제목은 위 툴바가 답니다 — 캘린더 화면과 같습니다. 한 화면에 같은
             이름이 두 번 서면 둘 중 하나는 소음입니다. */}
         {tabs}
-        <div style={{ width: 1, height: 16, background: 'var(--bd)', margin: '0 2px' }} />
+        {/* 폰에서는 두 줄. 첫 줄은 '어디를 보고 있나'와 '예약하기',
+            둘째 줄은 옮기고 찾는 것들입니다 — 회의실 머리와 같은 방식. */}
+        {isMobile && <div style={{ flex: 1 }} />}
+        {isMobile && bookBtn}
+        {isMobile && <div style={{ flexBasis: '100%', height: 0 }} />}
+        {!isMobile && <div style={{ width: 1, height: 16, background: 'var(--bd)', margin: '0 2px' }} />}
         <div style={{ display: 'flex', gap: 2 }}>
-          <Step label="이전 주" onClick={() => setAnchor(fmtYMD(addDays(new Date(anchor.replace(/-/g, '/')), -7)))}>‹</Step>
+          <Step label="이전 주" onClick={() => setAnchor(fmtYMD(addDays(new Date(anchor.replace(/-/g, '/')), -7)))} size={M.tap}>‹</Step>
           <button
             onClick={() => setAnchor(today)}
-            style={{ ...BTN, padding: '3px 10px' }}
+            style={{ ...BTN, padding: isMobile ? '5px 12px' : '3px 10px' }}
           >오늘</button>
-          <Step label="다음 주" onClick={() => setAnchor(fmtYMD(addDays(new Date(anchor.replace(/-/g, '/')), 7)))}>›</Step>
+          <Step label="다음 주" onClick={() => setAnchor(fmtYMD(addDays(new Date(anchor.replace(/-/g, '/')), 7)))} size={M.tap}>›</Step>
         </div>
 
         {/* 서른 개짜리 목록에서 'FX3'을 눈으로 찾게 하지 않습니다. 이름·메모·
             종류를 같이 봅니다 — 사람은 '송수신기'로도 찾고 'UWP'로도 찾습니다. */}
+        {/* 폰에서는 팀 고르기가 먼저 서고 찾기가 남는 자리를 다 씁니다.
+            반대로 두면 찾기 칸이 눌려서 '장비 찾…'이 됩니다 — 안내문이
+            잘리면 그건 안내가 아닙니다. */}
+        {isMobile && teamPick}
         <input
           value={q}
           onChange={e => setQ(e.target.value)}
-          placeholder="장비 찾기"
+          placeholder={isMobile ? '찾기' : '장비 찾기'}
           style={{
-            ...BTN, width: 108, padding: '4px 8px', cursor: 'text',
+            ...BTN, width: isMobile ? undefined : 108, flex: isMobile ? 1 : undefined,
+            minWidth: 0, padding: '4px 8px', cursor: 'text',
             color: 'var(--t1)', background: 'var(--bg2)',
           }}
         />
-        <button
-          onClick={() => setOpen(allOpen ? new Set() : new Set(rows.map(g => g.kind)))}
-          disabled={searching}
-          style={{ ...BTN, opacity: searching ? .5 : 1 }}
-        >{allOpen ? '모두 접기' : '모두 펼치기'}</button>
+        {/* 폰에서는 뺍니다. 종류 줄을 그냥 누르면 되는 일이고, 좁은 머리에
+            자리를 차지할 만큼 자주 쓰는 단추가 아닙니다. */}
+        {!isMobile && (
+          <button
+            onClick={() => setOpen(allOpen ? new Set() : new Set(rows.map(g => g.kind)))}
+            disabled={searching}
+            style={{ ...BTN, opacity: searching ? .5 : 1 }}
+          >{allOpen ? '모두 접기' : '모두 펼치기'}</button>
+        )}
 
         <div style={{ flex: 1 }} />
 
-        {teams.length > 0 && (
-          <select
-            value={teamFilter}
-            onChange={e => setTeamFilter(e.target.value)}
-            style={{ ...BTN, padding: '4px 8px' }}
-          >
-            <option value="">모든 팀</option>
-            {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-        )}
-        <button
-          onClick={() => setAdding({ gearId: live[0]?.id ?? gear[0].id, date: today })}
-          style={{ ...BTN, background: 'var(--ac)', color: '#fff', borderColor: 'transparent', padding: '4px 12px' }}
-        >예약하기</button>
+        {!isMobile && teamPick}
+        {!isMobile && bookBtn}
       </div>
 
       {error && (
@@ -455,7 +582,7 @@ function GearBoard({ tabs }: { tabs: React.ReactNode }) {
 
       {/* ── 격자 ─────────────────────────────────────────────────────────── */}
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-        <div style={{ minWidth: NAME_W + SPAN * COL, position: 'relative' }}>
+        <div style={{ minWidth: M.nameW + SPAN * M.col, position: 'relative' }}>
           {/* 날짜 머리. 스크롤해도 붙어 있어야 어느 칸인지 압니다. */}
           <div style={{
             display: 'flex', position: 'sticky', top: 0, zIndex: 2,
@@ -464,12 +591,12 @@ function GearBoard({ tabs }: { tabs: React.ReactNode }) {
             {/* 이 빈 칸도 왼쪽에 붙어 있어야 합니다. 안 붙이면 옆으로
                 굴렸을 때 날짜 숫자가 장비 이름 열 위로 올라탑니다 —
                 머리줄이 이름 열보다 위층(z)이라서요. */}
-            <div style={{ width: NAME_W, flexShrink: 0, position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 1 }} />
+            <div style={{ width: M.nameW, flexShrink: 0, position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 1 }} />
             {days.map(d => {
               const wd = new Date(d.replace(/-/g, '/')).getDay()
               return (
                 <div key={d} style={{
-                  width: COL, flexShrink: 0, textAlign: 'center', padding: '6px 0 5px',
+                  width: M.col, flexShrink: 0, textAlign: 'center', padding: '6px 0 5px',
                   fontSize: 10.5, lineHeight: 1.35,
                   color: d === today ? 'var(--ac)' : wd === 0 ? 'var(--danger)' : 'var(--t3)',
                   fontWeight: d === today ? 600 : 400,
@@ -499,12 +626,12 @@ function GearBoard({ tabs }: { tabs: React.ReactNode }) {
               접힌 줄이 곧 요약입니다. 날짜마다 '몇 대가 나가 있나'를 칠하고,
               펴면 그 아래에 대별 줄이 섭니다.
             */}
-            <div style={{ display: 'flex', height: KIND_H, background: 'var(--bg2)', borderBottom: '1px solid var(--bd2)' }}>
+            <div style={{ display: 'flex', height: M.kindH, background: 'var(--bg2)', borderBottom: '1px solid var(--bd2)' }}>
               <button
                 onClick={() => toggle(group.kind)}
                 disabled={searching}
                 style={{
-                  width: NAME_W, flexShrink: 0, padding: '0 10px', height: KIND_H,
+                  width: M.nameW, flexShrink: 0, padding: '0 10px', height: M.kindH,
                   position: 'sticky', left: 0, background: 'var(--bg2)', zIndex: 1,
                   display: 'flex', alignItems: 'center', gap: 5,
                   border: 'none', borderRight: '1px solid var(--bd)',
@@ -520,7 +647,7 @@ function GearBoard({ tabs }: { tabs: React.ReactNode }) {
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.kind}</span>
                 <span style={{ fontWeight: 400, color: 'var(--t3)', flexShrink: 0 }}>{total}</span>
               </button>
-              <div style={{ position: 'relative', height: KIND_H, width: SPAN * COL, flexShrink: 0 }}>
+              <div style={{ position: 'relative', height: M.kindH, width: SPAN * M.col, flexShrink: 0 }}>
                 {days.map((d, i) => {
                   const busy = busyCount(shown, ids, d)
                   const ratio = total ? busy / total : 0
@@ -529,7 +656,7 @@ function GearBoard({ tabs }: { tabs: React.ReactNode }) {
                       key={d}
                       title={busy ? `${d} · ${total}대 중 ${busy}대 나감` : `${d} · 다 있습니다`}
                       style={{
-                        position: 'absolute', left: i * COL, top: 0, width: COL, height: KIND_H,
+                        position: 'absolute', left: i * M.col, top: 0, width: M.col, height: M.kindH,
                         borderRight: '1px solid var(--bd2)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: 10, fontVariantNumeric: 'tabular-nums',
@@ -553,9 +680,9 @@ function GearBoard({ tabs }: { tabs: React.ReactNode }) {
                 opacity: item.active === false ? .45 : 1,
               }}>
                 <div style={{
-                  width: NAME_W, flexShrink: 0, padding: '0 10px',
+                  width: M.nameW, flexShrink: 0, padding: '0 10px',
                   display: 'flex', flexDirection: 'column', justifyContent: 'center',
-                  height: ROW_H, borderRight: '1px solid var(--bd)',
+                  height: M.rowH, borderRight: '1px solid var(--bd)',
                   position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 1,
                 }}>
                   <div style={{ fontSize: 12, color: 'var(--t1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -568,7 +695,7 @@ function GearBoard({ tabs }: { tabs: React.ReactNode }) {
                   )}
                 </div>
 
-                <div style={{ position: 'relative', height: ROW_H, width: SPAN * COL, flexShrink: 0 }}>
+                <div style={{ position: 'relative', height: M.rowH, width: SPAN * M.col, flexShrink: 0 }}>
                   {/* 빈 칸도 눌립니다 — 비어 있는 것을 봤을 때 하고 싶은 일은
                       그 자리에 잡는 것입니다. */}
                   {days.map((d, i) => (
@@ -578,7 +705,7 @@ function GearBoard({ tabs }: { tabs: React.ReactNode }) {
                       title={`${item.name} · ${d}`}
                       disabled={item.active === false}
                       style={{
-                        position: 'absolute', left: i * COL, top: 0, width: COL, height: ROW_H,
+                        position: 'absolute', left: i * M.col, top: 0, width: M.col, height: M.rowH,
                         border: 'none', borderRight: '1px solid var(--bd2)',
                         background: d === today ? 'var(--bg2)' : 'transparent',
                         cursor: item.active === false ? 'default' : 'pointer', padding: 0,
@@ -608,9 +735,9 @@ function GearBoard({ tabs }: { tabs: React.ReactNode }) {
                         onClick={() => setPicked(b)}
                         title={`${b.teamName ? b.teamName + ' · ' : ''}${who} · ${b.reason}`}
                         style={{
-                          position: 'absolute', left: from * COL + (openL ? 0 : 2), top: 4,
-                          width: (to - from + 1) * COL - (openL ? 0 : 2) - (openR ? 0 : 2),
-                          height: ROW_H - 8,
+                          position: 'absolute', left: from * M.col + (openL ? 0 : 2), top: 4,
+                          width: (to - from + 1) * M.col - (openL ? 0 : 2) - (openR ? 0 : 2),
+                          height: M.rowH - 8,
                           borderRadius: `${openL ? 0 : 4}px ${openR ? 0 : 4}px ${openR ? 0 : 4}px ${openL ? 0 : 4}px`,
                           border: `1px solid hsl(${hue} 60% 62%)`,
                           background: `hsl(${hue} 72% 92%)`, color: `hsl(${hue} 60% 26%)`,
@@ -700,9 +827,13 @@ function BlankPage({ tabs, children }: { tabs: React.ReactNode; children: React.
   )
 }
 
-function Step({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
+function Step({ label, onClick, children, size = 26 }: {
+  label: string; onClick: () => void; children: React.ReactNode
+  /** 손이 닿아야 하는 크기. 폰에서는 넓힙니다 — metrics.tap. */
+  size?: number
+}) {
   return (
-    <button aria-label={label} onClick={onClick} style={{ ...BTN, width: 26, padding: 0 }}>{children}</button>
+    <button aria-label={label} onClick={onClick} style={{ ...BTN, width: size, height: size, padding: 0 }}>{children}</button>
   )
 }
 
@@ -720,9 +851,18 @@ function BookingCard({ booking, siblings, canRelease, onClose, onRelease }: {
   onClose: () => void
   onRelease: () => void
 }) {
-  const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  const profileOf = useUserProfileStore(s => s.getProfileByEmail)
   const gear = useGearStore(s => s.gear)
   const kindOf = (b: GearBooking) => gear.find(g => g.id === b.gearId)?.kind
+  /**
+   * 이름을 찾는 순서.
+   *
+   * getNameByEmail은 프로필이 없으면 **주소의 앞부분을 돌려줍니다.** 그래서
+   * `getNameByEmail(...) || booking.byName`으로 두면 뒤 칸이 영영 안 쓰입니다 —
+   * 아직 프로필이 안 온 사람도, 회사를 떠나 프로필이 지워진 사람도 'sumin'으로
+   * 뜹니다. 잡을 때 적어 둔 이름이 바로 그럴 때 쓰라고 있는 것입니다.
+   */
+  const who = (b: GearBooking) => profileOf(b.by)?.name || b.byName || b.by.split('@')[0]
 
   return (
     <Sheet onClose={onClose} title={booking.long ? '장기 대여' : '장비 예약'}>
@@ -735,7 +875,7 @@ function BookingCard({ booking, siblings, canRelease, onClose, onRelease }: {
         </div>
       </Field>
       <Field label="누가">
-        {getNameByEmail(booking.by) || booking.byName || booking.by}
+        {who(booking)}
         {booking.teamName && <span style={{ color: 'var(--t3)' }}> · {booking.teamName}</span>}
       </Field>
       <Field label="사용 내용">{booking.reason}</Field>
@@ -1060,7 +1200,16 @@ function NightRange({ startMin, minutes, onChange }: {
  * 포털로 화면 맨 위(9100·9201)에 뜹니다 — 카드를 그 위에 두면 고르는 목록이
  * 카드 뒤로 숨습니다. 업무 카드도 같은 이유로 100입니다.
  */
+/**
+ * ── 폰에서는 아래에서 올라옵니다 ────────────────────────────────────────────
+ *
+ * 가운데 뜨는 창은 마우스의 자리입니다. 손은 화면 아래쪽에 있고, 한 손으로
+ * 들고 있을 때 닿는 곳도 거기입니다 — 창이 위에 뜨면 닫는 단추까지 손을
+ * 옮겨야 합니다. 그리고 아래에 붙으면 폭을 다 쓸 수 있어서, 380px에 맞춰
+ * 접혀 있던 줄들이 그냥 펴집니다.
+ */
 function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  const isMobile = useMobile()
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', esc)
@@ -1071,15 +1220,22 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
       onClick={onClose}
       style={{
         position: 'fixed', inset: 0, zIndex: 400, background: 'rgba(15,15,15,.4)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+        display: 'flex', justifyContent: 'center',
+        alignItems: isMobile ? 'flex-end' : 'center',
+        padding: isMobile ? 0 : 16,
       }}
     >
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: 'var(--bg)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)',
-          boxShadow: 'var(--sh-lg)', width: '100%', maxWidth: 380, maxHeight: '86vh',
-          overflowY: 'auto', padding: '16px 18px 18px', boxSizing: 'border-box',
+          background: 'var(--bg)', border: '1px solid var(--bd)',
+          borderRadius: isMobile ? 'var(--r3) var(--r3) 0 0' : 'var(--r3)',
+          boxShadow: 'var(--sh-lg)', width: '100%',
+          maxWidth: isMobile ? undefined : 380,
+          maxHeight: isMobile ? '88vh' : '86vh',
+          overflowY: 'auto', boxSizing: 'border-box',
+          // 아래 끝은 홈 바가 가려 갑니다. 그만큼 더 띄웁니다.
+          padding: isMobile ? '14px 16px calc(18px + var(--safe-b))' : '16px 18px 18px',
         }}
       >
         <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--t1)', marginBottom: 12 }}>{title}</div>
