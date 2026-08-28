@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { setTheme, themeChoice, type ThemeChoice } from '../../lib/theme'
 import { haptic } from '../../lib/haptics'
 import { useMobile } from '../../hooks/useMobile'
@@ -106,6 +106,30 @@ export function SettingsModal({ onClose, start = 'general' }: {
   }, [onClose])
 
   /**
+   * ── 지금 있는 장이 탭 줄에도 보여야 합니다 ────────────────────────────────
+   *
+   * 폰에서는 목록이 가로 한 줄이라 아홉 장이 다 안 들어갑니다. 그런데 뒤쪽
+   * 장으로 **바로 열리는 길**이 있습니다 — 프로필 메뉴의 '새 워크스페이스',
+   * 사이드바에서 장비·회의실로 오는 길. 그렇게 열면 본문은 '프로젝트'인데
+   * 탭 줄은 맨 앞이라, **아무 탭도 안 눌린 것처럼 보입니다.** 여기가 어디인지
+   * 화면이 말해 주지 않고, 줄이 옆으로 굴러간다는 사실도 안 보입니다.
+   *
+   * scrollIntoView는 안 씁니다 — 위쪽 조상까지 같이 굴려서 모달이 통째로
+   * 움직입니다. 줄 안에서만 셈해서 넣습니다.
+   */
+  const stripRef = useRef<HTMLDivElement>(null)
+  const hereTab = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    const strip = stripRef.current, tab = hereTab.current
+    if (!isMobile || !strip || !tab) return
+    const s0 = strip.getBoundingClientRect(), t = tab.getBoundingClientRect()
+    // 왼쪽으로 벗어났으면 왼쪽 끝에, 오른쪽으로 벗어났으면 오른쪽 끝에.
+    // 이미 보이는 탭은 안 건드립니다 — 멀쩡한 줄을 흔들 이유가 없습니다.
+    if (t.left < s0.left) strip.scrollLeft += t.left - s0.left - 10
+    else if (t.right > s0.right) strip.scrollLeft += t.right - s0.right + 10
+  }, [page, isMobile])
+
+  /**
    * ── 왼쪽 목록 ──────────────────────────────────────────────────────────────
    *
    * **내 것과 우리 것을 갈라 놓습니다.** 여덟 줄이 한 덩어리로 서 있으면
@@ -170,7 +194,7 @@ export function SettingsModal({ onClose, start = 'general' }: {
         </div>
 
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: isMobile ? 'column' : 'row' }}>
-          <div style={{
+          <div ref={stripRef} style={{
             flexShrink: 0,
             display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: 1,
             padding: isMobile ? '8px 10px' : '10px 8px',
@@ -196,6 +220,7 @@ export function SettingsModal({ onClose, start = 'general' }: {
                   on={page === p.id}
                   wide={!isMobile}
                   onClick={() => setPage(p.id)}
+                  mark={page === p.id ? hereTab : undefined}
                 />
               </React.Fragment>
             ))}
@@ -264,16 +289,19 @@ export function SettingsModal({ onClose, start = 'general' }: {
   )
 }
 
-function PageTab({ label, badge, on, wide, onClick }: {
+function PageTab({ label, badge, on, wide, onClick, mark }: {
   label: string
   badge?: number
   on: boolean
   wide: boolean
   onClick: () => void
+  /** 지금 서 있는 탭에만 붙습니다 — 폰에서 이 자리로 줄을 굴려 옵니다. */
+  mark?: React.Ref<HTMLButtonElement>
 }) {
   const [hovered, setHovered] = useState(false)
   return (
     <button
+      ref={mark}
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -1952,23 +1980,30 @@ function RoomRuleRow({ isAdmin }: { isAdmin: boolean }) {
               붐비는 시간
               <span style={{ display: 'block', ...ROW_SUB }}>이 시간대 밖은 얼마든지 잡습니다.</span>
             </span>
-            <select
-              value={rule.from}
-              disabled={busy}
-              onChange={e => void save({ from: Number(e.target.value) })}
-              style={{ ...INPUT, flex: '0 0 auto', width: 84 }}
-            >
-              {hours.filter(h => h < rule.to).map(h => <option key={h} value={h}>{h / 60}시</option>)}
-            </select>
-            <span style={{ fontSize: 11, color: 'var(--t3)' }}>–</span>
-            <select
-              value={rule.to}
-              disabled={busy}
-              onChange={e => void save({ to: Number(e.target.value) })}
-              style={{ ...INPUT, flex: '0 0 auto', width: 84 }}
-            >
-              {hours.filter(h => h > rule.from).map(h => <option key={h} value={h}>{h / 60}시</option>)}
-            </select>
+            {/*
+              **두 칸이 같이 접혀야 합니다.** 따로 두면 폰에서 자리가 모자랄 때
+              뒤 칸만 다음 줄로 떨어져서, '10시 – 18시' 한 덩어리가 상관없는
+              두 칸으로 읽힙니다. 묶어 두면 접히더라도 범위인 채로 접힙니다.
+            */}
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+              <select
+                value={rule.from}
+                disabled={busy}
+                onChange={e => void save({ from: Number(e.target.value) })}
+                style={{ ...INPUT, flex: '0 0 auto', width: 84 }}
+              >
+                {hours.filter(h => h < rule.to).map(h => <option key={h} value={h}>{h / 60}시</option>)}
+              </select>
+              <span style={{ fontSize: 11, color: 'var(--t3)' }}>–</span>
+              <select
+                value={rule.to}
+                disabled={busy}
+                onChange={e => void save({ to: Number(e.target.value) })}
+                style={{ ...INPUT, flex: '0 0 auto', width: 84 }}
+              >
+                {hours.filter(h => h > rule.from).map(h => <option key={h} value={h}>{h / 60}시</option>)}
+              </select>
+            </span>
           </div>
 
           <div style={{ ...ROW, alignItems: 'center', flexWrap: 'wrap' }}>
