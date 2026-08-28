@@ -15,6 +15,32 @@ import { initDb } from '../store.js'
 
 const ROOT = 'mcpAuth'
 
+/**
+ * ── 값이 없는 칸은 아예 빼고 씁니다 ─────────────────────────────────────────
+ *
+ * 실시간 DB는 `undefined`를 못 받습니다. 하나라도 섞여 있으면 쓰기 전체가
+ * 거절됩니다 — `value argument contains undefined in property '…'`.
+ *
+ * **등록이 여기서 막혔습니다.** 커넥터가 비밀 없는 클라이언트(PKCE)로
+ * 등록하면 SDK가 만드는 객체에 `client_secret: undefined`와
+ * `client_secret_expires_at: undefined`가 그대로 들어 있습니다. 비밀을 쓰는
+ * 클라이언트는 그 자리에 값이 있어서 아무 문제가 없었고, 그래서 잘 되다가
+ * 어느 날 '로그인 서비스에 등록할 수 없습니다'가 됩니다 — **우리가 아무것도
+ * 안 바꿔도** 저쪽이 등록하는 방식이 바뀌면요.
+ *
+ * 없는 것은 없는 대로 씁니다. 빈 문자열로 채우면 '비밀이 없는 클라이언트'와
+ * '비밀이 빈 클라이언트'가 같아지고, 그건 검사하는 쪽이 헷갈릴 자리입니다.
+ */
+export function withoutBlanks<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(withoutBlanks) as unknown as T
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) if (v !== undefined) out[k] = withoutBlanks(v)
+    return out as T
+  }
+  return value
+}
+
 export function randomToken(): string {
   return randomBytes(32).toString('base64url')
 }
@@ -26,7 +52,7 @@ function hash(token: string): string {
 // ── Registered clients (Dynamic Client Registration) ────────────────────────
 
 export async function saveClient(client: OAuthClientInformationFull): Promise<void> {
-  await initDb().ref(`${ROOT}/clients/${client.client_id}`).set(client)
+  await initDb().ref(`${ROOT}/clients/${client.client_id}`).set(withoutBlanks(client))
 }
 
 export async function loadClient(clientId: string): Promise<OAuthClientInformationFull | undefined> {
@@ -47,7 +73,7 @@ export interface PendingAuth {
 }
 
 export async function savePending(key: string, value: PendingAuth): Promise<void> {
-  await initDb().ref(`${ROOT}/pending/${key}`).set(value)
+  await initDb().ref(`${ROOT}/pending/${key}`).set(withoutBlanks(value))
 }
 
 export async function takePending(key: string): Promise<PendingAuth | undefined> {
@@ -71,7 +97,7 @@ export interface AuthCode {
 }
 
 export async function saveCode(code: string, value: AuthCode): Promise<void> {
-  await initDb().ref(`${ROOT}/codes/${hash(code)}`).set(value)
+  await initDb().ref(`${ROOT}/codes/${hash(code)}`).set(withoutBlanks(value))
 }
 
 export async function peekCode(code: string): Promise<AuthCode | undefined> {
@@ -99,7 +125,7 @@ export interface TokenRecord {
 }
 
 export async function saveToken(token: string, value: TokenRecord): Promise<void> {
-  await initDb().ref(`${ROOT}/tokens/${hash(token)}`).set(value)
+  await initDb().ref(`${ROOT}/tokens/${hash(token)}`).set(withoutBlanks(value))
 }
 
 export async function loadToken(token: string): Promise<TokenRecord | undefined> {
