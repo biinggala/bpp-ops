@@ -1,4 +1,5 @@
 import { Node, mergeAttributes } from '@tiptap/core'
+import type { MutableRefObject } from 'react'
 import { ReactNodeViewRenderer, NodeViewWrapper } from '@tiptap/react'
 import type { NodeViewProps } from '@tiptap/react'
 import { useTaskStore } from '../../../store/taskStore'
@@ -9,6 +10,7 @@ import { useSyncStore } from '../../../store/syncStore'
 import { useGCalStore } from '../../../store/gcalStore'
 import { haptic } from '../../../lib/haptics'
 import { daysFrom } from '../../../lib/utils'
+import { blockOnDay } from '../../../lib/timeblock'
 import { StatusPick } from '../../shared/StatusPick'
 import type { Status } from '../../../types'
 import { ROW, REMOVE } from './noteRow'
@@ -63,8 +65,16 @@ declare module '@tiptap/core' {
   }
 }
 
-export const TaskRef = Node.create({
+export const TaskRef = Node.create<{ dateRef: MutableRefObject<string> | null }>({
   name: 'taskRef',
+
+  /**
+   * 지금 보고 있는 노트의 날짜. 줄에 붙는 시간이 **그 날의 것인지**를
+   * 가리는 데 씁니다(BlockTime이 체크박스 줄에 같은 값을 씁니다).
+   */
+  addOptions() {
+    return { dateRef: null }
+  },
   group: 'block',
   atom: true,
   selectable: true,
@@ -100,7 +110,7 @@ export const TaskRef = Node.create({
   },
 })
 
-function TaskRefView({ node, deleteNode }: NodeViewProps) {
+function TaskRefView({ node, deleteNode, extension }: NodeViewProps) {
   const taskId = node.attrs.taskId as string | null
   const task = useTaskStore(s => s.tasks.find(t => t.id === taskId))
   const allTasks = useTaskStore(s => s.tasks)
@@ -110,11 +120,14 @@ function TaskRefView({ node, deleteNode }: NodeViewProps) {
    * 이 업무에 붙은 시간. 일정 쪽에 업무 id가 실려 있어서(lib/timeblock) 찾을
    * 수 있습니다. 없으면 아직 시간을 안 정한 것이고, 그건 흠이 아니라 대부분의
    * 줄이라 아무 표시도 하지 않습니다.
+   *
+   * **보고 있는 그 날의 블록만입니다.** 날짜를 안 보면 지난주에 잡아 둔
+   * 시간이 오늘 줄에 그대로 붙습니다 — blockOnDay 주석 참고.
    */
+  const day = (extension.options as { dateRef?: MutableRefObject<string> | null }).dateRef?.current
   const blockAt = useGCalStore(s => {
-    const hit = s.events.find(e => e.taskId === taskId && !e.allDay)
-    if (!hit?.startIso || !hit.endIso) return null
-    return `${clock(hit.startIso)}–${clock(hit.endIso)}`
+    const hit = blockOnDay(s.events, taskId, day)
+    return hit ? `${clock(hit.startIso!)}–${clock(hit.endIso!)}` : null
   })
   const updateTask = useTaskStore(s => s.updateTask)
   const openTaskDetail = useUiStore(s => s.openTaskDetail)

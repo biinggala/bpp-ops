@@ -162,7 +162,8 @@ export function TodayView() {
           }
         },
       }).configure({ nested: true }),
-      TaskRef,
+      // 줄에 붙는 시간이 '오늘의 것'인지 가리려면 날짜를 알아야 합니다.
+      TaskRef.configure({ dateRef }),
       FileRef,
       MarkdownTasks,
       // 시간 축에 놓인 체크박스 줄에 그 시간을 붙입니다(그릴 때만).
