@@ -82,3 +82,37 @@ export const BLOCK_MINUTES = 60
  * 손잡이는 편집기 DOM 밖의 진짜 draggable 버튼이라 프로즈미러의 dragstart
  * 처리기가 돌지 않고, 따라서 dataTransfer를 지우지도 않습니다.
  */
+
+/**
+ * ── 이 날짜에 잡힌 블록 ──────────────────────────────────────────────────────
+ *
+ * 노트의 업무 줄 오른쪽에 붙는 `20:00–21:00`이 이걸 씁니다.
+ *
+ * **날짜를 안 보고 업무 id만 보면 안 됩니다.** 일정 스토어에는 넉 달치가
+ * 실려 있어서, 지난주에 한 번 잡아 둔 블록이 오늘 노트의 그 줄에 그대로
+ * 붙습니다 — 오늘은 아무 시간도 안 정했는데 화면은 20시에 한다고 말합니다.
+ * '어제 못 끝낸 것 가져오기'로 지난 업무를 오늘로 담으면 늘 그렇게 됩니다.
+ *
+ * 날짜는 `start`(YYYY-MM-DD)로 봅니다. 이 값은 스토어가 이미 그 사람의
+ * 시간대로 접어 둔 것이라, ISO 글자를 잘라 쓰는 것과 달리 자정 근처에서
+ * 하루가 밀리지 않습니다.
+ */
+export interface DayBlock {
+  taskId?: string
+  allDay: boolean
+  /** YYYY-MM-DD, 보는 사람의 시간대 기준. */
+  start: string
+  startIso?: string
+  endIso?: string
+}
+
+export function blockOnDay<T extends DayBlock>(
+  events: T[],
+  taskId: string | null | undefined,
+  day: string | null | undefined,
+): T | null {
+  if (!taskId || !day) return null
+  return events.find(e =>
+    e.taskId === taskId && !e.allDay && e.start === day && !!e.startIso && !!e.endIso,
+  ) ?? null
+}
