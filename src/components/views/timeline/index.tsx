@@ -131,6 +131,9 @@ interface Draft {
  * 시간 격자 자체는 그대로입니다. 끌어서 회의를 만드는 동작이 이 칸에
  * 들어오는 이유이기도 합니다.
  */
+/** 끌고 있는 동안의 자리. 날짜까지 들고 있어야 옆 칸으로 넘어갑니다. */
+interface Ghost { id: string; date: string; from: number; to: number }
+
 export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[]; lead?: number; bare?: boolean }) {
   const { token, events, peekEvents, calendars, createEvent, updateEvent, removeEvent, ensureEvents, respond } = useGCalStore(useShallow(s => ({ token: s.token, events: s.events, peekEvents: s.peekEvents, calendars: s.calendars, createEvent: s.createEvent, updateEvent: s.updateEvent, removeEvent: s.removeEvent, ensureEvents: s.ensureEvents, respond: s.respond })))
   const tasks = useFilteredTasks()
@@ -387,7 +390,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
   const [notesUrl, setNotesUrl] = useState('')
   const [agendaDraft, setAgendaDraft] = useState<{ id: string; agenda: string; notesUrl: string } | null>(null)
   const [saving, setSaving] = useState(false)
-  const ghostRef = useRef<{ id: string; from: number; to: number } | null>(null)
+  const ghostRef = useRef<Ghost | null>(null)
   const dragging = useRef<{ date: string; anchorMinutes: number } | null>(null)
   const gridRef = useRef<HTMLDivElement>(null)
 
@@ -426,7 +429,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
 
   // Moving or stretching an existing event. Held here so the block can be drawn
   // at the new position before Google has confirmed it.
-  const [ghost, setGhost] = useState<{ id: string; from: number; to: number } | null>(null)
+  const [ghost, setGhost] = useState<Ghost | null>(null)
   const moving = useRef<{ id: string; date: string; grabAt: number; from: number; to: number; mode: 'move' | 'resize' } | null>(null)
 
   // mouseup fires outside React's render, so the latest ghost is read from a ref.
@@ -466,18 +469,45 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
     moving.current = { id: event.id, date, grabAt, from, to, mode }
     dragMoved.current = false
 
+    /**
+     * ── 옆 칸으로도 갑니다 ────────────────────────────────────────────────
+     *
+     * 주 화면에서 일정을 옮기는 일은 대개 '한 시간 뒤로'가 아니라 **'수요일
+     * 말고 목요일로'**입니다. 그런데 잡은 칸 하나에만 매여 있어서, 옆으로
+     * 아무리 끌어도 시각만 바뀌었습니다 — 손은 목요일에 가 있는데 일정은
+     * 수요일에 남습니다.
+     *
+     * 커서 아래의 칸을 매번 찾습니다. 같은 격자 안에서만 찾습니다 — 화면에
+     * 시간표가 둘 있을 때(카드 안의 작은 것) 남의 칸으로 넘어가면 안 됩니다.
+     *
+     * 길이를 바꾸는 중(resize)에는 날짜를 안 봅니다. 끝을 잡아당기다 옆
+     * 칸에 닿았다고 날짜가 바뀌면, 하려던 일과 다른 일이 일어납니다.
+     */
+    const grid = column.parentElement
+    const columnAt = (x: number): { el: HTMLElement; date: string } | null => {
+      if (!grid) return null
+      for (const el of Array.from(grid.querySelectorAll<HTMLElement>('[data-day-column]'))) {
+        const r = el.getBoundingClientRect()
+        if (x >= r.left && x < r.right && el.dataset.dayColumn) return { el, date: el.dataset.dayColumn }
+      }
+      return null
+    }
+
     const move = (ev: MouseEvent) => {
       const held = moving.current
       if (!held) return
-      const at = minutesAt(ev.clientY, column)
+      const over = held.mode === 'move' ? columnAt(ev.clientX) : null
+      const here = over?.el ?? column
+      const day = over?.date ?? held.date
+      const at = minutesAt(ev.clientY, here)
       const delta = at - held.grabAt
-      if (delta !== 0) dragMoved.current = true
+      if (delta !== 0 || day !== held.date) dragMoved.current = true
       if (held.mode === 'move') {
         const length = held.to - held.from
         const start = clampDay(Math.min(24 * 60 - length, Math.max(0, held.from + delta)))
-        setGhost({ id: held.id, from: start, to: start + length })
+        setGhost({ id: held.id, date: day, from: start, to: start + length })
       } else {
-        setGhost({ id: held.id, from: held.from, to: clampDay(Math.max(held.from + MIN_DURATION, held.to + delta)) })
+        setGhost({ id: held.id, date: held.date, from: held.from, to: clampDay(Math.max(held.from + MIN_DURATION, held.to + delta)) })
       }
     }
     /**
@@ -504,10 +534,10 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
       const settled = ghostRef.current
       setGhost(null)
       if (!held || !settled) return
-      if (settled.from === held.from && settled.to === held.to) return
+      if (settled.from === held.from && settled.to === held.to && settled.date === held.date) return
       await updateEvent(held.id, {
-        startDateTime: localIso(held.date, settled.from),
-        endDateTime: localIso(held.date, settled.to),
+        startDateTime: localIso(settled.date, settled.from),
+        endDateTime: localIso(settled.date, settled.to),
       })
       /**
        * 회의를 옮기면 회의실 예약도 따라갑니다.
@@ -519,12 +549,21 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
        * 옮긴 시간에 이미 남의 예약이 있으면 **옮기지 않고 말해 줍니다.** 조용히
        * 풀면 방이 없는 회의가 되고, 억지로 겹치면 두 팀이 같은 방에 갑니다.
        */
-      await moveBookingWith(held.id, held.date, settled)
+      await moveBookingWith(held.id, held.date, settled.date, settled)
     }
     window.addEventListener('mousemove', move)
     window.addEventListener('mouseup', up)
     window.addEventListener('blur', cancel)
     window.addEventListener('contextmenu', cancel)
+  }
+
+  /** 이 날 칸으로 끌려 들어온 일정. 원래 그 날에 있던 것은 아닙니다. */
+  const movedInto = (date: string): GCalEvent[] | null => {
+    if (!ghost || ghost.date !== date) return null
+    if ((eventsByDate.get(date) ?? []).some(e => e.id === ghost.id)) return null
+    const held = events.find(e => e.id === ghost.id)
+    if (!held) return null
+    return [{ ...held, start: date, end: date, startIso: localIso(date, ghost.from), endIso: localIso(date, ghost.to) }]
   }
 
   const minutesAt = (clientY: number, column: HTMLElement): number => {
@@ -651,10 +690,26 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
     (bookingsByDate[date] ?? []).find(b => b.eventId === eventId) ?? null
 
   /** 일정의 시간이 바뀌었을 때, 그 일정에 붙은 예약을 같은 시간으로. */
-  const moveBookingWith = async (eventId: string, date: string, next: { from: number; to: number }) => {
-    const held = bookingFor(date, eventId)
+  /**
+   * 회의를 옮기면 회의실 예약도 따라갑니다. **날짜가 바뀌면 그 날로** 옮깁니다 —
+   * 예약은 날짜별로 사는 자리라, 옛 날짜에서 풀고 새 날짜에 다시 잡습니다.
+   */
+  const moveBookingWith = async (
+    eventId: string, from: string, to: string, next: { from: number; to: number },
+  ) => {
+    const held = bookingFor(from, eventId)
     if (!held || !myEmail) return
-    const clashes = clashesFor(bookingsByDate[date] ?? [], held.roomId, next, eventId)
+    /*
+      가는 날의 예약을 아직 못 읽었으면 옮기지 않습니다. 안 온 것을 '없다'로
+      읽으면 이미 잡혀 있는 방에 겹쳐 놓게 되고, 회의 시간에 가 보면 다른
+      팀이 있습니다. 화면에 보이는 날들은 이미 듣고 있어서(watchDates) 여기
+      걸릴 일은 드뭅니다 — 드물다고 열어 둘 자리가 아닙니다.
+    */
+    if (!(to in bookingsByDate)) {
+      useToast.getState().show('회의실 예약은 못 옮겼습니다 — 그 날 예약을 아직 못 읽었습니다')
+      return
+    }
+    const clashes = clashesFor(bookingsByDate[to] ?? [], held.roomId, next, eventId)
     const room = useOrgStore.getState().rooms.find(r => r.id === held.roomId)
     // 회의를 늘렸더니 방이 규칙에 걸리는 경우. 일정은 이미 늘어난 뒤라
     // 예약만 옛 시간에 남는데, 그걸 말 안 하면 회의실이 딴 시간에 잡혀
@@ -669,9 +724,9 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
       useToast.getState().show(`${room?.name ?? '회의실'} 예약은 옮기지 못했습니다 — 그 시간에 이미 잡혀 있습니다`)
       return
     }
-    await releaseRoom(date, held.id)
+    await releaseRoom(from, held.id)
     await bookRoom({
-      date, roomId: held.roomId, from: next.from, to: next.to,
+      date: to, roomId: held.roomId, from: next.from, to: next.to,
       title: held.title, eventId, by: myEmail, byName: getNameByEmail(myEmail),
     })
   }
@@ -1109,7 +1164,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
           {days.map(date => (
             <div
               key={date}
-              data-day-column
+              data-day-column={date}
               onMouseDown={e => beginDrag(e, date)}
               // 빈 칸의 우클릭도 브라우저 메뉴를 안 띄웁니다. 여기서 할 수
               // 있는 일은 끌어서 만드는 것뿐이고, '새로고침'은 그 자리에
@@ -1197,8 +1252,18 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
               {naming?.date === date && <DraftBlock draft={naming} />}
               {dropDraft?.date === date && <DraftBlock draft={dropDraft} />}
 
+              {/*
+                끌어서 다른 날로 넘어간 일정은 **원래 칸에서 빠지고 그 날 칸에
+                섭니다.** 그림자만 옆 칸에 띄우고 본체를 두고 오면, 어디에
+                놓이는지를 두 자리에서 읽어야 합니다.
+
+                넘어간 것에는 지금 시각을 실어 보냅니다 — place가 겹침을
+                재는 값이 그것이라, 안 실으면 옛 시각 기준으로 자리를 잡고
+                옆의 일정과 어긋나게 겹칩니다.
+              */}
               {place([
-                ...(eventsByDate.get(date) ?? []),
+                ...(eventsByDate.get(date) ?? []).filter(e => !(ghost?.id === e.id && ghost.date !== date)),
+                ...(movedInto(date) ?? []),
                 ...(pendingEvent && pending?.date === date ? [pendingEvent] : []),
               ]).map(p => (
                 <EventBlock
