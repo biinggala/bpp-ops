@@ -8,7 +8,7 @@ import { useAuthStore } from '../../../store/authStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
 import { usePrefsStore } from '../../../store/prefsStore'
 import { authorizedEmails } from '../../../lib/utils'
-import { hasTimeblock, readTimeblock, BLOCK_MINUTES, type TimeblockDrag } from '../../../lib/timeblock'
+import { hasTimeblock, readTimeblock, blockOnDay, BLOCK_MINUTES, type TimeblockDrag } from '../../../lib/timeblock'
 import type { Task, Status } from '../../../types'
 import { StatusPick } from '../../shared/StatusPick'
 import { useNoteChecks, toggleNoteCheck } from '../../../hooks/useNoteChecks'
@@ -561,11 +561,22 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
   const placeTimeblock = async (payload: TimeblockDrag, date: string, at: number) => {
     const from = clampDay(at)
     const to = clampDay(Math.max(from + MIN_DURATION, from + BLOCK_MINUTES))
-    // id가 있을 때만 찾습니다. 없는 것끼리 비교하면 **아무 일정이나** 걸려서,
-    // 체크박스 한 줄을 끌었을 뿐인데 남의 일정이 옮겨집니다.
-    const existing = payload.taskId
-      ? events.find(e => e.taskId === payload.taskId && !e.allDay)
-      : undefined
+    /**
+     * ── 날마다 하나씩 쌓입니다 ────────────────────────────────────────────
+     *
+     * 예전에는 그 업무의 블록이 **어느 날에 있든** 그걸 옮겼습니다. 그래서
+     * 사흘에 걸쳐 한 일을 사흘 내내 놓아도 화면에는 마지막 하루만 남았고,
+     * 지난 이틀은 조용히 없어졌습니다 — 얼마나 오래 붙잡고 있는 일인지가
+     * 기록에서 사라집니다.
+     *
+     * 이제 **그 날의 것만** 찾습니다. 같은 날에 두 번 놓으면 자리를 옮기는
+     * 것이고(한 날에 같은 블록이 둘일 이유가 없습니다), 다른 날에 놓으면
+     * 그 날의 블록이 새로 생깁니다.
+     *
+     * id가 있을 때만 찾습니다. 없는 것끼리 비교하면 아무 일정이나 걸려서,
+     * 체크박스 한 줄을 끌었을 뿐인데 남의 일정이 옮겨집니다.
+     */
+    const existing = blockOnDay(events, payload.taskId, date) ?? undefined
     if (existing) {
       await updateEvent(existing.id, {
         startDateTime: localIso(date, from),

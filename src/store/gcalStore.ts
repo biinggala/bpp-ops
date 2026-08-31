@@ -256,8 +256,10 @@ interface GCalState {
   /** Loads the range if the cached window does not already cover it. */
   ensureEvents: (from: string, to: string) => Promise<void>
   /** Refetches the cached window regardless of age. */
-  refreshEvents: () => Promise<void>
-  fetchEvents: (from: string, to: string) => Promise<void>
+  /** 다시 읽습니다. `quiet`면 '불러오는 중' 표시를 안 건드립니다 — 뒤에서
+   *  도는 갱신이 1분마다 툴바를 깜빡이게 하면 안 됩니다. */
+  refreshEvents: (quiet?: boolean) => Promise<void>
+  fetchEvents: (from: string, to: string, quiet?: boolean) => Promise<void>
   autoReconnect: () => Promise<void>
   setTargetCalendar: (id: string) => void
   /** Creates an event, asking for write permission the first time. */
@@ -1067,11 +1069,11 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     await get().fetchEvents(shiftDate(from, -PAD_DAYS), shiftDate(to, PAD_DAYS))
   },
 
-  refreshEvents: async () => {
+  refreshEvents: async (quiet) => {
     const { loadedFrom, loadedTo } = get()
     if (!loadedFrom || !loadedTo) return
     set({ fetchedAt: 0 })
-    await get().fetchEvents(loadedFrom, loadedTo)
+    await get().fetchEvents(loadedFrom, loadedTo, quiet)
   },
 
   /**
@@ -1142,7 +1144,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     }
   },
 
-  fetchEvents: async (from: string, to: string) => {
+  fetchEvents: async (from: string, to: string, quiet = false) => {
     let { token, expiry } = get()
     if (!token || !expiry || expiry < Date.now()) {
       // Expired mid-session. Renew in place rather than making the person click:
@@ -1170,7 +1172,7 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     if (!active.length) { set({ events: [], loading: false, loadedFrom: from, loadedTo: to, fetchedAt: Date.now() }); return }
     if (cached) void get().fetchCalendars()
 
-    set({ loading: true, error: null })
+    set(quiet ? { error: null } : { loading: true, error: null })
     const abort = new AbortController()
     const timer = setTimeout(() => abort.abort(), 15000)
     try {
@@ -1201,7 +1203,10 @@ export const useGCalStore = create<GCalState>((set, get) => ({
       const msg = e instanceof Error && e.name === 'AbortError'
         ? '요청 시간 초과. 네트워크를 확인해 주세요.'
         : (e instanceof Error ? e.message : '이벤트 로드 오류')
-      set({ loading: false, error: msg })
+      // 뒤에서 도는 갱신이 실패한 것은 사람에게 할 말이 아닙니다. 지하철에서
+      // 한 번 끊긴 것으로 빨간 글씨가 뜨면, 그 글씨는 곧 아무 뜻도 없어집니다.
+      // 다음 번에 성공하면 조용히 맞춰집니다.
+      set(quiet ? { loading: false } : { loading: false, error: msg })
       // 실패해도 기다리던 요청은 보내 줍니다. 한 번 실패했다고 그 뒤에
       // 누른 달까지 같이 사라지면, 사람에게는 앱이 멈춘 것으로 보입니다.
       runQueued(get, set)

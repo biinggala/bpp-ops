@@ -976,16 +976,11 @@ function DesktopCalendar() {
   const writable = writableCalendars(calendars)
   const target = targetCalendarOf({ calendars, targetCalendarId }) ?? ''
 
-  // Coming back to the tab is the moment someone expects to see what changed in
-  // Google meanwhile. The cached window is only re-read if it has gone stale.
-  useEffect(() => {
-    const onFocus = () => {
-      const { loadedFrom, loadedTo } = useGCalStore.getState()
-      if (loadedFrom && loadedTo) useGCalStore.getState().ensureEvents(loadedFrom, loadedTo)
-    }
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [])
+  /*
+    창으로 돌아왔을 때 다시 읽던 자리가 여기 있었습니다. 이제 앱 전체가
+    합니다(hooks/useLiveCalendar) — 이 화면에만 걸려 있어서, 정작 하루를
+    보내는 '오늘' 화면에서는 아무것도 안 따라왔습니다.
+  */
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
