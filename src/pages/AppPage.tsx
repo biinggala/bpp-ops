@@ -19,6 +19,7 @@ import { needsHomeOrg } from '../lib/homeOrg'
 import { useUserProfileStore } from '../store/userProfileStore'
 import { useMobile } from '../hooks/useMobile'
 import { useLiveCalendar } from '../hooks/useLiveCalendar'
+import { warmServerGoogle } from '../lib/serverGoogle'
 import type { Project } from '../types'
 import { Sidebar } from '../components/layout/Sidebar'
 import { Topbar } from '../components/layout/Topbar'
@@ -65,6 +66,9 @@ export function AppPage() {
   const isMobile = useMobile()
   // 남이 옮긴 일정이 내 화면에도 옮겨집니다 — hooks/useLiveCalendar 참고.
   useLiveCalendar()
+  // 구글 열쇠를 서버가 들고 있는 배포인지 미리 물어 둡니다. 클릭이 온 뒤에
+  // 물으면 답을 기다리는 사이에 브라우저가 창을 막습니다.
+  useEffect(() => { warmServerGoogle() }, [])
   const view = useUiStore(s => s.view)
   const screen = useUiStore(s => s.screen)
   const openTaskDetail = useUiStore(s => s.openTaskDetail)

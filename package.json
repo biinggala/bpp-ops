@@ -13,7 +13,7 @@
     "desktop:build": "tauri build",
     "test": "npm run test:access && npm run test:rules",
     "test:rules": "firebase emulators:exec --only database --project demo-bpp-ops --config firebase.test.json \"node --test --test-concurrency=1 test/rules.next.test.js test/rules.app.test.js test/migrate.test.js\"",
-    "test:access": "tsc -p tsconfig.test.json && sed -i.bak \"s|from .\\\\.\\\\./types.|from \\x27../types/index.js\\x27|\" .test-build/lib/utils.js && sed -i.bak \"s|from './paths'|from './paths.js'|\" .test-build/lib/rosterRules.js && node --test test/activityView.test.js test/access.test.js test/noteChecks.test.js test/visibleProjects.test.js test/pickOrg.test.js test/orgListing.test.js test/timeblock.test.js test/noteHtml.test.js test/noteText.test.js test/roomRule.test.js test/gear.test.js test/lanes.test.js test/homeOrg.test.js test/stamp.test.js test/sanitize.test.js"
+    "test:access": "tsc -p tsconfig.test.json && sed -i.bak \"s|from .\\\\.\\\\./types.|from \\x27../types/index.js\\x27|\" .test-build/lib/utils.js && sed -i.bak \"s|from './paths'|from './paths.js'|\" .test-build/lib/rosterRules.js && node --test test/activityView.test.js test/access.test.js test/noteChecks.test.js test/visibleProjects.test.js test/pickOrg.test.js test/orgListing.test.js test/scopes.test.js test/timeblock.test.js test/noteHtml.test.js test/noteText.test.js test/roomRule.test.js test/gear.test.js test/lanes.test.js test/homeOrg.test.js test/stamp.test.js test/sanitize.test.js"
   },
   "dependencies": {
     "@tauri-apps/plugin-process": "^2.3.1",

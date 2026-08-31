@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { unlinkServerGoogle } from '../lib/serverGoogle'
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import { auth } from '../lib/firebase'
 import { requestGoogleToken, prepareGoogleAuthz, AuthzError, GIS_CONFIGURED } from '../lib/googleAuthz'
@@ -631,6 +632,9 @@ export const useGCalStore = create<GCalState>((set, get) => ({
   },
 
   disconnect: () => {
+    // 서버가 든 열쇠에서도 이 범위를 뺍니다. 화면에서 껐는데 서버가 계속
+    // 들고 있으면 사람이 본 것과 다릅니다 — lib/serverGoogle.
+    void unlinkServerGoogle(FULL_SCOPE).catch(() => {})
     // The desktop shell holds a refresh token of its own; leaving it behind
     // would make "연동 해제" reconnect silently on the next reload.
     if (isDesktopShell()) void forgetStoredGrant(FULL_SCOPE)

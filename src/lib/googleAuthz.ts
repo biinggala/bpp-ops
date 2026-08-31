@@ -15,6 +15,7 @@
 // a refresh token, which is a separate decision (see docs).
 
 import { isDesktopShell, authorizeWithSystemBrowser, refreshWithStoredGrant } from './desktopAuth'
+import { linkAndWait, serverGoogleKnown, tokenFromServer } from './serverGoogle'
 
 /** From the Google Cloud console: APIs & Services → Credentials → Web client. */
 export const GOOGLE_CLIENT_ID = '1050546278891-elmuh3saq38q8rsj02li9d3j6q043ko7.apps.googleusercontent.com'
@@ -182,6 +183,28 @@ function askWarmClient(
 export function requestGoogleToken(
   { scope, interactive, hint }: { scope: string; interactive: boolean; hint?: string }
 ): Promise<GrantedToken> {
+  /**
+   * ── 서버에 열쇠가 있으면 창이 필요 없습니다 ──────────────────────────────
+   *
+   * 브라우저가 직접 받는 토큰은 한 시간짜리고, 갱신은 '구글 세션이 살아 있고
+   * 브라우저가 허락할 때만' 조용히 됩니다. 사파리와 아이폰은 그 자리를 막아서,
+   * 아무것도 안 했는데 몇 시간마다 재연동을 눌러야 했습니다.
+   *
+   * 열쇠를 서버가 들고 있으면 그 문제가 통째로 없어집니다 — 그리고 연결이
+   * 기기가 아니라 **사람**에게 붙어서, 노트북에서 한 번 하면 폰에서도 됩니다.
+   * lib/serverGoogle 참고.
+   *
+   * 켜져 있는지 모르는 동안에는 예전 길로 갑니다. 되던 것을 안 되게 만들지
+   * 않습니다 — 이 값은 앱이 뜰 때 미리 물어 둡니다(warmServerGoogle).
+   */
+  if (serverGoogleKnown()) {
+    if (!interactive) return tokenFromServer(scope)
+    // 클릭과 같은 순간에 빈 창을 엽니다. 주소를 받아 온 뒤에 열면 브라우저가
+    // '사람이 시킨 창'으로 안 칩니다.
+    const win = isDesktopShell() ? null : window.open('', '_blank')
+    return linkAndWait(scope, hint, win)
+  }
+
   if (isDesktopShell()) return desktopToken({ scope, interactive, hint })
 
   const warm = warmClients.get(scope)

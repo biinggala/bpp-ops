@@ -54,6 +54,8 @@ beforeEach(async () => {
     await set(ref(db, 'mcpAuth/secret'), { token: 'do-not-leak' })
     await set(ref(db, `notionAuth/${ALICE.uid}`), { accessToken: 'do-not-leak' })
     await set(ref(db, `notionLinked/${ALICE.uid}`), { workspace: 'BPP', at: 1 })
+    await set(ref(db, `googleAuth/${ALICE.uid}`), { refreshToken: 'do-not-leak', scope: 'calendar' })
+    await set(ref(db, `googleLinked/${ALICE.uid}`), { scope: 'calendar', at: 1 })
   })
 })
 
@@ -192,6 +194,26 @@ test('붙었다는 표시만 본인이 읽고, 아무도 못 쓴다', async () =
   // 서버만 씁니다. 앱이 쓸 수 있으면 안 붙여 놓고 붙은 척할 수 있고, 그러면
   // 검색이 조용히 빈 결과를 주는 상태가 '연결됨'으로 보입니다.
   await assertFails(set(ref(authed(ALICE), `notionLinked/${ALICE.uid}`), { workspace: '가짜' }))
+})
+
+/*
+  구글 열쇠(refresh token)는 노션 열쇠보다 더 무겁습니다. 한 장으로 그 사람의
+  캘린더·드라이브·메일을 계속 열 수 있고, 한 시간이 지나도 안 죽습니다.
+  브라우저에는 절대 놓이면 안 되는 값이라 본인도 못 읽습니다.
+*/
+test('구글 열쇠는 본인조차 못 읽는다', async () => {
+  await assertFails(get(ref(authed(ALICE), `googleAuth/${ALICE.uid}`)))
+  await assertFails(get(ref(authed(ALICE), 'googleAuth')))
+  await assertFails(set(ref(authed(ALICE), `googleAuth/${ALICE.uid}`), { refreshToken: 'mine' }))
+  await assertFails(get(ref(authed(MALLORY), `googleAuth/${ALICE.uid}`)))
+})
+
+test('구글이 붙었다는 표시만 본인이 읽고, 아무도 못 쓴다', async () => {
+  await assertSucceeds(get(ref(authed(ALICE), `googleLinked/${ALICE.uid}`)))
+  await assertFails(get(ref(authed(BOB), `googleLinked/${ALICE.uid}`)))
+  // 앱이 쓸 수 있으면 '연결됨'을 스스로 적어 둘 수 있고, 그러면 서버에 열쇠가
+  // 없는데 연결된 것처럼 보이는 화면이 생깁니다.
+  await assertFails(set(ref(authed(ALICE), `googleLinked/${ALICE.uid}`), { scope: '가짜' }))
 })
 
 test('휴지통은 그 프로젝트 멤버만 읽고 쓴다', async () => {
