@@ -37,13 +37,30 @@ const GOOGLE_TOKEN = 'https://oauth2.googleapis.com/token'
 const CLIENT_ID = process.env.GOOGLE_OAUTH_CLIENT_ID ?? ''
 const CLIENT_SECRET = process.env.GOOGLE_OAUTH_CLIENT_SECRET ?? ''
 
+/**
+ * ── 스위치가 따로 있습니다 ──────────────────────────────────────────────────
+ *
+ * 열쇠와 비밀은 커넥터 로그인 때문에 이미 들어와 있습니다. 그래서 아무 표시
+ * 없이 켜 두면, **이 서버를 올리는 순간** 앱이 새 길로 연결을 시도합니다 —
+ * 구글 콘솔에 이 서버의 리디렉션 주소가 아직 등록되지 않았으면 사람은
+ * `redirect_uri_mismatch`만 봅니다.
+ *
+ * 그래서 켜는 것은 사람이 정합니다. 콘솔에
+ *
+ *     https://<배포주소>/google/callback
+ *
+ * 를 등록한 뒤 `GOOGLE_LINK_ENABLED=1`로 올립니다. 그전까지는 이 길이 전부
+ * 503이고, 앱은 예전처럼 브라우저가 직접 토큰을 받습니다.
+ */
+const ENABLED = process.env.GOOGLE_LINK_ENABLED === '1'
+
 export const googleLinkCallbackPath = '/google/callback'
 
 /** 쪽지는 10분. 남아 있는 쪽지는 남의 구글을 내 자리에 붙일 수 있는 종이입니다. */
 const STATE_TTL = 10 * 60_000
 
 export function googleLinkConfigured(): boolean {
-  return !!CLIENT_ID && !!CLIENT_SECRET
+  return ENABLED && !!CLIENT_ID && !!CLIENT_SECRET
 }
 
 /* ── 범위를 다루는 값 계산 ─────────────────────────────────────────────────── */
