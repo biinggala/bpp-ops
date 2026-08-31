@@ -238,7 +238,17 @@
       ".read": false,
       ".write": false
     },
+    "googleAuth": {
+      ".read": false,
+      ".write": false
+    },
     "notionLinked": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "googleLinked": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
         ".write": false

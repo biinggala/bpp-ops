@@ -12,3 +12,4 @@ src-tauri/target/
 *-debug.log
 firebase-debug.log
 *.bak
+*.tsbuildinfo

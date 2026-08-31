@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { unlinkServerGoogle } from '../lib/serverGoogle'
 import { auth } from '../lib/firebase'
 import { requestGoogleToken, prepareGoogleAuthz, GIS_CONFIGURED } from '../lib/googleAuthz'
 import { isDesktopShell, forgetStoredGrant } from '../lib/desktopAuth'
@@ -103,6 +104,7 @@ export const useMailStore = create<MailState>((set, get) => ({
   },
 
   disconnect: () => {
+    void unlinkServerGoogle(GMAIL_SCOPE).catch(() => {})
     if (isDesktopShell()) void forgetStoredGrant(GMAIL_SCOPE)
     try {
       localStorage.removeItem(TOKEN_KEY)

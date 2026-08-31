@@ -16,6 +16,7 @@ import { canAccessProject } from './access.js'
 import { initDb, readProjects } from './store.js'
 import { pushConfigured, registerPushRoutes } from './push.js'
 import { notionConfigured, registerNotionRoutes } from './notion.js'
+import { googleLinkConfigured, registerGoogleRoutes } from './google.js'
 
 /**
  * Every missing variable at once, not just the first.
@@ -164,6 +165,10 @@ async function main() {
   // 열쇠가 없으면 각 길이 503으로 답하므로, 안 켜져 있어도 서버는 뜹니다.
   registerNotionRoutes(app, publicUrl)
 
+  // 구글 열쇠 보관 — 브라우저는 한 시간짜리 토큰만 받을 수 있어서, 갱신할
+  // 열쇠는 비밀을 쥔 이 서버가 듭니다(google.ts 맨 위 주석).
+  registerGoogleRoutes(app, publicUrl)
+
   /**
    * 상태 확인, 그리고 **구글에 등록해야 하는 주소**.
    *
@@ -176,6 +181,7 @@ async function main() {
     ok: true,
     push: pushConfigured(),
     notion: notionConfigured(),
+    googleLink: googleLinkConfigured(),
     issuer: publicUrl,
     googleRedirectUri: new URL(googleCallbackPath, publicUrl).toString(),
   }))

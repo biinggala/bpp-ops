@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { unlinkServerGoogle } from '../lib/serverGoogle'
 import { auth } from '../lib/firebase'
 import { requestGoogleToken, prepareGoogleAuthz, GIS_CONFIGURED } from '../lib/googleAuthz'
 import {
@@ -200,6 +201,7 @@ export const useDriveStore = create<DriveState>((set, get) => ({
   },
 
   disconnect: () => {
+    void unlinkServerGoogle(`${DRIVE_SCOPE} ${DOCS_SCOPE}`).catch(() => {})
     // The desktop shell remembers its own grant; leaving it would reconnect
     // silently on the next reload.
     if (isDesktopShell()) void forgetStoredGrant(`${DRIVE_SCOPE} ${DOCS_SCOPE}`)
