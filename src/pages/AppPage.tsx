@@ -18,6 +18,7 @@ import { projectsToList } from '../lib/orgListing'
 import { needsHomeOrg } from '../lib/homeOrg'
 import { useUserProfileStore } from '../store/userProfileStore'
 import { useMobile } from '../hooks/useMobile'
+import { useLiveCalendar } from '../hooks/useLiveCalendar'
 import type { Project } from '../types'
 import { Sidebar } from '../components/layout/Sidebar'
 import { Topbar } from '../components/layout/Topbar'
@@ -62,6 +63,8 @@ class TaskDetailErrorBoundary extends React.Component<
 
 export function AppPage() {
   const isMobile = useMobile()
+  // 남이 옮긴 일정이 내 화면에도 옮겨집니다 — hooks/useLiveCalendar 참고.
+  useLiveCalendar()
   const view = useUiStore(s => s.view)
   const screen = useUiStore(s => s.screen)
   const openTaskDetail = useUiStore(s => s.openTaskDetail)
