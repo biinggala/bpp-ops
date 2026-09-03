@@ -107,9 +107,9 @@ export function AppPage() {
   // 이 사람이 소개를 봤는지, 어느 업데이트까지 읽었는지. 계정에 붙습니다.
   const subscribePrefs = usePrefsStore(s => s.subscribe)
   useEffect(() => {
-    if (!email) return
-    return subscribePrefs(email)
-  }, [email, subscribePrefs])
+    if (!uid) return
+    return subscribePrefs(uid)
+  }, [uid, subscribePrefs])
 
   // 조직 — 회의실 목록이 사는 곳. 도메인으로도, 내 색인으로도 찾습니다
   // (도메인 없이 초대만으로 만든 조직은 색인이 유일한 길입니다).

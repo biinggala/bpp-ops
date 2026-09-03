@@ -4,6 +4,8 @@ import { ref, get as fbGet, update as fbUpdate } from 'firebase/database'
 import { auth, db } from '../lib/firebase'
 import { isDesktopShell, signInWithSystemBrowser } from '../lib/desktopAuth'
 import { P } from '../lib/paths'
+import { migratePersonal } from '../lib/migratePersonal'
+import { clearInbox } from '../lib/notify'
 
 interface AuthState {
   uid: string | null
@@ -50,12 +52,18 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   subscribe: () => {
-    const unsub = onAuthStateChanged(auth, (user) => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         set({ uid: null, email: null, displayName: null, photoURL: null, loading: false })
         return
       }
       const email = user.email || ''
+      /**
+       * 주소 열쇠로 남아 있는 노트·설정을 계정 열쇠로 옮긴 **뒤에** 로그인을
+       * 알립니다. 먼저 알리면 설정 구독이 빈 새 자리를 읽고 '개인 워크스페이스가
+       * 없다'고 판단해 하나 더 만듭니다.
+       */
+      await migratePersonal(user.uid, email)
       set({ uid: user.uid, email, displayName: user.displayName, photoURL: user.photoURL, loading: false, error: null })
       /**
        * 남들이 내 이름을 찾을 수 있게 프로필을 맞춥니다.
@@ -69,6 +77,14 @@ export const useAuthStore = create<AuthState>((set) => ({
       fbGet(profile)
         .then(snap => {
           const have = snap.val() as { customName?: boolean; name?: string } | null
+          /**
+           * 처음 보는 계정이면 이 주소의 알림함을 비웁니다.
+           *
+           * 알림함은 남이 나에게 쓰는 자리라 주소로 남아 있어야 합니다. 그러면
+           * 퇴사자 주소를 물려받은 신입이 전임자의 알림을 봅니다. 이 계정이
+           * 처음 로그인하는 것이면 그 안의 알림은 전부 이 사람 것이 아닙니다.
+           */
+          if (!snap.exists()) void clearInbox(email)
           const patch: Record<string, unknown> = { email, photoURL: user.photoURL ?? null }
           if (!have?.customName || !have?.name) patch.name = googleName
           // 직접 고친 이름이 있으면 그게 '내 이름'입니다 — 알림에 찍히는 이름,

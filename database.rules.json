@@ -210,7 +210,7 @@
     },
     "notices": {
       "$mail": {
-        ".read": "auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $mail",
+        ".read": "auth != null && auth.token.email != null && auth.token.email_verified == true && auth.token.email.toLowerCase().replace('.', ',') === $mail",
         "$nid": {
           ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && (!data.exists() || auth.token.email.toLowerCase().replace('.', ',') === $mail)",
           ".validate": "(data.exists() || newData.child('byEmail').val() === auth.token.email.toLowerCase()) && newData.hasChildren(['kind', 'by', 'at']) && (newData.child('kind').val() === 'assigned' || newData.child('kind').val() === 'unassigned' || newData.child('kind').val() === 'due_changed' || newData.child('kind').val() === 'status_changed' || newData.child('kind').val() === 'subtask' || newData.child('kind').val() === 'due_soon' || newData.child('kind').val() === 'overdue' || newData.child('kind').val() === 'file_changed' || newData.child('kind').val() === 'file_removed') && newData.child('by').isString() && newData.child('by').val().length <= 60 && newData.child('at').isNumber() && (!newData.hasChild('taskName') || newData.child('taskName').val().length <= 200) && (!newData.hasChild('detail') || newData.child('detail').val().length <= 200)"
@@ -218,25 +218,25 @@
       }
     },
     "dailyNotes": {
-      "$mail": {
-        ".read": "auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $mail",
-        ".write": "auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $mail",
+      "$key": {
+        ".read": "auth != null && (auth.uid === $key || (auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $key))",
+        ".write": "auth != null && (auth.uid === $key || (auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $key))",
         "$date": {
           ".validate": "newData.hasChildren(['html', 'at']) && newData.child('html').isString() && newData.child('html').val().length <= 200000 && newData.child('at').isNumber()"
         }
       }
     },
     "userPrefs": {
-      "$mail": {
-        ".read": "auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $mail",
-        ".write": "auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $mail",
+      "$key": {
+        ".read": "auth != null && (auth.uid === $key || (auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $key))",
+        ".write": "auth != null && (auth.uid === $key || (auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $key))",
         ".validate": "newData.hasChildren()"
       }
     },
     "driveWatch": {
-      "$mail": {
-        ".read": "auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $mail",
-        ".write": "auth != null && auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $mail",
+      "$key": {
+        ".read": "auth != null && (auth.uid === $key || (auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $key))",
+        ".write": "auth != null && (auth.uid === $key || (auth.token.email != null && auth.token.email.toLowerCase().replace('.', ',') === $key))",
         "token": {
           ".validate": "newData.isString() && newData.val().length <= 400"
         },

@@ -1,4 +1,4 @@
-import { push, ref, set as fbSet, update as fbUpdate, remove } from 'firebase/database'
+import { get as fbGet, push, ref, set as fbSet, update as fbUpdate, remove } from 'firebase/database'
 import { db } from './firebase'
 import { P } from './paths'
 import { useAuthStore } from '../store/authStore'
@@ -324,4 +324,20 @@ function announce(email: string) {
     announceTimer = null
     if (names.length) report(`${names.join(', ')}님에게 알림을 보냈습니다`)
   }, 400)
+}
+
+
+/**
+ * 알림함을 비웁니다. 규칙이 알림 한 줄씩만 지우게 하므로 줄마다 null을 씁니다.
+ * 처음 보는 계정이 물려받은 주소의 옛 알림을 치우는 데 씁니다(authStore).
+ */
+export async function clearInbox(email: string): Promise<void> {
+  try {
+    const snap = await fbGet(ref(db, P.notices(email)))
+    const ids = Object.keys((snap.val() ?? {}) as Record<string, unknown>)
+    if (ids.length === 0) return
+    await fbUpdate(ref(db, P.notices(email)), Object.fromEntries(ids.map(id => [id, null])))
+  } catch (e) {
+    console.warn('[notify] 알림함을 비우지 못했습니다', e)
+  }
 }

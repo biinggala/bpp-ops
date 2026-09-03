@@ -92,7 +92,7 @@ function dayLabelFor(date: string): string {
 }
 
 export function CarryOver({ editor }: { editor: Editor | null }) {
-  const email = useAuthStore(s => s.email)
+  const email = useAuthStore(s => s.uid)  // 노트 열쇠는 계정입니다
   const tasks = useTaskStore(s => s.tasks)
   const visibleProjects = useVisibleProjects()
   const [source, setSource] = useState<{ date: string; html: string } | null>(null)

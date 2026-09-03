@@ -112,8 +112,8 @@ let running = false
 export async function pollDriveChanges(): Promise<void> {
   if (running) return
   if (!fileWatchEnabled()) return
-  const email = useAuthStore.getState().email
-  if (!email) return
+  const { email, uid } = useAuthStore.getState()
+  if (!email || !uid) return
 
   const files = watched()
   // 붙여 둔 파일이 없으면 물어볼 것도 없습니다. 표식도 안 만듭니다 —
@@ -125,7 +125,7 @@ export async function pollDriveChanges(): Promise<void> {
 
   running = true
   try {
-    const path = P.driveWatch(email)
+    const path = P.driveWatch(uid)
     const state: WatchState = (await get(ref(db, path))).val() ?? {}
 
     // 처음입니다. 지금을 기준으로 삼고 끝냅니다 — 오늘 이전의 모든 수정을
