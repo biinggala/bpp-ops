@@ -1,10 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { coversScope, scopeList, ALL_GOOGLE_SCOPE } from '../.test-build/lib/scopes.js'
-
-const CAL = 'https://www.googleapis.com/auth/calendar.readonly'
-const CAL_W = 'https://www.googleapis.com/auth/calendar.events'
-const DRIVE = 'https://www.googleapis.com/auth/drive.readonly'
+import {
+  coversScope, scopeList, ALL_GOOGLE_SCOPE,
+  CALENDAR_SCOPE as CAL, CALENDAR_WRITE_SCOPE as CAL_W,
+  DRIVE_SCOPE as DRIVE, DOCS_SCOPE as DOCS, GMAIL_SCOPE as MAIL,
+} from '../.test-build/lib/scopes.js'
 
 test('순서와 중복은 뜻이 없습니다', () => {
   assert.deepEqual(scopeList(`${DRIVE}  ${CAL} ${CAL}`), [CAL, DRIVE].sort())
@@ -29,7 +29,17 @@ test('빈 요청은 덮은 것이 아닙니다', () => {
 })
 
 test('한 번의 동의가 세 연동의 범위를 다 덮습니다', () => {
+  // 세 스토어가 실제로 쓰는 그 글자들입니다(lib/scopes 한 곳). 여기 하나라도
+  // 안 덮이면 그 연동은 동의를 **한 번 더** 시킵니다 — 화면에는 그냥 '연동
+  // 안 됨'으로만 보이고, 왜인지는 아무 데도 안 나옵니다.
   assert.equal(coversScope(ALL_GOOGLE_SCOPE, `${CAL} ${CAL_W}`), true)
-  assert.equal(coversScope(ALL_GOOGLE_SCOPE, `${DRIVE} https://www.googleapis.com/auth/documents.readonly`), true)
-  assert.equal(coversScope(ALL_GOOGLE_SCOPE, 'https://www.googleapis.com/auth/gmail.readonly'), true)
+  assert.equal(coversScope(ALL_GOOGLE_SCOPE, `${DRIVE} ${DOCS}`), true)
+  assert.equal(coversScope(ALL_GOOGLE_SCOPE, MAIL), true)
+})
+
+test('청하는 목록은 다섯 줄이 다르고, 빈 것이 없습니다', () => {
+  const parts = [CAL, CAL_W, DRIVE, DOCS, MAIL]
+  assert.equal(new Set(parts).size, 5)
+  for (const p of parts) assert.match(p, /^https:\/\/www\.googleapis\.com\/auth\//)
+  assert.deepEqual(scopeList(ALL_GOOGLE_SCOPE), [...parts].sort())
 })

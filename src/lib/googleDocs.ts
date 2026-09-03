@@ -11,7 +11,8 @@
 // is refused, the attachment is still made — just to the document rather than
 // to the tab.
 
-export const DOCS_SCOPE = 'https://www.googleapis.com/auth/documents.readonly'
+import { DOCS_SCOPE } from './scopes'
+export { DOCS_SCOPE }
 
 export interface DocTab {
   /** Already carries its `t.` prefix, so it drops straight into ?tab=. */

@@ -24,7 +24,8 @@
 const API = 'https://gmail.googleapis.com/gmail/v1/users/me'
 
 /** 읽기만 합니다. 메일을 지우거나 보낼 권한은 안 받습니다. */
-export const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'
+import { GMAIL_SCOPE } from './scopes'
+export { GMAIL_SCOPE }
 
 export const TOKEN_EXPIRED = 'GMAIL_TOKEN_EXPIRED'
 

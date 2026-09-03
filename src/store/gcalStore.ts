@@ -2,7 +2,8 @@ import { create } from 'zustand'
 import { unlinkServerGoogle } from '../lib/serverGoogle'
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import { auth } from '../lib/firebase'
-import { requestGoogleToken, prepareGoogleAuthz, AuthzError, GIS_CONFIGURED, onGoogleLinked } from '../lib/googleAuthz'
+import { requestGoogleToken, prepareGoogleAuthz, AuthzError, GIS_CONFIGURED, attachWhenLinked } from '../lib/googleAuthz'
+import { CALENDAR_SCOPE, CALENDAR_WRITE_SCOPE } from '../lib/scopes'
 import { isDesktopShell, forgetStoredGrant } from '../lib/desktopAuth'
 import { useAuthStore } from './authStore'
 import { usePrefsStore } from './prefsStore'
@@ -128,10 +129,11 @@ export function targetCalendarOf(
 export const PEEK_COLOR = '#787774'
 
 /**
- * 다른 연동(드라이브·메일)의 동의가 끝났습니다. 그 동의는 캘린더 범위까지
- * 청했으므로 여기는 창 없이 붙습니다. 이미 붙어 있으면 아무 일도 없습니다.
+ * 서버가 캘린더 범위를 덮는 열쇠를 들고 있으면 창 없이 붙습니다 — 다른 연동의
+ * 동의가 끝났을 때든, 어제 동의하고 오늘 앱을 연 때든. 이미 붙어 있으면
+ * 아무 일도 없습니다. 등록은 화면과 무관하게 이 파일이 읽힐 때 한 번.
  */
-onGoogleLinked(() => {
+attachWhenLinked(() => {
   const s = useGCalStore.getState()
   if (s.token || s.loading) return
   void requestGoogleToken({ scope: FULL_SCOPE, interactive: false, hint: auth.currentUser?.email ?? undefined })
@@ -438,8 +440,8 @@ const MAX_CAL_HISTORY = 30
 /** 되돌리는 중. 그동안의 변경은 스택에 안 쌓습니다 — undoLast 참고. */
 let undoing = false
 
-const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly'
-const CALENDAR_WRITE_SCOPE = 'https://www.googleapis.com/auth/calendar.events'
+// 범위 글자는 lib/scopes 한 곳에 있습니다 — 한 번의 동의로 청하는 목록과
+// 같은 글자여야 하니까요.
 const WRITE_KEY = 'gcal_can_write'
 const TARGET_KEY = 'gcal_target_calendar'
 
