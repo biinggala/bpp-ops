@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { unlinkServerGoogle } from '../lib/serverGoogle'
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import { auth } from '../lib/firebase'
-import { requestGoogleToken, prepareGoogleAuthz, AuthzError, GIS_CONFIGURED } from '../lib/googleAuthz'
+import { requestGoogleToken, prepareGoogleAuthz, AuthzError, GIS_CONFIGURED, onGoogleLinked } from '../lib/googleAuthz'
 import { isDesktopShell, forgetStoredGrant } from '../lib/desktopAuth'
 import { useAuthStore } from './authStore'
 import { usePrefsStore } from './prefsStore'
@@ -126,6 +126,23 @@ export function targetCalendarOf(
 
 /** 남의 일정을 그리는 색. 내 캘린더 색들과 안 겹치게 회색 계열 하나로. */
 export const PEEK_COLOR = '#787774'
+
+/**
+ * 다른 연동(드라이브·메일)의 동의가 끝났습니다. 그 동의는 캘린더 범위까지
+ * 청했으므로 여기는 창 없이 붙습니다. 이미 붙어 있으면 아무 일도 없습니다.
+ */
+onGoogleLinked(() => {
+  const s = useGCalStore.getState()
+  if (s.token || s.loading) return
+  void requestGoogleToken({ scope: FULL_SCOPE, interactive: false, hint: auth.currentUser?.email ?? undefined })
+    .then(granted => {
+      const expiry = storeToken(granted.token, granted.expiresIn)
+      localStorage.setItem('gcal_connected', '1')
+      localStorage.setItem(WRITE_KEY, '1')
+      useGCalStore.setState({ token: granted.token, expiry, wasConnected: true, canWrite: true, error: null })
+    })
+    .catch(() => { /* 범위가 안 왔으면 그 사람이 직접 켤 때 청합니다 */ })
+})
 
 function loadPeeking(): string[] {
   try {

@@ -16,6 +16,7 @@
 
 import { isDesktopShell, authorizeWithSystemBrowser, refreshWithStoredGrant } from './desktopAuth'
 import { linkAndWait, serverGoogleKnown, tokenFromServer } from './serverGoogle'
+import { ALL_GOOGLE_SCOPE } from './scopes'
 
 /** From the Google Cloud console: APIs & Services → Credentials → Web client. */
 export const GOOGLE_CLIENT_ID = '1050546278891-elmuh3saq38q8rsj02li9d3j6q043ko7.apps.googleusercontent.com'
@@ -180,6 +181,13 @@ function askWarmClient(
  * because that is what happens when the Google session has gone and the only
  * remedy is for the person to click.
  */
+/**
+ * 서버에 열쇠가 새로 생겼을 때 부를 것들. 각 연동이 자기 스토어를 등록해 두고,
+ * 한 번의 동의가 끝나면 나머지가 조용히 붙습니다.
+ */
+const linkedListeners: Array<() => void> = []
+export function onGoogleLinked(cb: () => void): void { linkedListeners.push(cb) }
+
 export function requestGoogleToken(
   { scope, interactive, hint }: { scope: string; interactive: boolean; hint?: string }
 ): Promise<GrantedToken> {
@@ -202,7 +210,16 @@ export function requestGoogleToken(
     // 클릭과 같은 순간에 빈 창을 엽니다. 주소를 받아 온 뒤에 열면 브라우저가
     // '사람이 시킨 창'으로 안 칩니다.
     const win = isDesktopShell() ? null : window.open('', '_blank')
-    return linkAndWait(scope, hint, win)
+    /**
+     * 동의는 **한 번에 전부** 청합니다(ALL_GOOGLE_SCOPE). 캘린더를 켜는 사람은
+     * 곧 드라이브와 메일도 켤 사람이고, 세 번 동의하게 두면 같은 일을 세 번
+     * 시키는 것입니다. 끝나면 다른 연동들에게 알려서 창 없이 붙게 합니다.
+     */
+    return linkAndWait(scope, hint, win, ALL_GOOGLE_SCOPE).then(granted => {
+      // 부른 쪽이 자기 상태를 먼저 적게 한 틱 뒤에 알립니다.
+      setTimeout(() => { for (const cb of linkedListeners) { try { cb() } catch { /* 한 연동의 실패가 다른 연동을 막지 않게 */ } } }, 0)
+      return granted
+    })
   }
 
   if (isDesktopShell()) return desktopToken({ scope, interactive, hint })

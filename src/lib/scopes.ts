@@ -25,3 +25,18 @@ export function coversScope(granted: string | null | undefined, wanted: string):
   const need = scopeList(wanted)
   return need.length > 0 && need.every(s => has.has(s))
 }
+
+/**
+ * 이 앱이 구글에 청하는 범위 전부 — 캘린더(읽기·일정 쓰기), 드라이브, 문서, 메일.
+ *
+ * 서버가 열쇠를 들 때는 **처음 한 번의 동의에서 이걸 다 청합니다.** 세 연동을
+ * 각각 눌러 세 번 동의하게 두면, 사람은 같은 일을 세 번 한 것으로 느낍니다.
+ * 한 번 허락된 범위는 서버에 합쳐 쌓이므로, 나머지 둘은 창 없이 붙습니다.
+ */
+export const ALL_GOOGLE_SCOPE = [
+  'https://www.googleapis.com/auth/calendar.readonly',
+  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/documents.readonly',
+  'https://www.googleapis.com/auth/gmail.readonly',
+].join(' ')

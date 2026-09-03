@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { unlinkServerGoogle } from '../lib/serverGoogle'
 import { auth } from '../lib/firebase'
-import { requestGoogleToken, prepareGoogleAuthz, GIS_CONFIGURED } from '../lib/googleAuthz'
+import { requestGoogleToken, prepareGoogleAuthz, GIS_CONFIGURED, onGoogleLinked } from '../lib/googleAuthz'
 import {
   DRIVE_SCOPE, TOKEN_EXPIRED, searchFiles, getFile, driveIdFromUrl,
   fetchSnippet, canSnippet, passageIn,
@@ -164,6 +164,18 @@ export const snippetKey = (id: string, term: string) => `${id}::${term.trim().to
 /** Readies the Google client before the 연동 button is pressed. See warmCalendarAuth. */
 export function warmDriveAuth(): void {
   void prepareGoogleAuthz(`${DRIVE_SCOPE} ${DOCS_SCOPE}`)
+  // 캘린더나 메일의 동의가 드라이브 범위까지 청했으면 여기는 창 없이 붙습니다.
+  onGoogleLinked(() => {
+    const s = useDriveStore.getState()
+    if (s.token || s.connecting) return
+    void requestGoogleToken({ scope: `${DRIVE_SCOPE} ${DOCS_SCOPE}`, interactive: false, hint: auth.currentUser?.email ?? undefined })
+      .then(granted => {
+        const expiry = storeToken(granted.token, granted.expiresIn)
+        docsUnavailable = false
+        useDriveStore.setState({ token: granted.token, expiry, wasConnected: true, needsReconnect: false, error: null })
+      })
+      .catch(() => {})
+  })
 }
 
 export const useDriveStore = create<DriveState>((set, get) => ({
