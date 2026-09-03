@@ -85,7 +85,24 @@ export function Sidebar() {
   const { projectId, setProject, myTasksOnly, setMyTasksOnly, personalOnly, setPersonalOnly, sidebarOpen, setSidebarOpen, screen, setScreen, openCalendar, openCommandPalette } = useUiStore(useShallow(s => ({ projectId: s.projectId, setProject: s.setProject, myTasksOnly: s.myTasksOnly, setMyTasksOnly: s.setMyTasksOnly, personalOnly: s.personalOnly, setPersonalOnly: s.setPersonalOnly, sidebarOpen: s.sidebarOpen, setSidebarOpen: s.setSidebarOpen, screen: s.screen, setScreen: s.setScreen, openCalendar: s.openCalendar, openCommandPalette: s.openCommandPalette })))
   const isMobile = useMobile()
   const tasks = useTaskStore(s => s.tasks)
+  /**
+   * `projects`는 **거르지 않은** 목록입니다 — 내가 멤버인 모든 워크스페이스의 것.
+   * 여기서는 id로 하나를 집을 때만 씁니다(초대 링크, 멤버 관리). 세거나 늘어놓는
+   * 자리는 전부 아래 accessibleProjects입니다.
+   */
   const { projects, addProject, updateProject, deleteProject, addMember, removeMember } = useProjectStore(useShallow(s => ({ projects: s.projects, addProject: s.addProject, updateProject: s.updateProject, deleteProject: s.deleteProject, addMember: s.addMember, removeMember: s.removeMember })))
+  /**
+   * 사이드바에 서는 것은 **지금 서 있는 워크스페이스의 것만**입니다.
+   *
+   * 전환 단추를 만들어 놓고 목록을 안 갈랐더니, 워크스페이스를 바꿔도
+   * 프로젝트가 그대로여서 전환이 이름표만 바꾸는 단추로 보였습니다.
+   * 무엇이 숨고 무엇이 남는지는 useVisibleProjects에 적어 두었습니다.
+   *
+   * 숫자도 이걸 씁니다. 목록은 갈라 놓고 숫자만 스토어를 직접 읽고 있어서,
+   * 프로젝트가 하나도 없는 워크스페이스에서 '내 할 일 17'이 떴습니다 —
+   * 눌러 들어가면 빈 화면입니다. 안 보이는 것은 세지도 않아야 합니다.
+   */
+  const accessibleProjects = useVisibleProjects()
   const deleteMilestonesForProject = useMilestoneStore(s => s.deleteMilestonesForProject)
   const { displayName, email, photoURL, signOutUser } = useAuthStore(useShallow(s => ({ displayName: s.displayName, email: s.email, photoURL: s.photoURL, signOutUser: s.signOutUser })))
   const { orgName, myOrgs, isGuest } = useOrgStore(useShallow(s => ({ orgName: s.name, myOrgs: s.myOrgs, isGuest: s.isGuest })))
@@ -173,20 +190,24 @@ export function Sidebar() {
   // Archived projects are excluded so the counts match the views they describe
   // what that view actually shows.
   const accessibleProjectIds = new Set(
-    projects
+    accessibleProjects
       .filter(p => !p.archived)
       .map(p => p.id)
   )
-  const hasAccess = accessibleProjectIds.size > 0
+  /**
+   * 프로젝트 없는 업무는 **늘 내 것**입니다 — 내 자리(personalTasks/{uid})에서만
+   * 오니까요. 예전에는 '프로젝트가 하나라도 있으면'을 조건으로 걸었는데, 그건
+   * 목록(useFilteredTasks)이 쓰는 규칙과 다른 규칙이라 숫자와 화면이 어긋났습니다.
+   */
   const accessibleTasks = tasks.filter(t =>
-    t.projectId ? accessibleProjectIds.has(t.projectId) : hasAccess
+    t.projectId ? accessibleProjectIds.has(t.projectId) : true
   )
 
   // Archived projects are absent from every aggregate view, so they must be
   // absent from the numbers describing those views too.
   const archivedIds = useMemo(
-    () => new Set(projects.filter(p => p.archived).map(p => p.id)),
-    [projects],
+    () => new Set(accessibleProjects.filter(p => p.archived).map(p => p.id)),
+    [accessibleProjects],
   )
   const activeTasks = useMemo(
     () => accessibleTasks.filter(t => !t.projectId || !archivedIds.has(t.projectId)),
@@ -347,14 +368,6 @@ export function Sidebar() {
 
   const userName = displayName ?? null
 
-  /**
-   * 사이드바에 서는 것은 **지금 서 있는 워크스페이스의 것만**입니다.
-   *
-   * 전환 단추를 만들어 놓고 목록을 안 갈랐더니, 워크스페이스를 바꿔도
-   * 프로젝트가 그대로여서 전환이 이름표만 바꾸는 단추로 보였습니다.
-   * 무엇이 숨고 무엇이 남는지는 useVisibleProjects에 적어 두었습니다.
-   */
-  const accessibleProjects = useVisibleProjects()
   const visibleProjects = accessibleProjects.filter(p => !p.archived)
   const archivedProjects = accessibleProjects.filter(p => p.archived)
 

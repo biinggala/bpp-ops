@@ -315,7 +315,10 @@ function MobileTableView() {
   const { addTask, updateTask, deleteTask } = useTaskStore(useShallow(s => ({ addTask: s.addTask, updateTask: s.updateTask, deleteTask: s.deleteTask })))
   const { openTaskModal: _openTaskModal, openTaskDetail, projectId, hideCompleted, listGroup, myTasksOnly } = useUiStore(useShallow(s => ({ openTaskModal: s.openTaskModal, openTaskDetail: s.openTaskDetail, projectId: s.projectId, hideCompleted: s.hideCompleted, listGroup: s.listGroup, myTasksOnly: s.myTasksOnly })))
   const { milestones, updateMilestone } = useMilestoneStore()
-  const projects = useProjectStore(s => s.projects)
+  // 지금 서 있는 워크스페이스의 것만 — 프로젝트 선택 후보와 묶음 머리글이
+  // 여기서 나옵니다. 스토어를 직접 읽으면 다른 곳의 프로젝트로 업무를
+  // 옮길 수 있게 됩니다.
+  const projects = useVisibleProjects()
   const userEmail = useAuthStore(s => s.email)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const syncReady = useSyncStore(s => s.ready)

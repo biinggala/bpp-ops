@@ -268,7 +268,9 @@ function PeekPeople() {
     peeking: s.peeking, setPeeking: s.setPeeking, peekLoading: s.peekLoading, peekEvents: s.peekEvents,
   })))
   const myEmail = useAuthStore(s => s.email)
-  const projects = useProjectStore(s => s.projects)
+  // 캘린더를 엿볼 수 있는 후보도 **지금 서 있는 워크스페이스 안에서**입니다.
+  // 스토어를 직접 읽으면 다른 회사 프로젝트의 멤버 주소가 여기 뜹니다.
+  const projects = useVisibleProjects()
   const [query, setQuery] = React.useState('')
 
   // 같은 회사 사람 전원 — 이름 명단에서. 이름으로도, 별명으로도 찾습니다.
@@ -1497,7 +1499,9 @@ function QuickEvent({ x, y, day, onClose }: {
   const bookRoom = useOrgStore(s => s.book)
   const myEmail = useAuthStore(s => s.email)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
-  const projects = useProjectStore(s => s.projects)
+  // 부를 사람 후보의 재료입니다 — **지금 서 있는 워크스페이스의 것만.**
+  // 스토어를 직접 읽으면 다른 회사 프로젝트의 멤버 주소가 초대 후보로 섭니다.
+  const projects = useVisibleProjects()
   const [title, setTitle] = useState('')
   const [allDay, setAllDay] = useState(false)
   const [startMin, setStartMin] = useState(14 * 60)

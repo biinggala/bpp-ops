@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useUiStore } from '../../../store/uiStore'
 import { useProjectStore } from '../../../store/projectStore'
+import { useVisibleProjects } from '../../../hooks/useVisibleProjects'
 import { useTaskStore } from '../../../store/taskStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useAccessibleTasks } from '../../../hooks/useAccessibleTasks'
@@ -38,7 +39,9 @@ const FOLDER_MIME = 'application/vnd.google-apps.folder'
 
 export function FilesView() {
   const { projectId } = useUiStore(useShallow(s => ({ projectId: s.projectId })))
-  const projects = useProjectStore(s => s.projects)
+  // 지금 서 있는 워크스페이스의 것만. 여기가 스토어를 직접 읽고 있어서,
+  // 다른 워크스페이스의 프로젝트 이름과 그 자료가 자료 탭에 그대로 섰습니다.
+  const projects = useVisibleProjects()
   const tasks = useAccessibleTasks()
   const isMobile = useMobile()
   const syncReady = useSyncStore(s => s.ready)
