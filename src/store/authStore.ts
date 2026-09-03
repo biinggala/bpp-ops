@@ -71,6 +71,9 @@ export const useAuthStore = create<AuthState>((set) => ({
           const have = snap.val() as { customName?: boolean; name?: string } | null
           const patch: Record<string, unknown> = { email, photoURL: user.photoURL ?? null }
           if (!have?.customName || !have?.name) patch.name = googleName
+          // 직접 고친 이름이 있으면 그게 '내 이름'입니다 — 알림에 찍히는 이름,
+          // 사이드바의 이름, 휴지통에 남는 이름이 전부 여기서 나갑니다.
+          else set({ displayName: have.name })
           return fbUpdate(profile, patch)
         })
         .catch(() => fbUpdate(profile, { email, photoURL: user.photoURL ?? null }).catch(() => {}))
