@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { beginLongPress } from '../../../lib/press'
 import { useTouch } from '../../../hooks/useTouch'
+import { useSyncStore } from '../../../store/syncStore'
 import {
   useMenu, Menu, MenuList, MenuItem, MenuCheck, MenuNote,
   MenuDivider, MenuFooter, MENU_INPUT, CellTrigger, Dot, useMenuKeys,
@@ -245,7 +246,8 @@ function doneLast(tasks: Task[]): Task[] {
  * which does ask Google — remains the complete answer.
  */
 function EventCountChip({ events }: { events: GCalEvent[] }) {
-  const next = events.find(e => (e.startIso ?? `${e.start}T23:59:59`) >= new Date().toISOString().slice(0, 19))
+  // 문자열 비교는 시간대를 모릅니다 — +09:00이 붙은 값과 UTC 문자열을 견주면 아홉 시간 어긋납니다.
+  const next = events.find(e => new Date(e.startIso ?? `${e.start}T23:59:59`).getTime() >= Date.now())
   const when = next ? (() => {
     const d = new Date((next.startIso ?? `${next.start}T00:00:00`).slice(0, 19))
     return `${d.getMonth() + 1}/${d.getDate()}${next.allDay ? '' : ` ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`}`
@@ -316,6 +318,7 @@ function MobileTableView() {
   const projects = useProjectStore(s => s.projects)
   const userEmail = useAuthStore(s => s.email)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  const syncReady = useSyncStore(s => s.ready)
   const todayDate = React.useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
 
   const rootTasks = filteredTasks.filter(t => !t.parentId)
@@ -528,7 +531,17 @@ function MobileTableView() {
         setMobCtxMenu(null)
       }}
       onStatusChange={s => updateTask(mobCtxMenu.task.id, { status: s })}
-      onDelete={() => deleteTask(mobCtxMenu.task.id)}
+      onDelete={async () => {
+        // 데스크톱 메뉴와 같은 확인. 터치에서만 묻지 않았습니다.
+        const children = getChildren(mobCtxMenu.task.id)
+        const ok = await askConfirm({
+          message: `"${mobCtxMenu.task.name || '이름 없음'}" 업무를 삭제할까요?`,
+          detail: children.length ? `하위 업무 ${children.length}개도 함께 삭제됩니다.` : undefined,
+        })
+        if (!ok) return
+        children.forEach(c => deleteTask(c.id))
+        deleteTask(mobCtxMenu.task.id)
+      }}
     />
   )
 
@@ -551,7 +564,7 @@ function MobileTableView() {
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {buckets.length === 0 && (
             <div style={{ padding: '32px 16px', textAlign: 'center', fontSize: 13, color: 'var(--t3)' }}>
-              조건에 맞는 업무가 없습니다
+              {syncReady ? '조건에 맞는 업무가 없습니다' : '불러오는 중…'}
             </div>
           )}
           {buckets.map(b => {
@@ -651,6 +664,7 @@ export function TableView() {
   const { openTaskDetail, projectId, hideCompleted, listGroup, myTasksOnly } = useUiStore(useShallow(s => ({ openTaskDetail: s.openTaskDetail, projectId: s.projectId, hideCompleted: s.hideCompleted, listGroup: s.listGroup, myTasksOnly: s.myTasksOnly })))
   const { milestones, updateMilestone, deleteMilestone, addMilestone } = useMilestoneStore()
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  const syncReady = useSyncStore(s => s.ready)
   const userEmail = useAuthStore(s => s.email)
   // 지금 서 있는 워크스페이스의 프로젝트만 — 업무를 옮길 수 있는 곳도 여기까지.
   const projects = useVisibleProjects()
@@ -1181,7 +1195,7 @@ export function TableView() {
             {colHeader}
             {buckets.length === 0 && (
               <div style={{ padding: '32px 16px', textAlign: 'center', fontSize: 13, color: 'var(--t3)' }}>
-                조건에 맞는 업무가 없습니다
+                {syncReady ? '조건에 맞는 업무가 없습니다' : '불러오는 중…'}
               </div>
             )}
             {buckets.map(b => {

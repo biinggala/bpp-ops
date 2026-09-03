@@ -6,6 +6,7 @@ import { useProjectStore } from '../../../store/projectStore'
 import { useAuthStore } from '../../../store/authStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useMobile } from '../../../hooks/useMobile'
+import { useSyncStore } from '../../../store/syncStore'
 import { getCatColor } from '../../../types'
 import type { Task } from '../../../types'
 
@@ -29,6 +30,7 @@ function gradForKey(key: string) {
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }
 
 export function StatsView() {
+  const syncReady = useSyncStore(s => s.ready)
   const tasks = useFilteredTasks()
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const projects = useProjectStore(s => s.projects)
@@ -162,7 +164,7 @@ export function StatsView() {
             // '업무가 없습니다'는 이제 틀린 말일 수 있습니다 — 업무는 많은데
             // 카테고리가 안 붙어 있는 쪽이 흔합니다. 둘을 같은 말로 덮으면
             // 사람이 무엇을 해야 하는지 알 수 없습니다.
-            <Empty>{tasks.length === 0 ? '업무가 없습니다' : '카테고리가 붙은 업무가 없습니다'}</Empty>
+            <Empty>{!syncReady ? '불러오는 중…' : tasks.length === 0 ? '업무가 없습니다' : '카테고리가 붙은 업무가 없습니다'}</Empty>
           ) : (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 11 }}>
               {categories.map(c => {
@@ -220,7 +222,7 @@ export function StatsView() {
         <Card>
           <CardTitle icon="👥">담당자별 현황</CardTitle>
           {participants.length === 0 ? (
-            <Empty>{total === 0 ? '업무가 없습니다' : '담당자가 지정된 업무가 없습니다'}</Empty>
+            <Empty>{!syncReady ? '불러오는 중…' : total === 0 ? '업무가 없습니다' : '담당자가 지정된 업무가 없습니다'}</Empty>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
               {participants.map(p => (

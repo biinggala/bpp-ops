@@ -7,6 +7,7 @@ import { isDesktopShell, forgetStoredGrant } from '../lib/desktopAuth'
 import { useAuthStore } from './authStore'
 import { usePrefsStore } from './prefsStore'
 import { askConfirm } from '../components/shared/Confirm'
+import { fmtYMD } from '../lib/utils'
 import { attendanceOf, awaitingReply, isMe } from '../lib/attendance'
 import { calendarColour, eventColour } from '../lib/gcalColors'
 import { fetchCalendarList, fetchEventsAcross, fetchEventsForRange, fetchFreeBusy, fetchEventsForTask, searchEvents, setEventTaskLink, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, respondToEvent, type Rsvp, writableCalendars, TASK_LINK_KEY, TIMEBLOCK_KEY, NOTE_LINK_KEY, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent, type EventAttendee } from '../lib/googleCalendar'
@@ -212,7 +213,8 @@ const STALE_MS = 5 * 60 * 1000
 function shiftDate(date: string, days: number): string {
   const d = new Date(date + 'T00:00:00')
   d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
+  // toISOString은 UTC라 한국 밤에는 하루 전 날짜가 나옵니다.
+  return fmtYMD(d)
 }
 
 function loadEnabled(): string[] | null {
@@ -317,7 +319,7 @@ function toGCalEvent(item: RawCalendarEvent): GCalEvent | null {
   if (allDay && end > start) {
     const d = new Date(end + 'T00:00:00')
     d.setDate(d.getDate() - 1)
-    end = d.toISOString().slice(0, 10)
+    end = fmtYMD(d)
   }
   if (end < start) end = start
 

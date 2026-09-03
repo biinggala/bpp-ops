@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { reportProblem } from '../lib/notify'
 import { onValue, ref, update as fbUpdate, off } from 'firebase/database'
 import { db } from '../lib/firebase'
 import { P } from '../lib/paths'
@@ -159,7 +160,7 @@ export const usePrefsStore = create<PrefsState>((set) => ({
 
   setHiddenCalendars: (email, ids) => {
     set({ hiddenCalendars: ids, hiddenSeen: true })
-    void fbUpdate(ref(db, P.userPrefs(email)), { hiddenCalendars: ids.join('\n') }).catch(() => {})
+    void fbUpdate(ref(db, P.userPrefs(email)), { hiddenCalendars: ids.join('\n') }).catch(() => reportProblem('캘린더 설정을 저장하지 못했습니다. 새로 열면 되돌아갑니다.'))
   },
 
   setReplay: (replay) => set({ replay }),

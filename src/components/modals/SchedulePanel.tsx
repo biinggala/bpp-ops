@@ -121,8 +121,10 @@ export function SchedulePanel({ task, memberEmails }: {
   }, [windowEvents])
 
   const upcoming = useMemo(() => {
-    const now = new Date().toISOString().slice(0, 19)
-    return (events ?? []).filter(e => (e.startIso ?? `${e.start}T23:59:59`) >= now)
+    // 시각으로 견줍니다. 문자열 비교는 +09:00과 UTC를 구별하지 못해 아홉 시간 전에
+    // 시작한 회의가 '다가오는 일정'에 남았습니다.
+    const now = Date.now()
+    return (events ?? []).filter(e => new Date(e.startIso ?? `${e.start}T23:59:59`).getTime() >= now)
   }, [events])
 
   const detach = async (ev: GCalEvent) => {

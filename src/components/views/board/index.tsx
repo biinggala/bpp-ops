@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTouch } from '../../../hooks/useTouch'
+import { askConfirm } from '../../shared/Confirm'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
 import { useUiStore } from '../../../store/uiStore'
@@ -66,7 +67,12 @@ export function BoardView() {
                     onDragEnd={() => { setDragging(null); setDragOver(null) }}
                     onClick={() => openTaskDetail(task.id)}
                     onEdit={() => openTaskDetail(task.id)}
-                    onDelete={() => deleteTask(task.id)}
+                    onDelete={async () => {
+                      // 손가락 기기에서는 ✕가 늘 보입니다. 확인 없이 지우면 되돌릴
+                      // 길이 ⌘Z뿐이고, 아이패드에는 ⌘Z가 없습니다.
+                      const ok = await askConfirm({ message: `"${task.name || '이름 없음'}" 업무를 삭제할까요?` })
+                      if (ok) deleteTask(task.id)
+                    }}
                   />
                 ))}
               </div>

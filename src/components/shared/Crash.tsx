@@ -1,4 +1,5 @@
 import React from 'react'
+import { copyText } from '../../lib/utils'
 
 /**
  * ── 깨졌을 때 ────────────────────────────────────────────────────────────────
@@ -103,7 +104,7 @@ function CrashScreen({ error, onRetry }: { error: Error; onRetry: () => void }) 
             }}>{detail}</pre>
             <button
               onClick={() => {
-                void navigator.clipboard?.writeText(detail).then(() => setCopied(true)).catch(() => {})
+                void copyText(detail).then(ok => { if (ok) setCopied(true) })
               }}
               style={{
                 marginTop: 6, height: 26, padding: '0 10px', borderRadius: 'var(--r1)',
