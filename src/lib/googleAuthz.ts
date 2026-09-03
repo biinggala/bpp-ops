@@ -15,8 +15,10 @@
 // a refresh token, which is a separate decision (see docs).
 
 import { isDesktopShell, authorizeWithSystemBrowser, refreshWithStoredGrant } from './desktopAuth'
-import { linkAndWait, serverGoogleKnown, tokenFromServer } from './serverGoogle'
+import { linkAndWait, serverGoogleKnown, tokenFromServer, warmServerGoogle } from './serverGoogle'
 import { ALL_GOOGLE_SCOPE } from './scopes'
+import { onAuthStateChanged } from 'firebase/auth'
+import { auth } from './firebase'
 
 /** From the Google Cloud console: APIs & Services → Credentials → Web client. */
 export const GOOGLE_CLIENT_ID = '1050546278891-elmuh3saq38q8rsj02li9d3j6q043ko7.apps.googleusercontent.com'
@@ -170,6 +172,53 @@ function askWarmClient(
   })
 }
 
+/* ── 창 없이 조용히 붙기 ─────────────────────────────────────────────────────
+ *
+ * 서버가 열쇠를 들고 있으면, 그 열쇠가 덮는 연동은 **아무도 아무것도 안 눌러도**
+ * 붙어야 합니다. 캘린더를 켤 때 동의는 다섯 범위를 다 받아 놨으니까요.
+ *
+ * 앞 판은 이걸 '동의가 끝나는 순간'에만 알렸고, 그 알림을 받을 자리를 각
+ * 스토어의 warm* 함수 안에 두었습니다. warm*은 그 연동의 화면이 떠야 돌아갑니다
+ * — 설정 › 연동에서 캘린더를 켠 사람의 화면에는 드라이브 목록도 메일 알림도
+ * 안 떠 있었고, 그래서 **나머지 둘은 켜지지 않았습니다.**
+ *
+ * 이제 등록은 스토어 파일이 읽히는 순간(모듈 자리)에 한 번 하고, 붙여 보는
+ * 순간은 세 번입니다:
+ *
+ *   1. 등록할 때 — 이미 열쇠가 있으면 지금 붙습니다(어제 동의한 사람).
+ *   2. 로그인할 때 — 앱이 뜰 때 아직 사람이 없을 수 있습니다.
+ *   3. 동의가 끝날 때 — 방금 켠 사람의 나머지 둘.
+ *
+ * 각 붙기는 '이미 붙어 있으면 아무 일도 안 함'이어야 합니다. 세 번 불리니까요.
+ */
+const attachers = new Set<() => void>()
+let watchingAuth = false
+
+async function runAttachers(): Promise<void> {
+  // 서버가 열쇠를 안 드는 배포면 붙일 것이 없습니다. 예전 길(브라우저가 직접
+  // 받는 토큰)은 사람이 눌러야만 갑니다.
+  if (!(await warmServerGoogle())) return
+  if (!auth.currentUser) return
+  for (const attach of attachers) {
+    try { attach() } catch { /* 한 연동의 실패가 다른 연동을 막지 않게 */ }
+  }
+}
+
+/**
+ * 이 연동을 '열쇠가 있으면 조용히 붙는' 목록에 넣습니다.
+ *
+ * 스토어 파일의 맨 바깥에서 한 번 부릅니다 — 화면이 떴는지와 상관없이.
+ */
+export function attachWhenLinked(attach: () => void): void {
+  if (attachers.has(attach)) return
+  attachers.add(attach)
+  if (!watchingAuth) {
+    watchingAuth = true
+    onAuthStateChanged(auth, user => { if (user) void runAttachers() })
+  }
+  void runAttachers()
+}
+
 /**
  * Asks Google for an API token covering `scope`.
  *
@@ -181,13 +230,6 @@ function askWarmClient(
  * because that is what happens when the Google session has gone and the only
  * remedy is for the person to click.
  */
-/**
- * 서버에 열쇠가 새로 생겼을 때 부를 것들. 각 연동이 자기 스토어를 등록해 두고,
- * 한 번의 동의가 끝나면 나머지가 조용히 붙습니다.
- */
-const linkedListeners: Array<() => void> = []
-export function onGoogleLinked(cb: () => void): void { linkedListeners.push(cb) }
-
 export function requestGoogleToken(
   { scope, interactive, hint }: { scope: string; interactive: boolean; hint?: string }
 ): Promise<GrantedToken> {
@@ -217,7 +259,7 @@ export function requestGoogleToken(
      */
     return linkAndWait(scope, hint, win, ALL_GOOGLE_SCOPE).then(granted => {
       // 부른 쪽이 자기 상태를 먼저 적게 한 틱 뒤에 알립니다.
-      setTimeout(() => { for (const cb of linkedListeners) { try { cb() } catch { /* 한 연동의 실패가 다른 연동을 막지 않게 */ } } }, 0)
+      setTimeout(() => { void runAttachers() }, 0)
       return granted
     })
   }

@@ -26,17 +26,30 @@ export function coversScope(granted: string | null | undefined, wanted: string):
   return need.length > 0 && need.every(s => has.has(s))
 }
 
-/**
- * 이 앱이 구글에 청하는 범위 전부 — 캘린더(읽기·일정 쓰기), 드라이브, 문서, 메일.
+/* ── 이 앱이 구글에 청하는 범위 ─────────────────────────────────────────────
  *
+ * 다섯 줄이 여기 한 곳에 있습니다. 예전에는 캘린더는 스토어에, 드라이브·문서는
+ * googleDrive/googleDocs에, 메일은 gmail에 각각 적혀 있었고, '한 번에 청하는
+ * 목록'은 그것들을 손으로 베낀 네 번째 사본이었습니다. 사본은 언젠가 어긋나고,
+ * 어긋난 날 사람은 **동의를 두 번** 하게 됩니다 — 무엇이 잘못됐는지는 화면에
+ * 안 나옵니다. 쓰는 글자와 청하는 글자가 같은 글자여야 어긋날 수가 없습니다.
+ */
+
+export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly'
+export const CALENDAR_WRITE_SCOPE = 'https://www.googleapis.com/auth/calendar.events'
+export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
+export const DOCS_SCOPE = 'https://www.googleapis.com/auth/documents.readonly'
+export const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'
+
+/**
  * 서버가 열쇠를 들 때는 **처음 한 번의 동의에서 이걸 다 청합니다.** 세 연동을
  * 각각 눌러 세 번 동의하게 두면, 사람은 같은 일을 세 번 한 것으로 느낍니다.
  * 한 번 허락된 범위는 서버에 합쳐 쌓이므로, 나머지 둘은 창 없이 붙습니다.
  */
 export const ALL_GOOGLE_SCOPE = [
-  'https://www.googleapis.com/auth/calendar.readonly',
-  'https://www.googleapis.com/auth/calendar.events',
-  'https://www.googleapis.com/auth/drive.readonly',
-  'https://www.googleapis.com/auth/documents.readonly',
-  'https://www.googleapis.com/auth/gmail.readonly',
+  CALENDAR_SCOPE,
+  CALENDAR_WRITE_SCOPE,
+  DRIVE_SCOPE,
+  DOCS_SCOPE,
+  GMAIL_SCOPE,
 ].join(' ')

@@ -6,7 +6,8 @@ import type { IconName } from '../components/shared/Icon'
 // whole point: a pasted URL records what a file was called on the day somebody
 // pasted it, and drifts from that moment on.
 
-export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
+import { DRIVE_SCOPE } from './scopes'
+export { DRIVE_SCOPE }
 
 const API = 'https://www.googleapis.com/drive/v3'
 const FIELDS = 'id,name,mimeType,webViewLink,iconLink,modifiedTime,parents,owners(displayName,emailAddress)'

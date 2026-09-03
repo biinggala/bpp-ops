@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { unlinkServerGoogle } from '../lib/serverGoogle'
 import { auth } from '../lib/firebase'
-import { requestGoogleToken, prepareGoogleAuthz, GIS_CONFIGURED, onGoogleLinked } from '../lib/googleAuthz'
+import { requestGoogleToken, prepareGoogleAuthz, GIS_CONFIGURED, attachWhenLinked } from '../lib/googleAuthz'
 import {
   DRIVE_SCOPE, TOKEN_EXPIRED, searchFiles, getFile, driveIdFromUrl,
   fetchSnippet, canSnippet, passageIn,
@@ -164,19 +164,26 @@ export const snippetKey = (id: string, term: string) => `${id}::${term.trim().to
 /** Readies the Google client before the 연동 button is pressed. See warmCalendarAuth. */
 export function warmDriveAuth(): void {
   void prepareGoogleAuthz(`${DRIVE_SCOPE} ${DOCS_SCOPE}`)
-  // 캘린더나 메일의 동의가 드라이브 범위까지 청했으면 여기는 창 없이 붙습니다.
-  onGoogleLinked(() => {
-    const s = useDriveStore.getState()
-    if (s.token || s.connecting) return
-    void requestGoogleToken({ scope: `${DRIVE_SCOPE} ${DOCS_SCOPE}`, interactive: false, hint: auth.currentUser?.email ?? undefined })
-      .then(granted => {
-        const expiry = storeToken(granted.token, granted.expiresIn)
-        docsUnavailable = false
-        useDriveStore.setState({ token: granted.token, expiry, wasConnected: true, needsReconnect: false, error: null })
-      })
-      .catch(() => {})
-  })
 }
+
+/**
+ * 서버가 드라이브 범위를 덮는 열쇠를 들고 있으면 창 없이 붙습니다.
+ *
+ * 등록은 **이 파일이 읽힐 때 한 번**입니다. 예전에는 warmDriveAuth 안에 있어서
+ * 드라이브 화면이 떠야 등록됐고, 설정 › 연동에서 캘린더를 켠 사람에게는
+ * 영영 등록되지 않았습니다.
+ */
+attachWhenLinked(() => {
+  const s = useDriveStore.getState()
+  if (s.token || s.connecting) return
+  void requestGoogleToken({ scope: `${DRIVE_SCOPE} ${DOCS_SCOPE}`, interactive: false, hint: auth.currentUser?.email ?? undefined })
+    .then(granted => {
+      const expiry = storeToken(granted.token, granted.expiresIn)
+      docsUnavailable = false
+      useDriveStore.setState({ token: granted.token, expiry, wasConnected: true, needsReconnect: false, error: null })
+    })
+    .catch(() => { /* 그 범위가 안 왔으면 그 사람이 직접 켤 때 청합니다 */ })
+})
 
 export const useDriveStore = create<DriveState>((set, get) => ({
   ...loadStored(),

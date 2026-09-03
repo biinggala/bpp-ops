@@ -68,19 +68,27 @@ export async function unlinkServerGoogle(scope?: string): Promise<void> {
  * 직접 받습니다 — **되던 것이 안 되게 만들지는 않습니다.**
  */
 let known: boolean | null = null
+let asking: Promise<boolean> | null = null
 
 /**
  * 앱이 뜰 때 한 번 물어 둡니다.
  *
  * 클릭이 온 뒤에 물어보면 답을 기다리는 사이에 브라우저가 창을 막습니다.
  * 그래서 '켜져 있나'는 미리 알아 두고, 클릭 순간에는 아는 것으로만 정합니다.
+ *
+ * 답을 **돌려주기도** 합니다 — 창 없이 조용히 붙는 쪽(googleAuthz의
+ * attachWhenLinked)은 클릭이 없으므로, 기다렸다가 아는 뒤에 움직입니다.
  */
-export function warmServerGoogle(): void {
-  if (known !== null) return
-  void fetch(`${SERVER_ORIGIN}/google/health`)
-    .then(r => r.json() as Promise<{ configured?: boolean }>)
-    .then(body => { known = !!body.configured })
-    .catch(() => { known = false })
+export function warmServerGoogle(): Promise<boolean> {
+  if (known !== null) return Promise.resolve(known)
+  if (!asking) {
+    asking = fetch(`${SERVER_ORIGIN}/google/health`)
+      .then(r => r.json() as Promise<{ configured?: boolean }>)
+      .then(body => !!body.configured)
+      .catch(() => false)
+      .then(v => { known = v; asking = null; return v })
+  }
+  return asking
 }
 
 /** 지금 아는 대로. 아직 모르면 거짓입니다 — 모르는 것을 '된다'로 읽지 않습니다. */

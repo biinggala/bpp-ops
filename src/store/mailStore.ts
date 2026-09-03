@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { unlinkServerGoogle } from '../lib/serverGoogle'
 import { auth } from '../lib/firebase'
-import { requestGoogleToken, prepareGoogleAuthz, GIS_CONFIGURED, onGoogleLinked } from '../lib/googleAuthz'
+import { requestGoogleToken, prepareGoogleAuthz, GIS_CONFIGURED, attachWhenLinked } from '../lib/googleAuthz'
 import { isDesktopShell, forgetStoredGrant } from '../lib/desktopAuth'
 import { GMAIL_SCOPE, TOKEN_EXPIRED, listNeedsReply, type MailThread } from '../lib/gmail'
 
@@ -66,19 +66,23 @@ function storeToken(token: string, expiresInSeconds = 3500) {
 /** 연동 버튼을 누르기 전에 구글 클라이언트를 준비해 둡니다. warmDriveAuth와 같은 이유. */
 export function warmMailAuth(): void {
   void prepareGoogleAuthz(GMAIL_SCOPE)
-  // 캘린더나 드라이브의 동의가 메일 범위까지 청했으면 여기는 창 없이 붙습니다.
-  onGoogleLinked(() => {
-    const s = useMailStore.getState()
-    if (s.token || s.connecting) return
-    void requestGoogleToken({ scope: GMAIL_SCOPE, interactive: false, hint: auth.currentUser?.email ?? undefined })
-      .then(granted => {
-        const expiry = storeToken(granted.token, granted.expiresIn)
-        useMailStore.setState({ token: granted.token, expiry, wasConnected: true, needsReconnect: false })
-        void useMailStore.getState().refresh(true)
-      })
-      .catch(() => {})
-  })
 }
+
+/**
+ * 서버가 메일 범위를 덮는 열쇠를 들고 있으면 창 없이 붙습니다. 등록은 화면과
+ * 무관하게 이 파일이 읽힐 때 한 번 — driveStore의 같은 자리 참고.
+ */
+attachWhenLinked(() => {
+  const s = useMailStore.getState()
+  if (s.token || s.connecting) return
+  void requestGoogleToken({ scope: GMAIL_SCOPE, interactive: false, hint: auth.currentUser?.email ?? undefined })
+    .then(granted => {
+      const expiry = storeToken(granted.token, granted.expiresIn)
+      useMailStore.setState({ token: granted.token, expiry, wasConnected: true, needsReconnect: false })
+      void useMailStore.getState().refresh(true)
+    })
+    .catch(() => { /* 그 범위가 안 왔으면 그 사람이 직접 켤 때 청합니다 */ })
+})
 
 let renewal: Promise<string | null> | null = null
 
