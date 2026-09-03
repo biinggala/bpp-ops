@@ -1107,3 +1107,21 @@ test('프로필의 이름과 별명은 길이가 있습니다', async () => {
   await assertFails(set(ref(alice, `userProfiles/${ALICE.uid}/nickname`), 'x'.repeat(41)))
   await assertSucceeds(set(ref(alice, `userProfiles/${ALICE.uid}/nickname`), null))
 })
+
+test('도메인 없는 워크스페이스에는 이름 명단이 없습니다', async () => {
+  // 회사 사람을 이름으로 찾는 기능은 회사(도메인) 워크스페이스에서만.
+  // 개인 워크스페이스나 초대형 팀에 이 목록이 생기면, 거기 멤버인 것만으로
+  // 남의 회사 사람 이름을 모을 자리가 됩니다.
+  const oid = 'inv-dir'
+  const me = emailKey(GMAIL.email)
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), { name: '팀플', owner: me, createdAt: 1 })
+    await set(ref(db, `orgs/${oid}/members/${me}`), { role: 'member', at: 1 })
+  })
+  const db = authed(GMAIL)
+  await assertFails(set(ref(db, `orgs/${oid}/directory/${me}`), { name: '나', at: 1 }))
+  // 읽기는 조직 노드의 규칙이 상속되어 통과하지만, 아무도 못 쓰니 늘 빕니다.
+  // 벽은 쓰기입니다 — 여기에 이름이 적히는 길이 없다는 것.
+  assert.equal((await get(ref(db, `orgs/${oid}/directory`))).val(), null)
+})

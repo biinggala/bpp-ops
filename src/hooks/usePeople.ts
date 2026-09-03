@@ -10,6 +10,11 @@ import { useUserProfileStore } from '../store/userProfileStore'
 import { useDirectoryStore, directoryPeople } from '../store/directoryStore'
 import { mergePeople, personLabel, type Person } from '../lib/people'
 
+/**
+ * @param orgId 어느 워크스페이스의 명단을 쓸 것인가. 없으면 명단 없이 프로필만
+ *              (같은 프로젝트에서 이미 만난 사람들). 명단은 도메인 워크스페이스에만
+ *              있고, 그 워크스페이스 안에서만 내놓습니다.
+ */
 export function usePeople(orgId?: string | null): {
   people: Person[]
   /** 이름 (별명). 모르는 주소는 앞부분만. */

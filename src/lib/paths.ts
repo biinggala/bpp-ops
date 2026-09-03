@@ -150,6 +150,7 @@ export const P = {
    * 목록으로 못 읽어서, 같은 프로젝트에 없는 동료는 주소를 다 쳐야 불렸습니다.
    * 여기는 회사 멤버만 읽고, 자기 줄만 씁니다. 권한이 아니라 이름표입니다.
    */
+  orgDomain:        (oid: string) => `orgs/${oid}/meta/domain`,
   orgDirectory:     (oid: string) => `orgs/${oid}/directory`,
   orgDirectoryRow:  (oid: string, email: string) => `orgs/${oid}/directory/${emailKey(email)}`,
   orgAdmins:        (oid: string) => `orgs/${oid}/admins`,
