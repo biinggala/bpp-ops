@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { ref, set as fbSet, update as fbUpdate } from 'firebase/database'
 import { db } from '../lib/firebase'
 import { P } from '../lib/paths'
+import { useAuthStore } from './authStore'
 
 export interface UserProfile {
   email: string
@@ -59,6 +60,9 @@ export const useUserProfileStore = create<UserProfileState>((set, get) => ({
     }
     if (Object.keys(next).length === 0) return
     await fbUpdate(ref(db, P.userProfile(uid)), next)
+    // 알림·휴지통·사이드바가 읽는 '내 이름'도 같이. 로그인 때만 정하면 다음
+    // 로그인까지 옛 이름으로 알림이 나갑니다.
+    if (typeof next.name === 'string' && useAuthStore.getState().uid === uid) useAuthStore.setState({ displayName: next.name })
     set(s => {
       const cur = s.profiles[uid] ?? { email: '', name: '' }
       const merged: UserProfile = { ...cur, ...(next as Partial<UserProfile>) }

@@ -157,6 +157,9 @@ const ROOM_CLOSE = 20 * 60
 const LANE_H = 22
 
 function RoomBoard({ tabs }: { tabs: React.ReactNode }) {
+  const profileOf = useUserProfileStore(s => s.getProfileByEmail)
+  // 예약에 적힌 이름은 잡을 때의 사본입니다. 지금 이름이 있으면 그걸 먼저.
+  const who = (b: { by: string; byName?: string }) => profileOf(b.by)?.name || b.byName || b.by.split('@')[0]
   const isMobile = useMobile()
   const M = metrics(isMobile)
   const email = useAuthStore(s => s.email)
@@ -359,7 +362,7 @@ function RoomBoard({ tabs }: { tabs: React.ReactNode }) {
                   <button
                     key={b.id}
                     onClick={() => setPicked(b)}
-                    title={`${hhmm(b.from)}–${hhmm(b.to)} · ${b.title || '(제목 없음)'} · ${b.byName || b.by}`}
+                    title={`${hhmm(b.from)}–${hhmm(b.to)} · ${b.title || '(제목 없음)'} · ${who(b)}`}
                     style={{
                       position: 'absolute',
                       left: `${at(b.from)}%`, width: `calc(${at(b.to) - at(b.from)}% - 2px)`,
@@ -371,7 +374,7 @@ function RoomBoard({ tabs }: { tabs: React.ReactNode }) {
                       whiteSpace: 'nowrap', textOverflow: 'ellipsis',
                     }}
                   >
-                    {hhmm(b.from)} {b.title || (b.byName || b.by.split('@')[0])}
+                    {hhmm(b.from)} {b.title || who(b)}
                   </button>
                 ))}
               </div>
@@ -387,7 +390,7 @@ function RoomBoard({ tabs }: { tabs: React.ReactNode }) {
         <Sheet onClose={() => setPicked(null)} title={picked.roomName || rooms.find(r => r.id === picked.roomId)?.name || '회의실'}>
           <Field label="언제">{Number(date.slice(5, 7))}월 {Number(date.slice(8))}일 {hhmm(picked.from)}–{hhmm(picked.to)}</Field>
           <Field label="무슨 회의">{picked.title || '제목이 없습니다'}</Field>
-          <Field label="잡은 사람">{picked.byName || picked.by}</Field>
+          <Field label="잡은 사람">{who(picked)}</Field>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 14 }}>
             {(!!email && (picked.by === email.toLowerCase() || isAdmin)) && (
               <button
@@ -413,6 +416,7 @@ function RoomBoard({ tabs }: { tabs: React.ReactNode }) {
 }
 
 function GearBoard({ tabs }: { tabs: React.ReactNode }) {
+  const profileOf = useUserProfileStore(s => s.getProfileByEmail)
   const isMobile = useMobile()
   const M = metrics(isMobile)
   const email = useAuthStore(s => s.email)
@@ -717,7 +721,7 @@ function GearBoard({ tabs }: { tabs: React.ReactNode }) {
                     const to = Math.min(dayNo(b.to) - first, SPAN - 1)
                     if (to < 0 || from > SPAN - 1) return null
                     const hue = teamHue(b.team)
-                    const who = b.byName || b.by.split('@')[0]
+                    const who = profileOf(b.by)?.name || b.byName || b.by.split('@')[0]
                     /*
                       **한 칸짜리에는 팀 이름을 안 적습니다.** 46px에 '브랜드팀 ·
                       수민'을 넣으면 '브…'가 됩니다 — 다 지운 것과 같습니다.

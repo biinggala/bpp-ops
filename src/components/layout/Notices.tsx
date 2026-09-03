@@ -153,6 +153,9 @@ export function useNoticeInbox() {
  * 누가 했는지, 언제.
  */
 export function NoticeList({ onClose }: { onClose: () => void }) {
+  // 보낸 사람은 지금 이름으로. 알림에는 보낼 때의 이름이 찍혀 있는데, 그
+  // 사람이 프로필에서 이름을 고치면 옛 알림도 새 이름으로 읽혀야 합니다.
+  const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const notices = useNoticeStore(s => s.notices)
   const markRead = useNoticeStore(s => s.markRead)
   const markAllRead = useNoticeStore(s => s.markAllRead)
@@ -244,7 +247,7 @@ export function NoticeList({ onClose }: { onClose: () => void }) {
                   <div style={{ fontSize: 12, color: 'var(--sb-t3)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {LABEL[n.kind] ?? n.kind}
                     {n.detail ? ` · ${n.detail}` : ''}
-                    {' · '}{n.by}
+                    {' · '}{n.byEmail ? getNameByEmail(n.byEmail) : n.by}
                     {' · '}{clock(n.at)}
                     {project ? ` · ${project.name}` : ''}
                   </div>
