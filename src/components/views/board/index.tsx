@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTouch } from '../../../hooks/useTouch'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
 import { useUiStore } from '../../../store/uiStore'
@@ -92,6 +93,7 @@ function BoardCard({ task, isDragging, onDragStart, onDragEnd, onClick, onEdit, 
   onEdit: () => void; onDelete: () => void
 }) {
   const [hovered, setHovered] = useState(false)
+  const touch = useTouch()
 
   return (
     <div
@@ -110,8 +112,8 @@ function BoardCard({ task, isDragging, onDragStart, onDragEnd, onClick, onEdit, 
         position: 'relative',
       }}
     >
-      {/* Actions */}
-      {hovered && (
+      {/* Actions. 손가락 기기에서는 늘 — hover가 없으니 없는 단추가 됩니다. */}
+      {(hovered || touch) && (
         <div style={{ position: 'absolute', top: 7, right: 8, display: 'flex', gap: 2 }}>
           <CardBtn onClick={e => { e.stopPropagation(); onEdit() }}>✎</CardBtn>
           <CardBtn onClick={e => { e.stopPropagation(); onDelete() }} danger>✕</CardBtn>

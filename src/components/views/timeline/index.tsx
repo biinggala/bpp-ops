@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useTouch } from '../../../hooks/useTouch'
 import { useGCalStore, awaitingMe, myAttendance } from '../../../store/gcalStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
@@ -9,6 +10,7 @@ import { useUserProfileStore } from '../../../store/userProfileStore'
 import { usePrefsStore } from '../../../store/prefsStore'
 import { authorizedEmails } from '../../../lib/utils'
 import { hasTimeblock, readTimeblock, blockOnDay, BLOCK_MINUTES, type TimeblockDrag } from '../../../lib/timeblock'
+import { beginPress, type PressPoint } from '../../../lib/press'
 import type { Task, Status } from '../../../types'
 import { StatusPick } from '../../shared/StatusPick'
 import { useNoteChecks, toggleNoteCheck } from '../../../hooks/useNoteChecks'
@@ -448,7 +450,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
   const dragMoved = useRef(false)
 
   const beginMove = (
-    e: React.MouseEvent, event: GCalEvent, date: string, from: number, to: number, mode: 'move' | 'resize',
+    e: React.PointerEvent, event: GCalEvent, date: string, from: number, to: number, mode: 'move' | 'resize',
   ) => {
     /**
      * ── 오른쪽 버튼으로는 안 잡습니다 ──────────────────────────────────────
@@ -462,12 +464,12 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
      */
     if (e.button !== 0) return
     e.stopPropagation()
-    e.preventDefault()
+    // 마우스에서만 막습니다(글자 선택 방지). 손가락에서 막으면 그 뒤의 click이
+    // 안 와서, 톡 쳐서 카드를 여는 길이 끊깁니다.
+    if (e.pointerType === 'mouse') e.preventDefault()
     const column = (e.currentTarget as HTMLElement).closest('[data-day-column]') as HTMLElement | null
     if (!column) return
     const grabAt = minutesAt(e.clientY, column)
-    moving.current = { id: event.id, date, grabAt, from, to, mode }
-    dragMoved.current = false
 
     /**
      * ── 옆 칸으로도 갑니다 ────────────────────────────────────────────────
@@ -493,13 +495,13 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
       return null
     }
 
-    const move = (ev: MouseEvent) => {
+    const move = (ev: PressPoint) => {
       const held = moving.current
       if (!held) return
-      const over = held.mode === 'move' ? columnAt(ev.clientX) : null
+      const over = held.mode === 'move' ? columnAt(ev.x) : null
       const here = over?.el ?? column
       const day = over?.date ?? held.date
-      const at = minutesAt(ev.clientY, here)
+      const at = minutesAt(ev.y, here)
       const delta = at - held.grabAt
       if (delta !== 0 || day !== held.date) dragMoved.current = true
       if (held.mode === 'move') {
@@ -515,19 +517,11 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
      * 그때는 옮기던 것을 되돌립니다 — 붙잡힌 채로 남는 것보다 낫습니다.
      */
     const cancel = () => {
-      window.removeEventListener('mousemove', move)
-      window.removeEventListener('mouseup', up)
-      window.removeEventListener('blur', cancel)
-      window.removeEventListener('contextmenu', cancel)
       moving.current = null
       setGhost(null)
     }
     const up = async () => {
-      window.removeEventListener('mousemove', move)
-      window.removeEventListener('mouseup', up)
-      window.removeEventListener('blur', cancel)
-      window.removeEventListener('contextmenu', cancel)
-      // click은 mouseup 바로 다음에 옵니다. 그 하나만 지나가면 원래대로.
+      // click은 up 바로 다음에 옵니다. 그 하나만 지나가면 원래대로.
       if (dragMoved.current) setTimeout(() => { dragMoved.current = false }, 0)
       const held = moving.current
       moving.current = null
@@ -551,10 +545,19 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
        */
       await moveBookingWith(held.id, held.date, settled.date, settled)
     }
-    window.addEventListener('mousemove', move)
-    window.addEventListener('mouseup', up)
-    window.addEventListener('blur', cancel)
-    window.addEventListener('contextmenu', cancel)
+    /**
+     * 마우스는 누른 즉시, 손가락은 길게 누른 뒤 잡힙니다(lib/press). 잡히기
+     * 전에는 아무것도 안 붙잡습니다 — 스크롤하려던 손이면 스크롤이 됩니다.
+     */
+    beginPress(e, {
+      onStart: () => {
+        moving.current = { id: event.id, date, grabAt, from, to, mode }
+        dragMoved.current = false
+      },
+      onMove: move,
+      onEnd: () => { void up() },
+      onCancel: cancel,
+    })
   }
 
   /** 이 날 칸으로 끌려 들어온 일정. 원래 그 날에 있던 것은 아닙니다. */
@@ -644,30 +647,36 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
     })
   }
 
-  const beginDrag = (e: React.MouseEvent<HTMLDivElement>, date: string) => {
+  const beginDrag = (e: React.PointerEvent<HTMLDivElement>, date: string) => {
     if (e.button !== 0 || naming || selected) return   // a popover is open; a stray drag would hide it
     const column = e.currentTarget
     const at = minutesAt(e.clientY, column)
-    dragging.current = { date, anchorMinutes: at }
-    setDraft({ date, fromMinutes: at, toMinutes: at + MIN_DURATION })
 
-    const move = (ev: MouseEvent) => {
-      const held = dragging.current
-      if (!held) return
-      const to = minutesAt(ev.clientY, column)
-      const from = Math.min(held.anchorMinutes, to)
-      const until = Math.max(held.anchorMinutes, to)
-      setDraft({ date, fromMinutes: from, toMinutes: Math.max(from + MIN_DURATION, until) })
-    }
-    const up = (ev: MouseEvent) => {
-      window.removeEventListener('mousemove', move)
-      window.removeEventListener('mouseup', up)
-      dragging.current = null
-      setCardAt({ x: ev.clientX, y: ev.clientY })
-      setDraft(current => { if (current) { setNaming(current); setTitle(''); setAgenda(''); setNotesUrl(''); setGuests([]) } return null })
-    }
-    window.addEventListener('mousemove', move)
-    window.addEventListener('mouseup', up)
+    /**
+     * 손가락은 길게 눌러야 시작됩니다(lib/press). 빈 칸을 톡 치는 것은 대개
+     * 스크롤을 멈추거나 카드를 닫는 손이라, 그때마다 새 일정 카드가 뜨면
+     * 화면이 손을 앞질러 갑니다. 마우스는 지금처럼 누르는 즉시입니다.
+     */
+    beginPress(e, {
+      onStart: () => {
+        dragging.current = { date, anchorMinutes: at }
+        setDraft({ date, fromMinutes: at, toMinutes: at + MIN_DURATION })
+      },
+      onMove: (ev) => {
+        const held = dragging.current
+        if (!held) return
+        const to = minutesAt(ev.y, column)
+        const from = Math.min(held.anchorMinutes, to)
+        const until = Math.max(held.anchorMinutes, to)
+        setDraft({ date, fromMinutes: from, toMinutes: Math.max(from + MIN_DURATION, until) })
+      },
+      onEnd: (ev) => {
+        dragging.current = null
+        setCardAt({ x: ev.x, y: ev.y })
+        setDraft(current => { if (current) { setNaming(current); setTitle(''); setAgenda(''); setNotesUrl(''); setGuests([]) } return null })
+      },
+      onCancel: () => { dragging.current = null; setDraft(null) },
+    })
   }
 
   // ── 회의실 ────────────────────────────────────────────────────────────────
@@ -1165,7 +1174,8 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
             <div
               key={date}
               data-day-column={date}
-              onMouseDown={e => beginDrag(e, date)}
+              className="hold"
+              onPointerDown={e => beginDrag(e, date)}
               // 빈 칸의 우클릭도 브라우저 메뉴를 안 띄웁니다. 여기서 할 수
               // 있는 일은 끌어서 만드는 것뿐이고, '새로고침'은 그 자리에
               // 있어야 할 말이 아닙니다.
@@ -1416,7 +1426,7 @@ function EventBlock({ placed, ghost, selected, task, provisional = false, onStat
   noteChecked?: boolean
   onNoteCheck: (next: boolean) => void
   onSelect: (e: React.MouseEvent) => void
-  onMove: (e: React.MouseEvent, mode: 'move' | 'resize') => void
+  onMove: (e: React.PointerEvent, mode: 'move' | 'resize') => void
 }) {
   const { event, lane, lanes } = placed
   const from = ghost?.from ?? placed.from
@@ -1445,7 +1455,8 @@ function EventBlock({ placed, ghost, selected, task, provisional = false, onStat
 
   return (
     <div
-      onMouseDown={e => { if (!provisional) onMove(e, 'move') }}
+      className="hold"
+      onPointerDown={e => { if (!provisional) onMove(e, 'move') }}
       onClick={e => { e.stopPropagation(); if (!provisional) onSelect(e) }}
       /**
        * 일정에 우클릭하면 브라우저의 기본 메뉴('새로고침')가 떴습니다. 이
@@ -1520,9 +1531,12 @@ function EventBlock({ placed, ghost, selected, task, provisional = false, onStat
         )}
         {event.summary}
       </span>
+      {/* 아래 끝을 잡아 길이를 바꿉니다. 높이는 CSS(.tl-resize)가 정합니다 —
+          손가락 기기에서는 더 두껍습니다. */}
       <div
-        onMouseDown={e => onMove(e, 'resize')}
-        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 8, cursor: 'ns-resize' }}
+        className="tl-resize"
+        onPointerDown={e => onMove(e, 'resize')}
+        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, cursor: 'ns-resize' }}
       />
     </div>
   )
@@ -1545,7 +1559,7 @@ function NoteCheck({ checked, onToggle }: { checked: boolean; onToggle: (next: b
       type="checkbox"
       checked={checked}
       title={checked ? '노트에서 체크 해제' : '노트에서 체크'}
-      onMouseDown={e => e.stopPropagation()}
+      onPointerDown={e => e.stopPropagation()}
       onClick={e => { e.stopPropagation(); onToggle(!checked) }}
       onChange={() => { /* onClick이 합니다 — 리액트가 제어 컴포넌트라고 알아야 해서 둡니다 */ }}
       // 노트의 체크박스와 **같은 그림**입니다(index.css의 .bpp-check).
@@ -1882,6 +1896,7 @@ function AttendeeRow({ name, email, mark, onRemove }: {
   onRemove: () => void
 }) {
   const [hovered, setHovered] = useState(false)
+  const touch = useTouch()
   return (
     <div
       onMouseEnter={() => setHovered(true)}
@@ -1910,7 +1925,7 @@ function AttendeeRow({ name, email, mark, onRemove }: {
         style={{
           flexShrink: 0, background: 'transparent', border: 'none', cursor: 'pointer',
           color: 'var(--t3)', fontSize: 13, lineHeight: 1, padding: '0 2px',
-          opacity: hovered ? 1 : 0, fontFamily: 'var(--font)',
+          opacity: hovered || touch ? 1 : 0, fontFamily: 'var(--font)',
         }}
       >×</button>
     </div>

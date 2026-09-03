@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTouch } from '../../hooks/useTouch'
 import { useGCalStore, type GCalEvent } from '../../store/gcalStore'
 import { useAuthStore } from '../../store/authStore'
 import { ActionMenu } from '../shared/ContextMenu'
@@ -520,6 +521,7 @@ function PickExisting({ day, dayEvents, linkedIds, taskId, onPick }: {
 
 function EventRow({ ev, busy, onDetach }: { ev: GCalEvent; busy: boolean; onDetach: () => void }) {
   const [hovered, setHovered] = useState(false)
+  const touch = useTouch()
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const guests = ev.attendees?.length ?? 0
   return (
@@ -552,7 +554,7 @@ function EventRow({ ev, busy, onDetach }: { ev: GCalEvent; busy: boolean; onDeta
         <button
           onClick={() => openExternal(ev.htmlLink)}
           title="구글 캘린더에서 열기"
-          style={{ ...CHIP, padding: '2px 7px', opacity: hovered ? 1 : 0, transition: 'opacity .1s' }}
+          style={{ ...CHIP, padding: '2px 7px', opacity: hovered || touch ? 1 : 0, transition: 'opacity .1s' }}
         >열기</button>
       )}
       {menu && (
