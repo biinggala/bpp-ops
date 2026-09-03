@@ -17,6 +17,7 @@ import { useTaskStore } from '../../../store/taskStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useProjectStore } from '../../../store/projectStore'
+import { useVisibleProjects } from '../../../hooks/useVisibleProjects'
 import { useUserProfileStore } from '../../../store/userProfileStore'
 import { useAuthStore } from '../../../store/authStore'
 import { useMobile } from '../../../hooks/useMobile'
@@ -649,13 +650,10 @@ export function TableView() {
   const { addTask, deleteTask, updateTask } = useTaskStore(useShallow(s => ({ addTask: s.addTask, deleteTask: s.deleteTask, updateTask: s.updateTask })))
   const { openTaskDetail, projectId, hideCompleted, listGroup, myTasksOnly } = useUiStore(useShallow(s => ({ openTaskDetail: s.openTaskDetail, projectId: s.projectId, hideCompleted: s.hideCompleted, listGroup: s.listGroup, myTasksOnly: s.myTasksOnly })))
   const { milestones, updateMilestone, deleteMilestone, addMilestone } = useMilestoneStore()
-  const allProjects = useProjectStore(s => s.projects)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
   const userEmail = useAuthStore(s => s.email)
-  // Only projects the current user is a member of
-  const projects = React.useMemo(() =>
-    allProjects
-  , [allProjects, userEmail])
+  // 지금 서 있는 워크스페이스의 프로젝트만 — 업무를 옮길 수 있는 곳도 여기까지.
+  const projects = useVisibleProjects()
   const taskEvents = useTaskEvents()
   const isMobile = useMobile()
 

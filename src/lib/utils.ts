@@ -265,7 +265,9 @@ export function isAssignedTo(
   email: string | null | undefined,
 ): boolean {
   if (!assignee || !email) return false
-  return assignee.toLowerCase().includes(email.toLowerCase())
+  // 주소 전체로 맞춥니다. 부분 일치였을 때 lee@는 klee@의 업무를 '내 것'으로 봤습니다.
+  const me = email.toLowerCase().trim()
+  return parseAssignees(assignee).some(tok => assigneeKeyToEmail(tok) === me || tok.toLowerCase() === me)
 }
 
 const STORAGE_KEY = 'cringe_v9'

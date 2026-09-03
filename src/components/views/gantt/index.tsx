@@ -7,6 +7,7 @@ import { haptic } from '../../../lib/haptics'
 import { useTaskStore } from '../../../store/taskStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
+import { useVisibleProjects } from '../../../hooks/useVisibleProjects'
 import { useProjectStore } from '../../../store/projectStore'
 import { useAuthStore } from '../../../store/authStore'
 import { getCatColor } from '../../../types'
@@ -97,7 +98,7 @@ export function GanttView() {
   const { openTaskModal, openTaskDetail, projectId, hideCompleted, setProject } = useUiStore(useShallow(s => ({ openTaskModal: s.openTaskModal, openTaskDetail: s.openTaskDetail, projectId: s.projectId, hideCompleted: s.hideCompleted, setProject: s.setProject })))
   const allMilestones = useMilestoneStore(s => s.milestones)
   const { deleteMilestone, updateMilestone } = useMilestoneStore()
-  const projects = useProjectStore(s => s.projects)
+  const projects = useVisibleProjects()  // 서 있는 워크스페이스의 것만
   const email = useAuthStore(s => s.email)
   const isMobile = useMobile()
 

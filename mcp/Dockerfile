@@ -10,6 +10,8 @@ COPY src ./src
 RUN npm run build && npm prune --omit=dev
 
 ENV PORT=8080
+# 없으면 express가 오류 응답에 스택 트레이스를 담습니다.
+ENV NODE_ENV=production
 EXPOSE 8080
 
 CMD ["node", "dist/http.js"]

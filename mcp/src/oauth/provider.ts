@@ -23,9 +23,12 @@ import type {
 } from '@modelcontextprotocol/sdk/shared/auth.js'
 import {
   deleteToken,
+  hashValue,
   loadClient,
   loadToken,
+  markConsented,
   peekCode,
+  peekPending,
   randomToken,
   saveClient,
   saveCode,
@@ -33,8 +36,14 @@ import {
   saveToken,
   takeCode,
   takePending,
+  PENDING_TTL_MS,
   type PendingAuth,
 } from './store.js'
+import { cookieHeader } from './cookie.js'
+
+/** 로그인 요청을 시작한 브라우저를 표시하는 쿠키. 콜백은 같은 브라우저에서만. */
+export const AUTHZ_COOKIE = 'mcp_authz'
+export const consentPath = '/oauth/consent'
 
 const GOOGLE_AUTH = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN = 'https://oauth2.googleapis.com/token'
@@ -79,19 +88,56 @@ export class GoogleBackedProvider implements OAuthServerProvider {
     return this.store
   }
 
-  /** Parks the client's request and sends the user to Google. */
+  /**
+   * ── 요청을 세워 두고, 먼저 **누가 어디로** 받는지 보여 줍니다 ────────────
+   *
+   * 예전에는 바로 구글로 보냈습니다. 그런데 클라이언트 등록은 누구나 할 수
+   * 있고(DCR), 구글 화면에는 우리 앱 이름만 뜹니다. 그래서 누군가 자기
+   * 주소로 돌아오는 클라이언트를 등록하고 그 구글 링크를 동료에게 보내면
+   * — "커넥터 다시 연결해 주세요" — 동료가 계정을 한 번 고르는 순간 그
+   * 사람 몫의 토큰이 공격자 주소로 갔습니다.
+   *
+   * 두 겹으로 막습니다.
+   * 1. **동의 화면.** 어느 클라이언트가, 어느 주소로 돌아가는지 적고 사람이
+   *    누릅니다. 낯선 주소면 여기서 멈춥니다.
+   * 2. **브라우저 묶기.** 시작한 브라우저에 쿠키를 심고 그 해시를 요청에
+   *    적습니다. 콜백은 같은 쿠키가 있어야 끝납니다 — 링크를 복사해 남에게
+   *    넘겨도 그 사람 브라우저에는 이 쿠키가 없습니다.
+   */
   async authorize(client: OAuthClientInformationFull, params: AuthorizationParams, res: Response): Promise<void> {
     const key = randomToken()
+    const nonce = randomToken()
     const pending: PendingAuth = {
       clientId: client.client_id,
       redirectUri: params.redirectUri,
       codeChallenge: params.codeChallenge,
       scopes: params.scopes ?? [],
       createdAt: Date.now(),
+      bind: hashValue(nonce),
       ...(params.state ? { state: params.state } : {}),
       ...(params.resource ? { resource: params.resource.toString() } : {}),
     }
     await savePending(key, pending)
+
+    res.setHeader('Set-Cookie', cookieHeader(AUTHZ_COOKIE, nonce, {
+      maxAge: Math.floor(PENDING_TTL_MS / 1000), path: '/oauth', secure: this.cfg.publicUrl.startsWith('https://'),
+    }))
+    res.setHeader('Cache-Control', 'no-store')
+    res.type('html').send(consentPage({
+      clientName: client.client_name ?? '이름 없는 클라이언트',
+      redirectUri: params.redirectUri,
+      key,
+    }))
+  }
+
+  /**
+   * 동의 화면에서 '계속'을 눌렀습니다. 쿠키가 맞으면 구글로 보냅니다.
+   * Returns the Google URL, or null when the request is unknown or from another browser.
+   */
+  async continueToGoogle(key: string, cookieNonce: string | null): Promise<string | null> {
+    const pending = await peekPending(key)
+    if (!pending || !cookieNonce || pending.bind !== hashValue(cookieNonce)) return null
+    await markConsented(key)
 
     const url = new URL(GOOGLE_AUTH)
     url.searchParams.set('client_id', this.cfg.clientId)
@@ -101,16 +147,20 @@ export class GoogleBackedProvider implements OAuthServerProvider {
     url.searchParams.set('prompt', 'select_account')
     // Our own correlation handle; Google returns it untouched.
     url.searchParams.set('state', key)
-    res.redirect(url.toString())
+    return url.toString()
   }
 
   /**
    * Completes the Google leg and issues our authorization code.
    * Returns the URL to send the user back to.
    */
-  async handleGoogleCallback(googleCode: string, key: string): Promise<string> {
+  async handleGoogleCallback(googleCode: string, key: string, cookieNonce: string | null): Promise<string> {
     const pending = await takePending(key)
     if (!pending) throw new Error('authorization request expired or already used')
+    // 시작한 브라우저가 아니거나, 동의 화면을 거치지 않은 요청입니다.
+    if (!pending.consented || !cookieNonce || pending.bind !== hashValue(cookieNonce)) {
+      throw new Error('authorization request was started in another browser')
+    }
 
     const body = new URLSearchParams({
       client_id: this.cfg.clientId,
@@ -245,4 +295,36 @@ function redirectWithError(pending: PendingAuth, error: string, description: str
   url.searchParams.set('error_description', description)
   if (pending.state) url.searchParams.set('state', pending.state)
   return url.toString()
+}
+
+function esc(v: string): string {
+  return v.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
+}
+
+/**
+ * 동의 화면. 짧고, 두 가지만 말합니다 — 누가, 어디로.
+ *
+ * 돌아가는 주소는 호스트만 크게 적습니다. 사람이 볼 것은 'claude.ai인가'지
+ * 경로가 아닙니다. 전체 주소는 그 아래 작게 둡니다.
+ */
+function consentPage(input: { clientName: string; redirectUri: string; key: string }): string {
+  let host = input.redirectUri
+  try { host = new URL(input.redirectUri).host } catch { /* 등록 때 검사된 주소라 여기 올 일은 없습니다 */ }
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bpp-ops 연결</title>
+<style>
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Segoe UI",sans-serif;background:#f6f5f2;color:#1f1f1f;display:flex;min-height:100vh;align-items:center;justify-content:center}
+main{background:#fff;border:1px solid #e6e3dc;border-radius:12px;padding:28px 28px 24px;max-width:420px;width:calc(100% - 32px);box-shadow:0 8px 30px rgba(0,0,0,.06)}
+h1{font-size:18px;margin:0 0 14px}p{font-size:14px;line-height:1.6;margin:0 0 10px;color:#3d3d3d}
+.who{font-weight:600;color:#1f1f1f}.host{font-weight:600}.uri{font-size:11.5px;color:#8a877f;word-break:break-all;margin-top:-4px}
+button{margin-top:18px;width:100%;padding:11px;border:0;border-radius:8px;background:#2383E2;color:#fff;font-size:14px;font-weight:600;cursor:pointer}
+.small{font-size:12px;color:#8a877f;margin-top:12px}
+</style></head><body><main>
+<h1>bpp-ops에 연결</h1>
+<p><span class="who">${esc(input.clientName)}</span>이(가) 내 업무·프로젝트에 접근하려고 합니다.</p>
+<p>로그인이 끝나면 <span class="host">${esc(host)}</span>로 돌아갑니다.</p>
+<p class="uri">${esc(input.redirectUri)}</p>
+<form method="post" action="${consentPath}"><input type="hidden" name="key" value="${esc(input.key)}"><button type="submit">Google 계정으로 계속</button></form>
+<p class="small">이 주소를 모르겠거나 직접 시작한 연결이 아니면 이 창을 닫으세요.</p>
+</main></body></html>`
 }

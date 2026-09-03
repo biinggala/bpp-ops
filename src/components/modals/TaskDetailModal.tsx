@@ -18,6 +18,7 @@ import { useAuthStore } from '../../store/authStore'
 import { usePresenceStore } from '../../store/presenceStore'
 import { useSyncStore } from '../../store/syncStore'
 import { useProjectStore } from '../../store/projectStore'
+import { useVisibleProjects } from '../../hooks/useVisibleProjects'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { useMobile } from '../../hooks/useMobile'
@@ -899,11 +900,9 @@ export function TaskDetailModal() {
   const { uid, myEmail } = useAuthStore(useShallow(s => ({ uid: s.uid, myEmail: s.email })))
   const { presences, setCurrentTask } = usePresenceStore()
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
-  const allProjects = useProjectStore(s => s.projects)
-  // Only projects the current user is a member of
-  const projects = allProjects.filter(p =>
-    true
-  )
+  // 지금 서 있는 워크스페이스의 프로젝트만. 전체 목록이었을 때는 다른 곳의
+  // 프로젝트로 업무를 옮길 수 있었고, 옮기면 사이드바에서 사라졸습니다.
+  const projects = useVisibleProjects()
   const milestones = useMilestoneStore(s => s.milestones)
   const isMobile = useMobile()
 

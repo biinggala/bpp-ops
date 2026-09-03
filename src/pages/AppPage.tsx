@@ -148,6 +148,14 @@ export function AppPage() {
    * 적히기도 합니다 — 기다렸다 한 번에 하는 편이 낫습니다.
    */
   const orgId = useOrgStore(s => s.orgId)
+  // 워크스페이스를 바꾸면 고른 프로젝트도 놓습니다. 다른 곳의 프로젝트가
+  // 골라진 채면 목록은 비고 상단에는 그 이름이 남습니다.
+  const prevOrg = useRef<string | null>(null)
+  useEffect(() => {
+    if (prevOrg.current && prevOrg.current !== orgId) useUiStore.setState({ projectId: null })
+    prevOrg.current = orgId
+  }, [orgId])
+
   const orgDomain = useOrgStore(s => s.domain)
   const orgReady = useOrgStore(s => s.ready)
   // 게스트로 서 있는 곳에는 안 쓰고 안 읽습니다 — 규칙이 다 막고, 막힌 것을
@@ -290,10 +298,14 @@ export function AppPage() {
   // 프로젝트가 아니라 **내 색인**에서 읽습니다. 명단에 없어서 프로젝트가
   // 닫힌 사람도 자기 색인은 읽을 수 있고, 그래서 스스로 자리를 앉힐 수
   // 있습니다 — 교착이 여기서 풀립니다(syncStore의 '예비 열쇠').
-  const guestOrgs = useMemo(
-    () => [...new Set(Object.values(orgByProject).filter(o => o && o !== orgId))].sort().join(' '),
-    [orgByProject, orgId],
-  )
+  const myOrgs = useOrgStore(s => s.myOrgs)
+  const guestOrgs = useMemo(() => {
+    // 서 있는 곳뿐 아니라 **내가 멤버인 곳 전부**를 뺍니다. 다른 워크스페이스에
+    // 서 있는 동안 내 회사를 '남의 것'으로 세면, 거기 내 줄이 아직 없을 때
+    // 게스트로 적힙니다 — 자기 회사에서요.
+    const mine = new Set([orgId, ...myOrgs.filter(o => !o.guest).map(o => o.id)])
+    return [...new Set(Object.values(orgByProject).filter(o => o && !mine.has(o)))].sort().join(' ')
+  }, [orgByProject, orgId, myOrgs])
   useEffect(() => {
     // orgReady를 기다립니다. 어느 워크스페이스에 붙을지 아직 못 정한 동안에는
     // orgId가 null이고, 그러면 위 목록이 **내 회사까지 '남의 것'으로 셉니다.**

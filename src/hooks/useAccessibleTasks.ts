@@ -18,8 +18,8 @@ export function useAccessibleTasks(): Task[] {
 
   return useMemo(() => {
     const accessibleIds = new Set(projects.map(p => p.id))
-    const hasAccess = accessibleIds.size > 0
-    let result = tasks.filter(t => t.projectId ? accessibleIds.has(t.projectId) : hasAccess)
+    // 프로젝트 없는 업무는 내 자리에서만 오므로 늘 내 것입니다(useFilteredTasks 참고).
+    let result = tasks.filter(t => t.projectId ? accessibleIds.has(t.projectId) : true)
 
     // Same rule as useFilteredTasks: archived projects contribute no options to
     // filter dropdowns, except while that archived project is the selected one.

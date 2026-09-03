@@ -21,14 +21,14 @@ export function useFilteredTasks(): Task[] {
     const accessibleIds = new Set(projects.map(p => p.id))
     // Tasks without a projectId are shown only if the user is the creator or assignee,
     // never to unrelated users just because they happen to have any project access.
-    const hasAccess = accessibleIds.size > 0
     let result = tasks.filter(t => {
       if (t.projectId) return accessibleIds.has(t.projectId)
-      // No projectId: show only if this user created or is assigned to the task
-      if (!hasAccess) return false
+      // 프로젝트 없는 업무는 내 자리(personalTasks/{uid})에서만 옵니다 — 규칙이
+      // 그렇게 되어 있습니다. 보이는 프로젝트가 0개인 새 워크스페이스에서도
+      // 내 개인 업무는 내 것입니다. 옛 전역 배열 시절의 방어가 여기 남아
+      // 있어서, 프로젝트 없는 워크스페이스에서 개인 탭이 비어 보였습니다.
       if (t.createdBy && email && t.createdBy.toLowerCase() === email.toLowerCase()) return true
-      if (email && t.assignee?.toLowerCase().includes(email.toLowerCase())) return true
-      return false
+      return isAssignedTo(t.assignee, email)
     })
 
     // Archived projects drop out of every aggregate view (전체 업무, 내 할 일,

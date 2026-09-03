@@ -70,6 +70,29 @@ export interface PendingAuth {
   scopes: string[]
   resource?: string
   createdAt: number
+  /** 요청을 시작한 브라우저의 쿠키 값(해시). 콜백은 같은 브라우저에서만 끝납니다. */
+  bind?: string
+  /** 동의 화면에서 '계속'을 눌렀는가. 안 눌렀으면 구글에 보내지 않습니다. */
+  consented?: boolean
+}
+
+/** 구글에 다녀오는 데 넉넉한 시간. 이걸 넘긴 요청은 없는 것으로 칩니다. */
+export const PENDING_TTL_MS = 10 * 60 * 1000
+
+export function hashValue(value: string): string {
+  return hash(value)
+}
+
+export async function peekPending(key: string): Promise<PendingAuth | undefined> {
+  const snap = await initDb().ref(`${ROOT}/pending/${key}`).get()
+  const value = snap.val() as PendingAuth | null
+  if (!value) return undefined
+  if (Date.now() - value.createdAt > PENDING_TTL_MS) { await snap.ref.remove(); return undefined }
+  return value
+}
+
+export async function markConsented(key: string): Promise<void> {
+  await initDb().ref(`${ROOT}/pending/${key}/consented`).set(true)
 }
 
 export async function savePending(key: string, value: PendingAuth): Promise<void> {
@@ -81,7 +104,10 @@ export async function takePending(key: string): Promise<PendingAuth | undefined>
   const snap = await ref.get()
   const value = snap.val() as PendingAuth | null
   if (value) await ref.remove()
-  return value ?? undefined
+  if (!value) return undefined
+  // 시작 시각은 적어 두고 한 번도 안 봤습니다. 오래된 요청을 끝내 주면 안 됩니다.
+  if (Date.now() - value.createdAt > PENDING_TTL_MS) return undefined
+  return value
 }
 
 // ── Authorization codes ──────────────────────────────────────────────────────

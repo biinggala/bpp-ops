@@ -10,7 +10,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { getOAuthProtectedResourceMetadataUrl, mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js'
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js'
-import { GoogleBackedProvider, googleCallbackPath } from './oauth/provider.js'
+import { AUTHZ_COOKIE, GoogleBackedProvider, consentPath, googleCallbackPath } from './oauth/provider.js'
+import { readCookie } from './oauth/cookie.js'
 import { registerTools } from './tools.js'
 import { canAccessProject } from './access.js'
 import { initDb, readProjects } from './store.js'
@@ -60,7 +61,11 @@ async function main() {
   initDb() // fail fast on bad credentials
 
   const app = express()
+  // Cloud Run 앞에 프록시가 한 겹 있습니다. 이걸 안 말해 주면 SDK의 요청 제한이
+  // 모든 사람을 프록시 주소 하나로 세어서, 회사 전원이 한 통을 나눠 씁니다.
+  app.set('trust proxy', 1)
   app.use(express.json())
+  app.use(express.urlencoded({ extended: false }))
 
   /**
    * ── 앱이 이 서버를 부를 수 있게 ────────────────────────────────────────────
@@ -116,13 +121,28 @@ async function main() {
     })
   )
 
+  /** 우리가 만든 토큰만 이런 모양입니다. 다른 글자가 오면 경로에 넣기 전에 거절합니다. */
+  const TOKEN_SHAPE = /^[A-Za-z0-9_-]{16,128}$/
+
+  // 동의 화면의 '계속'. 같은 브라우저인지 확인하고 구글로 보냅니다.
+  app.post(consentPath, async (req, res) => {
+    const key = (req.body as { key?: unknown })?.key
+    if (typeof key !== 'string' || !TOKEN_SHAPE.test(key)) return void res.status(400).type('text/plain').send('잘못된 요청입니다')
+    const url = await provider.continueToGoogle(key, readCookie(req.header('cookie'), AUTHZ_COOKIE))
+    if (!url) return void res.status(400).type('text/plain').send('연결 요청이 만료됐거나 다른 브라우저에서 시작된 것입니다. 연결을 다시 시작해 주세요.')
+    res.redirect(url)
+  })
+
   // The leg Google redirects back to; hands the user on to Claude.
+  // 응답은 전부 text/plain입니다 — 구글이 돌려준 글자를 HTML로 찍으면 이
+  // 서버 주소에서 남의 글이 실행됩니다.
   app.get(googleCallbackPath, async (req, res) => {
     const { code, state, error } = req.query as Record<string, string | undefined>
-    if (error) return void res.status(400).send(`Google 로그인 실패: ${error}`)
-    if (!code || !state) return void res.status(400).send('잘못된 콜백 요청입니다')
+    res.type('text/plain')
+    if (error) return void res.status(400).send(`Google 로그인 실패: ${String(error).replace(/[^\w. -]/g, '').slice(0, 80)}`)
+    if (!code || !state || !TOKEN_SHAPE.test(state)) return void res.status(400).send('잘못된 콜백 요청입니다')
     try {
-      res.redirect(await provider.handleGoogleCallback(code, state))
+      res.redirect(await provider.handleGoogleCallback(code, state, readCookie(req.header('cookie'), AUTHZ_COOKIE)))
     } catch (e) {
       res.status(400).send(e instanceof Error ? e.message : 'authorization failed')
     }
@@ -185,6 +205,13 @@ async function main() {
     issuer: publicUrl,
     googleRedirectUri: new URL(googleCallbackPath, publicUrl).toString(),
   }))
+
+  // 마지막 그물. 없으면 express가 스택 트레이스를 그대로 돌려줍니다.
+  app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('[bpp-ops-mcp]', err instanceof Error ? err.message : err)
+    if (res.headersSent) return
+    res.status(500).json({ error: 'internal error' })
+  })
 
   const port = Number(process.env.PORT ?? 8080)
   app.listen(port, () => {

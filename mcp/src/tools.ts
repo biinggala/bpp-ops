@@ -620,6 +620,9 @@ export function registerTools(server: McpServer, ctx: Ctx) {
         let n = 0
         const next = tasks.map(t => {
           if (t.milestoneId !== milestone_id) return t
+          // 이 마일스톤의 프로젝트에 있고 내가 볼 수 있는 업무만. 안 그러면
+          // 같은 id를 적어 둔 남의 자리 업무까지 서버가 고쳐 씁니다.
+          if (t.projectId !== target.projectId || !isTaskVisible(t, ctx.email, ids)) return t
           n++
           const { milestoneId: _m, ...rest } = t
           return rest as Task

@@ -192,7 +192,16 @@ export async function claimGuestSeats(uid: string, email: string, orgIds: string
        */
       const mine = await fbGet(ref(db, P.orgMember(oid, email))).catch(() => null)
       if (mine?.exists()) return
-      await update(ref(db, P.orgMember(oid, email)), { role: 'guest', at }).catch(() => {})
+      /**
+       * **우리 도메인이면 게스트가 아니라 멤버입니다.** 초대 링크로 처음
+       * 들어온 신입이 여기서 자기 회사의 게스트로 적혔습니다 — 링크에 실린
+       * 회사가 자기 회사라는 걸 아무도 안 봤습니다. 도메인은 멤버가 아니어도
+       * 읽힐 수 있게 되어 있고, 규칙도 도메인이 맞으면 멤버 자가 등록을
+       * 허락합니다(게스트로는 거절합니다).
+       */
+      const domain = await fbGet(ref(db, P.orgDomain(oid))).then(s => (typeof s.val() === 'string' ? s.val() as string : '')).catch(() => '')
+      const role = domain && roleForDomain(email, domain) === 'member' ? 'member' : 'guest'
+      await update(ref(db, P.orgMember(oid, email)), { role, at }).catch(() => {})
     }),
   )
   await claimInvitedOrgs(uid, unique)

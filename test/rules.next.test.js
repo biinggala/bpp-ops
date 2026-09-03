@@ -10,7 +10,7 @@ import { test, before, after, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing'
-import { ref, get, set, remove, query, orderByChild, startAt } from 'firebase/database'
+import { ref, get, set, update, remove, query, orderByChild, startAt } from 'firebase/database'
 
 const ALICE = { uid: 'alice', email: 'alice@bpp.co.kr' }
 const BOB = { uid: 'bob', email: 'bob@bpp.co.kr' }
@@ -1124,4 +1124,128 @@ test('도메인 없는 워크스페이스에는 이름 명단이 없습니다', 
   // 읽기는 조직 노드의 규칙이 상속되어 통과하지만, 아무도 못 쓰니 늘 빕니다.
   // 벽은 쓰기입니다 — 여기에 이름이 적히는 길이 없다는 것.
   assert.equal((await get(ref(db, `orgs/${oid}/directory`))).val(), null)
+})
+
+/* ───────────────────────── 감사에서 나온 구멍들 ───────────────────────── */
+
+test('프로필의 주소는 내 주소여야 하고, 프로필을 지울 수 없다', async () => {
+  // MCP와 앱이 이메일→uid를 프로필에서 찾습니다. 남의 주소를 적어 두면 그
+  // 사람의 개인 업무가 내 자리에 떨어졌습니다.
+  const mallory = authed(MALLORY)
+  await assertFails(set(ref(mallory, `userProfiles/${MALLORY.uid}`), { email: ALICE.email, name: 'M' }))
+  await assertSucceeds(set(ref(mallory, `userProfiles/${MALLORY.uid}`), { email: 'Mallory@Example.com', name: 'M' }))
+  await assertFails(set(ref(mallory, `userProfiles/${MALLORY.uid}/email`), ALICE.email))
+  await assertFails(remove(ref(mallory, `userProfiles/${MALLORY.uid}`)))
+  // 이름만 고치는 것은 그대로 됩니다 — 주소는 이미 내 것이니까요.
+  await assertSucceeds(set(ref(mallory, `userProfiles/${MALLORY.uid}/name`), '말로리'))
+})
+
+test('멤버는 만든 사람·소속·초대코드를 건드려 삭제 권한을 얻을 수 없다', async () => {
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), `projects/${PID}/members/${BOB.uid}`), INVITE)
+    await set(ref(ctx.database(), `projects/${PID}/meta/orgId`), 'org1')
+    // 소속이 있으면 테넌트 벽이 서므로, 둘이 통과할 회사를 세워 둡니다.
+    await set(ref(ctx.database(), 'orgs/org1/meta'), { name: '블랙페이퍼', domain: 'bpp.co.kr' })
+  })
+  const bob = authed(BOB)
+  await assertFails(set(ref(bob, `projects/${PID}/meta/creatorEmail`), BOB.email))
+  await assertFails(remove(ref(bob, `projects/${PID}/meta/orgId`)))
+  await assertFails(set(ref(bob, `projects/${PID}/meta/orgId`), 'other'))
+  await assertFails(remove(ref(bob, `projects/${PID}/meta`)))
+  await assertFails(remove(ref(bob, `projects/${PID}/meta/inviteCode`)))
+  // 업무는 여전히 씁니다 — 막은 것은 정체성 필드뿐입니다.
+  await assertSucceeds(set(ref(bob, `projects/${PID}/tasks/t2`), { id: 't2', name: '새 일', status: '대기' }))
+  // 만든 사람은 초대코드를 바꿀 수 있습니다(내보낼 때 회전).
+  await assertSucceeds(set(ref(authed(ALICE), `projects/${PID}/meta/inviteCode`), 'newcode99'))
+})
+
+test('회사 도메인 주소는 그 회사에 게스트로 적히지 않는다', async () => {
+  const oid = 'dom-g'
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), { name: '블랙페이퍼', domain: 'bpp.co.kr' })
+    await set(ref(db, `orgs/${oid}/members/${emailKey(ALICE.email)}`), { role: 'member', at: 1 })
+  })
+  // 멤버가 동료를 게스트로 — 강등입니다. 거절.
+  await assertFails(set(ref(authed(ALICE), `orgs/${oid}/members/${emailKey(BOB.email)}`), { role: 'guest', at: 1, by: ALICE.email }))
+  // 스스로 게스트로 앉는 것도 — 초대 링크로 처음 들어온 신입이 그랬습니다.
+  await assertFails(set(ref(authed(BOB), `orgs/${oid}/members/${emailKey(BOB.email)}`), { role: 'guest', at: 1 }))
+  // 도메인 밖 사람은 여전히 게스트로 들입니다.
+  await assertSucceeds(set(ref(authed(ALICE), `orgs/${oid}/members/${emailKey(MALLORY.email)}`), { role: 'guest', at: 1, by: ALICE.email }))
+  // 그리고 신입은 스스로 멤버로 앉습니다.
+  await assertSucceeds(set(ref(authed(BOB), `orgs/${oid}/members/${emailKey(BOB.email)}`), { role: 'member', at: 1 }))
+})
+
+test('명단에서 내려간 관리자는 관리자가 아니다', async () => {
+  const oid = 'dom-adm'
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), { name: '블랙페이퍼', domain: 'bpp.co.kr' })
+    await set(ref(db, `orgs/${oid}/members/${emailKey(ALICE.email)}`), { role: 'member', at: 1 })
+    await set(ref(db, `orgs/${oid}/members/${emailKey(BOB.email)}`), { role: 'removed', at: 2 })
+    await set(ref(db, `orgs/${oid}/admins/${emailKey(ALICE.email)}`), true)
+    await set(ref(db, `orgs/${oid}/admins/${emailKey(BOB.email)}`), true)
+  })
+  const bob = authed(BOB)
+  // 남은 관리자 표시로 자기를 다시 멤버로 올리거나 회의실을 고칠 수 없습니다.
+  await assertFails(set(ref(bob, `orgs/${oid}/members/${emailKey(BOB.email)}`), { role: 'member', at: 3 }))
+  await assertFails(set(ref(bob, `orgs/${oid}/rooms/r1`), { name: '방', order: 0 }))
+  // 진짜 관리자는 됩니다.
+  await assertSucceeds(set(ref(authed(ALICE), `orgs/${oid}/rooms/r1`), { name: '방', order: 0 }))
+})
+
+test('워크스페이스 도메인은 한 번 정해지면 바뀌지 않고, 남의 도메인은 못 붙인다', async () => {
+  const oid = 'inv-dom'
+  const me = emailKey(GMAIL.email)
+  const db = authed(GMAIL)
+  await assertSucceeds(set(ref(db, `orgs/${oid}/meta`), { name: '팀플', owner: me, createdAt: 1 }))
+  await assertSucceeds(set(ref(db, `orgs/${oid}/members/${me}`), { role: 'member', at: 1 }))
+  await assertSucceeds(set(ref(db, `orgs/${oid}/admins/${me}`), true))
+  // 초대형 팀에 회사 도메인을 붙여 회사 사람 전원을 멤버로 만드는 길 — 막힘.
+  await assertFails(set(ref(db, `orgs/${oid}/meta/domain`), 'bpp.co.kr'))
+  await assertFails(update(ref(db, `orgs/${oid}/meta`), { name: '팀플', owner: me, createdAt: 1, domain: 'bpp.co.kr' }))
+  // owner도 뒤늦게 바꿀 수 없습니다.
+  await assertFails(set(ref(db, `orgs/${oid}/meta/owner`), emailKey(MALLORY.email)))
+  // 이름은 고칩니다.
+  await assertSucceeds(set(ref(db, `orgs/${oid}/meta/name`), '팀플 2'))
+})
+
+test('초대장은 진짜 초대코드를 실어야 하고, 내 수신함에는 지우기만 한다', async () => {
+  const alice = authed(ALICE)
+  const box = `invitesByEmail/${emailKey(MALLORY.email)}/${PID}`
+  await assertFails(set(ref(alice, box), { code: 'wrong', name: 'x' }))
+  await assertFails(set(ref(alice, box), { code: INVITE, name: 'x'.repeat(81) }))
+  await assertFails(set(ref(alice, box), { code: INVITE, name: 'x', orgId: 'evil-org' }))
+  await assertSucceeds(set(ref(alice, box), { code: INVITE, name: 'Alice 프로젝트' }))
+  // 받은 사람은 지울 수만 있습니다.
+  await assertFails(set(ref(authed(MALLORY), box), { code: INVITE, name: '바꿈' }))
+  await assertSucceeds(remove(ref(authed(MALLORY), box)))
+})
+
+test('알림의 종류는 정해진 것만, 보낸 이름은 길이가 있다', async () => {
+  const alice = authed(ALICE)
+  const inbox = `notices/${emailKey(BOB.email)}`
+  const base = { by: '앨리스', byEmail: ALICE.email, at: 1 }
+  await assertSucceeds(set(ref(alice, `${inbox}/n1`), { ...base, kind: 'assigned' }))
+  await assertFails(set(ref(alice, `${inbox}/n2`), { ...base, kind: '대표님 지시' }))
+  await assertFails(set(ref(alice, `${inbox}/n3`), { ...base, kind: 'assigned', by: 'x'.repeat(61) }))
+})
+
+test('접속 표시는 목록으로 읽힌다', async () => {
+  // 앱은 /presence를 통째로 구독합니다. uid마다만 열려 있으면 늘 빈 목록입니다.
+  await assertSucceeds(get(ref(authed(ALICE), 'presence')))
+  await assertFails(get(ref(authed(MALLORY), 'presence')))
+  // who는 자기 uid여야 합니다.
+  await assertFails(set(ref(authed(ALICE), `presence/${ALICE.uid}`), { who: BOB.uid, online: true }))
+})
+
+test('프로젝트가 사라진 뒤에도 공개 목록의 줄은 지울 수 있다', async () => {
+  const oid = 'dom-list'
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), { name: '블랙페이퍼', domain: 'bpp.co.kr' })
+    await set(ref(db, `orgs/${oid}/members/${emailKey(ALICE.email)}`), { role: 'member', at: 1 })
+    await set(ref(db, `orgs/${oid}/projects/gone`), { name: '없어진 프로젝트' })
+  })
+  await assertSucceeds(remove(ref(authed(ALICE), `orgs/${oid}/projects/gone`)))
 })
