@@ -5,6 +5,8 @@ import type { NodeViewProps } from '@tiptap/react'
 import { useTaskStore } from '../../../store/taskStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useProjectStore } from '../../../store/projectStore'
+import { useOrgStore } from '../../../store/orgStore'
+import { useVisibleProjects } from '../../../hooks/useVisibleProjects'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useSyncStore } from '../../../store/syncStore'
 import { useGCalStore } from '../../../store/gcalStore'
@@ -132,6 +134,27 @@ function TaskRefView({ node, deleteNode, extension }: NodeViewProps) {
   const updateTask = useTaskStore(s => s.updateTask)
   const openTaskDetail = useUiStore(s => s.openTaskDetail)
   const projects = useProjectStore(s => s.projects)
+  /**
+   * ── 이 줄이 지금 워크스페이스의 것인가 ───────────────────────────────────
+   *
+   * **노트는 워크스페이스를 안 가립니다.** 오전에 A, 오후에 B를 하는 사람에게
+   * 하루는 여전히 하루라서, 노트는 사람마다 날짜마다 하나뿐입니다. 그건 그대로
+   * 둡니다 — 내가 쓴 글이 워크스페이스를 바꿨다고 사라지면 그건 내 노트가
+   * 아닙니다.
+   *
+   * 그런데 **거기 적힌 업무 줄**은 다릅니다. 저쪽에서 담아 둔 업무가 이쪽
+   * 화면에서 멀쩡한 줄로 서면, 사이드바 어디에도 없는 일의 상태를 여기서
+   * 바꾸게 됩니다. 워크스페이스를 바꾼 것이 아무것도 안 가른 셈입니다.
+   *
+   * 같은 화면의 다른 두 곳은 이미 가리고 있었습니다 — '집어 올 것'(useMine)과
+   * '어제 못 끝낸 것'(CarryOver). 셋 중 여기만 빠져 있었습니다.
+   *
+   * 줄을 없애지는 않습니다. 지워진 업무를 '삭제된 업무'로 남겨 두는 것과 같은
+   * 이유입니다: 조용히 없애면 어제 세운 계획이 말없이 줄어듭니다. 대신
+   * **어디 것인지 적고, 여기서는 못 건드리게** 합니다.
+   */
+  const visible = useVisibleProjects()
+  const myOrgs = useOrgStore(s => s.myOrgs)
 
   /**
    * ── 아직 안 온 것과 지워진 것 ─────────────────────────────────────────────
@@ -167,6 +190,25 @@ function TaskRefView({ node, deleteNode, extension }: NodeViewProps) {
 
   const done = task.status === '완료'
   const project = task.projectId ? projects.find(p => p.id === task.projectId) : undefined
+
+  // 개인 업무(프로젝트 없음)는 어느 워크스페이스에도 안 속합니다 — 늘 내 것.
+  const elsewhere = !!task.projectId && !visible.some(p => p.id === task.projectId)
+  if (elsewhere) {
+    const where = myOrgs.find(o => o.id === project?.orgId)?.name
+    return (
+      <NodeViewWrapper as="div" contentEditable={false} className="bpp-noterow" style={ROW}>
+        <span style={{ ...BOX, borderStyle: 'dashed' }} />
+        <span style={{
+          fontSize: 14, color: 'var(--t3)', overflow: 'hidden',
+          textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
+        }}>{task.name}</span>
+        <span style={{ fontSize: 11, color: 'var(--t3)', flexShrink: 0 }}>
+          {where ? `${where}의 업무` : '다른 워크스페이스의 업무'}
+        </span>
+        <button onClick={() => deleteNode()} className="bpp-rowx" style={REMOVE} aria-label="줄 지우기">×</button>
+      </NodeViewWrapper>
+    )
+  }
   const parent = allTasks.find(t => t.id === task.parentId)
   // 하위 업무에 마일스톤이 안 적혀 있으면 부모의 것을 씁니다. 마일스톤은
   // 가족 단위로 붙는 것이고, 부모가 그 안에 있으면 자식도 그 안입니다.
