@@ -8,6 +8,7 @@ import { DEFAULT_ROOM_RULE, roomRuleNote, roomTooLong, type RoomRule } from '../
 import { usePrefsStore } from './prefsStore'
 import { pickOrg, orgsSettled } from '../lib/pickOrg'
 import { homeOrgName } from '../lib/homeOrg'
+import { reportProblem } from '../lib/notify'
 
 /**
  * ── 조직과 회의실 ────────────────────────────────────────────────────────────
@@ -980,7 +981,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     const { orgId, orgProjects } = get()
     if (!orgId) return
     if (!orgProjects.some(p => p.id === projectId)) return
-    void fbUpdate(ref(db, P.orgProject(orgId, projectId)), { name }).catch(() => {})
+    void fbUpdate(ref(db, P.orgProject(orgId, projectId)), { name }).catch(() => reportProblem('워크스페이스 목록의 프로젝트 이름을 고치지 못했습니다. 다른 사람에게는 옛 이름이 보입니다.'))
   },
 
   requestJoin: async (projectId, email, name) => {
@@ -1325,7 +1326,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     if (!orgId) return
     for (const b of bookings[date] ?? []) {
       if (b.eventId !== eventId || b.title === title) continue
-      await fbUpdate(ref(db, P.orgBooking(orgId, date, b.id)), { title }).catch(() => {})
+      await fbUpdate(ref(db, P.orgBooking(orgId, date, b.id)), { title }).catch(() => reportProblem('회의실 예약의 제목을 고치지 못했습니다.'))
     }
   },
 }))

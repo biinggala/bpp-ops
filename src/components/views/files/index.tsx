@@ -5,6 +5,7 @@ import { useTaskStore } from '../../../store/taskStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useAccessibleTasks } from '../../../hooks/useAccessibleTasks'
 import { useMobile } from '../../../hooks/useMobile'
+import { useSyncStore } from '../../../store/syncStore'
 import { gid, safeExternalUrl } from '../../../lib/utils'
 import { haptic } from '../../../lib/haptics'
 import { NOTION } from '../../../types'
@@ -40,6 +41,7 @@ export function FilesView() {
   const projects = useProjectStore(s => s.projects)
   const tasks = useAccessibleTasks()
   const isMobile = useMobile()
+  const syncReady = useSyncStore(s => s.ready)
   const [query, setQuery] = useState('')
 
   const visible = useMemo(
@@ -65,7 +67,7 @@ export function FilesView() {
 
         {visible.length === 0 && (
           <div style={{ padding: '40px 0', textAlign: 'center', fontSize: 13, color: 'var(--t3)' }}>
-            프로젝트가 없습니다
+            {syncReady ? '프로젝트가 없습니다' : '불러오는 중…'}
           </div>
         )}
 

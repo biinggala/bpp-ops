@@ -101,8 +101,13 @@ export const useTrashStore = create<TrashState>((set, get) => ({
   },
 
   purge: async (item) => {
-    await fbRemove(ref(db, item.path)).catch(() => {})
-    set({ items: get().items.filter(i => i.path !== item.path) })
+    try {
+      await fbRemove(ref(db, item.path))
+      set({ items: get().items.filter(i => i.path !== item.path) })
+    } catch (e) {
+      // 실패했는데 목록에서 지우면 '지웠다'고 믿고 새로 열면 다시 나타납니다.
+      set({ error: e instanceof Error ? e.message : '영영 지우지 못했습니다' })
+    }
   },
 
   clear: () => set({ items: [], loading: false, error: null }),

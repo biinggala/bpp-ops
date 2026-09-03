@@ -24,7 +24,8 @@ import { askConfirm } from '../shared/Confirm'
 import { showTestNotice } from '../layout/NoticeToast'
 import { Icon, type IconName } from '../shared/Icon'
 import { useShallow } from 'zustand/react/shallow'
-import { isComposing } from '../../lib/utils'
+import { isComposing, copyText } from '../../lib/utils'
+import { reportProblem } from '../../lib/notify'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { useVisibleProjects } from '../../hooks/useVisibleProjects'
 
@@ -745,9 +746,8 @@ function ConnectorRow() {
       </span>
       <button
         onClick={() => {
-          void navigator.clipboard?.writeText(MCP_CONNECTOR_URL)
-            .then(() => setCopied(true))
-            .catch(() => {})
+          // 웹뷰에서는 clipboard API가 조용히 실패합니다 — copyText가 옛길로 물러납니다.
+          void copyText(MCP_CONNECTOR_URL).then(ok => { if (ok) setCopied(true); else reportProblem('복사하지 못했습니다. 주소를 직접 선택해 복사해 주세요.') })
         }}
         style={{
           flexShrink: 0, height: 26, padding: '0 10px', borderRadius: 'var(--r1)',
@@ -2036,7 +2036,7 @@ function RoomsSection() {
           <input
             value={roomName}
             onChange={e => setRoomName(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && roomName.trim()) { void addRoom(roomName); setRoomName('') } }}
+            onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e) && roomName.trim()) { void addRoom(roomName); setRoomName('') } }}
             placeholder="회의실 이름 (예: 대회의실)"
             style={INPUT}
           />

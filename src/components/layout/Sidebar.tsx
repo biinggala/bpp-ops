@@ -1684,7 +1684,7 @@ function MemberManageModal({ project, currentEmail, suggestable, onAddMember, on
       onClick={onClose}
     >
       <div
-        style={{ background: 'var(--bg2)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', padding: '24px', width: 420, boxShadow: '0 8px 40px rgba(0,0,0,.45)' }}
+        style={{ background: 'var(--bg2)', border: '1px solid var(--bd)', borderRadius: 'var(--r3)', padding: '24px', width: 'min(420px, calc(100vw - 32px))', boxShadow: '0 8px 40px rgba(0,0,0,.45)' }}
         onClick={e => e.stopPropagation()}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>

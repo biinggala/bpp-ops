@@ -11,7 +11,7 @@ import { driveUrl } from '../../../lib/googleDrive'
 import { useTaskStore } from '../../../store/taskStore'
 import { useAuthStore } from '../../../store/authStore'
 import { useUiStore } from '../../../store/uiStore'
-import { isAssignedTo } from '../../../lib/utils'
+import { isAssignedTo, isComposing } from '../../../lib/utils'
 import { useVisibleProjects } from '../../../hooks/useVisibleProjects'
 
 /**
@@ -758,6 +758,8 @@ function SlashMenu({ editor, x, y, from, onClose, onFinder }: {
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      // 한글 조합을 끝내는 Enter가 항목을 골라 버립니다. 조합 중이면 편집기 것.
+      if (isComposing(e)) return
       if (e.key === 'Escape') { e.preventDefault(); onClose(); return }
       if (e.key === 'ArrowDown') { e.preventDefault(); setPick(p => (p + 1) % Math.max(items.length, 1)) }
       if (e.key === 'ArrowUp') { e.preventDefault(); setPick(p => (p - 1 + items.length) % Math.max(items.length, 1)) }
@@ -766,7 +768,8 @@ function SlashMenu({ editor, x, y, from, onClose, onFinder }: {
     // capture: 편집기가 Enter를 먼저 먹으면 줄만 하나 늘어납니다.
     document.addEventListener('keydown', key, true)
     return () => document.removeEventListener('keydown', key, true)
-  })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, pick])
 
   if (!items.length) return null
 

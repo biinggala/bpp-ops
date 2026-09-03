@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useTouch } from '../../../hooks/useTouch'
+import { askConfirm } from '../../shared/Confirm'
 import { useGCalStore, awaitingMe, myAttendance } from '../../../store/gcalStore'
 import { useUiStore } from '../../../store/uiStore'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
@@ -1044,6 +1045,9 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
           onNoteCheck={next => void toggleNote(selectedInfo.event.noteRef, next)}
           onOpenTask={openTaskDetail}
           onDelete={async () => {
+            // 구글 캘린더에서 실제로 지워지고 ⌘Z로 안 돌아옵니다. 한 번 묻습니다.
+            const ok = await askConfirm({ message: '이 시간 블록을 지울까요?', detail: '업무와 노트의 줄은 그대로 남습니다.', confirmLabel: '지우기' })
+            if (!ok) return
             setSelected(null)
             setCardAt(null)
             // 지우는 건 잡아 둔 시간뿐입니다. 업무는 그대로 있고, 노트의 그
@@ -1100,6 +1104,8 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
             setSelected(null)
           }}
           onDelete={async () => {
+            const ok = await askConfirm({ message: `"${selectedInfo.event.summary || '(제목 없음)'}" 일정을 지울까요?`, detail: '구글 캘린더에서 지워지고, 초대받은 사람에게도 사라집니다. 되돌릴 수 없습니다.', confirmLabel: '지우기' })
+            if (!ok) return
             // 방을 먼저 풉니다. 일정이 사라진 뒤에는 어느 예약이 그 일정
             // 것이었는지 알 수 없고, 아무도 못 치우는 예약이 남습니다.
             await releaseForEvent(selectedInfo.date, selectedInfo.event.id)

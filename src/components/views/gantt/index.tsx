@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useTouch } from '../../../hooks/useTouch'
+import { useSyncStore } from '../../../store/syncStore'
 import { beginPress } from '../../../lib/press'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useMobile } from '../../../hooks/useMobile'
@@ -543,6 +544,7 @@ export function GanttView() {
     return out
   }, [rangeStart, totalDays, zoom])
 
+  const syncReady = useSyncStore(s => s.ready)
   if (rows.length === 0) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -551,7 +553,7 @@ export function GanttView() {
           unplaced={0} markUnplaced={markUnplaced} setMarkUnplaced={setMarkUnplaced} isMobile={isMobile}
         />
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--t3)', fontSize: 14 }}>
-          업무가 없습니다
+          {syncReady ? '업무가 없습니다' : '불러오는 중…'}
         </div>
       </div>
     )
@@ -898,6 +900,7 @@ function ProjectRow({ project, expanded, onToggle, rollup, count, timelineW, lef
   onOpen: () => void
 }) {
   const [hovered, setHovered] = useState(false)
+  const touch = useTouch()
   const color = project?.color ?? 'var(--t3)'
 
   return (
@@ -925,7 +928,7 @@ function ProjectRow({ project, expanded, onToggle, rollup, count, timelineW, lef
         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--t1)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-.01em' }}>
           {project?.name ?? '프로젝트 미지정'}
         </span>
-        {hovered && project && !compact ? (
+        {(hovered || touch) && project && !compact ? (
           <button
             onClick={e => { e.stopPropagation(); haptic('tap'); onOpen() }}
             title="이 프로젝트만 보기"

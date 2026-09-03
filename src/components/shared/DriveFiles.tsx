@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useDriveStore, warmDriveAuth, snippetKey } from '../../store/driveStore'
 import { useProjectStore } from '../../store/projectStore'
 import { isComposing, gid, safeExternalUrl } from '../../lib/utils'
+import { useTouch } from '../../hooks/useTouch'
 import { Icon } from './Icon'
 import { fileKind, relativeTime, driveIdFromUrl, driveUrl, type DriveFile, type DriveSearchResult } from '../../lib/googleDrive'
 import { docTabUrl } from '../../lib/googleDocs'
@@ -120,6 +121,7 @@ export function FileRow({ link, file, onRemove, onNote, compact = false }: {
   const [editingNote, setEditingNote] = useState(false)
   const [draft, setDraft] = useState(link.note ?? '')
   const [hovered, setHovered] = useState(false)
+  const touch = useTouch()
 
   const commitNote = () => { onNote?.(draft.trim()); setEditingNote(false) }
   const isDrive = !!driveIdOf(link)
@@ -185,7 +187,7 @@ export function FileRow({ link, file, onRemove, onNote, compact = false }: {
             fontSize: 11, borderRadius: 'var(--r1)', fontFamily: 'var(--font)',
             // Hidden until wanted: most rows never need one, and a permanent
             // affordance on every file is a column of clutter.
-            opacity: hovered || link.note ? 1 : 0, transition: 'opacity .1s',
+            opacity: hovered || touch || link.note ? 1 : 0, transition: 'opacity .1s',
           }}
           onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg3)'; e.currentTarget.style.color = 'var(--t1)' }}
           onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--t3)' }}

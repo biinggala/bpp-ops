@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { copyText } from '../../lib/utils'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -96,8 +97,9 @@ function ShareLink({ taskId }: { taskId: string }) {
     <Tip label={copied ? '복사했습니다' : '링크 복사'}>
       <button
         onClick={() => {
-          void navigator.clipboard?.writeText(taskLinkFor(taskId))
-            .then(() => {
+          void copyText(taskLinkFor(taskId))
+            .then(ok => {
+              if (!ok) return
               setCopied(true)
               useToast.getState().show('링크를 복사했습니다')
               setTimeout(() => setCopied(false), 2000)
