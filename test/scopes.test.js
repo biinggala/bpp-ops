@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { coversScope, scopeList } from '../.test-build/lib/scopes.js'
+import { coversScope, scopeList, ALL_GOOGLE_SCOPE } from '../.test-build/lib/scopes.js'
 
 const CAL = 'https://www.googleapis.com/auth/calendar.readonly'
 const CAL_W = 'https://www.googleapis.com/auth/calendar.events'
@@ -26,4 +26,10 @@ test('빈 요청은 덮은 것이 아닙니다', () => {
   // 연결된 것처럼 보입니다.
   assert.equal(coversScope(`${CAL} ${DRIVE}`, ''), false)
   assert.equal(coversScope(`${CAL} ${DRIVE}`, '   '), false)
+})
+
+test('한 번의 동의가 세 연동의 범위를 다 덮습니다', () => {
+  assert.equal(coversScope(ALL_GOOGLE_SCOPE, `${CAL} ${CAL_W}`), true)
+  assert.equal(coversScope(ALL_GOOGLE_SCOPE, `${DRIVE} https://www.googleapis.com/auth/documents.readonly`), true)
+  assert.equal(coversScope(ALL_GOOGLE_SCOPE, 'https://www.googleapis.com/auth/gmail.readonly'), true)
 })

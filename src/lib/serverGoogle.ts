@@ -131,6 +131,8 @@ export function waitForGrant(scope: string, ms = 5 * 60_000): Promise<void> {
  */
 export async function linkAndWait(
   scope: string, email: string | null | undefined, win: Window | null,
+  /** 동의 창에서 청할 범위. 주면 `scope`보다 넓어도 됩니다 — 한 번에 전부 청할 때. */
+  linkScope: string = scope,
 ): Promise<{ token: string; expiresIn: number }> {
   // 이미 덮고 있으면 창은 필요 없습니다. 열어 둔 빈 창은 닫습니다.
   try {
@@ -141,7 +143,7 @@ export async function linkAndWait(
     if (!(e instanceof NotLinked)) { win?.close(); throw e }
   }
 
-  const url = await linkUrl(scope, email)
+  const url = await linkUrl(linkScope, email)
   if (win && !win.closed) win.location.href = url
   else await openExternal(url)
 

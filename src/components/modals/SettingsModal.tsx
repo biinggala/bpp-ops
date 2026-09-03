@@ -8,6 +8,7 @@ import { chimeEnabled, playChime, setChimeEnabled } from '../../lib/chime'
 import { fileWatchEnabled, setFileWatchEnabled } from '../../lib/driveWatch'
 import { useDriveStore } from '../../store/driveStore'
 import { useGCalStore } from '../../store/gcalStore'
+import { serverGoogleKnown } from '../../lib/serverGoogle'
 import { useMailStore } from '../../store/mailStore'
 import { useNotionStore } from '../../store/notionStore'
 import { useGearStore } from '../../store/gearStore'
@@ -867,7 +868,9 @@ function GoogleLinkRow({ which }: { which: 'calendar' | 'drive' }) {
         */}
         {!on && !it.connecting && !it.error && (
           <span style={{ display: 'block', ...ROW_SUB, marginTop: 2 }}>
-            기기마다 한 번씩 눌러야 합니다 — 구글이 정한 방식입니다.
+            {serverGoogleKnown()
+              ? '한 번 허용하면 캘린더·드라이브·메일이 함께 연결되고, 다른 기기에서도 그대로 됩니다.'
+              : '기기마다 한 번씩 눌러야 합니다 — 구글이 정한 방식입니다.'}
           </span>
         )}
       </span>
