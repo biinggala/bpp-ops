@@ -7,6 +7,8 @@ import { isDesktopShell, forgetStoredGrant } from '../lib/desktopAuth'
 import { useAuthStore } from './authStore'
 import { usePrefsStore } from './prefsStore'
 import { askConfirm } from '../components/shared/Confirm'
+import { attendanceOf, awaitingReply, isMe } from '../lib/attendance'
+import { calendarColour, eventColour } from '../lib/gcalColors'
 import { fetchCalendarList, fetchEventsAcross, fetchEventsForRange, fetchFreeBusy, fetchEventsForTask, searchEvents, setEventTaskLink, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, respondToEvent, type Rsvp, writableCalendars, TASK_LINK_KEY, TIMEBLOCK_KEY, NOTE_LINK_KEY, TOKEN_EXPIRED, type GoogleCalendar, type RawCalendarEvent, type EventAttendee } from '../lib/googleCalendar'
 
 export interface GCalEvent {
@@ -68,8 +70,7 @@ export interface GCalEvent {
  * 없으므로 늘 확정입니다.
  */
 export function awaitingMe(event: { attendees?: EventAttendee[] }): boolean {
-  const me = myAttendance(event)
-  return !!me && (me.responseStatus ?? 'needsAction') === 'needsAction'
+  return awaitingReply(event.attendees, useAuthStore.getState().email)
 }
 
 /**
@@ -82,11 +83,12 @@ export function awaitingMe(event: { attendees?: EventAttendee[] }): boolean {
  * 없애는 것이고, 그건 다른 버튼입니다.
  *
  * 참석자가 아예 없는 일정(혼자 쓰는 시간 블록)도 여기서 null입니다.
+ *
+ * **`self`로 안 찾습니다.** 그 표시는 읽고 있는 캘린더의 주인을 가리켜서,
+ * 구독한 동료 캘린더에서는 동료입니다. 내 주소로 맞춥니다 — lib/attendance.
  */
 export function myAttendance(event: { attendees?: EventAttendee[] }): EventAttendee | null {
-  const me = event.attendees?.find(a => a.self)
-  if (!me || me.organizer) return null
-  return me
+  return attendanceOf(event.attendees, useAuthStore.getState().email)
 }
 
 const ENABLED_KEY = 'gcal_enabled_calendars'
@@ -135,7 +137,10 @@ function loadCalendars(): GoogleCalendar[] {
   try {
     const raw = localStorage.getItem(CAL_KEY)
     const list = raw ? JSON.parse(raw) as GoogleCalendar[] : []
-    return Array.isArray(list) ? list.filter(c => c && typeof c.id === 'string') : []
+    if (!Array.isArray(list)) return []
+    // 지난번 저장은 옛 팔레트일 수 있습니다. 다시 읽기 전까지 색이 튀지 않게.
+    return list.filter(c => c && typeof c.id === 'string')
+      .map(c => ({ ...c, backgroundColor: calendarColour(c.backgroundColor) }))
   } catch { return [] }
 }
 
@@ -156,7 +161,11 @@ function loadCache(): { events: GCalEvent[]; from: string | null; to: string | n
     if (!raw) return { events: [], from: null, to: null }
     const box = JSON.parse(raw) as { from?: string; to?: string; events?: GCalEvent[] }
     if (!box?.from || !box?.to || !Array.isArray(box.events)) return { events: [], from: null, to: null }
-    return { events: box.events.filter(e => e && typeof e.id === 'string'), from: box.from, to: box.to }
+    return {
+      events: box.events.filter(e => e && typeof e.id === 'string')
+        .map(e => ({ ...e, calendarColor: e.peekOf ? e.calendarColor : calendarColour(e.calendarColor) })),
+      from: box.from, to: box.to,
+    }
   } catch { return { events: [], from: null, to: null } }
 }
 
@@ -326,7 +335,8 @@ function toGCalEvent(item: RawCalendarEvent): GCalEvent | null {
     start, end, startTime, allDay,
     htmlLink: item.htmlLink ?? '',
     calendarId: item.calendarId,
-    calendarColor: item.calendarColor,
+    // 일정에 따로 칠한 색이 있으면 그 색, 아니면 캘린더 색 — 구글 화면과 같게.
+    calendarColor: eventColour(item.colorId, item.calendarColor),
     startIso: item.start?.dateTime,
     endIso: item.end?.dateTime,
     location: item.location,
@@ -765,12 +775,23 @@ export const useGCalStore = create<GCalState>((set, get) => ({
     if (!token) return false
 
     const before = get().events
-    const optimistic = existing.attendees.map(a => (a.self ? { ...a, responseStatus: response } : a))
+    const myEmail = useAuthStore.getState().email
+    const optimistic = existing.attendees.map(a => (isMe(a, myEmail) ? { ...a, responseStatus: response } : a))
     // 누른 순간 점선이 사라져야 합니다. 왕복을 기다리면 두 번 누릅니다.
     set({ events: before.map(e => (e.id === eventId ? { ...e, attendees: optimistic } : e)) })
 
+    /**
+     * 답은 **내 캘린더 사본**에 적습니다.
+     *
+     * 이 일정이 구독한 동료 캘린더에서 읽힌 사본이면, 그 캘린더에는 쓸
+     * 권한이 없습니다. 초대받은 일정은 내 기본 캘린더에도 같은 id로 있으니
+     * 거기에 씁니다 — 내 것인 캘린더(owner)에서 읽은 것만 그 자리에 씁니다.
+     */
+    const own = get().calendars.find(c => c.id === existing.calendarId)
+    const where = own?.accessRole === 'owner' ? existing.calendarId : 'primary'
+
     try {
-      await respondToEvent(token, existing.calendarId, bareEventId(existing), existing.attendees, response)
+      await respondToEvent(token, where, bareEventId(existing), existing.attendees, response, myEmail)
       return true
     } catch (e: unknown) {
       // 되돌립니다. 실패한 응답이 수락된 것처럼 남아 있으면, 안 간다고 한

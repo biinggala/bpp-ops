@@ -143,6 +143,15 @@ export const P = {
    */
   orgMembers:       (oid: string) => `orgs/${oid}/members`,
   orgMember:        (oid: string, email: string) => `orgs/${oid}/members/${emailKey(email)}`,
+  /**
+   * ── 이름 명단 ────────────────────────────────────────────────────────────
+   *
+   * 멤버가 서로를 **이름으로** 찾는 자리. `userProfiles`는 uid로만 열리고
+   * 목록으로 못 읽어서, 같은 프로젝트에 없는 동료는 주소를 다 쳐야 불렸습니다.
+   * 여기는 회사 멤버만 읽고, 자기 줄만 씁니다. 권한이 아니라 이름표입니다.
+   */
+  orgDirectory:     (oid: string) => `orgs/${oid}/directory`,
+  orgDirectoryRow:  (oid: string, email: string) => `orgs/${oid}/directory/${emailKey(email)}`,
   orgAdmins:        (oid: string) => `orgs/${oid}/admins`,
   orgAdmin:         (oid: string, email: string) => `orgs/${oid}/admins/${emailKey(email)}`,
   /**

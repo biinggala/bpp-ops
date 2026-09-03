@@ -68,7 +68,7 @@ const THEMES: { value: ThemeChoice; label: string; icon: IconName }[] = [
  * 내주면 본문이 250px가 되고, 그건 설정 한 줄이 안 들어가는 폭입니다.
  */
 
-type Page = 'general' | 'notify' | 'link' | 'trash' | 'org' | 'members' | 'rooms' | 'gear' | 'projects'
+type Page = 'general' | 'profile' | 'notify' | 'link' | 'trash' | 'org' | 'members' | 'rooms' | 'gear' | 'projects'
 
 export function SettingsModal({ onClose, start = 'general' }: {
   onClose: () => void
@@ -142,6 +142,7 @@ export function SettingsModal({ onClose, start = 'general' }: {
    */
   const pages: { id: Page; label: string; note: string; group: string; badge?: number }[] = [
     { id: 'general', label: '일반', group: '내 계정', note: '이 기기에서 보이는 것들. 다른 사람 화면은 안 바뀝니다.' },
+    { id: 'profile', label: '프로필', group: '내 계정', note: '다른 사람에게 보이는 내 이름입니다. 일정 초대와 멤버 추가에서 이 이름과 별명으로 찾힙니다.' },
     { id: 'notify', label: '알림', group: '내 계정', note: '언제 무엇으로 알릴지. 기기마다 따로 정합니다 — 노트북에서 켠다고 폰이 켜지지는 않습니다.' },
     { id: 'link', label: '연동', group: '내 계정', note: '밖에서 온 것을 알림함과 찾기에 들이는 통로입니다. 켜면 그 서비스의 것이 이 앱 안에서 같이 보입니다.' },
     { id: 'trash', label: '휴지통', group: '내 계정', note: "지운 업무가 여기 남습니다. 되살리면 원래 프로젝트로, 원래 이름 그대로 돌아옵니다. '영영 지우기'는 되돌릴 수 없습니다." },
@@ -243,6 +244,8 @@ export function SettingsModal({ onClose, start = 'general' }: {
                 </div>
               </>
             )}
+
+            {page === 'profile' && <ProfileSection />}
 
             {page === 'notify' && (
               <Section note="켜 두는 것이 기본입니다.">
@@ -382,6 +385,99 @@ function Section({ title, count, note, children }: {
       {note && <div style={{ fontSize: 11.5, color: 'var(--t3)', lineHeight: 1.6, marginTop: title ? 9 : 0 }}>{note}</div>}
       {children}
     </div>
+  )
+}
+
+/**
+ * ── 프로필 ──────────────────────────────────────────────────────────────────
+ *
+ * 이름은 구글 계정의 것이 기본입니다. 그런데 구글에 적힌 이름이 회사에서
+ * 불리는 이름과 다른 사람이 있습니다 — 영문 이름, 옛 이름, 'Kim H'. 여기서
+ * 고치면 그 뒤로는 로그인이 덧씌우지 않습니다(authStore).
+ *
+ * 별명은 따로입니다. 이름은 이름대로 두고 부르는 말을 하나 더 두는 것이라,
+ * 찾을 때는 둘 다 걸리고 보일 때는 이름 뒤에 붙습니다.
+ *
+ * 저장은 칸을 떠날 때·Enter에 합니다. 글자마다 쓰면 50명 화면이 글자마다
+ * 갱신됩니다.
+ */
+function ProfileSection() {
+  const { uid, email, photoURL } = useAuthStore(useShallow(s => ({ uid: s.uid, email: s.email, photoURL: s.photoURL })))
+  const profile = useUserProfileStore(s => (uid ? s.profiles[uid] : undefined))
+  const updateMyProfile = useUserProfileStore(s => s.updateMyProfile)
+  const [name, setName] = useState(profile?.name ?? '')
+  const [nick, setNick] = useState(profile?.nickname ?? '')
+  const [saved, setSaved] = useState<null | 'ok' | 'fail'>(null)
+
+  // 밖에서 온 값(다른 기기에서 고침)은 내가 치고 있지 않을 때만 받습니다.
+  const editing = useRef<'name' | 'nick' | null>(null)
+  useEffect(() => {
+    if (editing.current !== 'name') setName(profile?.name ?? '')
+    if (editing.current !== 'nick') setNick(profile?.nickname ?? '')
+  }, [profile?.name, profile?.nickname])
+
+  const commit = async (patch: { name?: string; nickname?: string }) => {
+    if (!uid) return
+    const cur = { name: profile?.name ?? '', nickname: profile?.nickname ?? '' }
+    if (patch.name !== undefined && patch.name.trim() === cur.name) return
+    if (patch.nickname !== undefined && patch.nickname.trim() === cur.nickname) return
+    try {
+      await updateMyProfile(uid, patch)
+      setSaved('ok')
+    } catch {
+      setSaved('fail')
+    }
+    window.setTimeout(() => setSaved(null), 1800)
+  }
+
+  const field: React.CSSProperties = { ...INPUT, width: '100%', maxWidth: 320 }
+  const label: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: 'var(--t2)', marginBottom: 5 }
+
+  return (
+    <>
+      <Section title="내 이름">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14 }}>
+          <div style={{ width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', background: 'linear-gradient(135deg,#667eea,#764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, flexShrink: 0 }}>
+            {photoURL ? <img src={photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (name[0] ?? '?').toUpperCase()}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, color: 'var(--t1)', fontWeight: 600 }}>{name || email?.split('@')[0]}{nick && <span style={{ color: 'var(--t3)', fontWeight: 400 }}> ({nick})</span>}</div>
+            <div style={{ ...ROW_SUB, marginTop: 1 }}>{email}</div>
+          </div>
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <div style={label}>이름</div>
+          <input
+            value={name}
+            maxLength={60}
+            onFocus={() => { editing.current = 'name' }}
+            onChange={e => setName(e.target.value)}
+            onBlur={() => { editing.current = null; void commit({ name }) }}
+            onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) (e.currentTarget as HTMLInputElement).blur() }}
+            placeholder={email?.split('@')[0] ?? '이름'}
+            style={field}
+          />
+          <div style={ROW_SUB}>비우면 구글 계정 이름으로 돌아갑니다.</div>
+        </div>
+        <div style={{ marginTop: 14 }}>
+          <div style={label}>별명</div>
+          <input
+            value={nick}
+            maxLength={40}
+            onFocus={() => { editing.current = 'nick' }}
+            onChange={e => setNick(e.target.value)}
+            onBlur={() => { editing.current = null; void commit({ nickname: nick }) }}
+            onKeyDown={e => { if (e.key === 'Enter' && !isComposing(e)) (e.currentTarget as HTMLInputElement).blur() }}
+            placeholder="없음"
+            style={field}
+          />
+          <div style={ROW_SUB}>회사에서 불리는 다른 이름이 있으면. 이름 뒤에 괄호로 붙어 보입니다.</div>
+        </div>
+        <div style={{ ...ROW_SUB, marginTop: 10, minHeight: 16, color: saved === 'fail' ? 'var(--danger)' : 'var(--t3)' }}>
+          {saved === 'ok' ? '저장했습니다.' : saved === 'fail' ? '저장하지 못했습니다. 다시 시도해 주세요.' : ''}
+        </div>
+      </Section>
+    </>
   )
 }
 

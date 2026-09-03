@@ -9,6 +9,8 @@ import { useAuthStore } from '../../../store/authStore'
 import { useUserProfileStore } from '../../../store/userProfileStore'
 import { usePrefsStore } from '../../../store/prefsStore'
 import { authorizedEmails } from '../../../lib/utils'
+import { isMe } from '../../../lib/attendance'
+import { usePeople } from '../../../hooks/usePeople'
 import { hasTimeblock, readTimeblock, blockOnDay, BLOCK_MINUTES, type TimeblockDrag } from '../../../lib/timeblock'
 import { beginPress, type PressPoint } from '../../../lib/press'
 import type { Task, Status } from '../../../types'
@@ -184,12 +186,14 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
 
   // Who can be invited: the people this account already shares a project with.
   // Not everyone who has ever signed in — that is a list of accounts, not a team.
+  // 같은 회사 사람은 같은 프로젝트에 없어도 부를 수 있습니다 — 이름으로.
+  const { labelOf, directoryEmails } = usePeople()
   const teammates = useMemo(
     // 보관한 프로젝트는 뺍니다. 치워 둔 일의 사람들이 후보로 서면, 지금
     // 같이 일하는 사람을 그만큼 늦게 찾습니다.
-    () => [...authorizedEmails(projects.filter(p => !p.archived), myEmail)]
+    () => [...new Set([...authorizedEmails(projects.filter(p => !p.archived), myEmail), ...directoryEmails])]
       .filter(e => e !== myEmail?.toLowerCase()).sort(),
-    [projects, myEmail],
+    [projects, myEmail, directoryEmails],
   )
 
   const [now, setNow] = useState(() => new Date())
@@ -1013,7 +1017,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
           saving={saving}
           teammates={teammates}
           guests={guests}
-          nameOf={getNameByEmail}
+          nameOf={labelOf}
           onToggleGuest={email => setGuests(g => g.includes(email) ? g.filter(x => x !== email) : [...g, email])}
           slot={{ date: naming.date, from: naming.fromMinutes, to: naming.toMinutes }}
           /* 아직 일정이 없어서 예약도 없습니다. 고른 방만 기억해 두고, 저장할
@@ -1064,7 +1068,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
           saving={saving}
           teammates={teammates}
           guests={guests}
-          nameOf={getNameByEmail}
+          nameOf={labelOf}
           onToggleGuest={email => setGuests(g => g.includes(email) ? g.filter(x => x !== email) : [...g, email])}
           onSave={async () => {
             setSaving(true)
@@ -1081,7 +1085,7 @@ export function TimelineGrid({ days, lead = 0, bare = false }: { days: string[];
              * 보냅니다 — 내가 만든 내 블록에 대해서요.
              */
             const had = selectedInfo.event.attendees ?? []
-            const withMe = had.some(a => a.self) && myEmail
+            const withMe = had.some(a => isMe(a, myEmail)) && myEmail
               ? [...guests, myEmail.toLowerCase()]
               : guests
             const summary = shownTitle.trim() || selectedInfo.event.summary

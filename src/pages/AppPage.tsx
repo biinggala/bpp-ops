@@ -8,6 +8,7 @@ import { useAuthStore } from '../store/authStore'
 import { usePresenceStore } from '../store/presenceStore'
 import { useSyncStore } from '../store/syncStore'
 import { useOrgStore } from '../store/orgStore'
+import { useDirectoryStore } from '../store/directoryStore'
 import { useGearStore } from '../store/gearStore'
 import { usePrefsStore } from '../store/prefsStore'
 import { useNotionStore } from '../store/notionStore'
@@ -112,6 +113,12 @@ export function AppPage() {
 
   // 조직 — 회의실 목록이 사는 곳. 도메인으로도, 내 색인으로도 찾습니다
   // (도메인 없이 초대만으로 만든 조직은 색인이 유일한 길입니다).
+  const startDirectory = useDirectoryStore(s => s.start)
+  useEffect(() => {
+    if (!uid || !email) return
+    return startDirectory(uid, email)
+  }, [uid, email, startDirectory])
+
   const subscribeOrg = useOrgStore(s => s.subscribe)
   useEffect(() => {
     if (!email) return
