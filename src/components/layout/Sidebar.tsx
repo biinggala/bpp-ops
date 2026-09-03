@@ -8,15 +8,12 @@ import { useAuthStore } from '../../store/authStore'
 import { useProjectStore } from '../../store/projectStore'
 import { useVisibleProjects } from '../../hooks/useVisibleProjects'
 import { useMilestoneStore } from '../../store/milestoneStore'
-import { usePresenceStore } from '../../store/presenceStore'
-import { useSyncStore } from '../../store/syncStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { usePeople } from '../../hooks/usePeople'
 import { mergePeople, personLabel, searchPeople } from '../../lib/people'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import { Icon, type IconName } from '../shared/Icon'
-import { gradForKey } from '../shared/Avatar'
 import { GetDesktopApp } from '../shared/GetDesktopApp'
 import { Tip, CMD } from '../shared/Tip'
 import { WidthHandle } from '../shared/WidthHandle'
@@ -349,7 +346,6 @@ export function Sidebar() {
   }
 
   const userName = displayName ?? null
-  const presences = usePresenceStore(s => s.presences)
 
   /**
    * 사이드바에 서는 것은 **지금 서 있는 워크스페이스의 것만**입니다.
@@ -454,12 +450,6 @@ export function Sidebar() {
    * 멈췄습니다. 키가 곧 uid이니 빠진 칸은 키로 채우고, 모양이 아닌 것은
    * 버립니다. 남의 데이터 한 줄이 내 화면을 멈추면 안 됩니다.
    */
-  // 같은 프로젝트에 있는 사람만. 접속 목록은 전 계정이 한 자리에 있어서,
-  // 회사가 둘이면 남의 회사 사람의 접속까지 보였습니다.
-  const membersByProject = useSyncStore(s => s.membersByProject)
-  const teammates = useMemo(() => new Set(Object.values(membersByProject).flatMap(m => Object.keys(m))), [membersByProject])
-  const onlineUsers = Object.entries(presences)
-    .filter(([uid, p]) => p && typeof p === 'object' && p.online && teammates.has(uid))
     .map(([uid, p]) => ({ ...p, who: typeof p.who === 'string' && p.who ? p.who : uid, name: typeof p.name === 'string' ? p.name : '' }))
 
   const closeSidebar = () => { if (isMobile) { haptic('tap'); setSidebarOpen(false) } }
@@ -962,33 +952,6 @@ export function Sidebar() {
         </div>
         )}
 
-        {/* Online users */}
-        {onlineUsers.length > 0 && (
-          <div style={{ borderTop: '1px solid var(--sb-bd)', padding: '8px 10px' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--sb-t3)', letterSpacing: '.05em', textTransform: 'uppercase', marginBottom: 6 }}>
-              접속 중
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {onlineUsers.map(p => {
-                const avatarGrad = gradForKey(p.who)
-                const name = p.name
-                return (
-                  <div key={p.who} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{ position: 'relative', flexShrink: 0 }}>
-                      <div style={{ width: 22, height: 22, borderRadius: '50%', background: avatarGrad, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff' }}>
-                        {name[0]?.toUpperCase() ?? '?'}
-                      </div>
-                      <div style={{ position: 'absolute', bottom: 0, right: 0, width: 7, height: 7, borderRadius: '50%', background: '#448361', border: '1.5px solid var(--sb-bg)' }} />
-                    </div>
-                    <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--sb-t2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {name}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
 
       {/* 앱을 아직 안 받은 사람에게 설정은 들어가 볼 이유가 없는 곳이라,
           늘 보이는 자리에 한 줄 둡니다. 브라우저로 볼 때만 나타납니다. */}
