@@ -9,7 +9,7 @@ import { useProjectStore } from '../../../store/projectStore'
 import { useGCalStore, warmCalendarAuth, targetCalendarOf, PEEK_COLOR } from '../../../store/gcalStore'
 import { ActionMenu } from '../../shared/ContextMenu'
 import { TimeRange, BusyStrip, localIso, minutesOfIso } from '../../shared/TimePick'
-import { TimelineGrid, AttendeeList, RoomRow, GUTTER as HOUR_GUTTER } from '../timeline'
+import { TimelineGrid, AttendeeList, RoomRow, GUTTER as HOUR_GUTTER, tint } from '../timeline'
 import { writableCalendars } from '../../../lib/googleCalendar'
 import { useOrgStore } from '../../../store/orgStore'
 import { useAuthStore } from '../../../store/authStore'
@@ -271,7 +271,7 @@ function PeekPeople() {
   const [query, setQuery] = React.useState('')
 
   // 같은 회사 사람 전원 — 이름 명단에서. 이름으로도, 별명으로도 찾습니다.
-  const { people: company } = usePeople()
+  const { people: company } = usePeople(useOrgStore(s => s.orgId))
   const known = React.useMemo(() => {
     const mine = myEmail?.toLowerCase()
     const domain = mine?.split('@')[1] ?? ''
@@ -1512,7 +1512,7 @@ function QuickEvent({ x, y, day, onClose }: {
   )
   // 부를 수 있는 사람 — 내가 같이 일하는 프로젝트의 멤버들. 타임라인 카드와
   // 같은 셈입니다.
-  const { labelOf, directoryEmails } = usePeople()
+  const { labelOf, directoryEmails } = usePeople(useOrgStore(s => s.orgId))
   const teammates = useMemo(
     // 보관한 프로젝트는 뺍니다 — 치워 둔 일의 사람들이 후보로 서면 지금
     // 같이 일하는 사람을 그만큼 늦게 찾습니다. 타임라인 카드와 같은 셈입니다.
@@ -1934,6 +1934,7 @@ const MonthCell = React.memo(function MonthCell({
           if (chip.kind === 'gcal') {
             const ev = chip.ev
             const movable = canMove(ev)
+            const colour = ev.calendarColor || GCAL_TEXT
             return (
               <a
                 key={ev.id}
@@ -1959,7 +1960,9 @@ const MonthCell = React.memo(function MonthCell({
                 style={{
                   fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 3,
                   height: CHIP_H, lineHeight: '13px',
-                  color: GCAL_TEXT, overflow: 'hidden', textOverflow: 'ellipsis',
+                  // 캘린더 색 그대로 — 구글 달력과 나란히 놓아도 같은 일정이
+                  // 같은 색이어야 합니다. 예전에는 전부 한 가지 초록이었습니다.
+                  color: colour, overflow: 'hidden', textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap', textDecoration: 'none', display: 'block',
                   // 자리가 모자라면 줄은 **잘려야지 눌리면 안 됩니다.** 기본값
                   // (flex-shrink: 1)으로 두었더니 일정이 많은 날만 줄 높이가
@@ -1974,8 +1977,8 @@ const MonthCell = React.memo(function MonthCell({
                     // 섞이면 그 셈이 틀립니다.
                     ? { background: 'transparent', border: `1px solid ${PEEK_COLOR}`, color: PEEK_COLOR, opacity: .85 }
                     : awaitingMe(ev)
-                      ? { background: 'transparent', border: `1px dashed ${GCAL_TEXT}` }
-                      : { background: GCAL_BG }),
+                      ? { background: 'transparent', border: `1px dashed ${colour}` }
+                      : { background: tint(colour, .18) }),
                 }}
                 onClick={e => e.stopPropagation()}
                 onMouseEnter={e => { if (draggingId !== ev.id) e.currentTarget.style.opacity = '.75' }}
