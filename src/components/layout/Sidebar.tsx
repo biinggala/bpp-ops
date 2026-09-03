@@ -9,6 +9,7 @@ import { useProjectStore } from '../../store/projectStore'
 import { useVisibleProjects } from '../../hooks/useVisibleProjects'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { usePresenceStore } from '../../store/presenceStore'
+import { useSyncStore } from '../../store/syncStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { usePeople } from '../../hooks/usePeople'
 import { mergePeople, personLabel, searchPeople } from '../../lib/people'
@@ -453,8 +454,12 @@ export function Sidebar() {
    * 멈췄습니다. 키가 곧 uid이니 빠진 칸은 키로 채우고, 모양이 아닌 것은
    * 버립니다. 남의 데이터 한 줄이 내 화면을 멈추면 안 됩니다.
    */
+  // 같은 프로젝트에 있는 사람만. 접속 목록은 전 계정이 한 자리에 있어서,
+  // 회사가 둘이면 남의 회사 사람의 접속까지 보였습니다.
+  const membersByProject = useSyncStore(s => s.membersByProject)
+  const teammates = useMemo(() => new Set(Object.values(membersByProject).flatMap(m => Object.keys(m))), [membersByProject])
   const onlineUsers = Object.entries(presences)
-    .filter(([, p]) => p && typeof p === 'object' && p.online)
+    .filter(([uid, p]) => p && typeof p === 'object' && p.online && teammates.has(uid))
     .map(([uid, p]) => ({ ...p, who: typeof p.who === 'string' && p.who ? p.who : uid, name: typeof p.name === 'string' ? p.name : '' }))
 
   const closeSidebar = () => { if (isMobile) { haptic('tap'); setSidebarOpen(false) } }

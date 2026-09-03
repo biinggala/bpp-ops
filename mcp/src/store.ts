@@ -392,17 +392,38 @@ export async function writeProjectMeta(projectId: string, patch: Partial<Project
  */
 const noteKey = (email: string) => email.toLowerCase().trim().replace(/\./g, ',')
 
+/**
+ * 노트의 자리는 **계정(uid)** 입니다. 주소 자리는 앱이 로그인 때 옮기고 지우는
+ * 옛 자리라, 아직 한 번도 새 앱으로 로그인 안 한 사람을 위해 읽기만 물러납니다.
+ * 쓰기는 계정 자리에만 — 옛 자리에 쓰면 옮기는 순간 새 자리 것에 덮여 사라집니다.
+ */
+async function noteRoots(email: string): Promise<{ primary: string; legacy: string }> {
+  const uid = await uidForEmail(email)
+  return { primary: uid ? `dailyNotes/${uid}` : `dailyNotes/${noteKey(email)}`, legacy: `dailyNotes/${noteKey(email)}` }
+}
+
 export async function readDailyNote(email: string, date: string): Promise<string> {
-  const snap = await initDb().ref(`dailyNotes/${noteKey(email)}/${date}`).get()
-  return (snap.val()?.html as string | undefined) ?? ''
+  const { primary, legacy } = await noteRoots(email)
+  const snap = await initDb().ref(`${primary}/${date}`).get()
+  const html = snap.val()?.html as string | undefined
+  if (html !== undefined || primary === legacy) return html ?? ''
+  const old = await initDb().ref(`${legacy}/${date}`).get()
+  return (old.val()?.html as string | undefined) ?? ''
 }
 
 export async function writeDailyNote(email: string, date: string, html: string): Promise<void> {
-  await initDb().ref(`dailyNotes/${noteKey(email)}/${date}`).set({ html, at: Date.now() })
+  const { primary } = await noteRoots(email)
+  await initDb().ref(`${primary}/${date}`).set({ html, at: Date.now() })
 }
 
 /** 어떤 날에 노트가 있는지. 검색과 '최근에 뭐 적었더라'에 씁니다. */
 export async function readDailyNoteDates(email: string): Promise<string[]> {
-  const snap = await initDb().ref(`dailyNotes/${noteKey(email)}`).get()
-  return Object.keys((snap.val() ?? {}) as Record<string, unknown>).sort().reverse()
+  const { primary, legacy } = await noteRoots(email)
+  const roots = primary === legacy ? [primary] : [primary, legacy]
+  const dates = new Set<string>()
+  for (const root of roots) {
+    const snap = await initDb().ref(root).get()
+    for (const d of Object.keys((snap.val() ?? {}) as Record<string, unknown>)) dates.add(d)
+  }
+  return [...dates].sort().reverse()
 }

@@ -83,7 +83,8 @@ interface PrefsState {
    */
   ready: boolean
 
-  subscribe: (email: string) => () => void
+  /** 계정(uid)으로 붙습니다. 예전에는 주소였습니다 — lib/migratePersonal.ts. */
+  subscribe: (uid: string) => () => void
   markOnboarded: (email: string) => void
   markSeenVersion: (email: string, id: string) => void
   markTimeblock: (email: string) => void
@@ -94,6 +95,9 @@ interface PrefsState {
   replay: 'intro' | 'whatsNew' | null
   setReplay: (v: 'intro' | 'whatsNew' | null) => void
 }
+
+/** 구독한 계정. 설정 함수들이 받는 첫 인자는 옛 서명이라 안 씁니다. */
+let owner: string | null = null
 
 export const usePrefsStore = create<PrefsState>((set) => ({
   onboardedAt: null,
@@ -106,8 +110,9 @@ export const usePrefsStore = create<PrefsState>((set) => ({
   ready: false,
   replay: null,
 
-  subscribe: (email) => {
-    const node = ref(db, P.userPrefs(email))
+  subscribe: (who) => {
+    owner = who
+    const node = ref(db, P.userPrefs(who))
     const handler = onValue(node, snap => {
       const v = (snap.val() ?? {}) as {
         onboardedAt?: number; seenVersion?: string; timeblockAt?: number
@@ -126,6 +131,7 @@ export const usePrefsStore = create<PrefsState>((set) => ({
     }, () => set({ ready: true }))
     return () => {
       off(node, 'value', handler)
+      owner = null
       set({ onboardedAt: null, seenVersion: null, timeblockAt: null, activeOrg: null, homeOrg: null, hiddenCalendars: [], hiddenSeen: false, ready: false, replay: null })
     }
   },
@@ -134,33 +140,33 @@ export const usePrefsStore = create<PrefsState>((set) => ({
     const at = Date.now()
     // 화면을 먼저 닫습니다. 왕복을 기다리면 닫기를 두 번 누릅니다.
     set({ onboardedAt: at })
-    void fbUpdate(ref(db, P.userPrefs(email)), { onboardedAt: at }).catch(() => {})
+    void fbUpdate(ref(db, P.userPrefs(owner ?? '')), { onboardedAt: at }).catch(() => {})
   },
 
   markSeenVersion: (email, id) => {
     set({ seenVersion: id })
-    void fbUpdate(ref(db, P.userPrefs(email)), { seenVersion: id }).catch(() => {})
+    void fbUpdate(ref(db, P.userPrefs(owner ?? '')), { seenVersion: id }).catch(() => {})
   },
 
   markTimeblock: (email) => {
     const at = Date.now()
     set({ timeblockAt: at })
-    void fbUpdate(ref(db, P.userPrefs(email)), { timeblockAt: at }).catch(() => {})
+    void fbUpdate(ref(db, P.userPrefs(owner ?? '')), { timeblockAt: at }).catch(() => {})
   },
 
   setHomeOrg: (email, orgId) => {
     set({ homeOrg: orgId })
-    void fbUpdate(ref(db, P.userPrefs(email)), { homeOrg: orgId }).catch(() => {})
+    void fbUpdate(ref(db, P.userPrefs(owner ?? '')), { homeOrg: orgId }).catch(() => {})
   },
 
   setActiveOrg: (email, orgId) => {
     set({ activeOrg: orgId })
-    void fbUpdate(ref(db, P.userPrefs(email)), { activeOrg: orgId }).catch(() => {})
+    void fbUpdate(ref(db, P.userPrefs(owner ?? '')), { activeOrg: orgId }).catch(() => {})
   },
 
   setHiddenCalendars: (email, ids) => {
     set({ hiddenCalendars: ids, hiddenSeen: true })
-    void fbUpdate(ref(db, P.userPrefs(email)), { hiddenCalendars: ids.join('\n') }).catch(() => reportProblem('캘린더 설정을 저장하지 못했습니다. 새로 열면 되돌아갑니다.'))
+    void fbUpdate(ref(db, P.userPrefs(owner ?? '')), { hiddenCalendars: ids.join('\n') }).catch(() => reportProblem('캘린더 설정을 저장하지 못했습니다. 새로 열면 되돌아갑니다.'))
   },
 
   setReplay: (replay) => set({ replay }),

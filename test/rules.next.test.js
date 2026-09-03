@@ -1249,3 +1249,22 @@ test('프로젝트가 사라진 뒤에도 공개 목록의 줄은 지울 수 있
   })
   await assertSucceeds(remove(ref(authed(ALICE), `orgs/${oid}/projects/gone`)))
 })
+
+test('노트·설정·드라이브 감시는 계정 열쇠로, 옮기는 동안 주소 열쇠도 읽고 지운다', async () => {
+  const alice = authed(ALICE)
+  const oldKey = emailKey(ALICE.email)
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    await set(ref(ctx.database(), `dailyNotes/${oldKey}/2026-09-01`), { html: '<p>옛 노트</p>', at: 1 })
+  })
+  // 새 자리(uid)는 내 것만.
+  await assertSucceeds(set(ref(alice, `dailyNotes/${ALICE.uid}/2026-09-02`), { html: '<p>x</p>', at: 1 }))
+  await assertFails(get(ref(authed(BOB), `dailyNotes/${ALICE.uid}`)))
+  await assertFails(set(ref(authed(BOB), `dailyNotes/${ALICE.uid}/2026-09-03`), { html: '<p>침입</p>', at: 1 }))
+  // 옛 자리는 옮기기 위해 읽고 지웁니다.
+  await assertSucceeds(get(ref(alice, `dailyNotes/${oldKey}`)))
+  await assertSucceeds(remove(ref(alice, `dailyNotes/${oldKey}`)))
+  await assertFails(get(ref(authed(BOB), `dailyNotes/${oldKey}`)))
+  await assertSucceeds(set(ref(alice, `userPrefs/${ALICE.uid}`), { activeOrg: 'o1' }))
+  await assertSucceeds(set(ref(alice, `driveWatch/${ALICE.uid}/token`), 't'))
+  await assertFails(set(ref(authed(BOB), `userPrefs/${ALICE.uid}`), { activeOrg: 'evil' }))
+})

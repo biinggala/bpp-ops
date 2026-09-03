@@ -3,6 +3,7 @@ import { useNoticeStore } from '../../store/noticeStore'
 import { useAuthStore } from '../../store/authStore'
 import { useUiStore } from '../../store/uiStore'
 import { useProjectStore } from '../../store/projectStore'
+import { useVisibleProjects } from '../../hooks/useVisibleProjects'
 import { useUserProfileStore } from '../../store/userProfileStore'
 import { NOTICE_LABEL as LABEL, NOTICE_TONE as TONE, type Notice } from '../../lib/notify'
 import { StatusMark } from '../shared/StatusMark'
@@ -55,11 +56,28 @@ function clock(at: number): string {
  * 하고(알림은 패널을 열어야 도착하는 게 아닙니다), 목록은 눌렀을 때만
  * 그려집니다. 예전에는 둘이 한 컴포넌트라 종 아이콘이 곧 구독이었습니다.
  */
+/**
+ * 지금 서 있는 워크스페이스의 알림만.
+ *
+ * 알림함은 사람 것이라 워크스페이스를 가리지 않고 도착합니다. 그런데 화면은
+ * 한 워크스페이스에 서 있고, 다른 곳의 업무를 열어 다른 곳으로 옮기는 길이
+ * 여기서 났습니다. 프로젝트가 적힌 알림은 그 프로젝트가 보일 때만, 프로젝트가
+ * 없는 알림(드라이브 파일 등)은 늘 보입니다.
+ */
+export function useVisibleNotices(): { notices: Notice[]; unread: number } {
+  const all = useNoticeStore(s => s.notices)
+  const projects = useVisibleProjects()
+  return useMemo(() => {
+    const ids = new Set(projects.map(p => p.id))
+    const notices = all.filter(n => !n.projectId || ids.has(n.projectId))
+    return { notices, unread: notices.filter(n => !n.read).length }
+  }, [all, projects])
+}
+
 export function useNoticeInbox() {
   const uid = useAuthStore(s => s.uid)
   const email = useAuthStore(s => s.email)
-  const notices = useNoticeStore(s => s.notices)
-  const unread = useNoticeStore(s => s.unread)
+  const { notices, unread } = useVisibleNotices()
   const subscribe = useNoticeStore(s => s.subscribe)
   const ready = useSyncStore(s => s.ready)
 
@@ -156,13 +174,13 @@ export function NoticeList({ onClose }: { onClose: () => void }) {
   // 보낸 사람은 지금 이름으로. 알림에는 보낼 때의 이름이 찍혀 있는데, 그
   // 사람이 프로필에서 이름을 고치면 옛 알림도 새 이름으로 읽혀야 합니다.
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
-  const notices = useNoticeStore(s => s.notices)
+  const { notices } = useVisibleNotices()
   const markRead = useNoticeStore(s => s.markRead)
   const markAllRead = useNoticeStore(s => s.markAllRead)
   const dismiss = useNoticeStore(s => s.dismiss)
   const openTaskDetail = useUiStore(s => s.openTaskDetail)
   const projects = useProjectStore(s => s.projects)
-  const unread = useNoticeStore(s => s.unread)
+  const { unread } = useVisibleNotices()
   const mailCount = useMailStore(s => s.threads.length)
   const inviteCount = usePendingInvites().length
 

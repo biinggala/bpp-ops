@@ -16,7 +16,7 @@ import { useAuthStore } from '../store/authStore'
  * 편집기가 보는 그 글을 다시 내려받지 않습니다.
  */
 export function useNoteChecks(dates: string[]) {
-  const email = useAuthStore(s => s.email)
+  const email = useAuthStore(s => s.uid)  // 노트 열쇠는 계정입니다
   // 날짜 배열은 매 렌더 새로 만들어집니다. 내용이 같으면 다시 걸지 않도록
   // 글자 하나로 눌러서 의존성으로 씁니다.
   const key = dates.join(',')
