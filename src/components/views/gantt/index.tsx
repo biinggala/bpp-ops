@@ -1,4 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { useTouch } from '../../../hooks/useTouch'
+import { beginPress } from '../../../lib/press'
 import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useMobile } from '../../../hooks/useMobile'
 import { haptic } from '../../../lib/haptics'
@@ -276,13 +278,20 @@ export function GanttView() {
     document.body.style.userSelect = 'none'
   }, [])
 
-  useEffect(() => {
-    const colAt = (d: Drag, clientX: number) =>
-      Math.floor((clientX - d.lane.getBoundingClientRect().left) / dayWRef.current)
+  /**
+   * 끌기의 몸통. 예전에는 document의 mousemove/mouseup에 걸려 있었는데,
+   * 손가락은 그 둘을 안 냅니다(스크롤이 됩니다). 이제 lib/press가 마우스와
+   * 손가락을 한 문으로 받아 여기 두 함수를 부릅니다 — 마우스는 누른 즉시,
+   * 손가락은 길게 누른 뒤.
+   */
+  const colAt = (d: Drag, clientX: number) =>
+    Math.floor((clientX - d.lane.getBoundingClientRect().left) / dayWRef.current)
 
-    const onMove = (e: MouseEvent) => {
+  const dragMove = (x: number) => {
+    {
       const d = dragRef.current
       if (!d) return
+      const e = { clientX: x }
       if (Math.abs(e.clientX - d.startX) >= MIN_DRAG) movedRef.current = true
       if (d.mode === 'create') {
         if (!movedRef.current) return
@@ -298,7 +307,11 @@ export function GanttView() {
       setVisual(prev => (prev && 'offset' in prev && prev.offset === offset ? prev : { mode, taskId: d.taskId, offset }))
     }
 
-    const onUp = (e: MouseEvent) => {
+  }
+
+  const dragEnd = (x: number) => {
+    {
+      const e = { clientX: x }
       const d = dragRef.current
       if (!d) return
       dragRef.current = null
@@ -362,42 +375,55 @@ export function GanttView() {
       }
     }
 
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-    return () => {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-    }
-  }, [updateTask, addTask, updateMilestone, totalDays, rangeStart, email])
+  }
 
-  const laneMouseDown = (e: React.MouseEvent, opts: { taskId: string; task?: Task }) => {
+  /** 없던 일로. 스크롤이 되어 버렸거나 창이 포커스를 잃었을 때. */
+  const dragCancel = () => {
+    dragRef.current = null
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    setVisual(null)
+  }
+
+  const press = (e: React.PointerEvent, d: Drag) => beginPress(e, {
+    onStart: () => beginDrag(d),
+    onMove: p => dragMove(p.x),
+    onEnd: p => dragEnd(p.x),
+    onCancel: dragCancel,
+  })
+
+  // 마우스에서만 기본 동작을 막습니다(글자 선택). 손가락에서 막으면 그 뒤의
+  // click이 안 와서, 톡 쳐서 여는 길이 끊깁니다.
+  const quiet = (e: React.PointerEvent) => { if (e.pointerType === 'mouse') e.preventDefault() }
+
+  const laneMouseDown = (e: React.PointerEvent, opts: { taskId: string; task?: Task }) => {
     if (e.button !== 0) return
     const lane = e.currentTarget as HTMLElement
     const anchorCol = Math.floor((e.clientX - lane.getBoundingClientRect().left) / dayW)
-    e.preventDefault()
-    beginDrag({
+    quiet(e)
+    press(e, {
       mode: 'create', taskId: opts.taskId, lane, startX: e.clientX, anchorCol,
       origStart: opts.task?.start ?? '', origDue: opts.task?.due ?? '', cascade: [],
     })
   }
 
-  const milestoneMouseDown = (e: React.MouseEvent, ms: Milestone) => {
+  const milestoneMouseDown = (e: React.PointerEvent, ms: Milestone) => {
     if (e.button !== 0) return
-    e.preventDefault()
+    quiet(e)
     e.stopPropagation()
     const lane = (e.currentTarget as HTMLElement).closest('[data-lane]') as HTMLElement
-    beginDrag({
+    press(e, {
       mode: 'milestone', taskId: ms.id, lane, startX: e.clientX, anchorCol: 0,
       origStart: ms.dueDate, origDue: ms.dueDate, cascade: [],
     })
   }
 
-  const barMouseDown = (e: React.MouseEvent, task: Task, mode: 'move' | 'start' | 'end') => {
+  const barMouseDown = (e: React.PointerEvent, task: Task, mode: 'move' | 'start' | 'end') => {
     if (e.button !== 0) return
-    e.preventDefault()
+    quiet(e)
     e.stopPropagation()
     const lane = (e.currentTarget as HTMLElement).closest('[data-lane]') as HTMLElement
-    beginDrag({
+    press(e, {
       mode, taskId: task.id, lane, startX: e.clientX, anchorCol: 0,
       origStart: task.start, origDue: task.due,
       cascade: mode === 'move' ? getBlockingCascade(task.id, allTasksRef.current) : [],
@@ -941,7 +967,7 @@ function MilestoneRow({
   rangeStart: Date
   /** Days the date is being dragged by, or null when it is not. */
   dragOffset: number | null
-  onDateMouseDown: (e: React.MouseEvent) => void
+  onDateMouseDown: (e: React.PointerEvent) => void
   onDateChange: (ymd: string) => void
   /** 0 inside one project, 1 under a project band. */
   depth: number
@@ -1108,7 +1134,7 @@ function MilestoneRow({
             dim={isDone}
             dragging={dragging}
             hint={`${milestone?.dueDate ?? ''} — 끌어서 날짜 변경`}
-            onMouseDown={onDateMouseDown}
+            onPointerDown={onDateMouseDown}
           />
         )}
 
@@ -1159,11 +1185,12 @@ function TaskRow({
   onOpen: () => void
   onToggle: () => void
   onAddSubtask: () => void
-  onLaneMouseDown: (e: React.MouseEvent) => void
-  onBarMouseDown: (e: React.MouseEvent, mode: 'move' | 'start' | 'end') => void
+  onLaneMouseDown: (e: React.PointerEvent) => void
+  onBarMouseDown: (e: React.PointerEvent, mode: 'move' | 'start' | 'end') => void
   onOpenGuard: () => boolean
 }) {
   const [hovered, setHovered] = useState(false)
+  const touch = useTouch()
   const color = getCatColor(task.cat || '')
   const isDone = task.status === '완료'
   const isOverdue = Boolean(task.due && !isDone && toDate(task.due) < today)
@@ -1225,7 +1252,7 @@ function TaskRow({
             placeholder="업무 이름"
             onFocus={e => e.currentTarget.select()}
             onClick={e => e.stopPropagation()}
-            onMouseDown={e => e.stopPropagation()}
+            onPointerDown={e => e.stopPropagation()}
             onKeyDown={e => {
               // The Enter that closes a Korean IME's composition is still an
               // Enter to the DOM. Taken at face value it commits a half-typed
@@ -1252,7 +1279,7 @@ function TaskRow({
           </span>
         )}
 
-        {hovered && !compact && !child && !renaming && (
+        {(hovered || touch) && !compact && !child && !renaming && (
           <button
             onClick={e => { e.stopPropagation(); onAddSubtask() }}
             style={{ flexShrink: 0, fontSize: 10, color: 'var(--ac)', background: 'var(--ac-l)', border: '1px solid var(--ac)', borderRadius: 3, padding: '2px 6px', cursor: 'pointer', fontFamily: 'var(--font)' }}
@@ -1265,7 +1292,7 @@ function TaskRow({
       {/* Lane */}
       <div
         data-lane
-        onMouseDown={onLaneMouseDown}
+        onPointerDown={onLaneMouseDown}
         style={{
           width: timelineW, flexShrink: 0, position: 'relative', height,
           background: hovered ? 'var(--bg3)' : 'transparent',
@@ -1287,7 +1314,7 @@ function TaskRow({
 
         {placed && (
           <div
-            onMouseDown={e => onBarMouseDown(e, 'move')}
+            onPointerDown={e => onBarMouseDown(e, 'move')}
             onClick={e => { e.stopPropagation(); if (onOpenGuard()) onOpen() }}
             style={{
               position: 'absolute', left: col * dayW + 2, width: Math.max(span * dayW - 4, 6),
@@ -1309,7 +1336,7 @@ function TaskRow({
             {(hovered || dragging) && !compact && (['start', 'end'] as const).map(side => (
               <div
                 key={side}
-                onMouseDown={e => onBarMouseDown(e, side)}
+                onPointerDown={e => onBarMouseDown(e, side)}
                 title={side === 'start' ? '시작일 조정' : '마감일 조정'}
                 style={{
                   position: 'absolute', top: -1, bottom: -1, width: HANDLE,
@@ -1423,18 +1450,18 @@ function elbow(x1: number, y1: number, x2: number, y2: number) {
  * 힌트는 손잡이 **아래**로 나옵니다. 위로 내면 날짜 머리글을 덮고, 그건 이
  * 화면에서 제일 자주 읽는 줄입니다.
  */
-function DateHandle({ left, accent, dim, dragging, hint, onMouseDown }: {
+function DateHandle({ left, accent, dim, dragging, hint, onPointerDown }: {
   left: number
   accent: string
   dim: boolean
   dragging: boolean
   hint: string
-  onMouseDown: (e: React.MouseEvent) => void
+  onPointerDown: (e: React.PointerEvent) => void
 }) {
   const [hovered, setHovered] = useState(false)
   return (
     <div
-      onMouseDown={onMouseDown}
+      onPointerDown={onPointerDown}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{

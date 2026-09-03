@@ -1,4 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { beginLongPress } from '../../../lib/press'
+import { useTouch } from '../../../hooks/useTouch'
 import {
   useMenu, Menu, MenuList, MenuItem, MenuCheck, MenuNote,
   MenuDivider, MenuFooter, MENU_INPUT, CellTrigger, Dot, useMenuKeys,
@@ -752,6 +754,12 @@ export function TableView() {
     onUpdate: (patch: Partial<Task>) => updateTask(task.id, patch),
     onMilestoneChange: (msId: string | undefined) => updateTask(task.id, { milestoneId: msId }),
     onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, task }) },
+    /**
+     * 손가락에는 우클릭이 없습니다. 길게 누르면 같은 메뉴가 뜹니다 — 간트의
+     * 마일스톤 줄이 이미 그렇게 하고 있고, 아이패드에서 이 메뉴에 닿는 길은
+     * 이것뿐입니다. 마우스에는 아무 일도 안 합니다(lib/press).
+     */
+    onPointerDown: (e: React.PointerEvent) => beginLongPress(e, p => setCtxMenu({ x: p.x, y: p.y, task })),
   })
 
   const canDropOnTask = useCallback((dragId: string, targetId: string) => {
@@ -1386,7 +1394,7 @@ function Row({
   flat = false,
   breadcrumb,
   events,
-  onToggle, onOpen, onUpdate, onMilestoneChange, onContextMenu,
+  onToggle, onOpen, onUpdate, onMilestoneChange, onContextMenu, onPointerDown,
   isDragging = false, isDragTarget = false,
   canDrag = false, canBeDropTarget = false,
   onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
@@ -1421,6 +1429,7 @@ function Row({
   onUpdate: (patch: Partial<Task>) => void
   onMilestoneChange?: (id: string | undefined) => void
   onContextMenu?: (e: React.MouseEvent) => void
+  onPointerDown?: (e: React.PointerEvent) => void
   isDragging?: boolean; isDragTarget?: boolean
   canDrag?: boolean; canBeDropTarget?: boolean
   onDragStart?: () => void; onDragEnd?: () => void
@@ -1428,6 +1437,7 @@ function Row({
   onDragLeave?: () => void; onDrop?: () => void
 }) {
   const [hovered, setHovered] = useState(false)
+  const touch = useTouch()
   const [editing, setEditing] = useState<string | null>(null)
   const dueCellRef = useRef<HTMLDivElement>(null)
   const overdue = isOverdue(task.due, task.status)
@@ -1507,7 +1517,7 @@ function Row({
                 style={{
                   position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)',
                   cursor: 'grab', color: 'var(--t3)', fontSize: 12,
-                  opacity: hovered ? 0.8 : 0, transition: 'opacity .1s',
+                  opacity: hovered || touch ? 0.8 : 0, transition: 'opacity .1s',
                   userSelect: 'none', lineHeight: 1,
                 }}
               >⠿</span>
@@ -1695,8 +1705,10 @@ function Row({
 
   return (
     <div
+      className="hold"
       onDoubleClick={() => { stopEdit(); onOpen() }}
       onContextMenu={onContextMenu}
+      onPointerDown={onPointerDown}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onDragOver={onDragOver}

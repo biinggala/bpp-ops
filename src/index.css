@@ -585,3 +585,17 @@ input, select, textarea, button {
 .ProseMirror > ul[data-type="taskList"] > li {
   padding-right: calc(var(--note-x) + var(--note-gap));
 }
+
+/* ── 손가락으로 길게 누르는 자리 ──────────────────────────────────────────────
+   길게 누르면 iOS가 글자를 고르거나 말풍선을 띄웁니다. 끌거나 메뉴를 열려는
+   손에 그건 방해물이라, 손가락 기기에서만 끕니다 — 마우스로는 글자를 고를 수
+   있어야 합니다. (.lp-row는 늘 끄는 옛 버전입니다 — 간트가 씁니다.) */
+:root[data-touch] .hold, :root[data-touch] .hold * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* 시간표 일정의 아래 끝(길이 바꾸기). 8px는 마우스 크기입니다. */
+.tl-resize { height: 8px; }
+:root[data-touch] .tl-resize { height: 18px; }
