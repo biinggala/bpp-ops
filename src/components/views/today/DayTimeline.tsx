@@ -74,6 +74,7 @@ export function DayTimeline({ date }: { date: string }) {
   const prefsReady = usePrefsStore(s => s.ready)
   const token = useGCalStore(s => s.token)
   const wasConnected = useGCalStore(s => s.wasConnected)
+  const autoRefreshing = useGCalStore(s => s.autoRefreshing)
   // 한 번도 안 받아 왔거나 지금 받는 중이면, 빈 목록은 '없다'가 아니라
   // '아직'입니다. 둘을 같은 말로 적으면 없는 하루가 됩니다.
   const loading = useGCalStore(s => s.loading || !s.fetchedAt)
@@ -175,7 +176,7 @@ export function DayTimeline({ date }: { date: string }) {
                 fontFamily: 'var(--font)',
               }}
             >
-              {wasConnected ? '캘린더 다시 연결' : '캘린더 연결하기'}
+              {autoRefreshing ? '연결 확인 중…' : wasConnected ? '캘린더 다시 연결' : '캘린더 연결하기'}
             </button>
           </>
         ) : agenda.length === 0 && loading ? (
