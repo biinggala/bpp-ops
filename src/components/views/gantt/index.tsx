@@ -11,7 +11,7 @@ import { useMilestoneStore } from '../../../store/milestoneStore'
 import { useVisibleProjects } from '../../../hooks/useVisibleProjects'
 import { useProjectStore } from '../../../store/projectStore'
 import { useAuthStore } from '../../../store/authStore'
-import { getCatColor } from '../../../types'
+import { getCatColor, STATUS_COLORS } from '../../../types'
 import { CategoryBadge } from '../../shared/Badge'
 import { DateField } from '../../shared/DatePicker'
 import { askConfirm } from '../../shared/Confirm'
@@ -1195,7 +1195,12 @@ function TaskRow({
 }) {
   const [hovered, setHovered] = useState(false)
   const touch = useTouch()
-  const color = getCatColor(task.cat || '')
+  /**
+   * 막대 색은 **상태**입니다. 분류 색이었을 때는 간트에서 '뭐가 진행 중이고
+   * 뭐가 멈춰 있나'를 막대만 보고는 알 수 없었습니다 — 그게 간트가 답해야
+   * 하는 질문입니다. 지난 것은 여전히 빨갛습니다. 분류는 표와 보드에 남습니다.
+   */
+  const color = STATUS_COLORS[task.status] ?? getCatColor(task.cat || '')
   const isDone = task.status === '완료'
   const isOverdue = Boolean(task.due && !isDone && toDate(task.due) < today)
   const placed = Boolean(task.start || task.due)
