@@ -13,9 +13,11 @@ const GRAD_PALETTE = [
 ]
 
 /** 주소에서 계산한 색. 아무도 고르지 않았지만 같은 사람은 늘 같은 색입니다. */
-export function gradForKey(key: string) {
+export function gradForKey(key: string | null | undefined) {
+  // 값이 안 왔어도 색은 나와야 합니다. 여기서 던지면 목록 전체가 안 그려집니다.
+  const k = typeof key === 'string' ? key : ''
   let h = 0
-  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) & 0xffff
+  for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) & 0xffff
   return GRAD_PALETTE[h % GRAD_PALETTE.length]
 }
 
