@@ -347,8 +347,15 @@ export function CommandPalette() {
       }))
     }
 
+    /**
+     * 끝난 일은 뒤로. 찾는 사람은 대개 지금 하는 일을 찾고, 여덟 줄 중 다섯이
+     * 취소선이면 찾는 것이 밀려 안 보입니다. 같은 묶음 안에서는 이름에 걸린
+     * 것이 분류에 걸린 것보다 앞이고, 그 안에서는 원래 순서(최근 것 먼저)입니다.
+     */
+    const weight = (t: typeof tasks[number]) => (t.status === '완료' ? 2 : 0) + (fuzzy(t.name, q) ? 0 : 1)
     tasks
       .filter(t => fuzzy(t.name, q) || fuzzy(t.cat, q))
+      .sort((a, b) => weight(a) - weight(b))
       .slice(0, 8)
       .forEach(t => result.push({
         id: t.id, kind: 'task', label: t.name,

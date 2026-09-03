@@ -832,10 +832,18 @@ function GoogleLinkRow({ which }: { which: 'calendar' | 'drive' }) {
   })))
   const it = which === 'drive' ? drive : cal
   const on = !!it.token || it.was
+  /**
+   * 켠 적은 있는데 지금 토큰이 없는 상태. 한 시간짜리 토큰이 만료되고 조용한
+   * 갱신이 실패한 뒤입니다(사파리·아이폰이 그 자리를 막습니다). 예전에는 이걸
+   * '켜짐'으로 그려서, 캘린더 화면은 '다시 연결'이라는데 여기는 켜져 있다고
+   * 했습니다 — 그리고 스위치를 누르면 고치는 게 아니라 **끊었습니다.**
+   */
+  const lapsed = it.was && !it.token && !it.connecting
 
   const label = which === 'drive' ? '구글 드라이브' : '구글 캘린더'
   const sub = it.error ? it.error
     : it.connecting ? '구글 창에서 허용하면 여기가 켜집니다'
+    : lapsed ? '구글 로그인이 만료됐습니다. 스위치를 눌러 다시 연결하세요.'
     : on
       ? which === 'drive'
         ? '문서를 업무에 붙이고, 찾기에서 같이 찾습니다'
@@ -848,7 +856,7 @@ function GoogleLinkRow({ which }: { which: 'calendar' | 'drive' }) {
     <div style={ROW}>
       <span style={{ flex: 1, minWidth: 0, ...ROW_TITLE }}>
         {label}
-        <span style={{ display: 'block', ...ROW_SUB, ...(it.error ? { color: 'var(--danger)' } : null) }}>
+        <span style={{ display: 'block', ...ROW_SUB, ...(it.error || lapsed ? { color: it.error ? 'var(--danger)' : '#D9730D' } : null) }}>
           {sub}
         </span>
         {/*
@@ -863,11 +871,15 @@ function GoogleLinkRow({ which }: { which: 'calendar' | 'drive' }) {
           </span>
         )}
       </span>
-      <MiniSwitch
-        on={on}
-        busy={it.connecting}
-        onClick={() => { if (on) it.disconnect(); else void it.connect() }}
-      />
+      {lapsed ? (
+        <button onClick={() => void it.connect()} style={{ ...navBtn, padding: '3px 9px', fontSize: 11, flexShrink: 0 }}>다시 연결</button>
+      ) : (
+        <MiniSwitch
+          on={on}
+          busy={it.connecting}
+          onClick={() => { if (on) it.disconnect(); else void it.connect() }}
+        />
+      )}
     </div>
   )
 }
