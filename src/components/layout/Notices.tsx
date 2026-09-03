@@ -13,6 +13,7 @@ import { useSyncStore } from '../../store/syncStore'
 import { pollDriveChanges, POLL_MS } from '../../lib/driveWatch'
 import { useMailStore, MAIL_POLL_MS, warmMailAuth } from '../../store/mailStore'
 import { useGCalStore, awaitingMe, myAttendance } from '../../store/gcalStore'
+import { onePerEvent } from '../../lib/attendance'
 import { RsvpPicker } from '../shared/RsvpPicker'
 import { fmtYMD, addDays } from '../../lib/utils'
 import { threadUrl } from '../../lib/gmail'
@@ -383,13 +384,20 @@ function MailRow({ thread }: { thread: { threadId: string; subject: string; from
  */
 function usePendingInvites() {
   const events = useGCalStore(s => s.events)
+  const calendars = useGCalStore(s => s.calendars)
+  // 내 주소로 판단하므로, 내 주소가 바뀌면(로그인) 다시 셉니다.
+  const myEmail = useAuthStore(s => s.email)
   return useMemo(() => {
     const today = fmtYMD(new Date())
-    return events
+    // 내가 초대받은 회의는 내 캘린더와 구독한 동료 캘린더 양쪽에 같은 id로
+    // 있습니다. 한 번만 세고, 내 캘린더 사본을 남깁니다.
+    const own = calendars.filter(c => c.accessRole === 'owner').map(c => c.id)
+    return onePerEvent(events, own)
       // 지난 초대는 답해도 소용이 없습니다.
       .filter(ev => ev.start >= today && awaitingMe(ev))
       .sort((a, b) => (a.startIso ?? a.start).localeCompare(b.startIso ?? b.start))
-  }, [events])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events, calendars, myEmail])
 }
 
 function InviteSection() {

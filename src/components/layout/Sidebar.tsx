@@ -10,6 +10,8 @@ import { useVisibleProjects } from '../../hooks/useVisibleProjects'
 import { useMilestoneStore } from '../../store/milestoneStore'
 import { usePresenceStore } from '../../store/presenceStore'
 import { useUserProfileStore } from '../../store/userProfileStore'
+import { usePeople } from '../../hooks/usePeople'
+import { mergePeople, personLabel, searchPeople } from '../../lib/people'
 import { useMobile } from '../../hooks/useMobile'
 import { haptic } from '../../lib/haptics'
 import { Icon, type IconName } from '../shared/Icon'
@@ -1634,30 +1636,33 @@ function MemberManageModal({ project, currentEmail, suggestable, onAddMember, on
 
   const profiles = useUserProfileStore(s => s.profiles)
   const getNameByEmail = useUserProfileStore(s => s.getNameByEmail)
+  /**
+   * 이 프로젝트가 속한 회사의 이름 명단. 같은 프로젝트에 없어도 같은 회사
+   * 사람이면 이름만 쳐도 섭니다 — 그게 이 창이 있는 이유입니다.
+   */
+  const { people: company } = usePeople(project.orgId)
 
   const members = project.memberEmails ?? []
   const pending = project.pendingEmails ?? []
 
-  // Suggestions are drawn only from people already sharing a project with the
-  // inviter, and only once something has been typed — profiles are keyed by uid
-  // and cover the entire user base, so neither restriction is cosmetic.
+  // Suggestions are drawn from two lists: people already sharing a project with
+  // the inviter, and the company directory of this project's workspace. Not
+  // from profiles at large — those are keyed by uid and cover the entire user
+  // base, so the restriction is not cosmetic.
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return []
-    const taken = new Set([...members, ...pending].map(e => e.toLowerCase()))
-    const seen = new Set<string>()
-    return Object.values(profiles).filter(p => {
-      if (!p?.email) return false
-      const key = p.email.toLowerCase()
-      if (!suggestable.has(key)) return false
-      if (taken.has(key) || seen.has(key)) return false
-      if (!(p.name?.toLowerCase().includes(q) || key.includes(q))) return false
-      seen.add(key)
-      return true
-    }).slice(0, 6)
-  }, [profiles, query, suggestable, members.join(','), pending.join(',')])
+    const taken = [...members, ...pending]
+    const shared = Object.values(profiles)
+      .filter(p => p?.email && suggestable.has(p.email.toLowerCase()))
+      .map(p => ({ email: p.email, name: p.name, nickname: p.nickname }))
+    return searchPeople(mergePeople(shared, company), q, taken).slice(0, 6)
+  }, [profiles, company, query, suggestable, members.join(','), pending.join(',')])
 
   useEffect(() => { setHighlight(0) }, [query])
+
+  // 사진은 프로필에만 있습니다. 명단으로만 아는 사람은 첫 글자로.
+  const photoOf = (email: string) => Object.values(profiles).find(p => p.email?.toLowerCase() === email)?.photoURL ?? null
 
   const invite = (email: string) => {
     onAddMember(email.trim().toLowerCase())
@@ -1784,11 +1789,11 @@ function MemberManageModal({ project, currentEmail, suggestable, onAddMember, on
                 style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', cursor: 'pointer', background: i === highlight ? 'var(--bg3)' : 'transparent' }}
               >
                 <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(135deg,#667eea,#764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff', flexShrink: 0, overflow: 'hidden' }}>
-                  {p.photoURL
-                    ? <img src={p.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  {photoOf(p.email)
+                    ? <img src={photoOf(p.email)!} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     : (p.name?.[0]?.toUpperCase() ?? p.email[0]?.toUpperCase())}
                 </div>
-                <span style={{ fontSize: 13, color: 'var(--t1)', flexShrink: 0 }}>{p.name || p.email.split('@')[0]}</span>
+                <span style={{ fontSize: 13, color: 'var(--t1)', flexShrink: 0 }}>{personLabel(p)}</span>
                 <span style={{ fontSize: 11, color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.email}</span>
               </div>
             ))}
@@ -1799,7 +1804,7 @@ function MemberManageModal({ project, currentEmail, suggestable, onAddMember, on
           <div style={{ marginTop: 8, fontSize: 11, color: 'var(--t3)' }}>
             {query.includes('@')
               ? 'Enter를 누르면 이 주소로 초대합니다.'
-              : '같이 일하는 사람 중에는 없습니다. 이메일 주소 전체를 입력하면 초대할 수 있습니다.'}
+              : '같은 워크스페이스 사람 중에는 없습니다. 이메일 주소 전체를 입력하면 초대할 수 있습니다.'}
           </div>
         )}
       </div>

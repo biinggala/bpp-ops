@@ -5,6 +5,9 @@
 // Everything here is a plain fetch: getting and refreshing the token is the
 // caller's problem (see gcalStore).
 
+import { isMe } from './attendance'
+import { calendarColour } from './gcalColors'
+
 export interface GoogleCalendar {
   id: string
   summary: string
@@ -31,6 +34,8 @@ export interface RawCalendarEvent {
   start: { dateTime?: string; date?: string }
   end: { dateTime?: string; date?: string }
   htmlLink?: string
+  /** 일정에 따로 칠한 색(1–11). 캘린더 색을 그대로 쓰는 일정에는 없습니다. */
+  colorId?: string
   attendees?: EventAttendee[]
   extendedProperties?: { private?: Record<string, string>; shared?: Record<string, string> }
 }
@@ -95,7 +100,8 @@ export async function fetchCalendarList(token: string, signal?: AbortSignal): Pr
   return (data.items ?? []).map(c => ({
     id: c.id,
     summary: c.summary,
-    backgroundColor: c.backgroundColor || '#4285f4',
+    // API는 옛 팔레트 값을 줍니다. 구글 화면이 그리는 색으로 바꿉니다.
+    backgroundColor: calendarColour(c.backgroundColor),
     primary: c.primary,
     accessRole: c.accessRole,
   }))
@@ -402,8 +408,11 @@ export async function respondToEvent(
   eventId: string,
   attendees: EventAttendee[],
   response: Rsvp,
+  myEmail: string | null,
 ): Promise<EventAttendee[]> {
-  const next = attendees.map(a => (a.self ? { ...a, responseStatus: response } : a))
+  // self가 아니라 주소로 — self는 읽은 캘린더의 주인이라, 동료 캘린더
+  // 사본에서는 동료입니다(lib/attendance 참고).
+  const next = attendees.map(a => (isMe(a, myEmail) ? { ...a, responseStatus: response } : a))
   const res = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
     {

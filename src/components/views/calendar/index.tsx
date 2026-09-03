@@ -18,6 +18,8 @@ import { useToast } from '../../shared/Toast'
 import type { CalRange } from '../../../types'
 import type { GCalEvent } from '../../../store/gcalStore'
 import { awaitingMe } from '../../../store/gcalStore'
+import { usePeople } from '../../../hooks/usePeople'
+import { personLabel, searchPeople, type Person } from '../../../lib/people'
 import { useMobile } from '../../../hooks/useMobile'
 import { getCatColor, NOTION } from '../../../types'
 import { addDays, toDate, fmtYMD, dayDiff, getBlockingCascade, authorizedEmails, isComposing } from '../../../lib/utils'
@@ -266,34 +268,35 @@ function PeekPeople() {
   })))
   const myEmail = useAuthStore(s => s.email)
   const projects = useProjectStore(s => s.projects)
-  const profiles = useUserProfileStore(s => s.profiles)
   const [query, setQuery] = React.useState('')
 
+  // 같은 회사 사람 전원 — 이름 명단에서. 이름으로도, 별명으로도 찾습니다.
+  const { people: company } = usePeople()
   const known = React.useMemo(() => {
     const mine = myEmail?.toLowerCase()
     const domain = mine?.split('@')[1] ?? ''
-    const out = new Map<string, string>()
+    const out = new Map<string, Person>()
     for (const mail of authorizedEmails(projects, myEmail)) {
       if (mail === mine) continue
-      out.set(mail, mail)
+      out.set(mail, { email: mail })
     }
     // 이름이 있으면 이름으로 찾게 합니다. 주소를 외우고 있는 사람은 없습니다.
-    for (const p of Object.values(profiles)) {
-      const mail = p.email?.toLowerCase()
-      if (!mail || mail === mine) continue
-      if (domain && !mail.endsWith(`@${domain}`)) continue
-      out.set(mail, p.name || mail)
+    for (const p of company) {
+      const mail = p.email.toLowerCase()
+      if (mail === mine) continue
+      if (domain && !mail.endsWith(`@${domain}`) && !out.has(mail)) continue
+      out.set(mail, p)
     }
-    return [...out.entries()].map(([email, name]) => ({ email, name })).sort((a, b) => a.name.localeCompare(b.name, 'ko'))
-  }, [projects, profiles, myEmail])
+    return [...out.values()].map(p => ({ ...p, label: personLabel(p) })).sort((a, b) => a.label.localeCompare(b.label, 'ko'))
+  }, [projects, company, myEmail])
 
   const q = query.trim().toLowerCase()
   const matches = q
-    ? known.filter(k => !peeking.includes(k.email) && (k.email.includes(q) || k.name.toLowerCase().includes(q))).slice(0, 5)
+    ? searchPeople(known, q, peeking).slice(0, 5) as typeof known
     : []
   const typedIsEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(q) && !peeking.includes(q)
 
-  const nameOf = (mail: string) => known.find(k => k.email === mail)?.name ?? mail
+  const nameOf = (mail: string) => known.find(k => k.email === mail)?.label ?? mail
   const busyOnly = (mail: string) => peekEvents.some(e => e.peekOf === mail && e.busyOnly)
 
   return (
@@ -351,7 +354,7 @@ function PeekPeople() {
           onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
         >
-          {m.name}{m.name !== m.email && <span style={{ color: 'var(--t3)' }}> · {m.email}</span>}
+          {m.label}{m.label !== m.email && <span style={{ color: 'var(--t3)' }}> · {m.email}</span>}
         </button>
       ))}
       {!!q && !matches.length && (
@@ -1509,12 +1512,14 @@ function QuickEvent({ x, y, day, onClose }: {
   )
   // 부를 수 있는 사람 — 내가 같이 일하는 프로젝트의 멤버들. 타임라인 카드와
   // 같은 셈입니다.
+  const { labelOf, directoryEmails } = usePeople()
   const teammates = useMemo(
     // 보관한 프로젝트는 뺍니다 — 치워 둔 일의 사람들이 후보로 서면 지금
     // 같이 일하는 사람을 그만큼 늦게 찾습니다. 타임라인 카드와 같은 셈입니다.
-    () => [...authorizedEmails(projects.filter(p => !p.archived), myEmail)]
+    // 같은 회사 사람은 프로젝트에 없어도 섭니다 — 이름 명단에서.
+    () => [...new Set([...authorizedEmails(projects.filter(p => !p.archived), myEmail), ...directoryEmails])]
       .filter(e => e !== myEmail?.toLowerCase()).sort(),
-    [projects, myEmail],
+    [projects, myEmail, directoryEmails],
   )
   const slot = useMemo(
     () => ({ date: day, from: startMin, to: startMin + minutes }),
@@ -1700,7 +1705,7 @@ function QuickEvent({ x, y, day, onClose }: {
           <AttendeeList
             teammates={teammates}
             chosen={guests}
-            nameOf={getNameByEmail}
+            nameOf={labelOf}
             onToggle={email => setGuests(g => g.includes(email) ? g.filter(x => x !== email) : [...g, email])}
           />
         </div>

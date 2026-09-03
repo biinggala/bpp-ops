@@ -1065,3 +1065,45 @@ test('회의실 예약 — 남의 것은 못 풀고, 관리자는 푼다', async
   // 관리자는 막힌 방을 풀어 줄 수 있습니다.
   await assertSucceeds(remove(ref(authed(ALICE), `orgs/${oid}/bookings/2026-08-27/b2`)))
 })
+
+/**
+ * ── 이름 명단(directory) ────────────────────────────────────────────────────
+ *
+ * 멤버가 서로를 이름으로 찾는 자리. 멤버만 읽고, 자기 줄만 씁니다.
+ * 이름표일 뿐이라 여기 적혀도 프로젝트는 하나도 안 열립니다.
+ */
+test('이름 명단은 멤버만 읽고, 자기 줄만 씁니다', async () => {
+  const oid = 'dir1'
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), { name: '블랙페이퍼', domain: 'bpp.co.kr' })
+    await set(ref(db, `orgs/${oid}/members/${emailKey(ALICE.email)}`), { role: 'member', at: 1 })
+    await set(ref(db, `orgs/${oid}/members/${emailKey(MALLORY.email)}`), { role: 'guest', at: 1 })
+  })
+  const alice = authed(ALICE)
+  // 내 줄 — 이름과 별명, 내 uid.
+  await assertSucceeds(set(ref(alice, `orgs/${oid}/directory/${emailKey(ALICE.email)}`), { name: '앨리스', nickname: '앨', uid: ALICE.uid, at: 1 }))
+  // 남의 줄은 못 씁니다 — 남의 이름을 바꿔 놓는 자리가 되면 안 됩니다.
+  await assertFails(set(ref(alice, `orgs/${oid}/directory/${emailKey(BOB.email)}`), { name: '가짜 밥', at: 1 }))
+  // 남의 uid를 내 줄에 적어도 안 됩니다.
+  await assertFails(set(ref(alice, `orgs/${oid}/directory/${emailKey(ALICE.email)}`), { name: '앨리스', uid: BOB.uid, at: 1 }))
+  // 이름 없는 줄, 너무 긴 이름은 거절.
+  await assertFails(set(ref(alice, `orgs/${oid}/directory/${emailKey(ALICE.email)}`), { nickname: '앨', at: 1 }))
+  await assertFails(set(ref(alice, `orgs/${oid}/directory/${emailKey(ALICE.email)}`), { name: 'x'.repeat(61), at: 1 }))
+
+  // 멤버는 명단을 통째로 읽습니다 — 이름으로 찾으려면 목록이어야 합니다.
+  await assertSucceeds(get(ref(alice, `orgs/${oid}/directory`)))
+  // 도메인이 맞는 새 사람은 아직 명단 행이 없어도 자기 줄을 씁니다.
+  await assertSucceeds(set(ref(authed(BOB), `orgs/${oid}/directory/${emailKey(BOB.email)}`), { name: '밥', at: 1 }))
+  // 게스트는 읽지도 쓰지도 못합니다. 회사 사람 이름 목록은 회사 사람 것입니다.
+  await assertFails(get(ref(authed(MALLORY), `orgs/${oid}/directory`)))
+  await assertFails(set(ref(authed(MALLORY), `orgs/${oid}/directory/${emailKey(MALLORY.email)}`), { name: '말로리', at: 1 }))
+})
+
+test('프로필의 이름과 별명은 길이가 있습니다', async () => {
+  const alice = authed(ALICE)
+  await assertSucceeds(set(ref(alice, `userProfiles/${ALICE.uid}`), { email: ALICE.email, name: '앨리스', nickname: '앨', customName: true }))
+  await assertFails(set(ref(alice, `userProfiles/${ALICE.uid}/name`), ''))
+  await assertFails(set(ref(alice, `userProfiles/${ALICE.uid}/nickname`), 'x'.repeat(41)))
+  await assertSucceeds(set(ref(alice, `userProfiles/${ALICE.uid}/nickname`), null))
+})
