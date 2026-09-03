@@ -444,13 +444,6 @@ export function Sidebar() {
       saveCollapsedGroups(next)
       return next
     })
-  /**
-   * 접속 목록은 규칙 때문에 오래 비어 있었고, 열리자 옛 항목들이 처음
-   * 화면에 닿았습니다 — `who`가 없는 것도 있었고, 그게 화면을 통째로
-   * 멈췄습니다. 키가 곧 uid이니 빠진 칸은 키로 채우고, 모양이 아닌 것은
-   * 버립니다. 남의 데이터 한 줄이 내 화면을 멈추면 안 됩니다.
-   */
-    .map(([uid, p]) => ({ ...p, who: typeof p.who === 'string' && p.who ? p.who : uid, name: typeof p.name === 'string' ? p.name : '' }))
 
   const closeSidebar = () => { if (isMobile) { haptic('tap'); setSidebarOpen(false) } }
 
