@@ -1,5 +1,7 @@
 import { applicationDefault, cert, getApps, initializeApp, type ServiceAccount } from 'firebase-admin/app'
 import { getDatabase, type Database } from 'firebase-admin/database'
+import { getAuth } from 'firebase-admin/auth'
+import { placeTask } from './place.js'
 import type { Milestone, Project, Task } from './types.js'
 import { readableAssignee, orgAllows } from './access.js'
 import { emailKey } from './backfill.js'
@@ -112,6 +114,14 @@ async function readProjectNodes(email?: string): Promise<Record<string, ProjectN
       const out: Record<string, ProjectNode> = {}
       for (const [pid, node] of entries) {
         if (!node) continue
+        /*
+          규칙이 세운 벽은 `members/{uid}`입니다. 여기서도 같은 벽을 봅니다 —
+          `meta.memberEmails`는 멤버 누구나 고칠 수 있는 표시 목록이라, 그것만
+          믿으면 멤버 한 사람이 바깥 주소를 적어 넣는 것으로 커넥터에 문을
+          열어 줄 수 있습니다. 색인(userIndex)도 본인이 쓰는 자리입니다.
+        */
+        const members = (node as { members?: Record<string, unknown> }).members ?? {}
+        if (!(uid in members)) continue
         const oid = node.meta?.orgId
         // 소속이 안 적힌 프로젝트는 이 겹이 없습니다 — 혼자 쓰는 것들과
         // 워크스페이스가 생기기 전의 것들입니다.
@@ -174,7 +184,9 @@ async function readTaskLocations(email?: string): Promise<TaskLocation[]> {
 
   const push = (uid: string, tid: string, task: Task, owner: string | undefined) => {
     out.push({
-      task: { ...task, id: tid, projectId: undefined, createdBy: task.createdBy ?? owner },
+      // 개인 업무의 주인은 **자리**가 말합니다. 안에 적힌 createdBy는 그 사람이
+      // 쓴 글자라, 자리와 다르면 자리가 맞습니다.
+      task: { ...task, id: tid, projectId: undefined, createdBy: owner ?? task.createdBy },
       path: `personalTasks/${uid}/${tid}`,
     })
   }
@@ -211,14 +223,31 @@ export async function readUserProfiles(): Promise<Record<string, { email?: strin
   return (snap.val() ?? {}) as Record<string, { email?: string; name?: string; photoURL?: string }>
 }
 
+/**
+ * 이메일 → uid. **Firebase 인증이 답합니다.**
+ *
+ * 예전에는 `userProfiles`를 훑어 `email`이 같은 첫 프로필의 uid를 썼습니다.
+ * 그 칸은 각자 자기 프로필에 자기가 쓰는 값이라, 아무 계정이 남의 주소를
+ * 적어 두면 그 사람의 개인 업무가 **적어 둔 사람의 자리**에 떨어졋습니다
+ * (규칙도 이제 그 값을 자기 주소로 못 박지만, 서버가 그것에 기대면 안 됩니다).
+ * 인증 서비스의 주소는 계정마다 하나고 남이 못 씁니다.
+ *
+ * 인증 조회가 안 될 때(권한이 없는 서비스 계정)만 프로필로 물러나되, **정확히
+ * 하나**일 때만 답합니다. 둘이면 누가 진짜인지 서버가 정할 수 없습니다.
+ */
 export async function uidForEmail(email: string): Promise<string | null> {
+  const target = email.toLowerCase().trim()
+  try {
+    return (await getAuth().getUserByEmail(target)).uid
+  } catch (e) {
+    const code = (e as { code?: string })?.code ?? ''
+    if (code === 'auth/user-not-found') return null
+    console.error('[bpp-ops-mcp] auth lookup failed, falling back to profiles:', code || (e instanceof Error ? e.message : e))
+  }
   const snap = await initDb().ref('userProfiles').get()
   const profiles = (snap.val() ?? {}) as Record<string, { email?: string }>
-  const target = email.toLowerCase()
-  for (const [uid, profile] of Object.entries(profiles)) {
-    if ((profile?.email ?? '').toLowerCase() === target) return uid
-  }
-  return null
+  const hits = Object.entries(profiles).filter(([, p]) => (p?.email ?? '').toLowerCase() === target).map(([uid]) => uid)
+  return hits.length === 1 ? hits[0] : null
 }
 
 function stripUndefined<T>(value: T): T {
@@ -263,11 +292,13 @@ export async function mutateTasks<T>(
 
   const updates: Record<string, unknown> = {}
 
+  // 개인 자리로 가는 업무는 **부른 사람** 것입니다. 업무에 적힌 주소가 아니라요
+  // (place.ts 맨 위 주석). 부른 사람이 없는 일(아침 브리핑)은 개인 업무를
+  // 새로 만들지 않으니 그때는 자리를 못 정해도 됩니다.
+  let callerUid: string | null | undefined
   const pathFor = async (task: Task): Promise<string> => {
-    if (task.projectId) return `projects/${task.projectId}/tasks/${task.id}`
-    const owner = task.createdBy ? await uidForEmail(task.createdBy) : null
-    if (!owner) throw new Error(`cannot place task ${task.id}: no account matches its creator`)
-    return `personalTasks/${owner}/${task.id}`
+    if (!task.projectId && callerUid === undefined) callerUid = email ? await uidForEmail(email) : null
+    return placeTask(task, before.get(task.id)?.path, callerUid ?? null)
   }
 
   const record = (task: Task, path: string) => {

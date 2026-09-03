@@ -5,6 +5,7 @@ import { useFilteredTasks } from '../../../hooks/useFilteredTasks'
 import { useTaskStore } from '../../../store/taskStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { haptic } from '../../../lib/haptics'
+import { useVisibleProjects } from '../../../hooks/useVisibleProjects'
 import { useProjectStore } from '../../../store/projectStore'
 import { useGCalStore, warmCalendarAuth, targetCalendarOf, PEEK_COLOR } from '../../../store/gcalStore'
 import { ActionMenu } from '../../shared/ContextMenu'
@@ -1075,7 +1076,7 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
   const { updateTask, tasks: allTasks } = useTaskStore(useShallow(s => ({ updateTask: s.updateTask, tasks: s.tasks })))
   const allMilestones = useMilestoneStore(s => s.milestones)
   const updateMilestone = useMilestoneStore(s => s.updateMilestone)
-  const projects = useProjectStore(s => s.projects)
+  const projects = useVisibleProjects()  // 서 있는 워크스페이스의 것만
   const milestones = useMemo(() => {
     const ids = new Set(projects.map(p => p.id))
     return allMilestones.filter(m => ids.has(m.projectId))

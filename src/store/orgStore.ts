@@ -641,7 +641,9 @@ export const useOrgStore = create<OrgState>((set, get) => ({
         () => off(projectsRef, 'value', projectsHandler),
         () => off(joinRef, 'value', joinHandler),
       ]
-      set({ orgId, isGuest: false, ready: true, error: null })
+      // 이전 워크스페이스의 값이 새 리스너가 답하기 전까지 남아 있지 않게.
+      // 잠깐이라도 A의 관리자 목록으로 B의 권한을 셈하면 안 됩니다.
+      set({ orgId, isGuest: false, ready: true, error: null, rooms: [], admins: [], orgProjects: [], joinRequests: [], bookings: {} })
     }
 
     const apply = () => {
@@ -683,10 +685,19 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       if (next !== current) {
         current = next
         dropInner()
+        /**
+         * 회의실 예약 리스너는 **날짜별로** 붙어 있고, 워크스페이스를 바꿔도
+         * 같은 날짜면 `watchDates`가 '이미 보고 있다'며 건너뛰었습니다. 그래서
+         * A 회사의 예약이 B 회사 회의실 화면에 그대로 남고, 겹침 검사도 A의
+         * 예약으로 했습니다. 전부 떼고, 새 곳에 붙은 뒤 다시 청합니다.
+         */
+        for (const date of Object.keys(dateWatchers)) { dateWatchers[date](); delete dateWatchers[date] }
+        set({ bookings: {} })
         if (next) {
           // 게스트로 서는 곳은 이름만 듣습니다 — attachGuest의 그 사연.
           if (get().myOrgs.find(o => o.id === next)?.guest) attachGuest(next)
           else attach(next)
+          for (const who of Object.keys(wanted)) get().watchDates(who, wanted[who])
         } else {
           // 오류도 같이 지웁니다. 붙어 있지도 않은 곳의 권한 오류가 화면에
           // 남아 있으면, 읽을 수 없는 것이 무엇인지 아무 말도 안 해 줍니다.
@@ -1089,8 +1100,10 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     const raw = (snap?.val() ?? {}) as Record<string, { role?: string; at?: number; by?: string }>
     return Object.entries(raw)
       .map(([key, v]) => ({ email: key.replace(/,/g, '.'), role: v?.role ?? '', at: v?.at, by: v?.by }))
-      .filter(m => m.role === 'member' || m.role === 'guest')
-      .sort((a, b) => (a.role === b.role ? a.email.localeCompare(b.email) : a.role === 'member' ? -1 : 1))
+      // 내려간 사람도 돌려줍니다. 안 보이면 되돌릴 자리가 없고, 그 사람은
+      // 자동 가입도 초대도 규칙에 막혀 영영 못 들어옵니다.
+      .filter(m => m.role === 'member' || m.role === 'guest' || m.role === 'removed')
+      .sort((a, b) => (a.role === b.role ? a.email.localeCompare(b.email) : a.role === 'member' ? -1 : b.role === 'member' ? 1 : a.role === 'guest' ? -1 : 1))
   },
 
   inviteToOrg: async (email) => {
@@ -1122,7 +1135,12 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     const address = email.trim().toLowerCase()
     if (!orgId || !address) return false
     try {
-      await fbSet(ref(db, P.orgMember(orgId, address)), { role: 'removed', at: Date.now() })
+      // 관리자 표시도 같이 뗍니다. 남겨 두면 그 표시로 다시 들어옵니다(규칙도
+      // 이제 막지만, 표시가 남아 있는 것 자체가 거짓입니다).
+      await fbUpdate(ref(db), {
+        [P.orgMember(orgId, address)]: { role: 'removed', at: Date.now() },
+        [P.orgAdmin(orgId, address)]: null,
+      })
       set({ error: null })
       return true
     } catch (e) {

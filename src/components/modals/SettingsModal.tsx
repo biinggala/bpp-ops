@@ -1297,10 +1297,21 @@ function MembersPage() {
       },
       {
         key: 'guest', label: '게스트',
-        note: '초대받은 프로젝트만 봅니다. 회의실·장비·명단은 안 열립니다. 프로젝트에 부르면 여기 자동으로 섭니다 — 부른 적 없는 사람이 있으면 지워도 됩니다.',
+        note: '초대받은 프로젝트만 봅니다. 회의실·장비·명단은 안 열립니다. 프로젝트에 부르면 여기 자동으로 섭니다. 내리면 이 워크스페이스의 모든 프로젝트가 닫히니, 부른 적 없는 사람인지 먼저 확인하세요.',
         people: all.filter(m => !admins.includes(m.email) && m.role === 'guest'),
       },
-    ]
+      /*
+        내려간 사람은 **여기 말고는 되돌릴 자리가 없습니다.** 규칙이 그 줄을
+        비석으로 취급해서 자동 가입도, 프로젝트 초대의 게스트 앉히기도 전부
+        거절합니다. 그 사람은 자기가 왜 아무것도 못 보는지 모르고, 부른 동료는
+        초대가 왜 안 먹는지 모릅니다. 관리자가 여기서 다시 들여야 풀립니다.
+      */
+      {
+        key: 'removed', label: '내려간 사람',
+        note: '명단에서 내린 사람입니다. 이 워크스페이스의 프로젝트가 전부 닫혀 있고, 다시 불러도 들어오지 못합니다. 되돌리려면 여기서 다시 들입니다.',
+        people: all.filter(m => m.role === 'removed'),
+      },
+    ].filter(g => g.key !== 'removed' || g.people.length > 0)
   }, [rows, admins])
 
   if (!me) return null
@@ -1421,7 +1432,7 @@ function MembersPage() {
 
                 {/* 소속은 게스트에게 안 묻습니다 — 바깥 사람이라 우리 팀이
                     없고, 장비도 안 빌립니다. */}
-                {teams.length > 0 && m.role !== 'guest' && (
+                {teams.length > 0 && m.role !== 'guest' && m.role !== 'removed' && (
                   <TeamPick
                     value={teamOf[m.email] ?? ''}
                     teams={teams}
@@ -1430,7 +1441,15 @@ function MembersPage() {
                   />
                 )}
 
-                {isAdmin && !isAdm && !isFounder && (
+                {isAdmin && m.role === 'removed' && (
+                  <button
+                    disabled={busy === m.email}
+                    onClick={() => void change(m.email, domain && m.email.endsWith('@' + domain) ? 'member' : 'guest')}
+                    style={{ ...navBtn, padding: '3px 9px', fontSize: 11 }}
+                  >다시 들이기</button>
+                )}
+
+                {isAdmin && !isAdm && !isFounder && m.role !== 'removed' && (
                   <RoleToggle
                     value={m.role === 'guest' ? 'guest' : 'member'}
                     busy={busy === m.email}
@@ -1438,7 +1457,7 @@ function MembersPage() {
                   />
                 )}
 
-                {isAdmin && !isAdm && !isFounder && !mine && (
+                {isAdmin && !isAdm && !isFounder && !mine && m.role !== 'removed' && (
                   <RowRemove
                     label={`${m.email} 내리기`}
                     onClick={async () => {
@@ -2390,7 +2409,7 @@ function TrashSection() {
   const { items, loading, error, load, restore, purge } = useTrashStore(useShallow(s => ({
     items: s.items, loading: s.loading, error: s.error, load: s.load, restore: s.restore, purge: s.purge,
   })))
-  const projects = useProjectStore(s => s.projects)
+  const projects = useVisibleProjects()  // 서 있는 워크스페이스의 것만
   const [busy, setBusy] = useState<string | null>(null)
   const [confirming, setConfirming] = useState<string | null>(null)
   const ids = projects.map(p => p.id).sort().join(' ')

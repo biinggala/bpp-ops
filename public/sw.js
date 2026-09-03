@@ -40,7 +40,9 @@ self.addEventListener('push', event => {
 
 self.addEventListener('notificationclick', event => {
   event.notification.close()
-  const url = (event.notification.data && event.notification.data.url) || '/'
+  const raw = (event.notification.data && event.notification.data.url) || '/'
+  // 이 앱 안의 길만 엽니다. 서버도 거르지만, 여기서 한 번 더.
+  const url = typeof raw === 'string' && /^\/(?!\/)/.test(raw) ? raw : '/'
 
   event.waitUntil((async () => {
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })

@@ -263,7 +263,9 @@ export function registerPushRoutes(app: Express): void {
     const sent = await sendTo(toUid, {
       title: title.slice(0, 120),
       body: body.slice(0, 220),
-      url: typeof url === 'string' ? url : '/',
+      // 누르면 열리는 곳은 이 앱 안의 길만. 바깥 주소를 실어 보내면 알림
+      // 한 번으로 아무 페이지든 열게 됩니다.
+      url: typeof url === 'string' && /^\/(?!\/)/.test(url) ? url.slice(0, 500) : '/',
       tag: `notice:${toUid}`,
       renotify: true,
       unread: await unreadFor(toUid),

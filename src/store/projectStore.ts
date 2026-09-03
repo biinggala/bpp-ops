@@ -87,7 +87,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const { id, ...meta } = project
       // 소속을 만들 때 같이 적습니다. 나중에 배경에서 채우는 길도 있지만
       // (roster.stampProjects), 만드는 순간이 소속이 확실한 유일한 순간입니다.
-      const orgId = useOrgStore.getState().orgId
+      // 게스트로 서 있는 곳의 소속은 안 찍습니다 — 남의 회사 것이 됩니다.
+      const { orgId: standing, isGuest } = useOrgStore.getState()
+      const orgId = isGuest ? null : standing
       fbUpdate(ref(db), {
         [P.project(id)]: {
           meta: { id, ...meta, ...(orgId ? { orgId } : {}) },
@@ -163,6 +165,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       // Other members keep a dangling index entry; their client drops it when the
       // project reads back empty.
       if (uid) await fbRemove(ref(db, P.userProject(uid, id))).catch(() => {})
+      // 남는 찌꺼기들 — 대기 중 초대장(없는 프로젝트의 수락 창이 뜹니다),
+      // 휴지통, 워크스페이스 장부. 하나가 거절돼도 나머지는 치웁니다.
+      const leftovers: Record<string, null> = {}
+      for (const waiting of project?.pendingEmails ?? []) leftovers[P.inviteEntry(waiting, id)] = null
+      leftovers[`trash/${id}`] = null
+      if (project?.orgId) leftovers[`${P.orgOwns(project.orgId)}/${id}`] = null
+      await Promise.all(Object.entries(leftovers).map(([path]) => fbRemove(ref(db, path)).catch(() => {})))
     })()
   },
 
@@ -193,48 +202,28 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     // 하고, 규칙도 그렇게 되어 있습니다. 이걸 안 하면 초대받은 사람이
     // 들어와서 프로젝트를 못 읽습니다 — 명단에 없으니까요.
     const orgId = project.orgId
-    const org = useOrgStore.getState()
     /**
-     * 게스트로 부를지 멤버로 부를지.
+     * 게스트로 올릴지 말지는 **그 프로젝트가 속한 회사의 도메인**으로 정합니다.
      *
-     * **빈 도메인을 '도메인이 없다'로 읽으면 안 됩니다.** 워크스페이스 정보가
-     * 아직 안 왔을 때도 도메인은 빈 문자열입니다 — 그걸 초대형으로 읽으면
-     * 페이지를 켠 직후에 초대한 사람이 **멤버로** 올라가고, 도메인 밖 사람이
-     * 회의실과 공개 목록까지 열게 됩니다. 안 온 것을 없는 것으로 읽지
-     * 않습니다.
+     * 예전에는 지금 서 있는 워크스페이스의 도메인만 믿었습니다. 그래서 개인
+     * 워크스페이스에 서서 회사 프로젝트에 동료를 부르면 '모르겟으니 게스트'로
+     * 적었고, 그 동료는 자기 회사에서 **강등**됐습니다 — 아직 로그인도 안 한
+     * 사람이라 스스로 되돌릴 수도 없었습니다. 모르면 게스트가 아니라, 모르면
+     * 물어봐야 합니다. 도메인은 멤버라면 읽을 수 있습니다.
      *
-     * 그래서 지금 붙어 있는 워크스페이스가 **이 프로젝트의 그곳이고, 정보가
-     * 다 왔을 때만** 도메인을 근거로 씁니다. 모르겠으면 게스트입니다 —
-     * 덜 주는 쪽이 되돌리기 쉽습니다.
+     * 프로젝트 초대는 언제나 **게스트 자리**까지만 만듭니다. 워크스페이스
+     * 멤버로 부르는 것은 설정 > 멤버에 따로 있습니다. 우리 도메인 사람은
+     * 아무것도 안 씁니다 — 도메인으로 이미 멤버입니다(규칙도 거절합니다).
      */
-    const known = !!orgId && org.ready && org.orgId === orgId
-    /**
-     * ── 프로젝트에 부르는 것은 워크스페이스에 부르는 것이 아닙니다 ──────────
-     *
-     * 초대형 워크스페이스에서는 여기서 **멤버로** 올렸습니다. 프로젝트 하나에
-     * 부르는 손짓이 그 사람을 회의실과 공개 목록까지 여는 워크스페이스
-     * 구성원으로 만든 것입니다.
-     *
-     * 게다가 길에 따라 결과가 달랐습니다 — 주소를 넣어 부르면 멤버, 초대
-     * 링크를 눌러 들어오면 게스트(claimGuestSeats). 사람은 그 둘을 같은
-     * 일로 생각합니다. 링크를 잘못 눌러 워크스페이스 명단에 들어가는 것은
-     * 더 나쁩니다.
-     *
-     * 그래서 프로젝트 초대는 언제나 **게스트 자리**까지만 만듭니다. 그건
-     * 그 프로젝트를 읽기 위해 꼭 필요한 것이고(3단계 벽), 그 이상은 아닙니다.
-     * 워크스페이스 멤버로 부르는 것은 설정 > 멤버에 따로 있습니다.
-     *
-     * 도메인형에서 우리 도메인 사람은 그대로 아무것도 안 씁니다 — 그 사람은
-     * 도메인으로 이미 멤버라, 게스트 줄을 만들면 **강등입니다.**
-     */
-    const role = known && org.domain && isOrgDomain(normalized, org.domain)
-      ? null
-      : 'guest'
-    if (orgId && role) {
-      fbUpdate(ref(db, P.orgMember(orgId, normalized)), {
-        role,
-        at: Date.now(),
-        by: lower(useAuthStore.getState().email ?? ''),
+    if (orgId) {
+      void fbGet(ref(db, P.orgDomain(orgId))).then(snap => {
+        const domain = typeof snap.val() === 'string' ? snap.val() as string : ''
+        if (domain && isOrgDomain(normalized, domain)) return
+        return fbUpdate(ref(db, P.orgMember(orgId, normalized)), {
+          role: 'guest',
+          at: Date.now(),
+          by: lower(useAuthStore.getState().email ?? ''),
+        })
       }).catch(() => {})  // 이미 명단에 있으면 규칙이 거절합니다. 맞는 동작입니다.
     }
   },
@@ -247,15 +236,35 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const pendingEmails = (project.pendingEmails ?? []).filter(e => lower(e) !== normalized)
     set({ projects: get().projects.map(p => p.id === projectId ? { ...p, memberEmails, pendingEmails } : p) })
 
+    /**
+     * ── 내보내면 초대 링크도 바뀝니다 ──────────────────────────────────────
+     *
+     * 규칙은 '코드가 맞고 아직 멤버가 아니면' 들어오게 합니다. 코드를 그대로
+     * 두면 내보낸 사람이 카톡에 남은 옛 링크로 그냥 다시 들어옵니다. 그래서
+     * 코드를 새로 뽑고, 아직 답 안 한 초대장에는 새 코드를 다시 실어 줍니다.
+     */
+    const code = newInviteCode()
     const payload: Record<string, unknown> = {
       [`${P.projectMeta(projectId)}/memberEmails`]: memberEmails,
       [`${P.projectMeta(projectId)}/pendingEmails`]: pendingEmails,
+      [`${P.projectMeta(projectId)}/inviteCode`]: code,
       [P.inviteEntry(normalized, projectId)]: null,
+    }
+    for (const waiting of pendingEmails) {
+      payload[P.inviteEntry(waiting, projectId)] = {
+        code, name: project.name, ...(project.orgId ? { orgId: project.orgId } : {}),
+      }
     }
     // Revoking access means removing the members entry; dropping the address
     // from meta alone would leave them able to open the project.
     const uid = uidForEmail(normalized)
     if (uid) payload[P.projectMember(projectId, uid)] = null
+    else if (lower(useAuthStore.getState().email ?? '') !== normalized) {
+      // 프로필을 못 찾으면 자리가 남습니다. 조용히 넘기면 '내보냈다'고 믿는
+      // 사람과 여전히 읽는 사람이 생깁니다.
+      reportProblem('이 사람의 계정을 찾지 못해 접근을 완전히 끊지 못했습니다. 초대 링크는 바꿨습니다.')
+    }
+    set({ projects: get().projects.map(p => p.id === projectId ? { ...p, inviteCode: code } : p) })
     fbUpdate(ref(db), payload).catch(e => console.warn('[member remove]', e))
   },
 
