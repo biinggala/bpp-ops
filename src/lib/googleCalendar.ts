@@ -5,6 +5,7 @@
 // Everything here is a plain fetch: getting and refreshing the token is the
 // caller's problem (see gcalStore).
 
+import { exclusiveEnd } from './dayRange'
 import { isMe } from './attendance'
 import { calendarColour } from './gcalColors'
 
@@ -253,6 +254,8 @@ export interface NewEvent {
    * 주면 `startDateTime`/`endDateTime`은 안 씁니다.
    */
   allDayDate?: string
+  /** 종일 일정의 **마지막 날**(포함). 여러 날에 걸친 출장 같은 것. 없으면 하루. */
+  allDayEndDate?: string
 }
 
 /**
@@ -273,12 +276,6 @@ function sendUpdatesParam(attendees: string[] | undefined): string {
  * of where it was created.
  */
 /** `YYYY-MM-DD`의 다음 날. 종일 일정의 배타적 끝에 씁니다. */
-function nextDay(date: string): string {
-  const d = new Date(`${date}T00:00:00`)
-  d.setDate(d.getDate() + 1)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-}
 
 export async function createCalendarEvent(token: string, event: NewEvent): Promise<RawCalendarEvent> {
   const timeZone = event.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -297,7 +294,12 @@ export async function createCalendarEvent(token: string, event: NewEvent): Promi
             end가 8월 20일입니다. 같은 날을 적으면 길이가 0인 일정이 되어
             어떤 화면에서는 아예 안 보입니다.
           */
-          ? { start: { date: event.allDayDate }, end: { date: nextDay(event.allDayDate) } }
+          ? {
+              start: { date: event.allDayDate },
+              // 마지막 날의 **다음 날**을 적습니다. lib/dayRange의 exclusiveEnd가
+              // 그 하루를 셉니다 — 여기서 틀리면 출장이 하루 짧게 잡힙니다.
+              end: { date: exclusiveEnd(event.allDayEndDate ?? event.allDayDate) },
+            }
           : {
               start: { dateTime: event.startDateTime, timeZone },
               end: { dateTime: event.endDateTime, timeZone },

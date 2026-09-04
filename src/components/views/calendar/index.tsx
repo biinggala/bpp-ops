@@ -6,6 +6,7 @@ import { useTaskStore } from '../../../store/taskStore'
 import { useMilestoneStore } from '../../../store/milestoneStore'
 import { haptic } from '../../../lib/haptics'
 import { useVisibleProjects } from '../../../hooks/useVisibleProjects'
+import { countDays, dayRange, daysBetween, plusDays, withinRange } from '../../../lib/dayRange'
 import { useProjectStore } from '../../../store/projectStore'
 import { useGCalStore, warmCalendarAuth, targetCalendarOf, PEEK_COLOR } from '../../../store/gcalStore'
 import { ActionMenu } from '../../shared/ContextMenu'
@@ -1135,18 +1136,30 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
   // changed, and that is what made it stutter. Stable arrays let MonthCell's
   // memo hold.
   //
-  // Events are indexed by their start day only; a week-long one would otherwise
-  // flood every cell it touches.
+  /*
+    시각 있는 일정은 시작한 날에만 섭니다 — 3시 회의는 3시에 있는 일입니다.
+    **종일 일정은 걸친 날마다 섭니다.** 사흘짜리 출장이 첫날에만 보이면,
+    둘째 날 화면에는 아무 일도 없는 것처럼 보입니다. 그 사흘에 걸쳐 있다는
+    것이 곧 그 일정의 뜻입니다. 너무 긴 것은 daysBetween이 잘라 냅니다.
+  */
   const chipsByDate = useMemo(() => {
     const map = new Map<string, Chip[]>()
     const put = (day: string, chip: Chip) => {
       const at = map.get(day)
       if (at) at.push(chip); else map.set(day, [chip])
     }
-    gcalEvents.forEach(ev => { if (ev.start) put(ev.start, { kind: 'gcal', ev }) })
+    const putEvent = (ev: GCalEvent) => {
+      if (!ev.start) return
+      if (ev.allDay && ev.end > ev.start) {
+        for (const day of daysBetween(ev.start, ev.end)) put(day, { kind: 'gcal', ev })
+      } else {
+        put(ev.start, { kind: 'gcal', ev })
+      }
+    }
+    gcalEvents.forEach(putEvent)
     // 같이 보고 있는 사람들. 내 것 뒤에 섭니다 — 내 하루가 먼저고, 남의
     // 일정은 그 옆에 참고로 놓이는 것입니다.
-    peekEvents.forEach(ev => { if (ev.start) put(ev.start, { kind: 'gcal', ev }) })
+    peekEvents.forEach(putEvent)
     tasks.forEach(t => { const day = t.due ?? t.start; if (day) put(day, { kind: 'task', t }) })
     return map
   }, [gcalEvents, peekEvents, tasks])
@@ -1290,6 +1303,65 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
     setDragOver(null)
   }, [tasks, allTasks, updateTask, updateMilestone, moveEvent])
 
+  /**
+   * ── 여러 날에 걸친 일정은 끌어서 만듭니다 ─────────────────────────────────
+   *
+   * 출장·촬영·휴가는 하루가 아닙니다. 그런데 만드는 길은 하루짜리 하나뿐이라,
+   * 사흘짜리를 넣으려면 세 개를 만들거나 구글 캘린더로 건너가야 했습니다.
+   *
+   * 달력에서 기간을 말하는 가장 짧은 방법은 **그 칸들을 훑는 것**입니다.
+   * 뒤로 훑어도 같은 기간입니다(lib/dayRange). 한 칸에서 뗐으면 끈 것이
+   * 아니라 누른 것이므로, 지금까지처럼 '무엇을 만들까' 메뉴가 뜹니다.
+   *
+   * 손가락은 뺍니다. 화면을 위아래로 넘기는 동작과 같은 몸짓이라, 달력을
+   * 넘기려던 손이 매번 일정을 만들게 됩니다. 태블릿에서는 칸을 눌러 뜨는
+   * 창에서 며칠짜리인지 고릅니다 — 같은 자리, 다른 손짓.
+   */
+  const [sweep, setSweep] = useState<{ anchor: string; to: string } | null>(null)
+  const sweptRef = useRef(false)
+
+  const dayUnder = (x: number, y: number): string | null => {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null
+    return el?.closest<HTMLElement>('[data-month-cell]')?.dataset.day ?? null
+  }
+
+  const onGridPointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType === 'touch' || e.button !== 0) return
+    const el = e.target as HTMLElement
+    // 칩(일정·업무·마일스톤)에서 시작한 것은 옮기는 손짓입니다 — 그건 이미
+    // HTML 끌어놓기가 맡고 있고, 여기서 가로채면 옮기기가 죽습니다.
+    if (el.closest('[draggable="true"], button, a, input')) return
+    const day = el.closest<HTMLElement>('[data-month-cell]')?.dataset.day
+    if (!day) return
+    setSweep({ anchor: day, to: day })
+  }, [])
+
+  const onGridPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!sweep) return
+    const day = dayUnder(e.clientX, e.clientY)
+    if (day && day !== sweep.to) setSweep({ ...sweep, to: day })
+  }, [sweep])
+
+  useEffect(() => {
+    if (!sweep) return
+    const done = () => {
+      const { from, to, days } = dayRange(sweep.anchor, sweep.to)
+      setSweep(null)
+      if (days < 2) return
+      // 뒤따라오는 click이 '하루짜리' 메뉴를 열지 않게 합니다.
+      sweptRef.current = true
+      setQuick({ x: window.innerWidth / 2, y: window.innerHeight / 2, day: from, endDay: to })
+    }
+    window.addEventListener('pointerup', done)
+    window.addEventListener('pointercancel', done)
+    return () => {
+      window.removeEventListener('pointerup', done)
+      window.removeEventListener('pointercancel', done)
+    }
+  }, [sweep])
+
+  const swept = sweep ? dayRange(sweep.anchor, sweep.to) : null
+
   const onDragOverDay   = useCallback((day: string) => setDragOver(day), [])
   const onDragLeaveDay  = useCallback(() => setDragOver(null), [])
   /**
@@ -1360,8 +1432,13 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
   }, [])
 
   const [menu, setMenu] = useState<{ x: number; y: number; day: string } | null>(null)
-  const [quick, setQuick] = useState<{ x: number; y: number; day: string } | null>(null)
-  const onPickDay = useCallback((day: string, x: number, y: number) => setMenu({ x, y, day }), [])
+  const [quick, setQuick] = useState<{ x: number; y: number; day: string; endDay?: string } | null>(null)
+  const onPickDay = useCallback((day: string, x: number, y: number) => {
+    // 방금 여러 날을 훑었으면 그 뒤에 오는 click은 삼킵니다. 안 그러면 기간을
+    // 고르자마자 '무엇을 만들까' 메뉴가 그 위에 겹쳐 뜹니다.
+    if (sweptRef.current) { sweptRef.current = false; return }
+    setMenu({ x, y, day })
+  }, [])
 
   /**
    * 날짜 숫자를 누르면 그 날부터 3일.
@@ -1401,8 +1478,13 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
             the seven columns stay identical at any window size. */}
         <div
           ref={trackRef}
+          onPointerDown={onGridPointerDown}
+          onPointerMove={onGridPointerMove}
           style={{
             display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+            // 훑는 동안 글자가 파랗게 잡히면 기간이 아니라 문서를 고르는
+            // 것처럼 보입니다.
+            userSelect: swept ? 'none' : undefined,
             gridTemplateRows: 'repeat(8, 1fr)', height: `${(8 / 6) * 100}%`,
             transform: 'translateY(calc(-12.5% + var(--slide, 0px)))',
             willChange: 'transform',
@@ -1419,6 +1501,7 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
                 isCurrentMonth={isCurrentMonth}
                 isToday={dateStr === todayStr}
                 isDragTarget={dragOver === dateStr}
+                inSweep={!!swept && swept.days > 1 && withinRange(dateStr, swept.from, swept.to)}
                 chips={chipsByDate.get(dateStr)}
                 milestones={milestoneByDate[dateStr]}
                 rowsFit={rowsFit}
@@ -1468,7 +1551,7 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
 
       {quick && (
         <QuickEvent
-          x={quick.x} y={quick.y} day={quick.day}
+          x={quick.x} y={quick.y} day={quick.day} endDay={quick.endDay}
           onClose={() => setQuick(null)}
         />
       )}
@@ -1491,8 +1574,25 @@ function MonthGrid({ gridStart, calYear, calMonth }: { gridStart: string; calYea
  * 없는 편이 맞고, 우리가 정해 붙이면 아무도 안 정한 시간이 캘린더에 사실처럼
  * 적힙니다.
  */
-function QuickEvent({ x, y, day, onClose }: {
-  x: number; y: number; day: string; onClose: () => void
+/** 날 수를 한 칸씩 올리고 내리는 작은 단추. 손가락으로도 눌리는 크기입니다. */
+const STEP_BTN: React.CSSProperties = {
+  width: 22, height: 22, lineHeight: '20px', padding: 0,
+  borderRadius: 'var(--r1)', border: '1px solid var(--bd)',
+  background: 'var(--bg2)', color: 'var(--t2)',
+  fontSize: 12, fontFamily: 'var(--font)', cursor: 'pointer',
+}
+
+function QuickEvent({ x, y, day, endDay, onClose }: {
+  x: number; y: number; day: string
+  /**
+   * 마지막 날(포함). 달력에서 여러 칸을 훑어 온 경우입니다.
+   *
+   * 여러 날짜리는 **종일로만** 만듭니다. '9월 12일 14시부터 9월 15일 15시까지'
+   * 같은 것은 달력에서 칸을 훑어 말할 수 있는 것이 아니고, 출장·촬영·휴가는
+   * 실제로 종일입니다.
+   */
+  endDay?: string
+  onClose: () => void
 }) {
   const createEvent = useGCalStore(s => s.createEvent)
   const events = useGCalStore(s => s.events)
@@ -1503,7 +1603,20 @@ function QuickEvent({ x, y, day, onClose }: {
   // 스토어를 직접 읽으면 다른 회사 프로젝트의 멤버 주소가 초대 후보로 섭니다.
   const projects = useVisibleProjects()
   const [title, setTitle] = useState('')
-  const [allDay, setAllDay] = useState(false)
+  /**
+   * 며칠짜리인가. 훑어 왔으면 그 날 수로 시작하고, 여기서 고칠 수 있습니다.
+   *
+   * 고칠 수 있어야 하는 이유는 손가락입니다. 태블릿에서는 칸을 훑는 손짓이
+   * 화면을 넘기는 손짓과 같아서 끌기를 안 씁니다 — 대신 이 자리에서 날 수를
+   * 올립니다. 같은 일을 두 손짓으로 할 수 있게 두는 것이지, 마우스 쓰는
+   * 사람에게 이 단추를 대신 누르라는 뜻은 아닙니다.
+   */
+  const [days, setDays] = useState(endDay ? countDays(day, endDay) : 1)
+  const span = days
+  const lastDay = plusDays(day, days - 1)
+  // 여러 날짜리는 종일입니다. 하루로 줄이면 다시 시각을 고를 수 있습니다.
+  const [allDay, setAllDay] = useState(span > 1)
+  const wholeDay = allDay || span > 1
   const [startMin, setStartMin] = useState(14 * 60)
   const [minutes, setMinutes] = useState(60)
   const [guests, setGuests] = useState<string[]>([])
@@ -1546,8 +1659,13 @@ function QuickEvent({ x, y, day, onClose }: {
     const roomName = room
       ? useOrgStore.getState().rooms.find(r => r.id === room)?.name
       : undefined
-    const id = await createEvent(allDay
-      ? { summary, allDayDate: day, ...(guests.length ? { attendees: guests } : {}) }
+    const id = await createEvent(wholeDay
+      ? {
+          summary,
+          allDayDate: day,
+          ...(span > 1 ? { allDayEndDate: lastDay } : {}),
+          ...(guests.length ? { attendees: guests } : {}),
+        }
       : {
           summary,
           startDateTime: localIso(day, startMin),
@@ -1560,7 +1678,7 @@ function QuickEvent({ x, y, day, onClose }: {
       것인지 기억하고, 그 id는 구글이 만들어 준 다음에야 있습니다. 반대로
       하면 주인 없는 예약이 남아 아무도 못 치웁니다.
     */
-    if (id && room && myEmail && !allDay) {
+    if (id && room && myEmail && !wholeDay) {
       await bookRoom({
         date: day, roomId: room, from: startMin, to: startMin + minutes,
         title: summary, eventId: id, by: myEmail, byName: getNameByEmail(myEmail),
@@ -1634,12 +1752,43 @@ function QuickEvent({ x, y, day, onClose }: {
           {/* 날짜만입니다. 시각과 길이는 바로 아래 목록이 말하고 있어서,
               여기 또 적으면 같은 말이 두 줄이 됩니다. */}
           <span style={{ fontSize: 11.5, color: 'var(--t2)', flex: 1, minWidth: 0 }}>
-            {`${d.getMonth() + 1}월 ${d.getDate()}일`}
+            {span > 1
+              ? `${d.getMonth() + 1}월 ${d.getDate()}일 – ${Number(lastDay.slice(5, 7))}월 ${Number(lastDay.slice(8, 10))}일`
+              : `${d.getMonth() + 1}월 ${d.getDate()}일`}
           </span>
           {/*
             두 값뿐인 축이라 목록이 아니라 스위치입니다. 시간이 있는 일정과
             종일은 정말로 둘 중 하나고, 그 사이에 낄 값이 없습니다.
           */}
+          {/*
+            며칠짜리인지 여기서 정합니다. 1일이면 안 보입니다 — 대부분의
+            일정은 하루라, 늘 세워 두면 아무도 안 쓰는 단추가 매번 자리를
+            차지합니다. 하루에서 올리는 길은 오른쪽 '＋'입니다.
+          */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            {span > 1 && (
+              <button
+                onClick={() => setDays(n => Math.max(1, n - 1))}
+                aria-label="하루 줄이기"
+                style={STEP_BTN}
+              >−</button>
+            )}
+            <span style={{ fontSize: 11.5, color: span > 1 ? 'var(--t1)' : 'var(--t3)', minWidth: 26, textAlign: 'center' }}>
+              {span}일
+            </span>
+            <button
+              onClick={() => setDays(n => Math.min(60, n + 1))}
+              aria-label="하루 늘리기"
+              style={STEP_BTN}
+            >＋</button>
+          </div>
+          {/*
+            여러 날짜리에는 시간/종일 스위치가 없습니다. 고를 것이 없는데
+            세워 두면 누를 수 있는 것처럼 보이고, 눌러도 아무 일이 안 일어납니다.
+          */}
+          {span > 1 ? (
+            <span style={{ fontSize: 11.5, color: 'var(--t3)', flexShrink: 0 }}>종일</span>
+          ) : (
           <div style={{ display: 'flex', gap: 2, padding: 2, flexShrink: 0, borderRadius: 'var(--r2)', background: 'var(--bg3)' }}>
             {([['시간', false], ['종일', true]] as const).map(([label, on]) => (
               <button
@@ -1657,9 +1806,10 @@ function QuickEvent({ x, y, day, onClose }: {
               >{label}</button>
             ))}
           </div>
+          )}
         </div>
 
-        {!allDay && (
+        {!wholeDay && (
           <>
             <TimeRange
               startMin={startMin} minutes={minutes}
@@ -1721,7 +1871,7 @@ function QuickEvent({ x, y, day, onClose }: {
           주면 골라도 아무 표시가 안 나서 안 골라진 것처럼 보였습니다.
           타임라인의 새 일정 카드도 같은 방식으로 넘깁니다.
         */}
-        {!allDay && (
+        {!wholeDay && (
           <RoomRow
             slot={slot}
             booking={room ? { id: '', roomId: room, from: startMin, to: startMin + minutes, by: '', at: 0 } : null}
@@ -1741,7 +1891,7 @@ function QuickEvent({ x, y, day, onClose }: {
             }}
           >{busy ? '만드는 중…' : '만들기'}</button>
           <span style={{ fontSize: 11, color: 'var(--t3)' }}>
-            {allDay ? '시각 없이 하루로' : guests.length ? '초대 메일이 발송됩니다' : ''}
+            {span > 1 ? `시각 없이 ${span}일 동안` : allDay ? '시각 없이 하루로' : guests.length ? '초대 메일이 발송됩니다' : ''}
           </span>
         </div>
       </div>
@@ -1758,7 +1908,7 @@ function QuickEvent({ x, y, day, onClose }: {
  * skip the rest.
  */
 const MonthCell = React.memo(function MonthCell({
-  day, dayOfMonth, column, isCurrentMonth, isToday, isDragTarget,
+  day, dayOfMonth, column, isCurrentMonth, isToday, isDragTarget, inSweep,
   chips, milestones, rowsFit, draggingId, canMove,
   onDragOverDay, onDragLeaveDay, onDropDay, onPickDay, onOpenDay, onOpenTask,
   onTaskDragStart, onTaskDragEnd,
@@ -1769,6 +1919,8 @@ const MonthCell = React.memo(function MonthCell({
   isCurrentMonth: boolean
   isToday: boolean
   isDragTarget: boolean
+  /** 지금 끌어서 고르고 있는 기간에 든 칸. */
+  inSweep: boolean
   chips?: Chip[]
   milestones?: { id: string; name: string; color: string }[]
   /** 이 칸에 들어가는 줄 수. 창 높이에 따라 달라집니다 — MonthGrid가 잽니다. */
@@ -1813,6 +1965,7 @@ const MonthCell = React.memo(function MonthCell({
   return (
     <div
       data-month-cell
+      data-day={day}
       onDragOver={e => { e.preventDefault(); onDragOverDay(day) }}
       onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) onDragLeaveDay() }}
       onDrop={e => onDropDay(e, day)}
@@ -1823,7 +1976,7 @@ const MonthCell = React.memo(function MonthCell({
         borderBottom: '1px solid var(--bd)',
         display: 'flex', flexDirection: 'column',
         minHeight: 90, minWidth: 0, overflow: 'hidden',
-        background: isDragTarget ? 'var(--ac-l)' : hasMilestone ? 'rgba(144,101,176,.05)' : !isCurrentMonth ? 'var(--bg2)' : isToday ? 'rgba(35,131,226,.03)' : isWeekend ? 'var(--bg2)' : 'transparent',
+        background: isDragTarget || inSweep ? 'var(--ac-l)' : hasMilestone ? 'rgba(144,101,176,.05)' : !isCurrentMonth ? 'var(--bg2)' : isToday ? 'rgba(35,131,226,.03)' : isWeekend ? 'var(--bg2)' : 'transparent',
         outline: isDragTarget ? '2px solid var(--ac)' : hasMilestone ? '2px solid rgba(144,101,176,.30)' : 'none',
         outlineOffset: '-2px',
         transition: 'background .08s',
