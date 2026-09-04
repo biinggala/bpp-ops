@@ -14,7 +14,7 @@ import { Icon, type IconName } from '../shared/Icon'
 import { NavIcon } from '../layout/NavIcons'
 import { StatusMark } from '../shared/StatusMark'
 import { daysFrom } from '../../lib/utils'
-import { fileKind, driveUrl, type DriveSearchResult, type Snippet } from '../../lib/googleDrive'
+import { fileKind, driveUrl, driveIdFromUrl, type DriveSearchResult, type Snippet } from '../../lib/googleDrive'
 import { snippetKey, warmDriveAuth } from '../../store/driveStore'
 import { snippetKey as notionKey } from '../../store/notionStore'
 import type { NotionHit } from '../../lib/notion'
@@ -144,8 +144,8 @@ export function CommandPalette() {
   const {
     isCommandPaletteOpen, closeCommandPalette,
     openTaskModal, setView, setScreen, setProject, setDetailTaskId, openNote,
-    openCalendar,
-  } = useUiStore(useShallow(s => ({ isCommandPaletteOpen: s.isCommandPaletteOpen, closeCommandPalette: s.closeCommandPalette, openTaskModal: s.openTaskModal, setView: s.setView, setScreen: s.setScreen, setProject: s.setProject, setDetailTaskId: s.setDetailTaskId, openNote: s.openNote, openCalendar: s.openCalendar })))
+    openCalendar, projectId,
+  } = useUiStore(useShallow(s => ({ isCommandPaletteOpen: s.isCommandPaletteOpen, closeCommandPalette: s.closeCommandPalette, openTaskModal: s.openTaskModal, setView: s.setView, setScreen: s.setScreen, setProject: s.setProject, setDetailTaskId: s.setDetailTaskId, openNote: s.openNote, openCalendar: s.openCalendar, projectId: s.projectId })))
   /**
    * ── 찾기도 지금 서 있는 워크스페이스 안에서 ────────────────────────────────
    *
@@ -244,13 +244,26 @@ export function CommandPalette() {
    * 아예 묻지 않습니다 — `search`는 조용히 빈 배열을 주도록 되어 있어서 팝업이
    * 뜨거나 로그인 창이 튀어나오는 일은 없습니다.
    */
+  /**
+   * 지금 서 있는 프로젝트의 드라이브 폴더.
+   *
+   * 자료 고르는 창은 이걸 늘 넘겼는데(DriveSearch), ⌘F만 안 넘겼습니다.
+   * 그래서 '이 프로젝트 폴더 안의 것 먼저'라는 판단이 여기서는 한 번도
+   * 안 돌았습니다 — 지금 하는 일의 문서가 반년 전 것보다 뒤에 서던 이유의
+   * 절반입니다. 나머지 절반은 순서(lib/driveRank).
+   */
+  const hereFolder = useMemo(() => {
+    const url = projects.find(p => p.id === projectId)?.driveFolderUrl
+    return url ? driveIdFromUrl(url) : null
+  }, [projects, projectId])
+
   useEffect(() => {
     const q = query.trim()
     if (!driveConnected || q.length < 2) { setDriveHits([]); setDriveBusy(false); return }
     let alive = true
     setDriveBusy(true)
     const timer = setTimeout(() => {
-      void useDriveStore.getState().search(q)
+      void useDriveStore.getState().search(q, hereFolder)
         // 여섯 줄이면 이름으로 걸린 것만으로 차서, 내용으로 걸린 파일이
         // 화면에 아예 안 섰습니다. 팔레트는 스크롤되는 목록입니다.
         .then(files => { if (alive) setDriveHits(files.slice(0, 12)) })
@@ -260,7 +273,7 @@ export function CommandPalette() {
       // 그만큼을 더 기다리는 것이 '느리다'의 대부분이었습니다.
     }, 150)
     return () => { alive = false; clearTimeout(timer) }
-  }, [query, driveConnected])
+  }, [query, driveConnected, hereFolder])
 
   /**
    * 내용으로 걸린 문서의 본문 한 조각.

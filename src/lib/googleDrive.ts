@@ -8,11 +8,12 @@ import type { IconName } from '../components/shared/Icon'
 
 import { DRIVE_SCOPE } from './scopes'
 import { shareSeats } from './driveSeats'
+import { rankFiles } from './driveRank'
 export { DRIVE_SCOPE }
 
 const API = 'https://www.googleapis.com/drive/v3'
 const FOLDER_MIME = 'application/vnd.google-apps.folder'
-const FIELDS = 'id,name,mimeType,webViewLink,iconLink,modifiedTime,parents,owners(displayName,emailAddress)'
+const FIELDS = 'id,name,mimeType,webViewLink,iconLink,modifiedTime,viewedByMeTime,parents,owners(displayName,emailAddress)'
 
 export const TOKEN_EXPIRED = 'DRIVE_TOKEN_EXPIRED'
 export const NOT_FOUND = 'DRIVE_NOT_FOUND'
@@ -24,6 +25,8 @@ export interface DriveFile {
   webViewLink?: string
   iconLink?: string
   modifiedTime?: string
+  /** 내가 마지막으로 연 때. 순서를 정할 때 가장 센 신호입니다 — lib/driveRank. */
+  viewedByMeTime?: string
   parents?: string[]
   owners?: { displayName?: string; emailAddress?: string }[]
 }
@@ -172,7 +175,16 @@ export async function searchFiles(
   // 남은 자리에는 잘린 것들을 다시 붙입니다. 버리는 건 없고, 순서만 바뀝니다.
   push(named.slice(seats.named))
   push((byFolder.files ?? []).slice(seats.folders))
-  return out.slice(0, limit)
+  /*
+    정원이 찼으면 이제 순서입니다. 구글이 준 순서에는 '내가 요즘 무엇을 하고
+    있는지'가 거의 안 실려서, 반년 전에 끝난 시즌의 문서가 이번 주 내내 열어
+    본 문서보다 위에 섰습니다. lib/driveRank 참고.
+  */
+  return rankFiles(out.slice(0, limit), {
+    now: Date.now(),
+    term,
+    folderIds: folderId ? [folderId] : [],
+  })
 }
 
 
