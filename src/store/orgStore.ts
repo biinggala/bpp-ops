@@ -494,7 +494,7 @@ export const useOrgStore = create<OrgState>((set, get) => ({
       for (const oid of all) {
         try {
           const roleSnap = await fbGet(ref(db, P.orgMember(oid, email)))
-          const role = (roleSnap.val() as { role?: string } | null)?.role
+          let role = (roleSnap.val() as { role?: string } | null)?.role
           /**
            * 나간 사람은 여기서 끝입니다. **도메인이어도요.**
            *
@@ -527,14 +527,29 @@ export const useOrgStore = create<OrgState>((set, get) => ({
            * 보고 안 읽을 것은 아예 안 묻습니다(attach 참고).
            */
           /**
-           * 우리 도메인 조직에서는 게스트 줄이 나를 못 내립니다.
+           * ── 우리 도메인 조직의 게스트 줄은 **붙기 전에** 고칩니다 ───────────
            *
-           * 옛 초대가 도메인을 안 보고 적어 둔 줄이 남아 있으면, 그 사람은
-           * 자기 회사가 '이름만 아는 곳'으로 보입니다 — 회의실도 명단도 없이.
-           * 로그인할 때 그 줄을 고쳐 쓰지만(roster.syncRoster), 고쳐지기 전
-           * 이 화면부터 맞아야 합니다. lib/rosterRules의 effectiveRole 참고.
+           * 옛 초대가 도메인을 안 보고 적어 둔 줄입니다(projectStore.addMember의
+           * 옛 판). 그 줄이 남은 사람은 자기 회사에서 회의실도 명단도 못 봅니다.
+           *
+           * 고치는 자리가 중요합니다. 처음에는 로그인 뒤(syncRoster)에 고쳤는데,
+           * 그때는 이미 회의실·관리자 목록에 귀를 붙인 뒤였습니다. 그 귀들은
+           * 거절당한 채로 남고 다시 묻지 않으므로, 화면에는 **회의실 0개짜리
+           * 멀쩡한 워크스페이스**가 떴습니다 — 앱을 껐다 켜야 낫는 상태입니다.
+           * 붙기 전에 고쳐야 붙는 순간부터 맞습니다.
+           *
+           * 못 고치면 게스트 그대로 둡니다. 읽을 수 없는 곳에 멤버인 척
+           * 붙지 않습니다 — 그 편이 빈 목록보다 정직합니다.
            */
-          const guest = role === 'guest' && oid !== fromDomain
+          if (role === 'guest' && oid === fromDomain) {
+            try {
+              await fbUpdate(ref(db, P.orgMember(oid, email)), { role: 'member', at: Date.now() })
+              role = 'member'
+            } catch (e) {
+              console.warn('[org] 내 자리를 바로잡지 못했습니다', e)
+            }
+          }
+          const guest = role === 'guest'
           // 도메인으로 찾은 곳은 명단에 아직 없어도 내 곳입니다 — 규칙도
           // 도메인을 예비 근거로 인정합니다. 첫 로그인이 그 자리입니다.
           if (role !== 'member' && !guest && oid !== fromDomain) continue
@@ -619,7 +634,16 @@ export const useOrgStore = create<OrgState>((set, get) => ({
             .map(([key]) => key.replace(/,/g, '.'))
             .sort(),
         })
-      }, () => set({ admins: [] }))
+      }, e => {
+        /*
+          이 자리는 조용히 빈 목록이 됐습니다. 그래서 '관리자가 아무도 없는
+          워크스페이스'와 '관리자 목록을 못 읽는 나'가 화면에서 똑같이
+          보였습니다 — 관리자인 사람이 자기 화면에서 관리자 표시를 잃고,
+          왜인지는 아무 데도 안 나옵니다. 회의실 쪽과 같은 말을 합니다.
+        */
+        if (get().teardown) return void set({ admins: [] })
+        set({ admins: [], error: e instanceof Error ? `관리자 목록을 읽지 못했습니다: ${e.message}` : null })
+      })
       const projectsRef = ref(db, P.orgProjects(orgId))
       const projectsHandler = onValue(projectsRef, s => {
         set({
