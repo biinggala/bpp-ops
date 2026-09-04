@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { projectsToStamp } from '../.test-build/lib/rosterRules.js'
+import { effectiveRole, projectsToStamp } from '../.test-build/lib/rosterRules.js'
 
 const P = (id, o = {}) => ({ id, ...o })
 const roster = { 'alice@bpp,co,kr': { role: 'member', at: 1 }, 'out@gmail,com': { role: 'guest', at: 1 } }
@@ -31,4 +31,31 @@ test('개인 워크스페이스에서는 내가 만든 것만 찍힙니다', () 
   const mine = { 'me@gmail,com': { role: 'member', at: 1 } }
   const list = [P('mine', { creatorEmail: 'me@gmail.com' }), P('theirs', { creatorEmail: 'someone@else.com' })]
   assert.deepEqual(projectsToStamp(list, '', mine), ['mine'])
+})
+
+/* ── 우리 도메인 사람은 게스트일 수 없습니다 ─────────────────────────────── */
+
+test('도메인이 맞으면 게스트 줄은 멤버로 읽힙니다', () => {
+  // 옛 초대가 도메인을 안 보고 적어 둔 줄입니다. 그대로 두면 그 사람은 자기
+  // 회사에서 회의실도 명단도 못 봅니다 — 아무도 내린 적이 없는데요.
+  assert.equal(effectiveRole('dabin@bpp.co.kr', 'bpp.co.kr', 'guest'), 'member')
+  assert.equal(effectiveRole('DABIN@BPP.CO.KR', 'bpp.co.kr', 'guest'), 'member')
+})
+
+test('밖의 사람은 그대로 게스트입니다', () => {
+  assert.equal(effectiveRole('friend@gmail.com', 'bpp.co.kr', 'guest'), 'guest')
+  // 비슷하게 끝나는 주소는 우리 도메인이 아닙니다.
+  assert.equal(effectiveRole('someone@notbpp.co.kr', 'bpp.co.kr', 'guest'), 'guest')
+})
+
+test('내려간 사람은 도메인이 맞아도 그대로입니다', () => {
+  // 'removed'는 잘못 적힌 줄이 아니라 결정입니다. 도메인으로 되살리면
+  // 내보내기가 아무 뜻도 없어집니다.
+  assert.equal(effectiveRole('gone@bpp.co.kr', 'bpp.co.kr', 'removed'), 'removed')
+})
+
+test('도메인 없는 조직에서는 적힌 그대로 — 거기선 명단이 유일한 근거', () => {
+  assert.equal(effectiveRole('someone@gmail.com', '', 'guest'), 'guest')
+  assert.equal(effectiveRole('someone@gmail.com', null, 'guest'), 'guest')
+  assert.equal(effectiveRole('a@bpp.co.kr', 'bpp.co.kr', null), null)
 })

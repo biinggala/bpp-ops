@@ -8,6 +8,7 @@ import { DEFAULT_ROOM_RULE, roomRuleNote, roomTooLong, type RoomRule } from '../
 import { usePrefsStore } from './prefsStore'
 import { pickOrg, orgsSettled } from '../lib/pickOrg'
 import { homeOrgName } from '../lib/homeOrg'
+import { effectiveRole } from '../lib/rosterRules'
 import { reportProblem } from '../lib/notify'
 
 /**
@@ -525,7 +526,15 @@ export const useOrgStore = create<OrgState>((set, get) => ({
            * 세운 것**이었습니다. 이제 게스트라고 표를 달고, 붙을 때 그 표를
            * 보고 안 읽을 것은 아예 안 묻습니다(attach 참고).
            */
-          const guest = role === 'guest'
+          /**
+           * 우리 도메인 조직에서는 게스트 줄이 나를 못 내립니다.
+           *
+           * 옛 초대가 도메인을 안 보고 적어 둔 줄이 남아 있으면, 그 사람은
+           * 자기 회사가 '이름만 아는 곳'으로 보입니다 — 회의실도 명단도 없이.
+           * 로그인할 때 그 줄을 고쳐 쓰지만(roster.syncRoster), 고쳐지기 전
+           * 이 화면부터 맞아야 합니다. lib/rosterRules의 effectiveRole 참고.
+           */
+          const guest = role === 'guest' && oid !== fromDomain
           // 도메인으로 찾은 곳은 명단에 아직 없어도 내 곳입니다 — 규칙도
           // 도메인을 예비 근거로 인정합니다. 첫 로그인이 그 자리입니다.
           if (role !== 'member' && !guest && oid !== fromDomain) continue
@@ -1099,8 +1108,18 @@ export const useOrgStore = create<OrgState>((set, get) => ({
     if (!orgId) return []
     const snap = await fbGet(ref(db, P.orgMembers(orgId))).catch(() => null)
     const raw = (snap?.val() ?? {}) as Record<string, { role?: string; at?: number; by?: string }>
+    // 우리 도메인 주소가 게스트 칸에 서 있으면 그건 옛 초대가 남긴 줄입니다.
+    // 그 사람은 도메인으로 이미 멤버고, 명단은 그렇게 읽어야 합니다.
+    const { domain } = get()
     return Object.entries(raw)
-      .map(([key, v]) => ({ email: key.replace(/,/g, '.'), role: v?.role ?? '', at: v?.at, by: v?.by }))
+      .map(([key, v]) => {
+        const email = key.replace(/,/g, '.')
+        const role = v?.role ?? ''
+        const real = role === 'member' || role === 'guest' || role === 'removed'
+          ? effectiveRole(email, domain, role) ?? role
+          : role
+        return { email, role: real, at: v?.at, by: v?.by }
+      })
       // 내려간 사람도 돌려줍니다. 안 보이면 되돌릴 자리가 없고, 그 사람은
       // 자동 가입도 초대도 규칙에 막혀 영영 못 들어옵니다.
       .filter(m => m.role === 'member' || m.role === 'guest' || m.role === 'removed')

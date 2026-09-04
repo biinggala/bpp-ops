@@ -338,6 +338,62 @@ test('게스트는 그 워크스페이스의 회의실을 못 읽는다', async 
   await assertFails(get(ref(authed(MALLORY), `orgs/${oid}/rooms`)))
 })
 
+/**
+ * ── 우리 도메인 사람은 자기 게스트 줄을 스스로 고칩니다 ─────────────────────
+ *
+ * 예전 초대는 도메인을 안 보고 게스트 줄을 적었습니다. 그 줄이 남은 사람은
+ * 자기 회사에서 강등된 채로 지냅니다 — 회의실도, 명단도, 초대받지 않은
+ * 프로젝트도 안 열립니다. 그리고 스스로는 못 고쳤습니다: 명단 전체는 멤버만
+ * 읽고, 자기 줄은 '없을 때만' 쓸 수 있었으니까요. 관리자가 알아채고 눌러
+ * 주기를 기다리는 것 말고는 길이 없었습니다.
+ *
+ * 이제 도메인이 맞으면 게스트→멤버 한 칸만 스스로 올릴 수 있습니다. 벽이
+ * 넓어지지는 않습니다. 도메인 주소는 애초에 줄이 없으면 멤버로 앉을 수 있고
+ * (자동 가입), 이건 그 자리에 옛 줄이 있을 때 같은 결론에 이르는 길입니다.
+ */
+test('우리 도메인 사람은 자기 게스트 줄을 멤버로 올릴 수 있다', async () => {
+  const oid = 'dom3'
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), { name: '블랙페이퍼', domain: 'bpp.co.kr' })
+    await set(ref(db, `orgs/${oid}/members/${key(BOB.email)}`), { role: 'guest', at: 1 })
+  })
+  await assertSucceeds(update(ref(authed(BOB), `orgs/${oid}/members/${key(BOB.email)}`), { role: 'member', at: 2 }))
+})
+
+test('밖의 사람은 자기를 멤버로 못 올린다', async () => {
+  const oid = 'dom4'
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), { name: '블랙페이퍼', domain: 'bpp.co.kr' })
+    await set(ref(db, `orgs/${oid}/members/${key(MALLORY.email)}`), { role: 'guest', at: 1 })
+  })
+  await assertFails(update(ref(authed(MALLORY), `orgs/${oid}/members/${key(MALLORY.email)}`), { role: 'member', at: 2 }))
+})
+
+test('내려간 사람은 도메인이 맞아도 스스로 못 돌아온다', async () => {
+  // 'removed'는 결정입니다. 이 문으로 되돌아올 수 있으면 내보내기가 아무
+  // 뜻도 없어집니다.
+  const oid = 'dom5'
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), { name: '블랙페이퍼', domain: 'bpp.co.kr' })
+    await set(ref(db, `orgs/${oid}/members/${key(BOB.email)}`), { role: 'removed', at: 1 })
+  })
+  await assertFails(update(ref(authed(BOB), `orgs/${oid}/members/${key(BOB.email)}`), { role: 'member', at: 2 }))
+})
+
+test('남의 게스트 줄은 못 올린다 — 관리자만', async () => {
+  const oid = 'dom6'
+  await testEnv.withSecurityRulesDisabled(async ctx => {
+    const db = ctx.database()
+    await set(ref(db, `orgs/${oid}/meta`), { name: '블랙페이퍼', domain: 'bpp.co.kr' })
+    await set(ref(db, `orgs/${oid}/members/${key(ALICE.email)}`), { role: 'guest', at: 1 })
+    await set(ref(db, `orgs/${oid}/members/${key(BOB.email)}`), { role: 'guest', at: 1 })
+  })
+  await assertFails(update(ref(authed(BOB), `orgs/${oid}/members/${key(ALICE.email)}`), { role: 'member', at: 2 }))
+})
+
 // ── 알림함은 남이 나에게 쓰는 자리입니다 ─────────────────────────────────────
 //
 // 그래서 열려 있어야 하는데, 그 틈으로 **아무나 아무에게나** 쓸 수 있었습니다.

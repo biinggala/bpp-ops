@@ -33,6 +33,30 @@ export function roleForDomain(email: string, domain: string | null | undefined):
 }
 
 /**
+ * 명단에 적힌 자리와 도메인이 어긋날 때, **진짜 자리**.
+ *
+ * 도메인형 워크스페이스에서 그 도메인 주소는 게스트일 수 없습니다 — 로그인하는
+ * 것만으로 멤버니까요. 그런데 예전 초대는 도메인을 안 보고 게스트 줄을 적었고
+ * (projectStore.addMember의 옛 판), 그 줄이 남은 사람은 자기 회사에서 **강등된
+ * 채로** 지냅니다: 회의실·장비도, 명단도, 초대받지 않은 프로젝트도 안 열립니다.
+ * 이제 규칙이 그런 줄을 새로 못 만들게 하지만, 이미 적힌 줄은 그대로 남습니다.
+ *
+ * 내려간 사람(`removed`)은 건드리지 않습니다. 그건 잘못 적힌 줄이 아니라
+ * **결정**이고, 도메인으로 되살리면 내보내기가 아무 뜻도 없어집니다.
+ *
+ * 도메인이 없는 조직에서는 명단이 유일한 근거라 적힌 그대로입니다.
+ */
+export function effectiveRole(
+  email: string,
+  domain: string | null | undefined,
+  role: OrgRole | null | undefined,
+): OrgRole | null {
+  if (!role) return null
+  if (role !== 'guest') return role
+  return roleForDomain(email, domain) === 'member' ? 'member' : 'guest'
+}
+
+/**
  * 명단에 아직 없어서 새로 적어야 할 사람들을 고릅니다.
  *
  * ── 이제 아무도 안 부릅니다 ─────────────────────────────────────────────────

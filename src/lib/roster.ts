@@ -20,9 +20,9 @@ import { emailKey, P } from './paths'
 export type {
   OrgRole, OrgMemberRow, StampableProject,
 } from './rosterRules'
-export { roleForDomain, guestsToAdd, projectsToStamp } from './rosterRules'
+export { roleForDomain, guestsToAdd, projectsToStamp, effectiveRole } from './rosterRules'
 import type { OrgMemberRow, StampableProject } from './rosterRules'
-import { guestsToAdd, projectsToStamp, roleForDomain } from './rosterRules'
+import { effectiveRole, guestsToAdd, projectsToStamp, roleForDomain } from './rosterRules'
 
 /**
  * 명단과 색인을 한 번 맞춥니다. 빠진 것만 적고, 있는 것은 안 건드립니다.
@@ -49,6 +49,29 @@ export async function syncRoster(input: {
     await update(ref(db, P.userOrgs(uid)), { [orgId]: at })
   } catch (e) {
     console.warn('[roster] 조직 색인을 못 적었습니다', e)
+  }
+
+  /**
+   * ── 내 자리가 게스트로 적혀 있으면, 로그인할 때 바로잡습니다 ─────────────
+   *
+   * 우리 도메인 주소는 게스트일 수 없습니다(effectiveRole 참고). 예전 초대가
+   * 도메인을 안 보고 적어 둔 줄이 남아 있으면 그 사람은 자기 회사에서 강등된
+   * 채로 지냅니다 — 그리고 **스스로 알아챌 방법도 없습니다.** 화면에는 그냥
+   * 회의실 탭이 없고 명단이 안 열릴 뿐입니다.
+   *
+   * 명단 전체는 못 읽습니다(멤버만 읽습니다). 내 줄 하나는 읽을 수 있고,
+   * 규칙이 이 한 번의 고쳐 쓰기를 허락합니다 — 게스트에서 멤버로, 도메인이
+   * 맞을 때만. 내려간 사람은 여기 안 걸립니다: 그 줄은 'removed'입니다.
+   */
+  try {
+    const mineSnap = await fbGet(ref(db, P.orgMember(orgId, email)))
+    const mineRole = (mineSnap.val() as { role?: OrgMemberRow['role'] } | null)?.role ?? null
+    if (mineRole === 'guest' && effectiveRole(email, domain, 'guest') === 'member') {
+      await update(ref(db, P.orgMember(orgId, email)), { role: 'member', at })
+    }
+  } catch (e) {
+    // 못 고쳐도 로그인은 계속됩니다. 다음 로그인에 다시 해 봅니다.
+    console.warn('[roster] 내 자리를 바로잡지 못했습니다', e)
   }
 
   let roster: Record<string, OrgMemberRow | null> | null = null
