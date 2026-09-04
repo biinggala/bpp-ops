@@ -7,9 +7,11 @@ import type { IconName } from '../components/shared/Icon'
 // pasted it, and drifts from that moment on.
 
 import { DRIVE_SCOPE } from './scopes'
+import { shareSeats } from './driveSeats'
 export { DRIVE_SCOPE }
 
 const API = 'https://www.googleapis.com/drive/v3'
+const FOLDER_MIME = 'application/vnd.google-apps.folder'
 const FIELDS = 'id,name,mimeType,webViewLink,iconLink,modifiedTime,parents,owners(displayName,emailAddress)'
 
 export const TOKEN_EXPIRED = 'DRIVE_TOKEN_EXPIRED'
@@ -41,6 +43,18 @@ async function call<T>(token: string, path: string, params: Record<string, strin
   const qs = new URLSearchParams({
     supportsAllDrives: 'true',
     includeItemsFromAllDrives: 'true',
+    /**
+     * **공유 드라이브 안의 것도 찾습니다.**
+     *
+     * 이 값을 안 주면 구글은 '내 드라이브와 나에게 직접 공유된 것'만 봅니다.
+     * 회사에서 실제로 일이 쌓이는 자리는 공유 드라이브인데(룩백, 프렌즈룸
+     * 같은 팀 드라이브), 그 안의 문서는 눈앞에서 열어 놓고도 ⌘F로는 한 줄도
+     * 안 나왔습니다 — 없는 파일과 못 찾는 파일이 화면에서 같아 보였습니다.
+     *
+     * 위의 두 값만으로는 부족합니다. 그건 '섞어서 돌려줘도 된다'는 허락이고,
+     * 어디를 뒤질지는 이 값이 정합니다.
+     */
+    corpora: 'allDrives',
     ...params,
   })
   const res = await fetch(`${API}${path}?${qs}`, { headers: { Authorization: `Bearer ${token}` } })
@@ -119,35 +133,49 @@ export async function searchFiles(
   }
 
   const none = Promise.resolve({ files: [] as DriveFile[] })
-  const [scoped, byName, byText] = await Promise.all([
+  const [scoped, byName, byFolder, byText] = await Promise.all([
     folderId
       ? call<{ files?: DriveFile[] }>(token, '/files', { ...ordered, q: `'${quote(folderId)}' in parents and ${nameQ}` })
       : none,
     call<{ files?: DriveFile[] }>(token, '/files', { ...ordered, q: nameQ }),
+    /**
+     * ── 폴더는 따로 묻습니다 ────────────────────────────────────────────────
+     *
+     * 위의 이름 질의도 폴더를 돌려줍니다 — 빼는 조건은 어디에도 없었습니다.
+     * 그런데 한 줄도 안 보였습니다. 구글은 **최근에 연 것**을 위로 올리는데,
+     * 폴더는 여는 것이 아니라 지나가는 것이라 그 점수가 늘 바닥입니다.
+     * 그래서 스무 자리를 문서들이 먼저 채우고, 폴더는 잘려 나갔습니다.
+     *
+     * 찾는 사람에게는 폴더가 자주 **더 큰 답**입니다. 파일 하나가 아니라
+     * 그 일이 통째로 들어 있는 자리니까요. 그래서 따로 묻고, 자리를 조금
+     * 떼어 둡니다 — 내용 일치에 자리를 떼어 두는 것과 같은 이유입니다.
+     */
+    term
+      ? call<{ files?: DriveFile[] }>(token, '/files', { ...ordered, q: `mimeType = '${FOLDER_MIME}' and ${nameQ}` })
+      : none,
     term
       ? call<{ files?: DriveFile[] }>(token, '/files', { ...common, q: textQ })
       : none,
   ])
   push(scoped.files)
-  /**
-   * 내용으로 걸린 것의 자리를 **미리 남겨 둡니다.**
-   *
-   * 이름으로 걸린 것을 먼저 다 밀어 넣고 있었습니다. 흔한 낱말을 치면 이름
-   * 일치만으로 정원이 차서, 내용으로 걸린 파일은 한 줄도 못 섰습니다 —
-   * 그런데 **이름만으로는 못 찾는 것**이 바로 그쪽이라, 흔한 낱말일수록
-   * 답은 내용 쪽에 있습니다.
-   *
-   * 남은 자리가 있으면 잘린 이름 일치도 뒤에 다시 붙입니다. 버리는 건
-   * 없고, 순서만 바뀝니다.
-   */
+  const seats = shareSeats({
+    limit,
+    taken: out.length,
+    named: (byName.files ?? []).length,
+    folders: (byFolder.files ?? []).length,
+    term: !!term,
+  })
   const named = byName.files ?? []
-  const room = term ? Math.min(6, Math.floor(limit / 3)) : 0
-  const head = Math.max(0, limit - room - out.length)
-  push(named.slice(0, head))
+  push((byFolder.files ?? []).slice(0, seats.folders))
+  push(named.slice(0, seats.named))
   push(byText.files, true)
-  push(named.slice(head))
+  // 남은 자리에는 잘린 것들을 다시 붙입니다. 버리는 건 없고, 순서만 바뀝니다.
+  push(named.slice(seats.named))
+  push((byFolder.files ?? []).slice(seats.folders))
   return out.slice(0, limit)
 }
+
+
 
 /**
  * ── 무엇이 바뀌었는지 묻는 값싼 방법 ────────────────────────────────────────
